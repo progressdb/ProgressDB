@@ -1,6 +1,6 @@
 
 # Progress.dev
-A fast, purpose-built, append-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
+A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
 
 ## Core Engine Features
 1. **Append-Only Thread Storage**  
@@ -16,7 +16,6 @@ A fast, purpose-built, append-native database for AI chat threads, built for rea
 11. **Vector Metadata Support (Optional)**  
 12. **Delta-Based Message Edits**  
 13. **No Runtime Dependencies – Single Binary**
-
 
 ## Developer & Product Tooling
 1. **Web-Based Data Viewer**  
