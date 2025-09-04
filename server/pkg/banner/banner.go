@@ -1,32 +1,31 @@
 package banner
 
 import (
-    "fmt"
-
-    fig "github.com/mbndr/figlet4go"
+	"fmt"
 )
 
-// Print renders a 3D-styled banner and basic info.
+const banner = `
+██████╗ ██████╗  ██████╗  ██████╗ ██████╗ ███████╗███████╗███████╗    ██████╗ ██████╗ 
+██╔══██╗██╔══██╗██╔═══██╗██╔════╝ ██╔══██╗██╔════╝██╔════╝██╔════╝    ██╔══██╗██╔══██╗
+██████╔╝██████╔╝██║   ██║██║  ███╗██████╔╝█████╗  ███████╗███████╗    ██║  ██║██████╔╝
+██╔═══╝ ██╔══██╗██║   ██║██║   ██║██╔══██╗██╔══╝  ╚════██║╚════██║    ██║  ██║██╔══██╗
+██║     ██║  ██║╚██████╔╝╚██████╔╝██║  ██║███████╗███████║███████║    ██████╔╝██████╔╝
+╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝                                                                                 
+`
+
 func Print(addr, dbPath string) {
-    r := fig.NewAsciiRender()
-
-    opts := fig.NewRenderOptions()
-    opts.FontName = "3-d"
-    opts.FontColor = []fig.Color{fig.ColorCyan, fig.ColorYellow}
-
-    if out, err := r.RenderOpts("PROGRESS DB", opts); err == nil {
-        fmt.Print(out)
-    } else if out, err := r.Render("PROGRESS DB"); err == nil {
-        fmt.Print(out)
-    } else {
-        fmt.Println("PROGRESS DB")
-    }
-
-    fmt.Printf("Listening: http://localhost%s\n", addr)
-    fmt.Printf("DB:        %s\n", dbPath)
-    fmt.Println("Endpoints:")
-    fmt.Println("  GET  /?thread=<id>&msg=<text>")
-    fmt.Println("  GET  /?thread=<id>")
-    fmt.Println("  POST / (form: thread,msg)")
+	fmt.Println(banner)
+	fmt.Println("== Config =====================================================")
+	fmt.Printf("Listen:   %s\n", addr)
+	fmt.Printf("DB Path:  %s\n", dbPath)
+	fmt.Println("\n== Endpoints ==================================================")
+	fmt.Println("GET  /?thread=<id>&msg=<text>  - Append a message and list messages")
+	fmt.Println("GET  /?thread=<id>              - List messages in a thread")
+	fmt.Println("POST / (form: thread,msg)       - Append a message and list messages")
+	fmt.Println("\n== Examples ===================================================")
+	fmt.Printf("curl 'http://localhost%s/?thread=t1&msg=hello'\n", addr)
+	fmt.Printf("curl 'http://localhost%s/?thread=t1'\n", addr)
+	fmt.Println("\n== Production? =================================================")
+	fmt.Println("Set a proper storage path (--db)")
+	fmt.Println("Add API key or auth for production")
 }
-
