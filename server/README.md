@@ -10,9 +10,14 @@ Run
 - Build: `./scripts/build.sh`
 
 API
-- GET `/?thread=<id>&msg=<text>`: Append message and list.
-- GET `/?thread=<id>`: List messages.
-- POST `/` (form: `thread`, `msg`): Append and list.
+- POST `/v1/messages`: JSON body of message
+  - {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello"}}
+  - `id` and `ts` are optional; server fills them if missing.
+- GET `/v1/messages?thread=<id>&limit=<n>`: List messages for a thread (newest last). `limit` optional.
+
+API Docs
+- Swagger UI: open `http://localhost:8080/docs/` to explore and test endpoints.
+- OpenAPI spec: `http://localhost:8080/openapi.yaml` (served from `server/docs/openapi.yaml`).
 
 Data Model
 - Message: fixed metadata + flexible payload.
@@ -23,6 +28,11 @@ Data Model
   - body: freeform JSON payload defined by the customer.
   - example:
     {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello","tags":["greeting"]}}
+- Defaults on POST `/v1/messages` when fields are omitted:
+  - id: generated as `msg-<unix_nano>-<seq>`.
+  - thread: generated as `thread-<unix_nano>-<seq>`.
+  - ts: current time in nanoseconds.
+  - author: `none`.
 - Thread: minimal metadata with rollups.
   - id: thread id (string).
   - created_ts: first message timestamp.
@@ -49,7 +59,14 @@ Configuration
   - server.port: 8080
   - storage.db_path: `./data/progressdb`
   - security.encryption_key: 32‑byte hex (AES‑256‑GCM)
-  - logging.level: `info`
+  - logging.level: `info` (reserved; simple stdout logging used in MVP)
+  - validation:
+    - required: list of dot-paths that must exist (e.g., `body.text`).
+    - types: list of `{ path, type }` constraints (`string|number|boolean|object|array`).
+    - max_len: list of `{ path, max }` (applies to strings/arrays).
+    - enums: list of `{ path, values[] }` (string enums).
+    - when_then: list of conditional rules:
+      - when: `{ path, equals }` then: `{ required[] }`.
 
 Environment Variables
 - `.env` support: if a `.env` file is present in the working directory, it is loaded at startup.
@@ -60,6 +77,29 @@ Environment Variables
   - `PROGRESSDB_DB_PATH`: Pebble database path.
   - `PROGRESSDB_ENCRYPTION_KEY`: 64‑hex chars (32 bytes) for AES‑256‑GCM.
   - `PROGRESSDB_CONFIG`: path to `config.yaml` (optional; you can also pass `--config`).
+  - `PROGRESSDB_LOG_LEVEL`: `debug|info|warn|error` (optional hint; stdout only).
+
+Validation Examples
+- Require text and limit its length; require `body.card_last4` when `body.has_payment` is true.
+
+  validation:
+    required:
+      - body.text
+    types:
+      - path: body.text
+        type: string
+      - path: body.has_payment
+        type: boolean
+    max_len:
+      - path: body.text
+        max: 200
+    when_then:
+      - when:
+          path: body.has_payment
+          equals: true
+        then:
+          required:
+            - body.card_last4
 
 Precedence
 - Flags explicitly set > Environment variables > Config file values > Built‑in defaults.
@@ -117,6 +157,20 @@ Examples
   - `PROGRESSDB_ADDR=0.0.0.0:8080`
   - `PROGRESSDB_DB_PATH=./data/progressdb`
   - `PROGRESSDB_ENCRYPTION_KEY=b36ef5f7c11c1d29ab0b22789d9ed4b99f6b84c6a2a8f7f93c8f33485bc23a12`
+
+Metrics
+- Prometheus endpoint: `GET /metrics` (default registry via promhttp).
+
+Security
+- CORS: configure allowed origins via `security.cors.allowed_origins` (YAML) or `PROGRESSDB_CORS_ORIGINS` (comma-separated). Preflight handled automatically.
+- Rate limiting: enable with `security.rate_limit.rps` and `burst` (or env `PROGRESSDB_RATE_RPS`, `PROGRESSDB_RATE_BURST`). Applied per API key or client IP.
+- IP whitelist: `security.ip_whitelist: ["1.2.3.4"]`. If set, only listed IPs may access.
+- TLS: set `server.tls.cert_file` and `server.tls.key_file`, or env `PROGRESSDB_TLS_CERT`/`PROGRESSDB_TLS_KEY`. Server switches to TLS when set.
+- API keys:
+  - Backend keys: `security.api_keys.backend: ["sk_...", ...]` or env `PROGRESSDB_API_BACKEND_KEYS`.
+  - Frontend keys: `security.api_keys.frontend: ["pk_...", ...]` or env `PROGRESSDB_API_FRONTEND_KEYS`.
+  - Allow unauth (dev only): `security.api_keys.allow_unauth: true` or env `PROGRESSDB_ALLOW_UNAUTH=true`.
+  - Scope: frontend keys may only call `GET/POST /v1/messages` and `GET /healthz`.
 
 - Minimal `config.yaml`:
   server:

@@ -1,0 +1,107 @@
+openapi: 3.0.0
+info:
+  title: ProgressDB API
+  version: "0.1.0"
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                example:
+                  status: ok
+  /v1/messages:
+    get:
+      summary: List messages for a thread
+      parameters:
+        - in: query
+          name: thread
+          schema:
+            type: string
+          description: Thread ID to list
+        - in: query
+          name: limit
+          schema:
+            type: integer
+          description: Optional limit of most recent messages
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thread:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+    post:
+      summary: Create a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+components:
+  schemas:
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Message ID (server-generated if missing)
+        thread:
+          type: string
+          description: Thread ID
+        author:
+          type: string
+        ts:
+          type: integer
+          format: int64
+          description: Timestamp in nanoseconds (server-filled if missing)
+        body:
+          description: Freeform JSON payload
+          nullable: true
+      example:
+        id: msg-1700000000-1
+        thread: t1
+        author: u1
+        ts: 1700000000000000000
+        body:
+          text: "hello"
+          # Example of an encrypted field (envelope):
+          credit_card:
+            _enc: gcm
+            v: "BASE64_NONCE_CIPHERTEXT"
+
+    EncryptedEnvelope:
+      type: object
+      properties:
+        _enc:
+          type: string
+          enum: [gcm]
+        v:
+          type: string
+          description: base64-encoded nonce|ciphertext
+      required: [_enc, v]
