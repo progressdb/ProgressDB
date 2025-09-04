@@ -2,7 +2,10 @@ module progressdb
 
 go 1.21
 
-require github.com/cockroachdb/pebble v1.1.0
+require (
+	github.com/cockroachdb/pebble v1.1.0
+	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
+)
 
 require (
 	github.com/DataDog/zstd v1.4.5 // indirect
