@@ -7,6 +7,7 @@ import (
     "time"
 
     "github.com/cockroachdb/pebble"
+    "progressdb/pkg/security"
 )
 
 var db *pebble.DB
@@ -33,7 +34,28 @@ func SaveMessage(threadID, msg string) error {
     ts := time.Now().UTC().UnixNano()
     s := atomic.AddUint64(&seq, 1)
     key := fmt.Sprintf("thread:%s:%020d-%06d", threadID, ts, s)
-    return db.Set([]byte(key), []byte(msg), pebble.Sync)
+    data := []byte(msg)
+    if security.Enabled() {
+        if security.HasFieldPolicy() {
+            if out, err := security.EncryptJSONFields(data); err == nil {
+                data = out
+            } else {
+                // Fallback: full-message encryption if not JSON
+                enc, err := security.Encrypt(data)
+                if err != nil {
+                    return err
+                }
+                data = enc
+            }
+        } else {
+            enc, err := security.Encrypt(data)
+            if err != nil {
+                return err
+            }
+            data = enc
+        }
+    }
+    return db.Set([]byte(key), data, pebble.Sync)
 }
 
 // ListMessages returns all messages for a thread in insertion order.
@@ -55,8 +77,27 @@ func ListMessages(threadID string) ([]string, error) {
         }
         // Capture the value before advancing.
         v := append([]byte(nil), iter.Value()...)
+        if security.Enabled() {
+            if security.HasFieldPolicy() {
+                // Try full-message decrypt first; if it fails, attempt field-level decrypt.
+                if dec, err := security.Decrypt(v); err == nil {
+                    v = dec
+                } else {
+                    if outJSON, err := security.DecryptJSONFields(v); err == nil {
+                        v = outJSON
+                    } else {
+                        // leave as-is on failure
+                    }
+                }
+            } else {
+                dec, err := security.Decrypt(v)
+                if err != nil {
+                    return nil, err
+                }
+                v = dec
+            }
+        }
         out = append(out, string(v))
     }
     return out, iter.Error()
 }
-

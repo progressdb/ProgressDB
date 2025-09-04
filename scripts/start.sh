@@ -6,10 +6,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR/server"
 
+# Load env: prefer server/.env; fallback to root .env by exporting vars
+if [[ -f .env ]]; then
+  # The app will also load this, but sourcing is harmless
+  set -a; . ./.env; set +a
+elif [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a; . "$ROOT_DIR/.env"; set +a
+fi
+
 mkdir -p .gopath/pkg/mod
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 export GOSUMDB=off
 
 exec go run ./cmd/progressdb "$@"
-

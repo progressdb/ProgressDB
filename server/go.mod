@@ -4,7 +4,9 @@ go 1.21
 
 require (
 	github.com/cockroachdb/pebble v1.1.0
+	github.com/joho/godotenv v1.5.1
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
