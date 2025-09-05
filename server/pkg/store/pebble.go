@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -176,7 +177,45 @@ func GetLatestMessage(msgID string) (string, error) {
 		return "", err
 	}
 	if len(vers) == 0 {
-		return "", fmt.Errorf("message not found")
+		// Fallback for legacy records: scan all threads and their messages
+		// to find any stored message with this id. This is expensive and
+		// intended only as a compatibility fallback for older records that
+		// were stored without a msgid index.
+		threads, terr := ListThreads()
+		if terr != nil {
+			return "", fmt.Errorf("message not found")
+		}
+		var found []string
+		for _, t := range threads {
+			// t is JSON bytes of thread metadata (string). Try to extract id
+			// without depending on models package.
+			var m map[string]interface{}
+			if err := json.Unmarshal([]byte(t), &m); err != nil {
+				continue
+			}
+			tid, _ := m["id"].(string)
+			if tid == "" {
+				continue
+			}
+			msgs, merr := ListMessages(tid)
+			if merr != nil {
+				continue
+			}
+			for _, s := range msgs {
+				// try to unmarshal message and check id
+				var mm map[string]interface{}
+				if err := json.Unmarshal([]byte(s), &mm); err != nil {
+					continue
+				}
+				if idv, ok := mm["id"].(string); ok && idv == msgID {
+					found = append(found, s)
+				}
+			}
+		}
+		if len(found) == 0 {
+			return "", fmt.Errorf("message not found")
+		}
+		return found[len(found)-1], nil
 	}
 	return vers[len(vers)-1], nil
 }
@@ -227,7 +266,6 @@ func ListThreads() ([]string, error) {
 	}
 	return out, iter.Error()
 }
- 
 
 func likelyJSON(b []byte) bool {
 	// Trim leading spaces and check first byte

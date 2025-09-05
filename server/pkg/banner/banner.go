@@ -13,11 +13,14 @@ const banner = `
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝                                                                                 
 `
 
-func Print(addr, dbPath string) {
+func Print(addr, dbPath, sources string) {
 	fmt.Println(banner)
 	fmt.Println("== Config =====================================================")
 	fmt.Printf("Listen:   %s\n", addr)
 	fmt.Printf("DB Path:  %s\n", dbPath)
+	if sources != "" {
+		fmt.Printf("Config sources: %s\n", sources)
+	}
 	fmt.Println("\n== Endpoints ==================================================")
 	fmt.Println("POST /v1/messages - Add a message (JSON: id, thread, author, ts, body)")
 	fmt.Println("GET  /v1/messages?thread=<id>&limit=<n> - List messages in a thread (JSON response)")

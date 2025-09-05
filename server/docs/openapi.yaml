@@ -1,4 +1,4 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: ProgressDB API
   version: "0.1.0"
@@ -131,10 +131,10 @@ paths:
                 properties:
                   id:
                     type: string
-                versions:
-                  type: array
-                  items:
-                    type: string
+                  versions:
+                    type: array
+                    items:
+                      type: string
 
   /v1/messages/{id}/reactions:
     get:
@@ -190,7 +190,8 @@ paths:
           description: Updated message
           content:
             application/json:
-              $ref: '#/components/schemas/Message'
+              schema:
+                $ref: '#/components/schemas/Message'
 
   /v1/messages/{id}/reactions/{identity}:
     delete:
@@ -359,10 +360,42 @@ components:
         ts: 1700000000000000000
         body:
           text: "hello"
-          # Example of an encrypted field (envelope):
           credit_card:
             _enc: gcm
             v: "BASE64_NONCE_CIPHERTEXT"
+
+    Thread:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Thread ID
+        title:
+          type: string
+          description: Thread title
+        created_at:
+          type: integer
+          format: int64
+          description: Creation timestamp in nanoseconds
+        updated_at:
+          type: integer
+          format: int64
+          description: Last update timestamp in nanoseconds
+        author:
+          type: string
+          description: Thread creator
+        metadata:
+          type: object
+          description: Additional thread metadata
+          additionalProperties: true
+      required:
+        - id
+      example:
+        id: "t1"
+        title: "General Discussion"
+        created_at: 1700000000000000000
+        updated_at: 1700000000000000000
+        author: "u1"
 
     EncryptedEnvelope:
       type: object
@@ -374,9 +407,10 @@ components:
           type: string
           description: base64-encoded nonce|ciphertext
       required: [_enc, v]
+
   securitySchemes:
     AdminApiKey:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Admin API key; use in `X-API-Key` header or use `Authorization: Bearer <key>` (backend/admin keys)
+      description: Provide an admin or backend API key in the X-API-Key header or as Bearer in the Authorization header.
