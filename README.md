@@ -1,14 +1,5 @@
 
-<!-- ![ProgressDB Logo](/docs/logo-colors.png) -->
-
-<div style="font-family:monospace; white-space:pre; font-size:0.8em; background:#181825; padding:16px; border-radius:10px; text-align:left; line-height:1.1;">
-<span style="color:#ff6f61;">██████╗ ██████╗  ██████╗  ██████╗ ██████╗ ███████╗███████╗███████╗    ██████╗ ██████╗ </span>
-<span style="color:#f7c873;">██╔══██╗██╔══██╗██╔═══██╗██╔════╝ ██╔══██╗██╔════╝██╔════╝██╔════╝    ██╔══██╗██╔══██╗</span>
-<span style="color:#6ee7b7;">██████╔╝██████╔╝██║   ██║██║  ███╗██████╔╝█████╗  ███████╗███████╗    ██║  ██║██████╔╝</span>
-<span style="color:#7dd3fc;">██╔═══╝ ██╔══██╗██║   ██║██║   ██║██╔══██╗██╔══╝  ╚════██║╚════██║    ██║  ██║██╔══██╗</span>
-<span style="color:#c4b5fd;">██║     ██║  ██║╚██████╔╝╚██████╔╝██║  ██║███████╗███████║███████║    ██████╔╝██████╔╝</span>
-<span style="color:#f472b6;">╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝ </span>
-</div>
+![ProgressDB Logo](/docs/logo-colors.png)
 A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
 
 ## Core Engine Features
