@@ -1,6 +1,7 @@
-/.codex
 /scripts/codex.sh
 /server/.database
 /server/dist
 /server/.gopath
 /server/vendor
+/server/config.yaml
+/server/.env.example

@@ -14,6 +14,7 @@ API
   - {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello"}}
   - `id` and `ts` are optional; server fills them if missing.
 - GET `/v1/messages?thread=<id>&limit=<n>`: List messages for a thread (newest last). `limit` optional.
+- GET `/healthz`: Health check (`{"status":"ok"}`).
 
 API Docs
 - Swagger UI: open `http://localhost:8080/docs/` to explore and test endpoints.
@@ -176,9 +177,29 @@ Security
   server:
     address: "0.0.0.0"
     port: 8080
+    tls:
+      cert_file: ""   # set for TLS
+      key_file:  ""   # set for TLS
   storage:
     db_path: "./data/progressdb"
   security:
     encryption_key: "b36ef5f7c11c1d29ab0b22789d9ed4b99f6b84c6a2a8f7f93c8f33485bc23a12"
+    cors:
+      allowed_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    rate_limit:
+      rps: 10
+      burst: 20
+    ip_whitelist: []   # e.g., ["127.0.0.1"]
+    api_keys:
+      backend:  ["sk_example"]
+      frontend: ["pk_example"]
+      allow_unauth: false
   logging:
     level: "info"
+
+Auth
+- Send API key via either header:
+  - `Authorization: Bearer <key>`
+  - `X-API-Key: <key>`
+- Frontend (public) key scope: `GET|POST /v1/messages`, `GET /healthz`.
+- Backend (secret) key scope: all routes.

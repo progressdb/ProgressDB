@@ -85,19 +85,34 @@ func ListMessages(threadID string) ([]string, error) {
                 } else {
                     if outJSON, err := security.DecryptJSONFields(v); err == nil {
                         v = outJSON
+                    } else if likelyJSON(v) {
+                        // tolerate legacy plaintext JSON
                     } else {
-                        // leave as-is on failure
+                        return nil, err
                     }
                 }
             } else {
                 dec, err := security.Decrypt(v)
                 if err != nil {
-                    return nil, err
+                    // tolerate legacy plaintext JSON values
+                    if !likelyJSON(v) {
+                        return nil, err
+                    }
+                } else {
+                    v = dec
                 }
-                v = dec
             }
         }
         out = append(out, string(v))
     }
     return out, iter.Error()
+}
+
+func likelyJSON(b []byte) bool {
+    // Trim leading spaces and check first byte
+    for _, c := range b {
+        if c == ' ' || c == '\n' || c == '\r' || c == '\t' { continue }
+        return c == '{' || c == '['
+    }
+    return false
 }

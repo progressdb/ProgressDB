@@ -1,5 +1,10 @@
-
-# Progress.dev
+██████╗ ██████╗  ██████╗  ██████╗ ██████╗ ███████╗███████╗███████╗    ██████╗ ██████╗ 
+██╔══██╗██╔══██╗██╔═══██╗██╔════╝ ██╔══██╗██╔════╝██╔════╝██╔════╝    ██╔══██╗██╔══██╗
+██████╔╝██████╔╝██║   ██║██║  ███╗██████╔╝█████╗  ███████╗███████╗    ██║  ██║██████╔╝
+██╔═══╝ ██╔══██╗██║   ██║██║   ██║██╔══██╗██╔══╝  ╚════██║╚════██║    ██║  ██║██╔══██╗
+██║     ██║  ██║╚██████╔╝╚██████╔╝██║  ██║███████╗███████║███████║    ██████╔╝██████╔╝
+╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝ 
+                                                                                      
 A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
 
 ## Core Engine Features
@@ -11,7 +16,7 @@ A fast, purpose-built, chat-native database for AI chat threads, built for realt
 6. **Logical Partitioning by Room/Channel**  
 7. **Scoped API Access**  
 8. **Rich Message Metadata (Typing, Presence, etc.)**  
-9. **Real-Time Event Hooks (Webhooks / Serverless)**  
+9. **Real-Time Event Hooks (Webhooks)**  
 10. **Schema-Less JSON Storage**  
 11. **Vector Metadata Support (Optional)**  
 12. **Delta-Based Message Edits**  
