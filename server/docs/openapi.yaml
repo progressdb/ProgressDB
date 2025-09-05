@@ -63,6 +63,137 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+  /v1/messages/{id}:
+    get:
+      summary: Get latest message version by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    put:
+      summary: Edit (append new version) a message by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      summary: Soft-delete a message by ID (append tombstone)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
+  /v1/messages/{id}/versions:
+    get:
+      summary: List all stored versions for a message ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Versions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  versions:
+                    type: array
+                    items:
+                      type: string
+
+  /v1/threads:
+    post:
+      summary: Create a thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Thread'
+      responses:
+        "200":
+          description: Created thread
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+    get:
+      summary: List threads
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Thread'
+
+  /v1/threads/{id}:
+    get:
+      summary: Get thread metadata by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+    delete:
+      summary: Delete thread metadata (not destructive)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
 components:
   schemas:
     Message:
@@ -83,6 +214,16 @@ components:
         body:
           description: Freeform JSON payload
           nullable: true
+        reply_to:
+          type: string
+          description: Message ID this message replies to
+        deleted:
+          type: boolean
+          description: Soft-delete flag
+        reactions:
+          type: object
+          additionalProperties:
+            type: integer
       example:
         id: msg-1700000000-1
         thread: t1
