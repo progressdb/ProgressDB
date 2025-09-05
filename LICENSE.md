@@ -43,6 +43,4 @@ following terms:
 
 3. Enforcement
    If you violate the SaaS restriction in Section 1, your rights under this
-   license automatically terminate for the version in violation. Legal action may
-   be taken to enforce this license.
-
+   license automatically terminate for the version in violation.
