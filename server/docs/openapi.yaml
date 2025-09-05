@@ -131,10 +131,84 @@ paths:
                 properties:
                   id:
                     type: string
-                  versions:
+                versions:
+                  type: array
+                  items:
+                    type: string
+
+  /v1/messages/{id}/reactions:
+    get:
+      summary: List reactions on a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  reactions:
                     type: array
                     items:
-                      type: string
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        reaction:
+                          type: string
+    post:
+      summary: Add or update a reaction on a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: identity id (opaque to server)
+                reaction:
+                  type: string
+              required: [id, reaction]
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              $ref: '#/components/schemas/Message'
+
+  /v1/messages/{id}/reactions/{identity}:
+    delete:
+      summary: Remove a reaction for an identity
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
 
   /v1/threads:
     post:
@@ -194,6 +268,60 @@ paths:
       responses:
         "204":
           description: No content
+
+  /admin/health:
+    get:
+      summary: Admin health check (admin/backend keys only)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+
+  /admin/stats:
+    get:
+      summary: Admin stats (count threads/messages)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: integer
+                  messages:
+                    type: integer
+
+  /admin/threads:
+    get:
+      summary: List threads (admin/backend keys only)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Thread'
 components:
   schemas:
     Message:
@@ -223,7 +351,7 @@ components:
         reactions:
           type: object
           additionalProperties:
-            type: integer
+            type: string
       example:
         id: msg-1700000000-1
         thread: t1
@@ -246,3 +374,9 @@ components:
           type: string
           description: base64-encoded nonce|ciphertext
       required: [_enc, v]
+  securitySchemes:
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Admin API key; use in `X-API-Key` header or use `Authorization: Bearer <key>` (backend/admin keys)

@@ -155,6 +155,7 @@ func main() {
         IPWhitelist:    nil,
         BackendKeys:    map[string]struct{}{},
         FrontendKeys:   map[string]struct{}{},
+        AdminKeys:      map[string]struct{}{},
         AllowUnauth:    false,
     }
     // CORS allowed origins from env (comma-separated) or config
@@ -182,12 +183,16 @@ func main() {
         secCfg.AllowUnauth = cfg.Security.APIKeys.AllowUnauth || secCfg.AllowUnauth
         for _, k := range cfg.Security.APIKeys.Backend { secCfg.BackendKeys[k] = struct{}{} }
         for _, k := range cfg.Security.APIKeys.Frontend { secCfg.FrontendKeys[k] = struct{}{} }
+        for _, k := range cfg.Security.APIKeys.Admin { secCfg.AdminKeys[k] = struct{}{} }
     }
     if v := os.Getenv("PROGRESSDB_API_BACKEND_KEYS"); v != "" {
         for _, k := range strings.Split(v, ",") { k = strings.TrimSpace(k); if k != "" { secCfg.BackendKeys[k] = struct{}{} } }
     }
     if v := os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"); v != "" {
         for _, k := range strings.Split(v, ",") { k = strings.TrimSpace(k); if k != "" { secCfg.FrontendKeys[k] = struct{}{} } }
+    }
+    if v := os.Getenv("PROGRESSDB_API_ADMIN_KEYS"); v != "" {
+        for _, k := range strings.Split(v, ",") { k = strings.TrimSpace(k); if k != "" { secCfg.AdminKeys[k] = struct{}{} } }
     }
     if v := os.Getenv("PROGRESSDB_ALLOW_UNAUTH"); v != "" {
         secCfg.AllowUnauth = strings.ToLower(v) == "true" || v == "1"

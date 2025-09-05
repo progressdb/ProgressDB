@@ -100,9 +100,10 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
     }
     gresp.Body.Close()
     if toReact.Reactions == nil {
-        toReact.Reactions = map[string]int{}
+        toReact.Reactions = map[string]string{}
     }
-    toReact.Reactions["like"] = toReact.Reactions["like"] + 1
+    // For simple client-side reactions we store a string value (e.g., identity id or emoji).
+    toReact.Reactions["id-1"] = "👍"
     putB, _ := json.Marshal(toReact)
     preq, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/messages/"+toReact.ID, bytes.NewReader(putB))
     preq.Header.Set("Content-Type", "application/json")
@@ -123,8 +124,8 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
         t.Fatalf("decode latest after reaction: %v", err)
     }
     lr.Body.Close()
-    if cnt, ok := latestReact.Reactions["like"]; !ok || cnt < 1 {
-        t.Fatalf("expected reaction 'like' >=1, got %v", latestReact.Reactions)
+    if v, ok := latestReact.Reactions["id-1"]; !ok || v == "" {
+        t.Fatalf("expected reaction for id-1 present, got %v", latestReact.Reactions)
     }
 
     // Edit the message (PUT) -> creates a new version

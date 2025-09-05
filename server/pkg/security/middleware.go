@@ -15,6 +15,7 @@ const (
     RoleUnauth Role = iota
     RoleFrontend
     RoleBackend
+    RoleAdmin
 )
 
 type SecConfig struct {
@@ -24,6 +25,7 @@ type SecConfig struct {
     IPWhitelist    []string
     BackendKeys    map[string]struct{}
     FrontendKeys   map[string]struct{}
+    AdminKeys      map[string]struct{}
     AllowUnauth    bool
 }
 
@@ -60,6 +62,20 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
                 http.Error(w, "unauthorized", http.StatusUnauthorized)
                 return
             }
+
+            // Expose role name for handlers
+            var roleName string
+            switch role {
+            case RoleFrontend:
+                roleName = "frontend"
+            case RoleBackend:
+                roleName = "backend"
+            case RoleAdmin:
+                roleName = "admin"
+            default:
+                roleName = "unauth"
+            }
+            r.Header.Set("X-Role-Name", roleName)
 
             // Scope enforcement for frontend keys
             if role == RoleFrontend && !frontendAllowed(r) {
@@ -120,6 +136,11 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string) {
     }
     if key == "" {
         return RoleUnauth, clientIP(r)
+    }
+    if cfg.AdminKeys != nil {
+        if _, ok := cfg.AdminKeys[key]; ok {
+            return RoleAdmin, key
+        }
     }
     if _, ok := cfg.BackendKeys[key]; ok {
         return RoleBackend, key

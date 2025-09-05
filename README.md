@@ -1,7 +1,7 @@
 
 ![ProgressDB Logo](/docs/logo-colors.png)
 
-A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
+A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user<>ai conversations.
 
 ## Core Engine Features
 1. **Append-Only Thread Storage**  

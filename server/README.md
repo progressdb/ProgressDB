@@ -6,14 +6,22 @@ Overview
 - Optional AES‑256‑GCM encryption for stored messages.
 
 Run
-- Start: `./scripts/start.sh --addr :8080 --db ./data`
+- Start (dev): `.scripts/start.sh --addr :8080 --db ./data` or run the `cmd/progressdb` binary with `--addr` and `--db` flags
 - Build: `./scripts/build.sh`
 
-API
+API (summary)
 - POST `/v1/messages`: JSON body of message
   - {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello"}}
   - `id` and `ts` are optional; server fills them if missing.
 - GET `/v1/messages?thread=<id>&limit=<n>`: List messages for a thread (newest last). `limit` optional.
+- GET `/v1/messages/{id}`: Get the latest stored version of a message
+- PUT `/v1/messages/{id}`: Append a new edited version of a message (ID enforced)
+- DELETE `/v1/messages/{id}`: Soft-delete (append tombstone version with `deleted=true`)
+- GET `/v1/messages/{id}/versions`: List all stored versions for a message ID
+- POST `/v1/threads`: Create a thread (returns thread metadata)
+- GET `/v1/threads`: List saved threads
+- GET `/v1/threads/{id}`: Get thread metadata
+- DELETE `/v1/threads/{id}`: Delete thread metadata (non-destructive; returns 204)
 - GET `/healthz`: Health check (`{"status":"ok"}`).
 
 API Docs
@@ -203,3 +211,8 @@ Auth
   - `X-API-Key: <key>`
 - Frontend (public) key scope: `GET|POST /v1/messages`, `GET /healthz`.
 - Backend (secret) key scope: all routes.
+
+
+Admin
+-----
+The server exposes a small set of admin endpoints under /admin/*...
