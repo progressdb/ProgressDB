@@ -1,5 +1,5 @@
 
-![ProgressDB Logo](/docs/logo-ts.png)
+![ProgressDB Logo](/docs/logo-white.png)
 
 A fast, purpose-built, chat-native database for AI chat threads, built for realtime, versioned, multi-user conversations.
 
