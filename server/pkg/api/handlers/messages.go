@@ -259,13 +259,18 @@ func listMessageVersions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
+	// Return versions as JSON objects (not JSON-encoded strings). Convert
+	// stored JSON strings to json.RawMessage so the encoder emits objects.
+	out := make([]json.RawMessage, 0, len(vs))
+	for _, s := range vs {
+		out = append(out, json.RawMessage(s))
+	}
 	_ = json.NewEncoder(w).Encode(struct {
-		ID       string   `json:"id"`
-		Versions []string `json:"versions"`
-	}{ID: id, Versions: vs})
+		ID       string            `json:"id"`
+		Versions []json.RawMessage `json:"versions"`
+	}{ID: id, Versions: out})
 }
 
-// --- Handlers for /v1/messages/{id}/reactions ---
 
 // getReactions handles GET /messages/{id}/reactions to list all reactions for a message.
 // Path parameter: "id" (string, required): message ID.
