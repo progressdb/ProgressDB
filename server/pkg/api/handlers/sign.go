@@ -50,6 +50,5 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(payload.UserID))
 	sig := hex.EncodeToString(mac.Sum(nil))
-
 	_ = json.NewEncoder(w).Encode(map[string]string{"userId": payload.UserID, "signature": sig})
 }

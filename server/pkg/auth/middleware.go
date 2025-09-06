@@ -34,9 +34,9 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 			return
 		}
 
-		// Try each candidate backend key until one matches the signature.
+		// Try all configured signing keys.
 		ok := false
-		for k := range keys {
+		for k := range config.GetSigningKeys() {
 			mac := hmac.New(sha256.New, []byte(k))
 			mac.Write([]byte(userID))
 			expected := hex.EncodeToString(mac.Sum(nil))

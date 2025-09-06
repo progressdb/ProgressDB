@@ -353,8 +353,40 @@ paths:
                 properties:
                   threads:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/Thread'
+                items:
+                  $ref: '#/components/schemas/Thread'
+
+  /v1/_sign:
+    post:
+      summary: Issue an HMAC signature for a given user id (backend keys only)
+      description: |
+        Backend callers holding a backend API key may request an HMAC signature
+        for a user id. The response contains the `signature` which clients attach
+        to subsequent requests as `X-User-Signature` with `X-User-ID`.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+              required: [userId]
+      responses:
+        "200":
+          description: signature issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  signature:
+                    type: string
 
   /v1/threads/{id}:
     get:

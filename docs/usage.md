@@ -13,7 +13,7 @@ Quick start (local)
 
 Environment & config
 - The server reads `config.yaml` and supports `.env` files for overrides. Common env vars:
-  - `PROGRESSDB_ADDR` (e.g. `0.0.0.0:8080`)
+  - `PROGRESSDB_ADDR` (e.g. `0.0.0.0:8080`)9
   - `PROGRESSDB_DB_PATH` (Pebble DB path)
   - `PROGRESSDB_ENCRYPTION_KEY` (32-byte hex for AES‑GCM)
 

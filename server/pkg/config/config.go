@@ -1,12 +1,14 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -154,19 +156,22 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// LoadEffective loads config from the given path (if present), then applies
-// environment variable overrides. It returns the effective Config and a small
-// AppConfig object containing canonical runtime values such as backend and
-// signing keys.
-func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct{}, bool, error) {
-	cfg, err := Load(path)
-	if err != nil {
-		// If no config file, continue with empty defaults.
-		cfg = &Config{}
-	}
-	envUsed := false
+// ParseCommandFlags defines and parses command-line flags and returns their
+// values along with a map indicating which flags were explicitly set.
+func ParseCommandFlags() (addr string, dbPath string, cfgPath string, setFlags map[string]bool) {
+	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
+	dbPtr := flag.String("db", "./.database", "Pebble DB path")
+	cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
+	flag.Parse()
+	setFlags = map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+	return *addrPtr, *dbPtr, *cfgPtr, setFlags
+}
 
-	// Helper to parse comma-separated env var into slice
+// LoadEnvOverrides applies environment overrides onto the provided cfg and
+// returns derived backend and signing key maps plus whether env vars were used.
+func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bool) {
+	envUsed := false
 	parseList := func(v string) []string {
 		if v == "" {
 			return nil
@@ -180,9 +185,7 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 		return parts
 	}
 
-	// Addr override (ADDRESS or ADDRESS+PORT)
 	if v := os.Getenv("PROGRESSDB_ADDR"); v != "" {
-		// attempt to split host:port if provided
 		envUsed = true
 		if h, p, err := net.SplitHostPort(v); err == nil {
 			cfg.Server.Address = h
@@ -190,7 +193,6 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 				cfg.Server.Port = pi
 			}
 		} else {
-			// no port included, set as address
 			cfg.Server.Address = v
 		}
 	} else {
@@ -206,21 +208,17 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 		}
 	}
 
-	// Storage
 	if v := os.Getenv("PROGRESSDB_DB_PATH"); v != "" {
 		envUsed = true
 		cfg.Storage.DBPath = v
 	}
-
-	// Security: encryption key
 	if v := os.Getenv("PROGRESSDB_ENCRYPTION_KEY"); v != "" {
 		envUsed = true
 		cfg.Security.EncryptionKey = v
 	}
-	// Security: encrypt fields
 	if v := os.Getenv("PROGRESSDB_ENCRYPT_FIELDS"); v != "" {
-		parts := parseList(v)
 		envUsed = true
+		parts := parseList(v)
 		cfg.Security.Fields = nil
 		for _, p := range parts {
 			cfg.Security.Fields = append(cfg.Security.Fields, struct {
@@ -229,14 +227,10 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 			}{Path: p, Algorithm: "aes-gcm"})
 		}
 	}
-
-	// CORS
 	if v := os.Getenv("PROGRESSDB_CORS_ORIGINS"); v != "" {
 		envUsed = true
 		cfg.Security.CORS.AllowedOrigins = parseList(v)
 	}
-
-	// Rate limits
 	if v := os.Getenv("PROGRESSDB_RATE_RPS"); v != "" {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			envUsed = true
@@ -249,14 +243,10 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 			cfg.Security.RateLimit.Burst = n
 		}
 	}
-
-	// IP whitelist
 	if v := os.Getenv("PROGRESSDB_IP_WHITELIST"); v != "" {
 		envUsed = true
 		cfg.Security.IPWhitelist = parseList(v)
 	}
-
-	// API keys
 	if v := os.Getenv("PROGRESSDB_API_BACKEND_KEYS"); v != "" {
 		envUsed = true
 		cfg.Security.APIKeys.Backend = parseList(v)
@@ -273,8 +263,6 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 		envUsed = true
 		cfg.Security.APIKeys.AllowUnauth = strings.ToLower(v) == "true" || v == "1"
 	}
-
-	// TLS cert/key from env (compat)
 	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {
 		envUsed = true
 		cfg.Server.TLS.CertFile = c
@@ -284,25 +272,31 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 		cfg.Server.TLS.KeyFile = k
 	}
 
-	// Build maps for backend keys and signing keys
 	backendKeys := map[string]struct{}{}
 	for _, k := range cfg.Security.APIKeys.Backend {
 		backendKeys[k] = struct{}{}
 	}
-
 	signingKeys := map[string]struct{}{}
-	// by default signing keys == backend keys
 	for k := range backendKeys {
 		signingKeys[k] = struct{}{}
 	}
-	// include explicit compat env var
-	if s := os.Getenv("AUTHOR_SIGNING_SECRET"); s != "" {
-		envUsed = true
-		signingKeys[s] = struct{}{}
-	}
+    // Signing keys are identical to backend API keys (no separate fallback).
+	return backendKeys, signingKeys, envUsed
+}
 
+// LoadEffective loads config from the given path (file) and applies environment
+// overrides. It returns the effective config, runtime key maps and a boolean
+// indicating whether env vars were used.
+func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct{}, bool, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		cfg = &Config{}
+	}
+	backendKeys, signingKeys, envUsed := LoadEnvOverrides(cfg)
 	return cfg, backendKeys, signingKeys, envUsed, nil
 }
+
+// (no key-id helpers; middleware will try all keys)
 
 // ResolveConfigPath decides the config file path using the flag-provided value
 // and the environment variable `PROGRESSDB_CONFIG` when the flag was not set.

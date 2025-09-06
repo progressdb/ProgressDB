@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net/http"
 	"strings"
@@ -19,38 +18,36 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "HTTP listen address")
-	dbPath := flag.String("db", "./.database", "Pebble DB path")
-	cfgPath := flag.String("config", "./config.yaml", "Path to config file")
-	flag.Parse()
-
-	// Track which flags were explicitly provided to enforce precedence.
-	setFlags := map[string]bool{}
-	flag.CommandLine.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-
-	// Load environment from .env if present.
+	// Parse flags (moved into config package to centralize flag parsing)
 	_ = godotenv.Load(".env")
+	addrVal, dbVal, cfgVal, setFlags := config.ParseCommandFlags()
 
 	// Resolve config path (file flag wins over env)
-	*cfgPath = config.ResolveConfigPath(*cfgPath, setFlags["config"])
+	cfgPath := config.ResolveConfigPath(cfgVal, setFlags["config"])
 
 	// Load effective config (file + env) and canonical app-level config
-	cfg, backendKeys, signingKeys, envUsed, err := config.LoadEffective(*cfgPath)
+	cfg, backendKeys, signingKeys, envUsed, err := config.LoadEffective(cfgPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
 	// Apply loaded config values for encryption and validation, but respect
 	// explicit flags: flags win over config/env when provided by the user.
+	var addr string
+	var dbPath string
 	if !setFlags["addr"] {
-		if a := cfg.Addr(); a != "" {
-			*addr = a
-		}
+		addr = cfg.Addr()
+	} else {
+		addr = addrVal
 	}
 	if !setFlags["db"] {
 		if p := cfg.Storage.DBPath; p != "" {
-			*dbPath = p
+			dbPath = p
+		} else {
+			dbPath = dbVal
 		}
+	} else {
+		dbPath = dbVal
 	}
 	if cfg.Security.EncryptionKey != "" {
 		if err := security.SetKeyHex(cfg.Security.EncryptionKey); err != nil {
@@ -89,8 +86,8 @@ func main() {
 
 	// Flags explicitly set win over env/config for addr and dbPath (handled above).
 
-	if err := store.Open(*dbPath); err != nil {
-		log.Fatalf("failed to open pebble at %s: %v", *dbPath, err)
+	if err := store.Open(dbPath); err != nil {
+		log.Fatalf("failed to open pebble at %s: %v", dbPath, err)
 	}
 	// Determine config sources summary (flags/env/config)
 	srcs := []string{}
@@ -105,7 +102,7 @@ func main() {
 	if _, err := config.Load(*cfgPath); err == nil {
 		srcs = append(srcs, "config")
 	}
-	banner.Print(*addr, *dbPath, strings.Join(srcs, ", "))
+	banner.Print(addr, dbPath, strings.Join(srcs, ", "))
 
 	mux := http.NewServeMux()
 	mux.Handle("/", api.Handler())
@@ -148,7 +145,7 @@ func main() {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-	// Populate the global app config so all packages can read canonical values
+	// Populate the global runtime config with backend and signing keys.
 	rc := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
 	for k := range backendKeys {
 		rc.BackendKeys[k] = struct{}{}
@@ -166,14 +163,11 @@ func main() {
 	key := cfg.Server.TLS.KeyFile
 	var errServe error
 	if cert != "" && key != "" {
-		errServe = http.ListenAndServeTLS(*addr, cert, key, wrapped)
+		errServe = http.ListenAndServeTLS(addr, cert, key, wrapped)
 	} else {
-		errServe = http.ListenAndServe(*addr, wrapped)
+		errServe = http.ListenAndServe(addr, wrapped)
 	}
 	if errServe != nil {
 		log.Fatal(errServe)
 	}
 }
-
-// func parseFloat(s string) (float64, error) { return strconv.ParseFloat(strings.TrimSpace(s), 64) }
-// func parseInt(s string) (int, error)       { v, err := strconv.Atoi(strings.TrimSpace(s)); return v, err }

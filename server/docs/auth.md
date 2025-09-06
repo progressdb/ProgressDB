@@ -132,6 +132,6 @@ Practical notes:
 
 - Configure backend API keys in your config file under `security.api_keys.backend` or
   via the environment variable `PROGRESSDB_API_BACKEND_KEYS` (comma separated).
-- The signing keys used for verifying HMAC signatures are by default the same as
-  the backend keys, but an explicit `AUTHOR_SIGNING_SECRET` env var will be included
-  as a compatibility fallback.
+The signing keys used for verifying HMAC signatures are the same as the backend
+API keys configured under `security.api_keys.backend` (or `PROGRESSDB_API_BACKEND_KEYS`).
+There is no separate `AUTHOR_SIGNING_SECRET` fallback.

@@ -15,7 +15,7 @@ How it works
   a user id by calling `POST /v1/_sign` with JSON body `{ "userId": "..." }`.
 - The request must include a valid backend API key (via `Authorization: Bearer <key>`
   or `X-API-Key: <key>`). The security middleware ensures only backend keys may call.
-- The server responds with `{ "userId": "...", "signature": "<hex-hmac>" }`.
+ - The server responds with `{ "userId": "...", "signature": "<hex-hmac>" }`.
 - Clients attach the following headers on protected requests:
   - `X-User-ID: <userId>`
   - `X-User-Signature: <hex-hmac>`
@@ -33,4 +33,3 @@ Notes
 - If you rotate backend keys, the server will accept any configured backend key for verification.
 - To add expiry or revocation, extend the signed payload (e.g. include a timestamp) and
   adapt the middleware and signing endpoint accordingly.
-
