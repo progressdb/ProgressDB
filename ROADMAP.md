@@ -5,8 +5,8 @@
 - [x] Logging
 - [x] Metrics
 - [ ] Performance
-- [ ] Documentation *(API & general docs)*
-- [ ] Testing Suite *(API & utils)*
+- [x] Documentation *(API & general docs)*
+- [x] Testing Suite *(API & utils)*
 - [ ] State Changes *(shutdowns, health, restarts)*
 - [ ] Backups *(cloud backups)*
 - [x] Config Flags *(inline flags etc)*

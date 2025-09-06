@@ -99,7 +99,7 @@ func main() {
 		srcs = append(srcs, "env")
 	}
 	// config file present?
-	if _, err := config.Load(*cfgPath); err == nil {
+	if _, err := config.Load(cfgPath); err == nil {
 		srcs = append(srcs, "config")
 	}
 	banner.Print(addr, dbPath, strings.Join(srcs, ", "))
