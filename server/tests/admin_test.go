@@ -1,4 +1,4 @@
-package api
+package api_test
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	api "progressdb/pkg/api"
 	"progressdb/pkg/store"
 )
 
@@ -16,44 +17,38 @@ func TestAdminEndpoints(t *testing.T) {
 	if err := store.Open(dbdir); err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
-	srv := httptest.NewServer(Handler())
-	defer srv.Close()
-	client := srv.Client()
+	h := api.Handler()
 
 	// Admin health
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/admin/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/health", nil)
 	req.Header.Set("X-Role-Name", "admin")
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("admin health: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
 	// Admin stats
-	req2, _ := http.NewRequest(http.MethodGet, srv.URL+"/admin/stats", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
 	req2.Header.Set("X-Role-Name", "admin")
-	resp2, err := client.Do(req2)
-	if err != nil {
-		t.Fatalf("admin stats: %v", err)
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("admin stats: got %d", rec2.Code)
 	}
-	defer resp2.Body.Close()
 	var s struct {
 		Threads int `json:"threads"`
 	}
-	if err := json.NewDecoder(resp2.Body).Decode(&s); err != nil {
+	if err := json.NewDecoder(rec2.Body).Decode(&s); err != nil {
 		t.Fatalf("decode stats: %v", err)
 	}
 
 	// Admin threads (empty)
-	req3, _ := http.NewRequest(http.MethodGet, srv.URL+"/admin/threads", nil)
+	req3 := httptest.NewRequest(http.MethodGet, "/admin/threads", nil)
 	req3.Header.Set("X-Role-Name", "admin")
-	resp3, err := client.Do(req3)
-	if err != nil {
-		t.Fatalf("admin threads: %v", err)
-	}
-	if resp3.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp3.StatusCode)
+	rec3 := httptest.NewRecorder()
+	h.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec3.Code)
 	}
 }

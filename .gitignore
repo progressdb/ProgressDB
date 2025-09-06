@@ -5,3 +5,4 @@
 /server/vendor
 /server/config.yaml
 /server/.env.example
+/.gocache

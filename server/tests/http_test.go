@@ -1,28 +1,34 @@
-package api
+package api_test
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
+	"progressdb/pkg/config"
+
+	api "progressdb/pkg/api"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 )
 
-func postJSON(t *testing.T, client *http.Client, url string, v interface{}) []byte {
+func postJSONHandler(t *testing.T, h http.Handler, path string, v interface{}, headers map[string]string) []byte {
 	t.Helper()
 	b, _ := json.Marshal(v)
-	resp, err := client.Post(url, "application/json", bytes.NewReader(b))
-	if err != nil {
-		t.Fatalf("post failed: %v", err)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
-	defer resp.Body.Close()
-	out, _ := io.ReadAll(resp.Body)
-	return out
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Body.Bytes()
 }
 
 func TestMessagesAndThreadsWorkflow(t *testing.T) {
@@ -34,13 +40,23 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 
-	srv := httptest.NewServer(Handler())
-	defer srv.Close()
-	client := srv.Client()
+	h := api.Handler()
+
+	// configure runtime signing key used by the auth middleware
+	rc := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"sk_test": {}}, BackendKeys: map[string]struct{}{}}
+	config.SetRuntime(rc)
+
+	// helper signatures for users
+	mac1 := hmac.New(sha256.New, []byte("sk_test"))
+	mac1.Write([]byte("u1"))
+	sig1 := hex.EncodeToString(mac1.Sum(nil))
+	mac2 := hmac.New(sha256.New, []byte("sk_test"))
+	mac2.Write([]byte("u2"))
+	sig2 := hex.EncodeToString(mac2.Sum(nil))
 
 	// Create a thread
 	thrReq := map[string]interface{}{"name": "room-test"}
-	thrBody := postJSON(t, client, srv.URL+"/v1/threads", thrReq)
+	thrBody := postJSONHandler(t, h, "/v1/threads", thrReq, map[string]string{"X-User-ID": "u1", "X-User-Signature": sig1})
 	var thr models.Thread
 	if err := json.Unmarshal(thrBody, &thr); err != nil {
 		t.Fatalf("unmarshal thread: %v; body=%s", err, string(thrBody))
@@ -51,7 +67,7 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 
 	// Post a message
 	msgReq := map[string]interface{}{"thread": thr.ID, "author": "u1", "body": map[string]interface{}{"text": "hello"}}
-	msgBody := postJSON(t, client, srv.URL+"/v1/messages", msgReq)
+	msgBody := postJSONHandler(t, h, "/v1/messages", msgReq, map[string]string{"X-User-ID": "u1", "X-User-Signature": sig1})
 	var msg models.Message
 	if err := json.Unmarshal(msgBody, &msg); err != nil {
 		t.Fatalf("unmarshal message: %v; body=%s", err, string(msgBody))
@@ -61,16 +77,16 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 	}
 
 	// List messages for the thread
-	resp, err := client.Get(srv.URL + "/v1/messages?thread=" + thr.ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	defer resp.Body.Close()
+	reqList := httptest.NewRequest(http.MethodGet, "/v1/messages?thread="+thr.ID, nil)
+	reqList.Header.Set("X-User-ID", "u1")
+	reqList.Header.Set("X-User-Signature", sig1)
+	recList := httptest.NewRecorder()
+	h.ServeHTTP(recList, reqList)
 	var list struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(recList.Body).Decode(&list); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
 	if len(list.Messages) == 0 {
@@ -79,7 +95,7 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 
 	// Post a reply to the first message
 	replyReq := map[string]interface{}{"thread": thr.ID, "author": "u2", "reply_to": msg.ID, "body": map[string]interface{}{"text": "reply here"}}
-	replyBody := postJSON(t, client, srv.URL+"/v1/messages", replyReq)
+	replyBody := postJSONHandler(t, h, "/v1/messages", replyReq, map[string]string{"X-User-ID": "u2", "X-User-Signature": sig2})
 	var reply models.Message
 	if err := json.Unmarshal(replyBody, &reply); err != nil {
 		t.Fatalf("unmarshal reply: %v; body=%s", err, string(replyBody))
@@ -88,42 +104,20 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 		t.Fatalf("expected reply_to to be %s, got %s", msg.ID, reply.ReplyTo)
 	}
 
-	// Add a reaction by editing the message's reactions map
-	gresp, err := client.Get(srv.URL + "/v1/messages/" + msg.ID)
-	if err != nil {
-		t.Fatalf("get for reaction: %v", err)
-	}
-	var toReact models.Message
-	if err := json.NewDecoder(gresp.Body).Decode(&toReact); err != nil {
-		gresp.Body.Close()
-		t.Fatalf("decode for reaction: %v", err)
-	}
-	gresp.Body.Close()
-	if toReact.Reactions == nil {
-		toReact.Reactions = map[string]string{}
-	}
-	// For simple client-side reactions we store a string value (e.g., identity id or emoji).
-	toReact.Reactions["id-1"] = "👍"
-	putB, _ := json.Marshal(toReact)
-	preq, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/messages/"+toReact.ID, bytes.NewReader(putB))
-	preq.Header.Set("Content-Type", "application/json")
-	presp2, err := client.Do(preq)
-	if err != nil {
-		t.Fatalf("put reaction: %v", err)
-	}
-	presp2.Body.Close()
+	// Add a reaction using the reactions API
+	reacReq := map[string]string{"id": "id-1", "reaction": "👍"}
+	_ = postJSONHandler(t, h, "/v1/messages/"+msg.ID+"/reactions", reacReq, map[string]string{"X-User-ID": "u1", "X-User-Signature": sig1})
 
 	// Verify reaction present on latest
-	lr, err := client.Get(srv.URL + "/v1/messages/" + msg.ID)
-	if err != nil {
-		t.Fatalf("get latest after reaction: %v", err)
-	}
+	lrreq := httptest.NewRequest(http.MethodGet, "/v1/messages/"+msg.ID, nil)
+	lrreq.Header.Set("X-User-ID", "u1")
+	lrreq.Header.Set("X-User-Signature", sig1)
+	lrc := httptest.NewRecorder()
+	h.ServeHTTP(lrc, lrreq)
 	var latestReact models.Message
-	if err := json.NewDecoder(lr.Body).Decode(&latestReact); err != nil {
-		lr.Body.Close()
+	if err := json.NewDecoder(lrc.Body).Decode(&latestReact); err != nil {
 		t.Fatalf("decode latest after reaction: %v", err)
 	}
-	lr.Body.Close()
 	if v, ok := latestReact.Reactions["id-1"]; !ok || v == "" {
 		t.Fatalf("expected reaction for id-1 present, got %v", latestReact.Reactions)
 	}
@@ -131,25 +125,24 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 	// Edit the message (PUT) -> creates a new version
 	msg.Body = map[string]interface{}{"text": "edited"}
 	putBody, _ := json.Marshal(msg)
-	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/messages/"+msg.ID, bytes.NewReader(putBody))
+	req := httptest.NewRequest(http.MethodPut, "/v1/messages/"+msg.ID, bytes.NewReader(putBody))
+	req.Header.Set("X-User-ID", "u1")
+	req.Header.Set("X-User-Signature", sig1)
 	req.Header.Set("Content-Type", "application/json")
-	presp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("put message: %v", err)
-	}
-	presp.Body.Close()
+	prc := httptest.NewRecorder()
+	h.ServeHTTP(prc, req)
 
 	// Ensure versions list has at least 2 entries
-	vresp, err := client.Get(srv.URL + "/v1/messages/" + msg.ID + "/versions")
-	if err != nil {
-		t.Fatalf("get versions: %v", err)
-	}
-	defer vresp.Body.Close()
+	vreq := httptest.NewRequest(http.MethodGet, "/v1/messages/"+msg.ID+"/versions", nil)
+	vreq.Header.Set("X-User-ID", "u1")
+	vreq.Header.Set("X-User-Signature", sig1)
+	vrec := httptest.NewRecorder()
+	h.ServeHTTP(vrec, vreq)
 	var vlist struct {
 		ID       string   `json:"id"`
 		Versions []string `json:"versions"`
 	}
-	if err := json.NewDecoder(vresp.Body).Decode(&vlist); err != nil {
+	if err := json.NewDecoder(vrec.Body).Decode(&vlist); err != nil {
 		t.Fatalf("decode versions: %v", err)
 	}
 	if len(vlist.Versions) < 2 {
@@ -157,24 +150,23 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 	}
 
 	// Delete (soft-delete)
-	dreq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/messages/"+msg.ID, nil)
-	dresp, err := client.Do(dreq)
-	if err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	dresp.Body.Close()
-	if dresp.StatusCode != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", dresp.StatusCode)
+	dreq := httptest.NewRequest(http.MethodDelete, "/v1/messages/"+msg.ID, nil)
+	dreq.Header.Set("X-User-ID", "u1")
+	dreq.Header.Set("X-User-Signature", sig1)
+	drec := httptest.NewRecorder()
+	h.ServeHTTP(drec, dreq)
+	if drec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", drec.Code)
 	}
 
 	// Latest should reflect deleted=true
-	lresp, err := client.Get(srv.URL + "/v1/messages/" + msg.ID)
-	if err != nil {
-		t.Fatalf("get latest: %v", err)
-	}
-	defer lresp.Body.Close()
+	lreq := httptest.NewRequest(http.MethodGet, "/v1/messages/"+msg.ID, nil)
+	lreq.Header.Set("X-User-ID", "u1")
+	lreq.Header.Set("X-User-Signature", sig1)
+	lrec := httptest.NewRecorder()
+	h.ServeHTTP(lrec, lreq)
 	var latest models.Message
-	if err := json.NewDecoder(lresp.Body).Decode(&latest); err != nil {
+	if err := json.NewDecoder(lrec.Body).Decode(&latest); err != nil {
 		t.Fatalf("decode latest: %v", err)
 	}
 	if !latest.Deleted {
@@ -182,15 +174,15 @@ func TestMessagesAndThreadsWorkflow(t *testing.T) {
 	}
 
 	// Threads list should include our thread
-	tresp, err := client.Get(srv.URL + "/v1/threads")
-	if err != nil {
-		t.Fatalf("get threads: %v", err)
-	}
-	defer tresp.Body.Close()
+	treq := httptest.NewRequest(http.MethodGet, "/v1/threads", nil)
+	treq.Header.Set("X-User-ID", "u1")
+	treq.Header.Set("X-User-Signature", sig1)
+	trec := httptest.NewRecorder()
+	h.ServeHTTP(trec, treq)
 	var tlist struct {
 		Threads []json.RawMessage `json:"threads"`
 	}
-	if err := json.NewDecoder(tresp.Body).Decode(&tlist); err != nil {
+	if err := json.NewDecoder(trec.Body).Decode(&tlist); err != nil {
 		t.Fatalf("decode threads: %v", err)
 	}
 	found := false

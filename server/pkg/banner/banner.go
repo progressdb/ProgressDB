@@ -14,7 +14,7 @@ const banner = `
 `
 
 func Print(addr, dbPath, sources string) {
-	fmt.Println(banner)
+    fmt.Print(banner)
 	fmt.Println("== Config =====================================================")
 	fmt.Printf("Listen:   %s\n", addr)
 	fmt.Printf("DB Path:  %s\n", dbPath)
