@@ -2,6 +2,18 @@ openapi: 3.0.3
 info:
   title: ProgressDB API
   version: "0.1.0"
+  description: |
+    Author semantics and signing flow:
+      - Protected endpoints require a cryptographically-verified author identity, supplied
+        via the headers `X-User-ID` and `X-User-Signature` (HMAC-SHA256).
+      - Backend callers holding a backend API key may request an HMAC signature for a user
+        by calling `POST /v1/_sign`. Clients attach the returned signature to subsequent
+        requests as `X-User-Signature` with `X-User-ID`.
+      - For user-scoped operations the server uses the verified author derived from the
+        signature middleware (`X-User-ID` + `X-User-Signature`) as the canonical author.
+      - An explicit `author` query parameter is accepted only for trusted callers (role
+        `admin` or `backend`) and is rejected for regular/front-end callers to prevent
+        impersonation.
 servers:
   - url: /
 paths:
@@ -21,6 +33,10 @@ paths:
                 example:
                   status: ok
   /v1/messages:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/IncludeDeleted'
     get:
       summary: List messages for a thread
       parameters:
@@ -64,6 +80,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Message'
   /v1/messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     get:
       summary: Get latest message version by ID
       parameters:
@@ -113,6 +132,9 @@ paths:
           description: No content
 
   /v1/messages/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     get:
       summary: List all stored versions for a message ID
       parameters:
@@ -137,6 +159,9 @@ paths:
                       type: string
 
   /v1/messages/{id}/reactions:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     get:
       summary: List reactions on a message
       parameters:
@@ -194,6 +219,9 @@ paths:
                 $ref: '#/components/schemas/Message'
 
   /v1/messages/{id}/reactions/{identity}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     delete:
       summary: Remove a reaction for an identity
       parameters:
@@ -212,6 +240,10 @@ paths:
           description: No content
 
   /v1/threads/{threadID}/messages:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/IncludeDeleted'
     post:
       summary: Create a message in a thread
       parameters:
@@ -262,6 +294,9 @@ paths:
                       $ref: '#/components/schemas/Message'
 
   /v1/threads/{threadID}/messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     get:
       summary: Get latest message by ID in a thread
       parameters:
@@ -326,6 +361,9 @@ paths:
           description: No content
 
   /v1/threads:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     post:
       summary: Create a thread
       requestBody:
@@ -389,6 +427,9 @@ paths:
                     type: string
 
   /v1/threads/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
     get:
       summary: Get thread metadata by ID
       parameters:
@@ -564,3 +605,34 @@ components:
       in: header
       name: X-API-Key
       description: Provide an admin or backend API key in the X-API-Key header or as Bearer in the Authorization header.
+  parameters:
+    XUserID:
+      name: X-User-ID
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Verified user id (provided alongside X-User-Signature)
+    XUserSignature:
+      name: X-User-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+      description: HMAC-SHA256 signature of the `X-User-ID` computed by a backend signer.
+    AuthorQuery:
+      name: author
+      in: query
+      required: false
+      schema:
+        type: string
+      description: |
+        Optional author override. Only allowed when the caller presents an admin or backend API key.
+        Regular (frontend) callers must use `X-User-ID`/`X-User-Signature` and cannot override author.
+    IncludeDeleted:
+      name: include_deleted
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: When true, include messages marked deleted (tombstones) in list responses.

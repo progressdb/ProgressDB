@@ -14,6 +14,7 @@ import (
 	"progressdb/pkg/validation"
 
 	"github.com/gorilla/mux"
+	"sort"
 )
 
 // RegisterMessages registers HTTP handlers for message-related endpoints.
@@ -34,9 +35,7 @@ func RegisterMessages(r *mux.Router) {
 	r.HandleFunc("/messages/{id}/reactions", getReactions).Methods(http.MethodGet)
 	r.HandleFunc("/messages/{id}/reactions", addReaction).Methods(http.MethodPost)
 	r.HandleFunc("/messages/{id}/reactions/{identity}", deleteReaction).Methods(http.MethodDelete)
-
 }
-
 
 // createMessage handles POST /messages to create a new message.
 // Request body: JSON object representing a models.Message.
@@ -58,12 +57,11 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"missing or invalid author signature"}`, http.StatusUnauthorized)
 		return
 	}
+	// Always generate server-side IDs for messages to avoid client-side impersonation
 	if m.Thread == "" {
 		m.Thread = utils.GenThreadID()
 	}
-	if m.ID == "" {
-		m.ID = utils.GenID()
-	}
+	m.ID = utils.GenID()
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
 	}
@@ -79,7 +77,8 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	// ensure thread meta
 	if sthr, err := store.GetThread(m.Thread); err != nil {
 		// create a minimal thread metadata record and set the author from the verified message author
-		th := models.Thread{ID: m.Thread, Title: "", Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		th := models.Thread{ID: m.Thread, Title: defaultThreadTitle(), Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		th.Slug = utils.MakeSlug(th.Title, th.ID)
 		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
 	} else {
 		var th models.Thread
@@ -114,15 +113,29 @@ func listMessages(w http.ResponseWriter, r *http.Request) {
 			msgs = msgs[len(msgs)-lim:]
 		}
 	}
-	out := make([]models.Message, 0, len(msgs))
+	// Build map of latest version per message id, then optionally filter deleted
+	includeDeleted := r.URL.Query().Get("include_deleted") == "true"
+	latest := make(map[string]models.Message)
 	for _, s := range msgs {
 		var mm models.Message
-		if err := json.Unmarshal([]byte(s), &mm); err == nil {
-			out = append(out, mm)
-		} else {
-			out = append(out, models.Message{ID: "", Thread: threadID, TS: 0, Body: s})
+		if err := json.Unmarshal([]byte(s), &mm); err != nil {
+			continue
+		}
+		cur, ok := latest[mm.ID]
+		if !ok || mm.TS >= cur.TS {
+			latest[mm.ID] = mm
 		}
 	}
+	// Collect and sort by timestamp ascending
+	out := make([]models.Message, 0, len(latest))
+	for _, v := range latest {
+		if v.Deleted && !includeDeleted {
+			continue
+		}
+		out = append(out, v)
+	}
+	// sort by TS
+	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
 	slog.Info("messages_list", "thread", threadID, "count", len(out))
 	_ = json.NewEncoder(w).Encode(struct {
 		Thread   string           `json:"thread"`
@@ -185,7 +198,8 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 	// Ensure thread meta exists or update UpdatedTS
 	if sthr, err := store.GetThread(m.Thread); err != nil {
 		// create a minimal thread metadata record and set the author from the verified message author
-		th := models.Thread{ID: m.Thread, Title: "", Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		th := models.Thread{ID: m.Thread, Title: defaultThreadTitle(), Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		th.Slug = utils.MakeSlug(th.Title, th.ID)
 		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
 	} else {
 		var th models.Thread
