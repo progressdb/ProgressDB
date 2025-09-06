@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ProgressDB - Data Viewer</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind Play CDN for quick prototyping (development only) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      @theme { --accent: #2563eb; }
+      .selected { @apply bg-indigo-50 border-l-4 border-indigo-500 pl-3 }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- App.jsx will be transpiled by Babel in the browser -->
+    <script type="text/babel" src="App.jsx"></script>
+  </body>
+</html>

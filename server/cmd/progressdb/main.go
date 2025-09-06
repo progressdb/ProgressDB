@@ -105,6 +105,11 @@ func main() {
 	banner.Print(addr, dbPath, strings.Join(srcs, ", "))
 
 	mux := http.NewServeMux()
+
+    // Serve the web viewer at /viewer/
+    mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
+
+	// API handler (catch-all under /)
 	mux.Handle("/", api.Handler())
 
 	// Serve Swagger UI at /docs and the OpenAPI spec at /openapi.yaml

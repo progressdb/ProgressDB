@@ -1,12 +1,13 @@
 package security
 
 import (
-	"net"
-	"net/http"
-	"strings"
-	"sync"
+    "log/slog"
+    "net"
+    "net/http"
+    "strings"
+    "sync"
 
-	"golang.org/x/time/rate"
+    "golang.org/x/time/rate"
 )
 
 type Role int
@@ -33,7 +34,9 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 	// Rate limiters keyed by API key or remote IP
 	limiters := &limiterPool{cfg: cfg}
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Log incoming request basic info
+            slog.Info("incoming_request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 			// CORS preflight
 			origin := r.Header.Get("Origin")
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
@@ -49,19 +52,24 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 
 			// IP whitelist
 			if len(cfg.IPWhitelist) > 0 {
-				ip := clientIP(r)
-				if !ipWhitelisted(ip, cfg.IPWhitelist) {
-					http.Error(w, "forbidden", http.StatusForbidden)
-					return
-				}
-			}
+                ip := clientIP(r)
+                slog.Debug("ip_check", "ip", ip)
+                if !ipWhitelisted(ip, cfg.IPWhitelist) {
+                    http.Error(w, "forbidden", http.StatusForbidden)
+                    slog.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
+                    return
+                }
+            }
 
 			// Auth
-			role, key := authenticate(r, cfg)
-			if role == RoleUnauth && !cfg.AllowUnauth {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
+            role, key := authenticate(r, cfg)
+            // Log authentication outcome (do not log full key content)
+            slog.Debug("auth_check", "role", role, "key_present", key!="")
+            if role == RoleUnauth && !cfg.AllowUnauth {
+                http.Error(w, "unauthorized", http.StatusUnauthorized)
+                slog.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+                return
+            }
 
 			// Expose role name for handlers
 			var roleName string
@@ -78,16 +86,21 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 			r.Header.Set("X-Role-Name", roleName)
 
 			// Scope enforcement for frontend keys
-			if role == RoleFrontend && !frontendAllowed(r) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				return
-			}
+            if role == RoleFrontend && !frontendAllowed(r) {
+                http.Error(w, "forbidden", http.StatusForbidden)
+                slog.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
+                return
+            }
 
 			// Rate limiting
-			if !limiters.Allow(key) {
-				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-				return
-			}
+            if !limiters.Allow(key) {
+                http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+                slog.Warn("rate_limited", "key_present", key!="", "path", r.URL.Path)
+                return
+            }
+
+            // Log that request passed middleware checks
+            slog.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
 
 			next.ServeHTTP(w, r)
 		})

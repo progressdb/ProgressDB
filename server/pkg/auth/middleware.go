@@ -1,14 +1,15 @@
 package auth
 
 import (
-	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"net/http"
-	"strings"
+    "context"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "log/slog"
+    "net/http"
+    "strings"
 
-	"progressdb/pkg/config"
+    "progressdb/pkg/config"
 )
 
 type ctxAuthorKey struct{}
@@ -22,17 +23,19 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 		sig := strings.TrimSpace(r.Header.Get("X-User-Signature"))
-		if userID == "" || sig == "" {
-			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
-			return
-		}
+    if userID == "" || sig == "" {
+        slog.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+        http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
+        return
+    }
 
 		// Retrieve signing keys from the canonical config package.
 		keys := config.GetSigningKeys()
-		if len(keys) == 0 {
-			http.Error(w, `{"error":"server misconfigured: no signing secrets available"}`, http.StatusInternalServerError)
-			return
-		}
+    if len(keys) == 0 {
+        slog.Error("no_signing_keys_configured")
+        http.Error(w, `{"error":"server misconfigured: no signing secrets available"}`, http.StatusInternalServerError)
+        return
+    }
 
 		// Try all configured signing keys.
 		ok := false
@@ -45,10 +48,12 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 				break
 			}
 		}
-		if !ok {
-			http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
-			return
-		}
+    if !ok {
+        slog.Warn("invalid_signature", "user", userID)
+        http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
+        return
+    }
+    slog.Info("signature_verified", "user", userID)
 		ctx := context.WithValue(r.Context(), ctxAuthorKey{}, userID)
 		r = r.WithContext(ctx)
 		// do not set headers; handlers should use context via AuthorIDFromContext

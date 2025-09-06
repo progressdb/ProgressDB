@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -22,8 +23,14 @@ var seq uint64
 // a global handle for simple usage in this package.
 func Open(path string) error {
 	var err error
+	slog.Info("opening_pebble_db", "path", path)
 	db, err = pebble.Open(path, &pebble.Options{})
-	return err
+	if err != nil {
+		slog.Error("pebble_open_failed", "path", path, "error", err)
+		return err
+	}
+	slog.Info("pebble_opened", "path", path)
+	return nil
 }
 
 // SaveMessage appends a message to a thread by inserting a new key with
@@ -61,12 +68,15 @@ func SaveMessage(threadID, msgID, msg string) error {
 		}
 	}
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
+		slog.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
 		return err
 	}
+	slog.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
 		idxKey := fmt.Sprintf("msgid:%s:%020d-%06d", msgID, ts, s)
 		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
+			slog.Error("save_message_index_failed", "idxKey", idxKey, "error", err)
 			return err
 		}
 	}
@@ -182,6 +192,7 @@ func GetLatestMessage(msgID string) (string, error) {
 		// to find any stored message with this id. This is expensive and
 		// intended only as a compatibility fallback for older records that
 		// were stored without a msgid index.
+		slog.Info("get_latest_message_fallback", "msgid", msgID)
 		threads, terr := ListThreads()
 		if terr != nil {
 			return "", fmt.Errorf("message not found")
@@ -216,6 +227,7 @@ func GetLatestMessage(msgID string) (string, error) {
 		if len(found) == 0 {
 			return "", fmt.Errorf("message not found")
 		}
+		slog.Info("get_latest_message_found_via_scan", "msgid", msgID)
 		return found[len(found)-1], nil
 	}
 	return vers[len(vers)-1], nil
@@ -227,7 +239,12 @@ func SaveThread(threadID, data string) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	key := []byte("threadmeta:" + threadID)
-	return db.Set(key, []byte(data), pebble.Sync)
+	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
+		slog.Error("save_thread_failed", "thread", threadID, "error", err)
+		return err
+	}
+	slog.Info("thread_saved", "thread", threadID)
+	return nil
 }
 
 // GetThread returns the stored thread metadata JSON for a given thread ID.
@@ -252,7 +269,12 @@ func DeleteThread(threadID string) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	key := []byte("threadmeta:" + threadID)
-	return db.Delete(key, pebble.Sync)
+	if err := db.Delete(key, pebble.Sync); err != nil {
+		slog.Error("delete_thread_failed", "thread", threadID, "error", err)
+		return err
+	}
+	slog.Info("thread_deleted", "thread", threadID)
+	return nil
 }
 
 // ListThreads returns all saved thread metadata values.
@@ -275,6 +297,59 @@ func ListThreads() ([]string, error) {
 		out = append(out, string(v))
 	}
 	return out, iter.Error()
+}
+
+// ListKeys returns all keys (as strings) that start with the given prefix.
+// If prefix is empty it returns all keys in the DB.
+func ListKeys(prefix string) ([]string, error) {
+	if db == nil {
+		return nil, fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	var pfx []byte
+	if prefix != "" {
+		pfx = []byte(prefix)
+	} else {
+		pfx = nil
+	}
+	iter, err := db.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+	var out []string
+	if pfx == nil {
+		for iter.First(); iter.Valid(); iter.Next() {
+			// copy key
+			k := append([]byte(nil), iter.Key()...)
+			out = append(out, string(k))
+		}
+	} else {
+		for iter.SeekGE(pfx); iter.Valid(); iter.Next() {
+			if !bytes.HasPrefix(iter.Key(), pfx) {
+				break
+			}
+			k := append([]byte(nil), iter.Key()...)
+			out = append(out, string(k))
+		}
+	}
+	return out, iter.Error()
+}
+
+// GetKey returns the raw value for the given key.
+func GetKey(key string) (string, error) {
+	if db == nil {
+		return "", fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	v, closer, err := db.Get([]byte(key))
+	if err != nil {
+		slog.Error("get_key_failed", "key", key, "error", err)
+		return "", err
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+	slog.Debug("get_key_ok", "key", key, "len", len(v))
+	return string(v), nil
 }
 
 func likelyJSON(b []byte) bool {
