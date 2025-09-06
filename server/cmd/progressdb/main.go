@@ -4,8 +4,6 @@ import (
 	"flag"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -16,7 +14,6 @@ import (
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
 	"progressdb/pkg/security"
-	secmw "progressdb/pkg/security"
 	"progressdb/pkg/store"
 	"progressdb/pkg/validation"
 )
@@ -34,104 +31,63 @@ func main() {
 	// Load environment from .env if present.
 	_ = godotenv.Load(".env")
 
-	// Allow env to specify a config path if flag not set.
-	if !setFlags["config"] {
-		if p := os.Getenv("PROGRESSDB_CONFIG"); p != "" {
-			*cfgPath = p
-		}
+	// Resolve config path (file flag wins over env)
+	*cfgPath = config.ResolveConfigPath(*cfgPath, setFlags["config"])
+
+	// Load effective config (file + env) and canonical app-level config
+	cfg, backendKeys, signingKeys, envUsed, err := config.LoadEffective(*cfgPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Load config if available; override defaults.
-	if cfg, err := config.Load(*cfgPath); err == nil {
+	// Apply loaded config values for encryption and validation, but respect
+	// explicit flags: flags win over config/env when provided by the user.
+	if !setFlags["addr"] {
 		if a := cfg.Addr(); a != "" {
 			*addr = a
 		}
+	}
+	if !setFlags["db"] {
 		if p := cfg.Storage.DBPath; p != "" {
 			*dbPath = p
 		}
+	}
+	if cfg.Security.EncryptionKey != "" {
 		if err := security.SetKeyHex(cfg.Security.EncryptionKey); err != nil {
 			log.Fatalf("invalid encryption key: %v", err)
 		}
-		if len(cfg.Security.Fields) > 0 {
-			fields := make([]security.EncField, 0, len(cfg.Security.Fields))
-			for _, f := range cfg.Security.Fields {
-				fields = append(fields, security.EncField{Path: f.Path, Algorithm: f.Algorithm})
-			}
-			if err := security.SetFieldPolicy(fields); err != nil {
-				log.Fatalf("invalid encryption fields: %v", err)
-			}
-		}
-		// Validation rules
-		vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
-		vr.Required = append(vr.Required, cfg.Validation.Required...)
-		for _, t := range cfg.Validation.Types {
-			vr.Types[t.Path] = t.Type
-		}
-		for _, ml := range cfg.Validation.MaxLen {
-			vr.MaxLen[ml.Path] = ml.Max
-		}
-		for _, e := range cfg.Validation.Enums {
-			vr.Enums[e.Path] = append([]string{}, e.Values...)
-		}
-		for _, wt := range cfg.Validation.WhenThen {
-			vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{
-				WhenPath: wt.When.Path,
-				Equals:   wt.When.Equals,
-				ThenReq:  append([]string{}, wt.Then.Required...),
-			})
-		}
-		validation.SetRules(vr)
 	}
-
-	// Environment overrides
-	if v := os.Getenv("PROGRESSDB_ADDR"); v != "" {
-		*addr = v
-	} else {
-		// Compose from ADDRESS + PORT if provided separately
-		host := os.Getenv("PROGRESSDB_ADDRESS")
-		port := os.Getenv("PROGRESSDB_PORT")
-		if host != "" || port != "" {
-			// Default host and port fallbacks
-			if host == "" {
-				host = "0.0.0.0"
-			}
-			if port == "" {
-				port = "8080"
-			}
-			*addr = host + ":" + port
-		}
-	}
-	if v := os.Getenv("PROGRESSDB_DB_PATH"); v != "" {
-		*dbPath = v
-	}
-	if v := os.Getenv("PROGRESSDB_ENCRYPTION_KEY"); v != "" {
-		if err := security.SetKeyHex(v); err != nil {
-			log.Fatalf("invalid encryption key from env: %v", err)
-		}
-	}
-	if v := os.Getenv("PROGRESSDB_ENCRYPT_FIELDS"); v != "" {
-		// Comma-separated paths; algorithm defaults to aes-gcm
-		parts := strings.Split(v, ",")
-		fields := make([]security.EncField, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			fields = append(fields, security.EncField{Path: p, Algorithm: "aes-gcm"})
+	if len(cfg.Security.Fields) > 0 {
+		fields := make([]security.EncField, 0, len(cfg.Security.Fields))
+		for _, f := range cfg.Security.Fields {
+			fields = append(fields, security.EncField{Path: f.Path, Algorithm: f.Algorithm})
 		}
 		if err := security.SetFieldPolicy(fields); err != nil {
-			log.Fatalf("invalid PROGRESSDB_ENCRYPT_FIELDS: %v", err)
+			log.Fatalf("invalid encryption fields: %v", err)
 		}
 	}
+	// Validation rules
+	vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
+	vr.Required = append(vr.Required, cfg.Validation.Required...)
+	for _, t := range cfg.Validation.Types {
+		vr.Types[t.Path] = t.Type
+	}
+	for _, ml := range cfg.Validation.MaxLen {
+		vr.MaxLen[ml.Path] = ml.Max
+	}
+	for _, e := range cfg.Validation.Enums {
+		vr.Enums[e.Path] = append([]string{}, e.Values...)
+	}
+	for _, wt := range cfg.Validation.WhenThen {
+		vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{
+			WhenPath: wt.When.Path,
+			Equals:   wt.When.Equals,
+			ThenReq:  append([]string{}, wt.Then.Required...),
+		})
+	}
+	validation.SetRules(vr)
 
-	// Flags explicitly set win over env/config for addr and dbPath.
-	if setFlags["addr"] {
-		// leave *addr as-is
-	}
-	if setFlags["db"] {
-		// leave *dbPath as-is
-	}
+	// Flags explicitly set win over env/config for addr and dbPath (handled above).
 
 	if err := store.Open(*dbPath); err != nil {
 		log.Fatalf("failed to open pebble at %s: %v", *dbPath, err)
@@ -141,8 +97,8 @@ func main() {
 	if len(setFlags) > 0 {
 		srcs = append(srcs, "flags")
 	}
-	// detect env
-	if os.Getenv("PROGRESSDB_CONFIG") != "" || os.Getenv("PROGRESSDB_ADDR") != "" || os.Getenv("PROGRESSDB_DB_PATH") != "" || os.Getenv("PROGRESSDB_API_ADMIN_KEYS") != "" {
+	// detect env (based on LoadEffective result)
+	if envUsed {
 		srcs = append(srcs, "env")
 	}
 	// config file present?
@@ -160,7 +116,7 @@ func main() {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	// Build security middleware from config/env
-	secCfg := secmw.SecConfig{
+	secCfg := security.SecConfig{
 		AllowedOrigins: nil,
 		RPS:            0,
 		Burst:          0,
@@ -170,92 +126,44 @@ func main() {
 		AdminKeys:      map[string]struct{}{},
 		AllowUnauth:    false,
 	}
-	// CORS allowed origins from env (comma-separated) or config
-	if v := os.Getenv("PROGRESSDB_CORS_ORIGINS"); v != "" {
-		for _, s := range strings.Split(v, ",") {
-			s = strings.TrimSpace(s)
-			if s != "" {
-				secCfg.AllowedOrigins = append(secCfg.AllowedOrigins, s)
-			}
-		}
-	} else if cfg, err := config.Load(*cfgPath); err == nil {
-		secCfg.AllowedOrigins = append(secCfg.AllowedOrigins, cfg.Security.CORS.AllowedOrigins...)
+	// Apply CORS, rate limits and security keys from effective cfg
+	secCfg.AllowedOrigins = append(secCfg.AllowedOrigins, cfg.Security.CORS.AllowedOrigins...)
+	if cfg.Security.RateLimit.RPS > 0 {
+		secCfg.RPS = cfg.Security.RateLimit.RPS
 	}
-	// Rate limit from env or config
-	if v := os.Getenv("PROGRESSDB_RATE_RPS"); v != "" {
-		if f, err := parseFloat(v); err == nil {
-			secCfg.RPS = f
-		}
+	if cfg.Security.RateLimit.Burst > 0 {
+		secCfg.Burst = cfg.Security.RateLimit.Burst
 	}
-	if v := os.Getenv("PROGRESSDB_RATE_BURST"); v != "" {
-		if n, err := parseInt(v); err == nil {
-			secCfg.Burst = n
-		}
+	if len(cfg.Security.IPWhitelist) > 0 {
+		secCfg.IPWhitelist = append(secCfg.IPWhitelist, cfg.Security.IPWhitelist...)
 	}
-	if cfg, err := config.Load(*cfgPath); err == nil {
-		if secCfg.RPS == 0 && cfg.Security.RateLimit.RPS > 0 {
-			secCfg.RPS = cfg.Security.RateLimit.RPS
-		}
-		if secCfg.Burst == 0 && cfg.Security.RateLimit.Burst > 0 {
-			secCfg.Burst = cfg.Security.RateLimit.Burst
-		}
-		if len(secCfg.IPWhitelist) == 0 && len(cfg.Security.IPWhitelist) > 0 {
-			secCfg.IPWhitelist = append(secCfg.IPWhitelist, cfg.Security.IPWhitelist...)
-		}
-		secCfg.AllowUnauth = cfg.Security.APIKeys.AllowUnauth || secCfg.AllowUnauth
-		for _, k := range cfg.Security.APIKeys.Backend {
-			secCfg.BackendKeys[k] = struct{}{}
-		}
-		for _, k := range cfg.Security.APIKeys.Frontend {
-			secCfg.FrontendKeys[k] = struct{}{}
-		}
-		for _, k := range cfg.Security.APIKeys.Admin {
-			secCfg.AdminKeys[k] = struct{}{}
-		}
+	secCfg.AllowUnauth = cfg.Security.APIKeys.AllowUnauth
+	for k := range backendKeys {
+		secCfg.BackendKeys[k] = struct{}{}
 	}
-	if v := os.Getenv("PROGRESSDB_API_BACKEND_KEYS"); v != "" {
-		for _, k := range strings.Split(v, ",") {
-			k = strings.TrimSpace(k)
-			if k != "" {
-				secCfg.BackendKeys[k] = struct{}{}
-			}
-		}
+	for _, k := range cfg.Security.APIKeys.Frontend {
+		secCfg.FrontendKeys[k] = struct{}{}
 	}
-	if v := os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"); v != "" {
-		for _, k := range strings.Split(v, ",") {
-			k = strings.TrimSpace(k)
-			if k != "" {
-				secCfg.FrontendKeys[k] = struct{}{}
-			}
-		}
-	}
-	if v := os.Getenv("PROGRESSDB_API_ADMIN_KEYS"); v != "" {
-		for _, k := range strings.Split(v, ",") {
-			k = strings.TrimSpace(k)
-			if k != "" {
-				secCfg.AdminKeys[k] = struct{}{}
-			}
-		}
-	}
-	if v := os.Getenv("PROGRESSDB_ALLOW_UNAUTH"); v != "" {
-		secCfg.AllowUnauth = strings.ToLower(v) == "true" || v == "1"
+	for _, k := range cfg.Security.APIKeys.Admin {
+		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-	wrapped := secmw.NewMiddleware(secCfg)(mux)
-
-	// TLS support
-	cert := os.Getenv("PROGRESSDB_TLS_CERT")
-	key := os.Getenv("PROGRESSDB_TLS_KEY")
-	if cert == "" || key == "" {
-		if cfg, err := config.Load(*cfgPath); err == nil {
-			if cfg.Server.TLS.CertFile != "" {
-				cert = cfg.Server.TLS.CertFile
-			}
-			if cfg.Server.TLS.KeyFile != "" {
-				key = cfg.Server.TLS.KeyFile
-			}
-		}
+	// Populate the global app config so all packages can read canonical values
+	rc := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
+	for k := range backendKeys {
+		rc.BackendKeys[k] = struct{}{}
+		rc.SigningKeys[k] = struct{}{}
 	}
+	for k := range signingKeys {
+		rc.SigningKeys[k] = struct{}{}
+	}
+	config.SetRuntime(rc)
+
+	wrapped := security.NewMiddleware(secCfg)(mux)
+
+	// TLS support: use values from effective cfg
+	cert := cfg.Server.TLS.CertFile
+	key := cfg.Server.TLS.KeyFile
 	var errServe error
 	if cert != "" && key != "" {
 		errServe = http.ListenAndServeTLS(*addr, cert, key, wrapped)
@@ -267,5 +175,5 @@ func main() {
 	}
 }
 
-func parseFloat(s string) (float64, error) { return strconv.ParseFloat(strings.TrimSpace(s), 64) }
-func parseInt(s string) (int, error)       { v, err := strconv.Atoi(strings.TrimSpace(s)); return v, err }
+// func parseFloat(s string) (float64, error) { return strconv.ParseFloat(strings.TrimSpace(s), 64) }
+// func parseInt(s string) (int, error)       { v, err := strconv.Atoi(strings.TrimSpace(s)); return v, err }

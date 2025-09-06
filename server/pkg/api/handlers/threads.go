@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"progressdb/pkg/auth"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
@@ -15,7 +16,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// RegisterThreads registers thread-related routes.
+// RegisterThreads registers all thread-related HTTP routes to the provided router.
 func RegisterThreads(r *mux.Router) {
 	// Collection routes
 	r.HandleFunc("/threads", createThread).Methods(http.MethodPost)
@@ -29,17 +30,28 @@ func RegisterThreads(r *mux.Router) {
 	r.HandleFunc("/threads/{threadID}/messages", createThreadMessage).Methods(http.MethodPost)
 	r.HandleFunc("/threads/{threadID}/messages", listThreadMessages).Methods(http.MethodGet)
 
+	// Thread-message-scoped endpoints
 	r.HandleFunc("/threads/{threadID}/messages/{id}", getThreadMessage).Methods(http.MethodGet)
 	r.HandleFunc("/threads/{threadID}/messages/{id}", updateThreadMessage).Methods(http.MethodPut)
 	r.HandleFunc("/threads/{threadID}/messages/{id}", deleteThreadMessage).Methods(http.MethodDelete)
 }
 
+// createThread handles POST /threads to create a new thread.
+// The request body must contain a JSON object representing the thread.
+// The "author" field is required in the body.
 func createThread(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var t models.Thread
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	// derive author from verified signature middleware
+	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
+		t.Author = authID
+	} else {
+		http.Error(w, `{"error":"author signature required"}`, http.StatusUnauthorized)
 		return
 	}
 	if t.ID == "" {
@@ -63,10 +75,25 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(t)
 }
 
+// listThreads handles GET /threads to retrieve a list of threads.
+// The "author" query parameter is required and filters threads by the exact author name.
+// Optional query parameters:
+//   - "title": filters threads containing the given substring (case-insensitive) in the title.
+//   - "slug": filters threads by the exact slug.
+//
+// The response is a JSON object with a "threads" field containing the filtered list.
 func listThreads(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		// default to verified author when not provided
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
 	titleQ := r.URL.Query().Get("title")
 	slugQ := r.URL.Query().Get("slug")
 
@@ -82,7 +109,7 @@ func listThreads(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal([]byte(v), &th); err != nil {
 			continue
 		}
-		if authorQ != "" && th.Author != authorQ {
+		if th.Author != authorQ {
 			continue
 		}
 		if titleQ != "" && !strings.Contains(strings.ToLower(th.Title), strings.ToLower(titleQ)) {
@@ -99,6 +126,9 @@ func listThreads(w http.ResponseWriter, r *http.Request) {
 	}{Threads: out})
 }
 
+// getThread handles GET /threads/{id} to retrieve a single thread by its ID.
+// Returns 404 if the thread does not exist.
+// The "author" query parameter is required and must match the thread's author.
 func getThread(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -108,14 +138,37 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+
 	s, err := store.GetThread(id)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
 		return
 	}
+
+	var th models.Thread
+	if err := json.Unmarshal([]byte(s), &th); err != nil {
+		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+		return
+	}
+	if th.Author != authorQ {
+		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+		return
+	}
+
 	_, _ = w.Write([]byte(s))
 }
 
+// deleteThread handles DELETE /threads/{id} to delete a thread by its ID.
+// Returns 404 if the thread does not exist.
+// The "author" query parameter is required and must match the thread's author.
 func deleteThread(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -125,20 +178,52 @@ func deleteThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := store.GetThread(id); err != nil {
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	s, err := store.GetThread(id)
+	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+		return
+	}
+
+	var th models.Thread
+	if err := json.Unmarshal([]byte(s), &th); err != nil {
+		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+		return
+	}
+	if th.Author != authorQ {
+		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+		return
+	}
+
+	// If all checks pass, delete the thread (or mark as deleted, depending on implementation)
+	if err := store.DeleteThread(id); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Handlers for /v1/threads/{threadID}/messages ---
+// createThreadMessage handles POST /threads/{threadID}/messages to create a new message in a thread.
+// The request body must contain a JSON object representing the message.
+// The "author" field is required in the body.
 func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	threadID := mux.Vars(r)["threadID"]
 	var m models.Message
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	// enforce author from verified signature middleware
+	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
+		m.Author = authID
+	} else {
+		http.Error(w, `{"error":"author field is required"}`, http.StatusUnauthorized)
 		return
 	}
 	m.Thread = threadID
@@ -160,8 +245,19 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(m)
 }
 
+// listThreadMessages handles GET /threads/{threadID}/messages to list messages in a thread.
+// Optional query parameter "limit" restricts the number of most recent messages returned.
+// The "author" query parameter is required.
 func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
 	threadID := mux.Vars(r)["threadID"]
 	msgs, err := store.ListMessages(threadID)
 	if err != nil {
@@ -174,13 +270,22 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := make([]models.Message, 0, len(msgs))
+	authorFound := false
 	for _, s := range msgs {
 		var mm models.Message
 		if err := json.Unmarshal([]byte(s), &mm); err == nil {
+			if mm.Author == authorQ {
+				authorFound = true
+			}
 			out = append(out, mm)
 		} else {
-			out = append(out, models.Message{ID: "", Thread: threadID, TS: 0, Body: s})
+			// If message can't be unmarshaled, skip it
+			continue
 		}
+	}
+	if !authorFound {
+		http.Error(w, `{"error":"author not found in any message in this thread"}`, http.StatusForbidden)
+		return
 	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Thread   string           `json:"thread"`
@@ -188,28 +293,66 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 	}{Thread: threadID, Messages: out})
 }
 
-// --- Handlers for /v1/threads/{threadID}/messages/{id} ---
+// getThreadMessage handles GET /threads/{threadID}/messages/{id} to retrieve a single message by its ID.
+// Returns 404 if the message does not exist.
+// The "author" query parameter is required and must match the message's author.
 func getThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
 	id := mux.Vars(r)["id"]
 	s, err := store.GetLatestMessage(id)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
 		return
 	}
-	_, _ = w.Write([]byte(s))
+	var m models.Message
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		http.Error(w, `{"error":"failed to parse message"}`, http.StatusInternalServerError)
+		return
+	}
+	if m.Author != authorQ {
+		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(m)
 }
 
+// updateThreadMessage handles PUT /threads/{threadID}/messages/{id} to update a message.
+// The request body must contain a JSON object representing the message.
+// The "author" field is required in the body and must match the author query parameter if provided.
 func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	threadID := vars["threadID"]
 	id := vars["id"]
+
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
 	var m models.Message
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
+	// require verified author and ensure body author (if present) matches
+	if authorQ == "" {
+		http.Error(w, `{"error":"author required"}`, http.StatusBadRequest)
+		return
+	}
+	if m.Author != "" && m.Author != authorQ {
+		http.Error(w, `{"error":"author in body does not match verified author"}`, http.StatusForbidden)
+		return
+	}
+	// enforce verified author
+	m.Author = authorQ
 	m.ID = id
 	m.Thread = threadID
 	if m.TS == 0 {
@@ -227,8 +370,19 @@ func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(m)
 }
 
+// deleteThreadMessage handles DELETE /threads/{threadID}/messages/{id} to mark a message as deleted.
+// Returns 404 if the message does not exist.
+// The "author" query parameter is required and must match the message's author.
 func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	authorQ := r.URL.Query().Get("author")
+	if authorQ == "" {
+		authorQ = auth.AuthorIDFromContext(r.Context())
+	}
+	if authorQ == "" {
+		http.Error(w, `{"error":"author query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
 	id := mux.Vars(r)["id"]
 	s, err := store.GetLatestMessage(id)
 	if err != nil {
@@ -238,6 +392,12 @@ func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
 	var m models.Message
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
+		return
+	}
+	// allow admin role to bypass author match
+	role := r.Header.Get("X-Role-Name")
+	if role != "admin" && m.Author != authorQ {
+		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
 		return
 	}
 	m.Deleted = true

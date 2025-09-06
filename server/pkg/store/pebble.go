@@ -7,8 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/security"
+
+	"github.com/cockroachdb/pebble"
 )
 
 var db *pebble.DB
@@ -243,6 +244,15 @@ func GetThread(threadID string) (string, error) {
 		defer closer.Close()
 	}
 	return string(v), nil
+}
+
+// DeleteThread deletes the thread metadata for a given thread ID.
+func DeleteThread(threadID string) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	key := []byte("threadmeta:" + threadID)
+	return db.Delete(key, pebble.Sync)
 }
 
 // ListThreads returns all saved thread metadata values.
