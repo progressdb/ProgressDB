@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -42,10 +43,10 @@ func SaveMessage(threadID, msgID, msg string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// Key format: thread:<threadID>:<unix_nano_padded>-<seq>
+	// Key format: thread:<threadID>:msg:<unix_nano_padded>-<seq>
 	ts := time.Now().UTC().UnixNano()
 	s := atomic.AddUint64(&seq, 1)
-	key := fmt.Sprintf("thread:%s:%020d-%06d", threadID, ts, s)
+	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 	data := []byte(msg)
 	if security.Enabled() {
 		if security.HasFieldPolicy() {
@@ -74,7 +75,8 @@ func SaveMessage(threadID, msgID, msg string) error {
 	slog.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
-		idxKey := fmt.Sprintf("msgid:%s:%020d-%06d", msgID, ts, s)
+		// store version under explicit version namespace
+		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
 		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
 			slog.Error("save_message_index_failed", "idxKey", idxKey, "error", err)
 			return err
@@ -88,7 +90,7 @@ func ListMessages(threadID string) ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	prefix := []byte("thread:" + threadID + ":")
+	prefix := []byte("thread:" + threadID + ":msg:")
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -139,7 +141,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	prefix := []byte("msgid:" + msgID + ":")
+	prefix := []byte("version:msg:" + msgID + ":")
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -238,7 +240,7 @@ func SaveThread(threadID, data string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("threadmeta:" + threadID)
+	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
 		slog.Error("save_thread_failed", "thread", threadID, "error", err)
 		return err
@@ -252,7 +254,7 @@ func GetThread(threadID string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("threadmeta:" + threadID)
+	key := []byte("thread:" + threadID + ":meta")
 	v, closer, err := db.Get(key)
 	if err != nil {
 		return "", err
@@ -268,7 +270,7 @@ func DeleteThread(threadID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("threadmeta:" + threadID)
+	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Delete(key, pebble.Sync); err != nil {
 		slog.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
@@ -282,7 +284,8 @@ func ListThreads() ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	prefix := []byte("threadmeta:")
+	// collect only keys that end with :meta under the thread: prefix
+	prefix := []byte("thread:")
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -293,8 +296,11 @@ func ListThreads() ([]string, error) {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-		v := append([]byte(nil), iter.Value()...)
-		out = append(out, string(v))
+		k := string(iter.Key())
+		if strings.HasSuffix(k, ":meta") {
+			v := append([]byte(nil), iter.Value()...)
+			out = append(out, string(v))
+		}
 	}
 	return out, iter.Error()
 }

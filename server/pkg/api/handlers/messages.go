@@ -35,13 +35,8 @@ func RegisterMessages(r *mux.Router) {
 	r.HandleFunc("/messages/{id}/reactions", addReaction).Methods(http.MethodPost)
 	r.HandleFunc("/messages/{id}/reactions/{identity}", deleteReaction).Methods(http.MethodDelete)
 
-	// /v1/threads/{threadID}/messages
-	// thread-scoped message endpoints moved to handlers/threads.go
-
-	// thread-scoped message-by-id endpoints moved to handlers/threads.go
 }
 
-// --- Handlers for /v1/messages ---
 
 // createMessage handles POST /messages to create a new message.
 // Request body: JSON object representing a models.Message.
@@ -83,7 +78,8 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	// ensure thread meta
 	if sthr, err := store.GetThread(m.Thread); err != nil {
-		th := models.Thread{ID: m.Thread, Title: "", Author: "", Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		// create a minimal thread metadata record and set the author from the verified message author
+		th := models.Thread{ID: m.Thread, Title: "", Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
 		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
 	} else {
 		var th models.Thread
@@ -188,7 +184,8 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ensure thread meta exists or update UpdatedTS
 	if sthr, err := store.GetThread(m.Thread); err != nil {
-		th := models.Thread{ID: m.Thread, Title: "", Author: "", Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
+		// create a minimal thread metadata record and set the author from the verified message author
+		th := models.Thread{ID: m.Thread, Title: "", Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
 		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
 	} else {
 		var th models.Thread
