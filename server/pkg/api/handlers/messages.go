@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
 	"github.com/gorilla/mux"
@@ -32,17 +33,12 @@ func RegisterMessages(r *mux.Router) {
 	r.HandleFunc("/messages/{id}/reactions/{identity}", deleteReaction).Methods(http.MethodDelete)
 
 	// /v1/threads/{threadID}/messages
-	r.HandleFunc("/threads/{threadID}/messages", createThreadMessage).Methods(http.MethodPost)
-	r.HandleFunc("/threads/{threadID}/messages", listThreadMessages).Methods(http.MethodGet)
+	// thread-scoped message endpoints moved to handlers/threads.go
 
-	// /v1/threads/{threadID}/messages/{id}
-	r.HandleFunc("/threads/{threadID}/messages/{id}", getThreadMessage).Methods(http.MethodGet)
-	r.HandleFunc("/threads/{threadID}/messages/{id}", updateThreadMessage).Methods(http.MethodPut)
-	r.HandleFunc("/threads/{threadID}/messages/{id}", deleteThreadMessage).Methods(http.MethodDelete)
+    // thread-scoped message-by-id endpoints moved to handlers/threads.go
 }
 
 // --- Handlers for /v1/messages ---
-
 func createMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var m models.Message
@@ -51,10 +47,10 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m.Thread == "" {
-		m.Thread = genThreadID()
+		m.Thread = utils.GenThreadID()
 	}
 	if m.ID == "" {
-		m.ID = genID()
+		m.ID = utils.GenID()
 	}
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
@@ -136,7 +132,7 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	m.ID = id
 	if m.Thread == "" {
-		m.Thread = genThreadID()
+		m.Thread = utils.GenThreadID()
 	}
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
@@ -202,7 +198,6 @@ func listMessageVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Handlers for /v1/messages/{id}/reactions ---
-
 func getReactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	id := mux.Vars(r)["id"]
@@ -301,122 +296,4 @@ func deleteReaction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Handlers for /v1/threads/{threadID}/messages ---
-
-func createThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	threadID := mux.Vars(r)["threadID"]
-	var m models.Message
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-		return
-	}
-	m.Thread = threadID
-	if m.ID == "" {
-		m.ID = genID()
-	}
-	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
-	}
-	if err := validation.ValidateMessage(m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
-		return
-	}
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	_ = json.NewEncoder(w).Encode(m)
-}
-
-func listThreadMessages(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	threadID := mux.Vars(r)["threadID"]
-	msgs, err := store.ListMessages(threadID)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	if limStr := r.URL.Query().Get("limit"); limStr != "" {
-		if lim, err := strconv.Atoi(limStr); err == nil && lim >= 0 && lim < len(msgs) {
-			msgs = msgs[len(msgs)-lim:]
-		}
-	}
-	out := make([]models.Message, 0, len(msgs))
-	for _, s := range msgs {
-		var mm models.Message
-		if err := json.Unmarshal([]byte(s), &mm); err == nil {
-			out = append(out, mm)
-		} else {
-			out = append(out, models.Message{ID: "", Thread: threadID, TS: 0, Body: s})
-		}
-	}
-	_ = json.NewEncoder(w).Encode(struct {
-		Thread   string           `json:"thread"`
-		Messages []models.Message `json:"messages"`
-	}{Thread: threadID, Messages: out})
-}
-
-// --- Handlers for /v1/threads/{threadID}/messages/{id} ---
-
-func getThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	id := mux.Vars(r)["id"]
-	s, err := store.GetLatestMessage(id)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
-		return
-	}
-	_, _ = w.Write([]byte(s))
-}
-
-func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	vars := mux.Vars(r)
-	threadID := vars["threadID"]
-	id := vars["id"]
-	var m models.Message
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-		return
-	}
-	m.ID = id
-	m.Thread = threadID
-	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
-	}
-	if err := validation.ValidateMessage(m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
-		return
-	}
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	_ = json.NewEncoder(w).Encode(m)
-}
-
-func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	id := mux.Vars(r)["id"]
-	s, err := store.GetLatestMessage(id)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
-		return
-	}
-	var m models.Message
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
-		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
-		return
-	}
-	m.Deleted = true
-	m.TS = time.Now().UTC().UnixNano()
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
+// thread-scoped message handlers moved to handlers/threads.go

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/utils"
 
 	"github.com/gorilla/mux"
 )
@@ -66,7 +67,7 @@ func adminListThreads(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Threads []json.RawMessage `json:"threads"`
-	}{Threads: toRawMessages(vals)})
+	}{Threads: utils.ToRawMessages(vals)})
 }
 
 // isAdmin checks if the request is from an admin or backend.

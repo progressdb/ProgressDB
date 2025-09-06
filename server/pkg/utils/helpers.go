@@ -1,4 +1,4 @@
-package handlers
+package utils
 
 import (
 	"encoding/json"
@@ -10,25 +10,25 @@ import (
 
 var idSeq uint64
 
-// genID generates a unique message ID using the current UTC nanosecond timestamp and an atomic sequence number.
+// GenID generates a unique message ID using the current UTC nanosecond timestamp and an atomic sequence number.
 // The format is "msg-<timestamp>-<seq>".
-func genID() string {
+func GenID() string {
 	n := time.Now().UTC().UnixNano()
 	s := atomic.AddUint64(&idSeq, 1)
 	return fmt.Sprintf("msg-%d-%d", n, s)
 }
 
-// genThreadID generates a unique thread ID using the current UTC nanosecond timestamp and an atomic sequence number.
+// GenThreadID generates a unique thread ID using the current UTC nanosecond timestamp and an atomic sequence number.
 // The format is "thread-<timestamp>-<seq>".
-func genThreadID() string {
+func GenThreadID() string {
 	n := time.Now().UTC().UnixNano()
 	s := atomic.AddUint64(&idSeq, 1)
 	return fmt.Sprintf("thread-%d-%d", n, s)
 }
 
-// splitPath splits a path string into its non-empty segments, separated by '/'.
+// SplitPath splits a path string into its non-empty segments, separated by '/'.
 // For example, "/foo/bar/" becomes []string{"foo", "bar"}.
-func splitPath(p string) []string {
+func SplitPath(p string) []string {
 	out := make([]string, 0)
 	cur := ""
 	for i := 0; i < len(p); i++ {
@@ -48,8 +48,8 @@ func splitPath(p string) []string {
 	return out
 }
 
-// toRawMessages converts a slice of JSON-encoded strings to a slice of json.RawMessage.
-func toRawMessages(vals []string) []json.RawMessage {
+// ToRawMessages converts a slice of JSON-encoded strings to a slice of json.RawMessage.
+func ToRawMessages(vals []string) []json.RawMessage {
 	out := make([]json.RawMessage, 0, len(vals))
 	for _, s := range vals {
 		out = append(out, json.RawMessage(s))
@@ -57,10 +57,10 @@ func toRawMessages(vals []string) []json.RawMessage {
 	return out
 }
 
-// makeSlug creates a URL-friendly slug from a title and an ID.
+// MakeSlug creates a URL-friendly slug from a title and an ID.
 // It lowercases the title, replaces non-alphanumeric characters with dashes, and appends the ID.
 // If the resulting slug is empty, it defaults to "t-<id>".
-func makeSlug(title, id string) string {
+func MakeSlug(title, id string) string {
 	t := strings.ToLower(title)
 	var b strings.Builder
 	lastDash := false

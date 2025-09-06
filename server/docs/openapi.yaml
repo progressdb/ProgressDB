@@ -211,6 +211,120 @@ paths:
         "204":
           description: No content
 
+  /v1/threads/{threadID}/messages:
+    post:
+      summary: Create a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    get:
+      summary: List messages in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+          description: Optional limit of most recent messages
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thread:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /v1/threads/{threadID}/messages/{id}:
+    get:
+      summary: Get latest message by ID in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    put:
+      summary: Update (append new version) a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      summary: Soft-delete a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
   /v1/threads:
     post:
       summary: Create a thread
@@ -373,11 +487,14 @@ components:
         title:
           type: string
           description: Thread title
-        created_at:
+        slug:
+          type: string
+          description: Human-friendly URL slug generated from title and id
+        created_ts:
           type: integer
           format: int64
           description: Creation timestamp in nanoseconds
-        updated_at:
+        updated_ts:
           type: integer
           format: int64
           description: Last update timestamp in nanoseconds
@@ -393,8 +510,9 @@ components:
       example:
         id: "t1"
         title: "General Discussion"
-        created_at: 1700000000000000000
-        updated_at: 1700000000000000000
+        slug: "general-discussion-t1"
+        created_ts: 1700000000000000000
+        updated_ts: 1700000000000000000
         author: "u1"
 
     EncryptedEnvelope:
