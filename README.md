@@ -118,5 +118,33 @@ React (frontend) — use `@progressdb/react` hooks in your app to read threads/m
 - Encryption key management & rotation
 - Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - API versioning, retention policies, scaling and search
+ 
+## Build from source (advanced)
+
+If you want to build ProgressDB from source (for development or contributions), follow these steps. Building from source is for advanced users — the recommended path is to download a release binary as shown above.
+
+1. Install Go 1.21+, then run the server in development mode:
+
+   ```sh
+   # dev (fast): uses local module cache
+   ./scripts/dev.sh
+   # or run directly
+   go run ./server/cmd/progressdb
+   ```
+
+2. Build a release binary locally:
+
+   ```sh
+   ./scripts/build.sh
+   # output: ./dist/progressdb
+   ```
+
+3. Create multi-arch release artifacts (advanced):
+
+   ```sh
+   chmod +x ./scripts/release.sh
+   ./scripts/release.sh v0.1.0
+   # artifacts appear in ./dist/
+   ```
 
 For more details see `clients/`, `server/` and `docs/` in the repo.
