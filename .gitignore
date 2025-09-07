@@ -7,3 +7,85 @@
 /server/.env.example
 /.gocache
 /.codex
+
+# Editor directories and files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# macOS
+.DS_Store
+
+# Logs
+.log
+logs/
+*.log
+
+# Build output
+/dist/
+/server/dist/
+/clients/**/dist/
+
+# Go build / test
+*.exe
+*.test
+*.out
+
+# Go module cache (local dev)
+/.gopath
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+.pytest_cache/
+
+# Python packaging
+.pypirc
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+/.turbo
+
+# Frontend build artifacts
+/clients/sdk/frontend/**/dist
+/clients/sdk/frontend/**/build
+
+# dotenv
+.env
+.env.*
+.env.local
+
+# IDE metadata
+*.iml
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Coverage
+coverage.out
+coverage/
+
+# goreleaser
+/dist/
+.goreleaser.yml
+
+# Secrets
+secrets.yml
+*.key
+*.pem
+.aws/credentials
