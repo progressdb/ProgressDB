@@ -4,7 +4,7 @@ Available scripts:
 
 - `publish-js.sh` — interactive single-file publisher for the JSR (Deno) registry. Prompts for build and runs `npx jsr publish`.
 - `publish-node.sh` — interactive single-file publisher for npm. Prompts to bump the package version, builds, and publishes to npm. Supports `--dry-run` to inspect packing without publishing.
-- `build-node-sdk.sh` — (legacy) helper for building the Node backend SDK; left in place for backwards compatibility.
+- `publish-python.sh` — interactive publisher for the Python backend SDK. Changes to the Python package directory, builds a wheel/sdist and uploads to PyPI via `twine`. Supports `--dry-run` to only build artifacts and `--yes` to skip prompts.
 
 Examples:
 
@@ -21,6 +21,15 @@ React package publishing:
 Example:
 
   ./.scripts/sdk/publish-react.sh --yes
+
+Python package publishing:
+
+- Build and publish the backend Python package (located at `clients/sdk/backend/python`):
+
+  ./.scripts/sdk/publish-python.sh --dry-run
+
+Notes:
+- `publish-python.sh` runs in `clients/sdk/backend/python`, builds wheel and sdist with `python3 -m build`, and uploads using `twine upload` unless `--dry-run` is supplied.
 
 Notes:
 - The scripts try to be safe: they check for `dist/`, require `npm` and `npx` where relevant, and will prompt or exit if not logged in for npm.
