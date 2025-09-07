@@ -2,26 +2,31 @@ SDK build & publish scripts (moved to `/.scripts/sdk`)
 
 Available scripts:
 
-- `build-js-sdk.sh` — builds the TypeScript SDK into `clients/sdk/frontend/typescript/dist` using `npm run build`. Usage: `./build-js-sdk.sh [--sdk-dir <path>] [--no-install]`.
-- `publish-js-npm.sh` — publish helper. Usage: `./publish-js-npm.sh [--sdk-dir <path>] [--build-first] [--dry-run]`.
-- `publish-js-jsr.sh` — publish helper for JSR/Deno registry. Usage: `./publish-js-jsr.sh [--sdk-dir <path>] [--build-first] [--allow-slow-types]`.
-- `publish.sh` — user-friendly wrapper combining build + publish steps:
-  - `./publish.sh build`
-  - `./publish.sh publish-npm` (builds by default)
-  - `./publish.sh publish-jsr` (builds by default)
-  - `./publish.sh publish-all`
+- `publish-js.sh` — interactive single-file publisher for the JSR (Deno) registry. Prompts for build and runs `npx jsr publish`.
+- `publish-node.sh` — interactive single-file publisher for npm. Prompts to bump the package version, builds, and publishes to npm. Supports `--dry-run` to inspect packing without publishing.
+- `build-node-sdk.sh` — (legacy) helper for building the Node backend SDK; left in place for backwards compatibility.
 
 Examples:
 
-  # Build only
-  ./.scripts/sdk/build-js-sdk.sh
+  # Interactive JSR publish
+  ./.scripts/sdk/publish-js.sh
 
-  # Dry-run npm publish
-  ./.scripts/sdk/publish-js-npm.sh --build-first --dry-run
-
-  # Full publish to both npm and jsr
-  ./.scripts/sdk/publish.sh publish-all
+  # Interactive npm publish with automatic bump and build
+  ./.scripts/sdk/publish-node.sh
 
 Notes:
 - The scripts try to be safe: they check for `dist/`, require `npm` and `npx` where relevant, and will prompt or exit if not logged in for npm.
 - Avoid running these as `sudo` unless you understand the implications; the build script warns if run as root.
+
+New convenience scripts (both publish to JSR first, then npm):
+
+- `publish-js.sh` — interactive single-file publisher that runs JSR publish then optionally publishes to npm. Prompts for build, and npm options (bump/dry-run). Options: `--yes`, `--no-build`, `--allow-slow-types`.
+- `publish-node.sh` — interactive single-file publisher that builds, publishes to JSR, then publishes to npm. Prompts to bump the package version, builds, and publishes. Options: `--yes`, `--no-build`, `--dry-run`, `--allow-slow-types`.
+
+Examples:
+
+  # Interactive publish to both registries (JSR then npm)
+  ./.scripts/sdk/publish-js.sh
+
+  # Non-interactive publish to both registries
+  ./.scripts/sdk/publish-node.sh --yes
