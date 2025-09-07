@@ -38,7 +38,7 @@ Local testing with goreleaser
   - `brew install goreleaser` or
   - `curl -sL https://goreleaser.com/install.sh | bash`.
 - Test a snapshot release locally (won't publish to GitHub):
-  - `goreleaser release --snapshot --rm-dist`
+  - `goreleaser release --snapshot --clean`
 
 Notes & recommendations
 -----------------------
