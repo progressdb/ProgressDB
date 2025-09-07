@@ -1,0 +1,20 @@
+{
+  "name": "@progrssdb/js",
+  "version": "0.1.0",
+  "description": "ProgressDB frontend TypeScript SDK (compile to JS for npm)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build"
+  },
+  "files": ["dist"],
+  "keywords": ["progressdb","sdk","frontend"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.9.5"
+  }
+}
+

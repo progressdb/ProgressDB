@@ -35,8 +35,10 @@ ARGS=""
 if [ "$DRY_RUN" = "true" ]; then
   ARGS="$ARGS --dry-run"
 fi
+ARGS="$ARGS --unstable-sloppy-imports"
 
 echo "Publishing to JSR from $SDK_DIR ..."
+# shellcheck disable=SC2086
 # shellcheck disable=SC2086
 deno publish $ARGS
 echo "JSR publish completed."

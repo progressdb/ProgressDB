@@ -1,4 +1,4 @@
-import BackendClient, { BackendClientOptions } from './client.ts';
+import BackendClient, { BackendClientOptions } from './client';
 
 export type ProgressDBOptions = BackendClientOptions;
 

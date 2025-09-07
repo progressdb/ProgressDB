@@ -1,6 +1,6 @@
-import { httpRequest } from './http.ts';
-import { ApiError } from './errors.ts';
-import { Message, Thread } from './types.ts';
+import { httpRequest } from './http';
+import { ApiError } from './errors';
+import { Message, Thread } from './types';
 
 export type BackendClientOptions = {
   baseUrl: string;

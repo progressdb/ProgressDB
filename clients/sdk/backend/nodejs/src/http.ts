@@ -1,4 +1,4 @@
-import { ApiError } from './errors.ts';
+import { ApiError } from './errors';
 
 export type HttpOptions = {
   timeoutMs?: number;
