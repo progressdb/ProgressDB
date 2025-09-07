@@ -1,3 +1,5 @@
+version: 2
+
 project_name: progressdb
 
 builds:
@@ -16,26 +18,18 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
 
-archive:
-  format: tar.gz
-  files:
-    - LICENSE.md
-
 archives:
-  - id: unix
+  - id: default
     format: tar.gz
-    replacements:
-      darwin: darwin
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids:
+      - progressdb
     files:
       - LICENSE.md
     wrap_in_directory: true
-  - id: windows
-    format: zip
-    goos:
-      - windows
-    files:
-      - LICENSE.md
-    wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        format: zip
 
 checksum:
   name_template: "checksums.txt"
@@ -43,4 +37,3 @@ checksum:
 release:
   github:
     name_template: "{{ if .Tag }}{{ .Tag }}{{ else }}v{{ .Version }}{{ end }}"
-
