@@ -41,3 +41,20 @@ release:
     name: progressdb              # 👈 repo name
   draft: false
   prerelease: auto
+
+changelog:
+  use: github   # or "git"
+  format: "{{.Message}} (by @{{.AuthorUsername}})"
+  filters:
+    exclude:
+      - "^docs:"   # don’t show docs commits
+      - "^test:"   # don’t show test commits
+  groups:
+    - title: Features
+      regexp: '^.*feat.*$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*fix.*$'
+      order: 1
+    - title: Others
+      order: 999
