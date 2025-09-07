@@ -1,53 +1,45 @@
-# ProgressDB Development Roadmap
+ # ProgressDB Development Roadmap
 
 ## Server Development
 
-- Unfinished / High Priority
-  - [ ] Performance - *(measure & alert for low speeds & public banners)*
-  - [ ] Backups - *(cloud backups)*
-  - [ ] Encryption - *(backend encryption & key management)*
-  - [ ] State Changes - *(shutdowns, health, restarts / graceful drain)*
-  - [ ] Sockets - *(realtime subscriptions, webhooks)*
-  - [ ] Updates - *(API versioning & instance upgrades)*
-
-- Completed / Lower Priority
-  - [x] Logging
-  - [x] Metrics
-  - [x] Documentation *(API & general docs)*
-  - [x] Testing Suite *(API & utils)*
-  - [x] Config Flags *(inline flags etc)*
-  - [x] Security *(CORS, API keys, TLS etc)*
-  - [x] Rate limiting
-  - [x] Messages *(edits ~ versioning, deletes, replies, reacts)*
-  - [x] Threads *(CRUD a thread, relationship with messages & effects - base at most, id and names for threads)*
+- [x] Logging
+- [x] Metrics
+- [x] Documentation - *(api & general docs)*
+- [x] Testing Suite & Tests - *(api & utils)*
+- [x] Config Flags - *(inline flags etc)*
+- [x] Security *- (cors, apikeys, tls etc)*
+- [x] Rate limiting
+- [x] Messages - *(edits ~ versioning, deletes, replies, reacts)*
+- [x] Threads - *(crud a thread, relationship with messages & effects - base at most, id and names for threads)*
+- [x] Auth - *(authenticated authors & accessible datas)*
+- [ ] Performance - *(measure & alert for low speeds & public banners)*
+- [ ] Backups - *(cloud backups)*
+- [ ] Encryption - *(backend encryption)*
+- [ ] State Changes - *(shutdowns, health, restarts)*
+- [ ] Sockets - *(realtime subscriptions, webhooks)*
+- [ ] Updates - *(api versioning & image or instance upgrades)*
+- [ ] Retention - *(data retention policy)*
 
 ## Backend SDKs
 
-- Unfinished / High Priority
-  - [x] Node.js SDK
-  - [x] Python SDK
+- [x] Nodejs SDK
+- [x] Python SDK
 
 ## Frontend SDKs
 
-- Unfinished / High Priority
-  - [x] Typescript core SDK
-  - [x] React.js SDK *(Next.js support)*
+- [x] Typescript SDK - *(provides the direct methods to e.g fetch threads etc)*
+- [x] React SDK - *(provides easy hooks e.g ThreadInfo, ThreadMessages)*
 
 ## System Upgrades
 
-- Unfinished / High Priority
-  - [ ] Scaling *(clustering, performance tests etc)*
-  - [ ] Realtime *(websockets & subscribers + client cache)*
-  - [ ] Search
-  - [ ] Sounds *(sent, received message sounds)*
+- [ ] Scaling - *(clustering, performance tests etc)*
+- [ ] Realtime - *(websockets & subscribers + client cache)*
+- [ ] Search - *(per author messages or threads search)*
+- [ ] Sounds - *(sent, received message sounds)*
 
 ## Developer Tools
 
-- Unfinished / High Priority
-  - [ ] Debug Mode *(logs everything)*
-  - [ ] CLI *(easy analytics & status inspection)*
-  - [ ] ProgressCloud
-  - [ ] Website & Documentation section
-
-- Completed / Lower Priority
-  - [x] Data Viewer - *(easy data viewer using admin keys)*
+- [x] Data Viewer - *(easy data viewer using admin keys)*
+- [ ] Debug Mode - *(logs everything)*
+- [ ] CLI - *(easy analytics & status inspection)*
+- [ ] ProgressCloud - *(managed hosting service)*
