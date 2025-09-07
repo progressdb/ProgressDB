@@ -58,3 +58,30 @@ changelog:
       order: 1
     - title: Others
       order: 999
+
+dockers:
+  - id: ghcr
+    image_templates:
+      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}"
+      - "ghcr.io/ha-sante/progressdb:{{ .Version }}"
+    dockerfile: Dockerfile
+    use: true
+    goos: linux
+    goarch:
+      - amd64
+      - arm64
+    build_flag_templates:
+      - --platform=linux/{{ .Arch }}
+
+  - id: dockerhub
+    image_templates:
+      - "docker.io/ha-sante/progressdb:{{ .Tag }}"
+      - "docker.io/ha-sante/progressdb:{{ .Version }}"
+    dockerfile: Dockerfile
+    use: true
+    goos: linux
+    goarch:
+      - amd64
+      - arm64
+    build_flag_templates:
+      - --platform=linux/{{ .Arch }}
