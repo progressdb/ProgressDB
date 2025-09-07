@@ -1,25 +1,28 @@
-GitHub Actions: release workflow and required secrets
-===============================================
+GitHub Actions: goreleaser setup and required secrets
+===================================================
 
-This repository includes an automated release workflow at `.github/workflows/release.yml` that:
+This repository uses `goreleaser` (configured in `.goreleaser.yml`) to produce multi-platform binaries, archives, checksums, and GitHub Releases when a tag is pushed (tags like `v1.2.3`). The workflow is defined at `.github/workflows/release.yml` and invokes `goreleaser` on tag pushes.
 
-- Builds multi-platform Go binaries when you push a tag like `v1.2.3`.
-- Packages the built binaries (tar.gz / zip) and uploads them as assets to a GitHub Release.
+What goreleaser does for us
+---------------------------
+
+- Builds binaries for configured OS/ARCH targets.
+- Produces archives (`tar.gz` for unix, `zip` for windows) and checksums.
+- Uploads artifacts to GitHub Releases and can optionally publish Docker images, Homebrew taps, and more.
 
 Required secrets and notes
 --------------------------
 
 - `GITHUB_TOKEN` (automatic):
-  - GitHub Actions provides `GITHUB_TOKEN` automatically to workflows. You do not need to add this manually.
-  - It's used by the release action to create the release and upload assets.
+  - Provided by GitHub Actions automatically and used by goreleaser to create releases and upload assets. No manual setup required for the basic flow.
 
-- Optional CI secrets you may want to add depending on extra automation you enable:
-  - `GPG_PRIVATE_KEY` / `GPG_PASSPHRASE`: if you sign binaries or archives with GPG.
-  - `DOCKER_USERNAME` / `DOCKER_PASSWORD` (or `CR_PAT`) : if you publish Docker images to Docker Hub or GitHub Container Registry.
-  - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` : if you upload artifacts to S3 during the pipeline.
-  - `NPM_TOKEN`: if you add npm publishing to CI for frontend SDKs.
-  - `PYPI_API_TOKEN`: if you add PyPI publishing for the Python SDK. Use `__token__` as username and the token as password when using `twine`.
-  - `SLACK_WEBHOOK`: if you intend to post release notifications to Slack.
+- Optional secrets you may want to add if you enable additional features:
+  - `GPG_PRIVATE_KEY` / `GPG_PASSPHRASE`: sign archives and checksums.
+  - `DOCKER_USERNAME` / `DOCKER_PASSWORD` (or `CR_PAT`): push Docker images to registries.
+  - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION`: upload artifacts to S3.
+  - `NPM_TOKEN`: publish frontend or backend JS packages to npm.
+  - `PYPI_API_TOKEN`: publish Python packages to PyPI (use token as password with username `__token__`).
+  - `HOMEBREW_GITHUB_TOKEN` / `HOMEBREW_REPO`: if you publish Homebrew taps.
 
 How to add secrets
 -------------------
@@ -28,11 +31,23 @@ How to add secrets
 2. Click `Settings` → `Secrets and variables` → `Actions`.
 3. Click `New repository secret`, enter the name and value, and save.
 
+Local testing with goreleaser
+----------------------------
+
+- Install goreleaser locally (Homebrew or script):
+  - `brew install goreleaser` or
+  - `curl -sL https://goreleaser.com/install.sh | bash`.
+- Test a snapshot release locally (won't publish to GitHub):
+  - `goreleaser release --snapshot --rm-dist`
+
 Notes & recommendations
 -----------------------
-- Tags control the release: create a tag like `v1.2.3` and push it. The workflow runs on `push` to tag `v*.*.*`.
-- The current workflow builds for a matrix of OS/ARCH targets and uploads all `dist/**` files to the release using `softprops/action-gh-release`.
-- If you want more sophisticated releases (homebrew formula, Docker images, OS packages, GPG signing), consider using `goreleaser` and adding a `GORELEASER_KEY`/`GPG` secret.
 
-Questions? Need me to add publish steps for PyPI / npm / Docker? I can add secure, token-based publish steps to the workflow and document required secrets.
+- Tag the release: `git tag v1.2.3 && git push origin v1.2.3`. The workflow runs on tag pushes and goreleaser will publish a GitHub Release.
+- If you require signing, Docker pushes, or publishing SDKs as part of a release, add the corresponding secrets and extend `.goreleaser.yml` with the relevant sections.
+- Keep changelog entries in `CHANGELOG.md` and include release notes in GitHub Release; goreleaser can be configured to include changelog snippets automatically.
 
+If you want, I can:
+- add GPG signing to `.goreleaser.yml` and the workflow (requires adding `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE`),
+- add Docker publish steps via goreleaser (requires `DOCKER_*` secrets), or
+- add PyPI / npm publishing integration in the release flow.

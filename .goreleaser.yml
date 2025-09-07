@@ -1,0 +1,46 @@
+project_name: progressdb
+
+builds:
+  - id: progressdb
+    main: ./server/cmd/progressdb
+    binary: progressdb
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
+
+archive:
+  format: tar.gz
+  files:
+    - LICENSE.md
+
+archives:
+  - id: unix
+    format: tar.gz
+    replacements:
+      darwin: darwin
+    files:
+      - LICENSE.md
+    wrap_in_directory: true
+  - id: windows
+    format: zip
+    goos:
+      - windows
+    files:
+      - LICENSE.md
+    wrap_in_directory: true
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    name_template: "{{ if .Tag }}{{ .Tag }}{{ else }}v{{ .Version }}{{ end }}"
+
