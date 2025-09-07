@@ -96,55 +96,40 @@ await client.createMessage({ thread: thread.id, body: { text: 'hello' } })
 
 React (frontend) — use `@progressdb/react` hooks in your app to read threads/messages and render UI components.
 
-## Where to look next
+## Features
 
-- API reference and OpenAPI: `http://localhost:8080/docs/` (served from `./docs/openapi.yaml`)
-- Admin viewer: `http://localhost:8080/viewer/`
-- Metrics: `http://localhost:8080/metrics`
-- SDKs: `clients/sdk/backend` and `clients/sdk/frontend` directories for source and samples.
+Implemented (ready to use):
 
-## What’s implemented (high level)
+- [x] Message storage (append-only), versions, soft-delete, replies, reactions
+- [x] Thread metadata (CRUD)
+- [x] Structured logging, Prometheus metrics, config & security middleware
+- [x] Backend SDKs (Node, Python)
+- [x] Frontend SDKs (TypeScript, React)
+- [x] Simple data viewer
 
-- Message storage (append-only), versions, soft-delete, replies, reactions
-- Thread metadata (CRUD)
-- Structured logging, Prometheus metrics, config & security middleware
-- Backend SDKs (Node, Python), Frontend SDKs (TypeScript, React)
-- Simple data viewer
+Planned / In progress:
 
-## Remaining work (high level)
+- [ ] Performance benchmarking & SLO/alerts
+- [ ] Backups & tested restores
+- [ ] Encryption key management & rotation
+- [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
+- [ ] API versioning, retention policies, scaling and search
 
-- Performance benchmarking & SLO/alerts
-- Backups & tested restores
-- Encryption key management & rotation
-- Realtime subscriptions (WebSocket/SSE) & webhook delivery
-- API versioning, retention policies, scaling and search
- 
-## Build from source (advanced)
+## Links
 
-If you want to build ProgressDB from source (for development or contributions), follow these steps. Building from source is for advanced users — the recommended path is to download a release binary as shown above.
+- OpenAPI spec: `docs/openapi.yaml` (served at `/docs/` when the service is running)
+- Admin viewer: `viewer/` (served at `/viewer/` when the service is running)
+- Metrics endpoint: `/metrics` (Prometheus)
+- Backend SDKs: `clients/sdk/backend`
+- Frontend SDKs: `clients/sdk/frontend`
+- Releases (download binaries): https://github.com/ha-sante/ProgressDB/releases
+- Contribution guide: `CONTRIBUTING.md`
 
-1. Install Go 1.21+, then run the server in development mode:
+## How to start contributing
 
-   ```sh
-   # dev (fast): uses local module cache
-   ./scripts/dev.sh
-   # or run directly
-   go run ./server/cmd/progressdb
-   ```
+1. Read `CONTRIBUTING.md` for the development workflow and PR checklist.
+2. Fork the repo and create a branch for your change (e.g. `feat/your-feature`).
+3. Run tests and linters locally, add tests for new behavior.
+4. Open a pull request against `main` with a clear description and testing notes.
 
-2. Build a release binary locally:
-
-   ```sh
-   ./scripts/build.sh
-   # output: ./dist/progressdb
-   ```
-
-3. Create multi-arch release artifacts (advanced):
-
-   ```sh
-   chmod +x ./scripts/release.sh
-   ./scripts/release.sh v0.1.0
-   # artifacts appear in ./dist/
-   ```
-
-For more details see `clients/`, `server/` and `docs/` in the repo.
+For development builds and advanced builds, see the "Build from source (advanced)" section above.
