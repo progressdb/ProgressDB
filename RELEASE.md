@@ -1,166 +1,145 @@
-# Release Guide
+## Release Guide
 
-This document explains how to publish the pieces of this repository so users can consume them: server binaries, Docker images, backend SDKs (Python, Node), frontend SDKs, and GitHub Releases. It describes both local/manual steps and the repository CI flow.
+This document explains how to publish the different artifacts produced from this repository. The sections below are organized by artifact type so you can follow the local/manual steps (useful for testing) or the automated CI flow (GitHub Actions + goreleaser).
 
-## Release Types
+Tips:
+- Use Git tags of the form `vMAJOR.MINOR.PATCH` (for example `v0.1.0`) as the canonical release versions. Tags trigger the CI release workflow.
+- Avoid `sudo` when building locally — files in `dist/` will become root-owned and make CI uploads fail.
 
-- **Server binaries:** single-file compiled Go executables (multi-arch) distributed in tar/zip archives.
-- **Docker images:** optional container images for running the server.
-- **Backend SDKs:** Python package published to PyPI (`progressdb`) and Node package published to npm (`@progressdb/node`).
-- **Frontend SDKs:** `@progressdb/js` and `@progressdb/react` published to npm.
-- **Docs & OpenAPI:** `./docs/openapi.yaml` and viewer served from `/docs` and `/viewer`.
-- **GitHub Release:** canonical release entry that attaches binary artifacts, checksums, and release notes.
+---
 
-## Versioning
+## 1) Server binaries (compiled Go executables)
 
-- Use Git tags in the form `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`). Tags drive the CI release workflow.
-- The build system injects version metadata into the binary via ldflags (`VERSION`, `COMMIT`, `BUILDDATE`).
+What we produce
+- Multi-platform single-file binaries for Linux, macOS and Windows plus archives (tar.gz / zip) and checksums.
 
-## Quick local release (binaries)
-
-1. Make sure your working tree is clean and commit everything you need.
-2. Tag the release:
+Local/manual flow (quick):
+1. Build a single binary (example):
 
    ```sh
-   git tag v1.2.3
-   git push origin v1.2.3
+   VERSION=0.1.0 COMMIT=$(git rev-parse --short HEAD) BUILDDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 scripts/build.sh OUT=dist/progressdb-linux-amd64
    ```
 
-3. Locally build and package all platforms with the helper script:
+2. Or run the bundled multi-platform release script:
 
    ```sh
    chmod +x scripts/release.sh
-   ./scripts/release.sh v1.2.3
+   ./scripts/release.sh v0.1.0
    ```
 
-   - Artifacts and archives will be in `./dist/`.
-   - The script injects `VERSION`, `COMMIT` and `BUILDDATE` into the binaries.
+3. Inspect `dist/` for archives and checksums.
 
-4. Inspect the artifacts and checksums in `./dist/`.
+CI flow (recommended):
+- Push a Git tag: `git tag v0.1.0 && git push origin v0.1.0`.
+- GitHub Actions runs `.github/workflows/release.yml`, which invokes `goreleaser` to build all targets, create archives, checksums, and publish a GitHub Release with artifacts attached.
 
-5. Create a GitHub Release and upload artifacts, or push the tag and use CI to create the release automatically.
-
-## CI releases (GitHub Actions)
-
-- The workflow `.github/workflows/release.yml` runs when a tag `v*.*.*` is pushed.
-- Behavior:
-  - Builds a matrix of OS/ARCH targets using `scripts/build.sh`.
-  - Packages and uploads artifacts as a workflow artifact.
-  - Creates a GitHub Release and attaches the packaged artifacts.
-
-### What the workflow needs
-
-- `GITHUB_TOKEN` — provided automatically by GitHub Actions for the repo; no manual setup required.
-- Optional secrets for extra features (only add if you plan to use them):
-  - `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE` — sign artifacts.
-  - `DOCKER_USERNAME`, `DOCKER_PASSWORD` (or `CR_PAT`) — push Docker images.
-  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` — upload to S3.
-  - `NPM_TOKEN` — publish npm packages.
-  - `PYPI_API_TOKEN` — publish to PyPI (use `__token__` user for `twine`).
-
-Add secrets at: `Repository` -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`.
-
-## Publish Python SDK (PyPI)
-
-Local publish flow (manual credentials):
-
-1. From `clients/sdk/backend/python` run:
-
-   ```sh
-   python3 -m pip install --upgrade build twine
-   python3 -m build
-   python3 -m twine upload dist/*
-   ```
-
-2. Use the helper script (interactive):
-
-   ```sh
-   ./.scripts/sdk/publish-python.sh --yes
-   ```
-
-CI publish flow:
-
-- Set `PYPI_API_TOKEN` in Actions secrets.
-- Add a workflow step (or new workflow) that runs the build and uses `twine` to upload with `PYPI_API_TOKEN`.
-
-Notes:
-- Ensure package name in `clients/sdk/backend/python/pyproject.toml` is correct (`progressdb`).
-- Verify PyPI namespace availability before publishing.
-
-## Publish Node / Frontend SDKs (npm)
-
-Local publish (interactive):
-
-1. For the Node backend package (`clients/sdk/backend/nodejs`):
-
-   ```sh
-   cd clients/sdk/backend/nodejs
-   npm publish --access public
-   ```
-
-2. For frontend packages (`clients/sdk/frontend/*`):
-
-   ```sh
-   cd clients/sdk/frontend/reactjs
-   npm publish --access public
-   ```
-
-CI publish flow:
-
-- Add `NPM_TOKEN` as a repository secret.
-- Use a CI step that sets `NPM_TOKEN` in `~/.npmrc` (or uses `npm publish --//registry.npmjs.org/:_authToken=$NPM_TOKEN`).
-
-Notes:
-- The repo contains helper scripts in `.scripts/sdk` (e.g. `publish-node.sh`, `publish-react.sh`) to standardize publishes.
-
-## Docker images
-
-- Create a Dockerfile in the repo root or `server/` (example below). Build and push via CI.
-
-Example Dockerfile:
-
-```dockerfile
-FROM debian:bookworm-slim
-COPY ./dist/progressdb /usr/local/bin/progressdb
-EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/progressdb"]
-```
-
-CI steps:
-- Build the binary + Docker image, tag as `org/progressdb:1.2.3`, and push to registry using Docker credentials (`DOCKER_USERNAME`/`DOCKER_PASSWORD` or `CR_PAT`).
-
-## Checksums & Signing
-
-- The `scripts/release.sh` generates `.tar.gz` / `.zip` archives and `.sha256` checksums.
-- Optionally sign artifacts with GPG and publish signatures alongside archives. Add `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` to Actions secrets if you plan to sign in CI.
-
-## Changelogs & Release Notes
-
-- Keep release notes or a changelog in `CHANGELOG.md` and reference it when creating GitHub releases.
-- For automated changelogs, consider `github_changelog_generator` or `goreleaser` changelog hooks.
-
-## Troubleshooting
-
-- If tar fails with `Cannot stat: No such file or directory`, check that the build produced the expected file name in `dist/` and that `OUT` env var is respected.
-- Avoid running build scripts with `sudo` — files in `dist/` will become root-owned and CI may not be able to upload them.
-- If a GitHub Action cannot create a release, ensure `GITHUB_TOKEN` is available and the workflow has permission to `contents: write` (repo settings).
-
-## Optional: Use goreleaser
-
-- `goreleaser` can simplify multi-platform builds, archives, checksums, GPG signing, and GitHub Release publishing.
-- Install and add a `.goreleaser.yml` if you want a more feature-rich release flow.
-
-## Summary checklist
-
-- [ ] Tag the release `git tag vX.Y.Z && git push origin vX.Y.Z`
-- [ ] Ensure `dist/` artifacts are produced locally or CI will build them
-- [ ] Confirm required secrets exist in GitHub Actions (see above)
-- [ ] Create a GitHub Release or let CI create it automatically
-- [ ] Publish SDK packages (PyPI / npm) if their versions should be released in lockstep
+Notes & secrets:
+- The basic goreleaser workflow only needs `GITHUB_TOKEN` (automatically provided by Actions).
+- If you want to GPG-sign artifacts, add `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` to repository secrets and update `.goreleaser.yml` to enable signing.
 
 ---
-If you want, I can:
-- add a `--version` CLI flag to the server and a `/version` HTTP endpoint,
-- add automatic PyPI/npm publish steps to the CI workflow,
-- or create a `goreleaser` config and replace the custom workflow with goreleaser usage.
 
+## 2) Docker images (optional)
+
+What we produce
+- Docker images that run the compiled binary.
+
+Local/manual flow:
+1. Build the binary as above and create a Dockerfile (example in `RELEASE.md` earlier).
+2. Build and tag locally:
+
+   ```sh
+   docker build -t yourorg/progressdb:0.1.0 .
+   docker push yourorg/progressdb:0.1.0
+   ```
+
+CI flow with goreleaser (recommended):
+- goreleaser can build and push Docker images as part of the release. Add `DOCKER_USERNAME`/`DOCKER_PASSWORD` (or `CR_PAT`) to GitHub Secrets and enable the `docker` block in `.goreleaser.yml`.
+
+---
+
+## 3) Backend SDKs
+
+Python SDK (clients/sdk/backend/python)
+- Local/manual publish:
+  ```sh
+  cd clients/sdk/backend/python
+  python3 -m pip install --upgrade build twine
+  python3 -m build
+  python3 -m twine upload dist/*
+  ```
+- Helper script (interactive):
+  ```sh
+  ./.scripts/sdk/publish-python.sh --yes
+  ```
+- CI publish:
+  - Add `PYPI_API_TOKEN` to repository secrets (use `__token__` as the username for `twine` uploads).
+  - Add a CI job or workflow step that runs `python3 -m build` and uploads with twine using `PYPI_API_TOKEN`.
+
+Node SDK (clients/sdk/backend/nodejs)
+- Local/manual publish:
+  ```sh
+  cd clients/sdk/backend/nodejs
+  npm publish --access public
+  ```
+- Helper scripts:
+  - `.scripts/sdk/publish-node.sh` (interactive helper for npm/JSR publishes)
+
+Notes:
+- The Python package name is `progressdb` as set in `pyproject.toml`.
+- For CI publishes, set `NPM_TOKEN` for npm and `PYPI_API_TOKEN` for PyPI.
+
+---
+
+## 4) Frontend SDKs (TypeScript, React)
+
+Local/manual publish:
+- `clients/sdk/frontend/typescript` (package `@progressdb/js`)
+- `clients/sdk/frontend/reactjs` (package `@progressdb/react`)
+
+Example:
+```sh
+cd clients/sdk/frontend/reactjs
+npm publish --access public
+```
+
+Helper scripts:
+- `.scripts/sdk/publish-react.sh` — interactive helper that builds and publishes the React package (and can publish to JSR then npm).
+
+CI publish:
+- Add `NPM_TOKEN` as a repository secret and use a workflow step to run `npm publish`.
+
+---
+
+## 5) Docs & OpenAPI
+
+- The OpenAPI spec is at `./docs/openapi.yaml` and the swagger UI is served at `/docs` by the running server.
+- The admin viewer is the static site under `./viewer` and served at `/viewer/` by the server.
+
+Publishing docs:
+- You can publish the OpenAPI and docs to a static site (GitHub Pages or similar). Optionally add a CI job that pushes built docs to `gh-pages`.
+
+---
+
+## 6) GitHub Release
+
+- The canonical release is the GitHub Release created by goreleaser on tag push. Artifacts (archives, checksums, binaries) are attached automatically.
+- Keep a `CHANGELOG.md` and reference it in release notes; goreleaser can include changelog snippets if configured.
+
+---
+
+## Checklist for a full release
+
+- [ ] Update `CHANGELOG.md` and commit changes.
+- [ ] Bump any SDK versions if needed (npm/pyproject updates).
+- [ ] Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+- [ ] Confirm GitHub Actions has `GITHUB_TOKEN` (automatic) and any optional secrets you need (NPM_TOKEN, PYPI_API_TOKEN, DOCKER credentials, GPG keys).
+- [ ] Verify that the goreleaser workflow runs and a GitHub Release is created with assets.
+
+---
+
+If you want, I can now:
+- add GPG signing and Docker publishing sections to `.goreleaser.yml`, or
+- add CI jobs to publish PyPI/npm directly after goreleaser completes. 
+Which would you like next?
