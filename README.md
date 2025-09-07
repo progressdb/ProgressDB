@@ -18,13 +18,15 @@ ProgressDB removes friction when building chat-first apps: fewer transformation 
 
 ## Quickstart — Run the service (download a release)
 
-Want to try ProgressDB in seconds? Download a prebuilt release — no Go toolchain required.
+Want to try ProgressDB in seconds? 🚀 Download a prebuilt release — no Go toolchain required.
 
-1. Visit Releases and pick the binary for your platform:
+1) Get a binary
+
+   Visit the Releases page and download the binary for your platform:
 
    https://github.com/ha-sante/ProgressDB/releases
 
-2. Extract and run (example for Linux/macOS):
+2) Extract & run (Linux / macOS)
 
    ```sh
    tar -xzf progressdb_0.1.0_linux_amd64.tar.gz
@@ -32,15 +34,24 @@ Want to try ProgressDB in seconds? Download a prebuilt release — no Go toolcha
    ./progressdb --db ./data
    ```
 
-3. On Windows, unzip and run `progressdb.exe`.
+3) Windows
 
-When the service starts it prints a friendly banner. After startup:
+   Unzip and run `progressdb.exe` from PowerShell.
 
-- Open the admin viewer: `http://localhost:8080/viewer/`
-- Open the API docs: `http://localhost:8080/docs/`
-- Check metrics: `http://localhost:8080/metrics`
+What to expect 🎉
 
-That’s it — download, run, and you’re ready to connect with the SDKs below. It’s fast and fun: try sending a message and watch ProgressDB auto-create a thread for you.
+- The service prints a friendly banner on startup.
+- Admin viewer: http://localhost:8080/viewer/ 🖥️
+- API docs (OpenAPI/Swagger): http://localhost:8080/docs/ 📖
+- Metrics (Prometheus): http://localhost:8080/metrics 📈
+
+Pro tips ✨
+
+- Persist data locally with `--db ./data`.
+- Run in background: `./progressdb --db ./data &` or use a process manager / systemd / Docker.
+- Try sending a message (via SDK or `curl`) and watch ProgressDB auto-create a thread for you — instant feedback!
+
+That’s it — download, run, and connect with the SDKs below. Have fun! 🎉
 
 ## Install SDKs
 
