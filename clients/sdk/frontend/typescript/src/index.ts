@@ -80,96 +80,95 @@ export class ProgressDBClient {
   }
 
   // Health
-  health() {
+  health(): Promise<any> {
     return this.request('/healthz', 'GET');
   }
 
   // Messages
-  listMessages(query: { thread?: string; limit?: number } = {}, userId?: string, userSignature?: string) {
+  listMessages(query: { thread?: string; limit?: number } = {}, userId?: string, userSignature?: string): Promise<{ thread?: string; messages: Message[] }> {
     const qs = new URLSearchParams();
     if (query.thread) qs.set('thread', query.thread);
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     return this.request('/v1/messages' + (qs.toString() ? `?${qs.toString()}` : ''), 'GET', undefined, userId, userSignature) as Promise<{ thread?: string; messages: Message[] }>;
   }
 
-  createMessage(msg: Message, userId?: string, userSignature?: string) {
+  createMessage(msg: Message, userId?: string, userSignature?: string): Promise<Message> {
     return this.request('/v1/messages', 'POST', msg, userId, userSignature) as Promise<Message>;
   }
 
-  getMessage(id: string, userId?: string, userSignature?: string) {
+  getMessage(id: string, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<Message>;
   }
 
-  updateMessage(id: string, msg: Message, userId?: string, userSignature?: string) {
+  updateMessage(id: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}`, 'PUT', msg, userId, userSignature) as Promise<Message>;
   }
 
-  deleteMessage(id: string, userId?: string, userSignature?: string) {
+  deleteMessage(id: string, userId?: string, userSignature?: string): Promise<any> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
   }
 
-  listMessageVersions(id: string, userId?: string, userSignature?: string) {
+  listMessageVersions(id: string, userId?: string, userSignature?: string): Promise<{ id: string; versions: Message[] }> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}/versions`, 'GET', undefined, userId, userSignature) as Promise<{ id: string; versions: Message[] }>;
   }
 
   // Reactions
-  listReactions(id: string, userId?: string, userSignature?: string) {
+  listReactions(id: string, userId?: string, userSignature?: string): Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}/reactions`, 'GET', undefined, userId, userSignature) as Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }>;
   }
 
-  addOrUpdateReaction(id: string, input: ReactionInput, userId?: string, userSignature?: string) {
+  addOrUpdateReaction(id: string, input: ReactionInput, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}/reactions`, 'POST', input, userId, userSignature) as Promise<Message>;
   }
 
-  removeReaction(id: string, identity: string, userId?: string, userSignature?: string) {
+  removeReaction(id: string, identity: string, userId?: string, userSignature?: string): Promise<any> {
     return this.request(`/v1/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(identity)}`, 'DELETE', undefined, userId, userSignature);
   }
 
   // Threads
-  createThread(thread: Partial<Thread>, userId?: string, userSignature?: string) {
+  createThread(thread: Partial<Thread>, userId?: string, userSignature?: string): Promise<Thread> {
     return this.request('/v1/threads', 'POST', thread, userId, userSignature) as Promise<Thread>;
   }
 
-  listThreads(userId?: string, userSignature?: string) {
+  listThreads(userId?: string, userSignature?: string): Promise<{ threads: Thread[] }> {
     return this.request('/v1/threads', 'GET', undefined, userId, userSignature) as Promise<{ threads: Thread[] }>;
   }
 
-  getThread(id: string, userId?: string, userSignature?: string) {
+  getThread(id: string, userId?: string, userSignature?: string): Promise<Thread> {
     return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<Thread>;
   }
 
-  deleteThread(id: string, userId?: string, userSignature?: string) {
+  deleteThread(id: string, userId?: string, userSignature?: string): Promise<any> {
     return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
   }
 
   // Thread messages
-  createThreadMessage(threadID: string, msg: Message, userId?: string, userSignature?: string) {
+  createThreadMessage(threadID: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages`, 'POST', msg, userId, userSignature) as Promise<Message>;
   }
 
-  listThreadMessages(threadID: string, query: { limit?: number } = {}, userId?: string, userSignature?: string) {
+  listThreadMessages(threadID: string, query: { limit?: number } = {}, userId?: string, userSignature?: string): Promise<{ thread?: string; messages: Message[] }> {
     const qs = new URLSearchParams();
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<{ thread?: string; messages: Message[] }>;
   }
 
-  getThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string) {
+  getThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<Message>;
   }
 
-  updateThreadMessage(threadID: string, id: string, msg: Message, userId?: string, userSignature?: string) {
+  updateThreadMessage(threadID: string, id: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'PUT', msg, userId, userSignature) as Promise<Message>;
   }
 
-  deleteThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string) {
+  deleteThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string): Promise<any> {
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
   }
 
   // Signing is admin-only; SDK exposes the call but it requires an admin key.
-  signUser(userIdToSign: string) {
-    return this.request('/v1/_sign', 'POST', { userId: userIdToSign });
+  signUser(userIdToSign: string): Promise<{ userId: string; signature: string }> {
+    return this.request('/v1/_sign', 'POST', { userId: userIdToSign }) as Promise<{ userId: string; signature: string }>;
   }
 }
 
 export default ProgressDBClient;
-

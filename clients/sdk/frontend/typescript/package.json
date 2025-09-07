@@ -1,9 +1,10 @@
 {
-  "name": "@progrssdb/js",
+  "name": "@progressdb/js",
   "version": "0.1.0",
   "description": "ProgressDB frontend TypeScript SDK (compile to JS for npm)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": "./mod.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
@@ -17,4 +18,3 @@
     "typescript": "^4.9.5"
   }
 }
-
