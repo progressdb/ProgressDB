@@ -1,0 +1,24 @@
+{
+  "name": "@progressdb/react",
+  "version": "0.1.0",
+  "description": "React hooks and provider for ProgressDB frontend SDK",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": "./mod.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build"
+  },
+  "peerDependencies": {
+    "react": "^16.8 || ^17 || ^18"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.5",
+    "@types/react": "^17.0.0"
+  },
+  "files": ["dist"],
+  "keywords": ["progressdb","react","sdk","hooks"],
+  "license": "MIT"
+}
+
