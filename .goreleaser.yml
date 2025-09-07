@@ -60,28 +60,60 @@ changelog:
       order: 999
 
 dockers:
-  - id: ghcr
+  - id: ghcr_amd64
     image_templates:
-      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}"
-      - "ghcr.io/ha-sante/progressdb:{{ .Version }}"
+      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}-amd64"
+      - "ghcr.io/ha-sante/progressdb:{{ .Version }}-amd64"
     dockerfile: Dockerfile
-    use: true
-    goos: linux
-    goarch:
-      - amd64
-      - arm64
+    use: buildx
     build_flag_templates:
-      - --platform=linux/{{ .Arch }}
+      - "--pull"
+      - "--platform=linux/amd64"
 
-  - id: dockerhub
+  - id: ghcr_arm64
     image_templates:
-      - "docker.io/ha-sante/progressdb:{{ .Tag }}"
-      - "docker.io/ha-sante/progressdb:{{ .Version }}"
+      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}-arm64"
+      - "ghcr.io/ha-sante/progressdb:{{ .Version }}-arm64"
     dockerfile: Dockerfile
-    use: true
-    goos: linux
-    goarch:
-      - amd64
-      - arm64
+    use: buildx
     build_flag_templates:
-      - --platform=linux/{{ .Arch }}
+      - "--pull"
+      - "--platform=linux/arm64"
+
+  - id: dockerhub_amd64
+    image_templates:
+      - "docker.io/ha-sante/progressdb:{{ .Tag }}-amd64"
+      - "docker.io/ha-sante/progressdb:{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+
+  - id: dockerhub_arm64
+    image_templates:
+      - "docker.io/ha-sante/progressdb:{{ .Tag }}-arm64"
+      - "docker.io/ha-sante/progressdb:{{ .Version }}-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/ha-sante/progressdb:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}-amd64"
+      - "ghcr.io/ha-sante/progressdb:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/ha-sante/progressdb:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/ha-sante/progressdb:{{ .Version }}-amd64"
+      - "ghcr.io/ha-sante/progressdb:{{ .Version }}-arm64"
+  - name_template: "docker.io/ha-sante/progressdb:{{ .Tag }}"
+    image_templates:
+      - "docker.io/ha-sante/progressdb:{{ .Tag }}-amd64"
+      - "docker.io/ha-sante/progressdb:{{ .Tag }}-arm64"
+  - name_template: "docker.io/ha-sante/progressdb:{{ .Version }}"
+    image_templates:
+      - "docker.io/ha-sante/progressdb:{{ .Version }}-amd64"
+      - "docker.io/ha-sante/progressdb:{{ .Version }}-arm64"
