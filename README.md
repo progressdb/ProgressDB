@@ -13,7 +13,7 @@ ProgressDB is built specifically for chat threads and makes common chat workflow
 - Straightforward encryption and API-key based access controls.
 - Ship quickly: small service, simple APIs, and SDKs for Python, Node and frontend use.
 
-ProgressDB removes friction when building chat-first apps: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster.
+ProgressDB removes friction when building chat-first apps or features: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster.
 
 ## Quickstart — Run the service (download a release)
 
@@ -64,7 +64,6 @@ That’s it — download, run, and connect with the SDKs below. Have fun! 🎉
 
   ```sh
   npm install @progressdb/node
-  # or: pnpm add @progressdb/node
   ```
 
 - Frontend SDKs (TypeScript / React):
@@ -104,7 +103,60 @@ const thread = await client.createThread({ title: 'General' })
 await client.createMessage({ thread: thread.id, body: { text: 'hello' } })
 ```
 
-React (frontend) — use `@progressdb/react` hooks in your app to read threads/messages and render UI components.
+
+
+JavaScript (frontend)
+
+```js
+import ProgressDBClient from '@progressdb/js'
+
+const client = new ProgressDBClient({ baseUrl: 'http://localhost:8080', apiKey: 'pk_frontend' })
+
+// list threads
+const { threads } = await client.listThreads()
+
+// create a thread
+const thread = await client.createThread({ title: 'General' })
+
+// post a message to a thread
+const msg = await client.createThreadMessage(thread.id, { body: { text: 'Hello from the web!' } })
+
+console.log('Posted message', msg)
+```
+
+React (frontend)
+
+```jsx
+import React from 'react'
+import { ProgressDBProvider, useMessages } from '@progressdb/react'
+
+function Chat({ threadId }) {
+  const { messages, loading, refresh, create } = useMessages(threadId)
+
+  if (loading) return <div>Loading…</div>
+  return (
+    <div>
+      <ul>
+        {messages?.map(m => (
+          <li key={m.id}>{m.body?.text || JSON.stringify(m.body)}</li>
+        ))}
+      </ul>
+      <button onClick={() => create({ body: { text: 'Hi from React!' } })}>Send</button>
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <ProgressDBProvider
+      options={{ baseUrl: 'http://localhost:8080', apiKey: 'pk_frontend' }}
+      getUserSignature={async () => ({ userId: 'user-123', signature: 'sig-placeholder' })}
+    >
+      <Chat threadId="general" />
+    </ProgressDBProvider>
+  )
+}
+```
 
 ## Features
 
