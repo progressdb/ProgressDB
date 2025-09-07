@@ -77,3 +77,6 @@ Thanks for your interest in contributing to ProgressDB — we appreciate it! Thi
 -------------------------
 - Maintainers will review PRs and may request changes.
 - After approval, a maintainer will merge the PR and ensure CI passes.
+
+
+![ProgressDB Animation](/animation.gif)
