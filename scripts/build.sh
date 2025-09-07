@@ -16,7 +16,18 @@ OUT="${OUT:-$ROOT_DIR/dist/progressdb}"
 # Allow cross-compilation via GOOS/GOARCH; default CGO disabled for static-ish builds.
 export CGO_ENABLED="${CGO_ENABLED:-0}"
 
-echo "Building to $OUT ..."
-go build -trimpath -ldflags "-s -w" -o "$OUT" ./cmd/progressdb
-echo "Done."
+# Optional build metadata: VERSION, COMMIT, BUILDDATE can be injected to ldflags.
+LDFLAGS="-s -w"
+if [ -n "${VERSION:-}" ]; then
+  LDFLAGS="$LDFLAGS -X 'main.version=${VERSION}'"
+fi
+if [ -n "${COMMIT:-}" ]; then
+  LDFLAGS="$LDFLAGS -X 'main.commit=${COMMIT}'"
+fi
+if [ -n "${BUILDDATE:-}" ]; then
+  LDFLAGS="$LDFLAGS -X 'main.buildDate=${BUILDDATE}'"
+fi
 
+echo "Building to $OUT ..."
+go build -trimpath -ldflags "$LDFLAGS" -o "$OUT" ./cmd/progressdb
+echo "Done."

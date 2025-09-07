@@ -10,7 +10,7 @@
 - [x] Security *- (cors, apikeys, tls etc)*
 - [x] Rate limiting
 - [x] Messages - *(edits ~ versioning, deletes, replies, reacts)*
-- [x] Threads - *(crud a thread, relationship with messages & effects - base at most, id and names for threads)*
+- [x] Threads - *(crud a thread, relationship with messages & effects)*
 - [x] Auth - *(authenticated authors & accessible datas)*
 - [ ] Performance - *(measure & alert for low speeds & public banners)*
 - [ ] Backups - *(cloud backups)*

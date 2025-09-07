@@ -18,6 +18,12 @@ import (
 )
 
 func main() {
+    // build metadata - set via ldflags during build/release
+    var (
+        version   = "dev"
+        commit    = "none"
+        buildDate = "unknown"
+    )
 	// Parse flags (moved into config package to centralize flag parsing)
 	_ = godotenv.Load(".env")
 	addrVal, dbVal, cfgVal, setFlags := config.ParseCommandFlags()
@@ -102,7 +108,15 @@ func main() {
 	if _, err := config.Load(cfgPath); err == nil {
 		srcs = append(srcs, "config")
 	}
-	banner.Print(addr, dbPath, strings.Join(srcs, ", "))
+    // Include version/commit info in the startup banner when present.
+    verStr := version
+    if commit != "none" {
+        verStr = verStr + " (" + commit + ")"
+    }
+    if buildDate != "unknown" {
+        verStr = verStr + " @ " + buildDate
+    }
+    banner.Print(addr, dbPath, strings.Join(srcs, ", "), verStr)
 
 	mux := http.NewServeMux()
 

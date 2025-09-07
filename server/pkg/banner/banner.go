@@ -13,11 +13,14 @@ const banner = `
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝                                                                                 
 `
 
-func Print(addr, dbPath, sources string) {
+func Print(addr, dbPath, sources, version string) {
     fmt.Print(banner)
 	fmt.Println("== Config =====================================================")
 	fmt.Printf("Listen:   %s\n", addr)
 	fmt.Printf("DB Path:  %s\n", dbPath)
+	if version != "" {
+		fmt.Printf("Version:  %s\n", version)
+	}
 	if sources != "" {
 		fmt.Printf("Config sources: %s\n", sources)
 	}
