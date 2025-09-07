@@ -5,20 +5,18 @@
 FROM golang:1.21 AS builder
 WORKDIR /src
 
-# Download dependencies only
-COPY server/go.mod server/go.sum ./
-RUN go mod download
-
-# Copy everything and build
+# Copy the repository into the build context
 COPY . .
 
+# Ensure we fetch modules from the server module
+WORKDIR /src/server
 ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILDDATE=unknown
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILDDATE}" \
-    -o /out/progressdb ./server/cmd/progressdb
+    -o /out/progressdb ./cmd/progressdb
 
 ### Runtime stage
 FROM debian:bookworm-slim
@@ -43,4 +41,3 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
 
 ENTRYPOINT ["/usr/local/bin/progressdb"]
 CMD ["--db", "/data/progressdb"]
-
