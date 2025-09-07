@@ -3,8 +3,9 @@
 This package provides a small set of React utilities (Provider + hooks) that wrap the underlying `@progressdb/js` SDK.
 
 Install (after publishing):
-
+```js
   npm install @progressdb/react
+```
 
 Usage
 
@@ -67,4 +68,6 @@ The provider accepts an optional `getUserSignature` prop — a function that ret
 </ProgressDBProvider>
 ```
 
-Important: Do not call the server `/v1/_sign` endpoint directly from untrusted frontends. The `getUserSignature` callback should call a trusted backend endpoint that holds the admin/backend API key and returns only the signature for the frontend to use. Your backend should authenticate the requester before issuing signatures.
+Important: `getUserSignature` is required and will be called once by the provider when the app loads (the provider caches the returned values in memory and — by default — in `sessionStorage` to avoid re-calling the backend for every operation). Do not call the server `/v1/_sign` endpoint directly from untrusted frontends. The `getUserSignature` callback should call a trusted backend endpoint that holds the admin/backend API key and returns only the signature for the frontend to use. Your backend should authenticate the requester before issuing signatures.
+
+The provider exposes a small helper hook `useUserSignature()` returning `{ userId, signature, loaded, loading, error, refresh, clear }` so you can refresh or clear the cached signature as needed.

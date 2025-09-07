@@ -14,6 +14,14 @@ Examples:
   # Interactive npm publish with automatic bump and build
   ./.scripts/sdk/publish-node.sh
 
+React package publishing:
+
+- `./.scripts/sdk/publish-react.sh` — interactive publisher for the React package (`@progressdb/react`). Publishes to JSR first, then optionally npm. Options: `--yes`, `--no-build`, `--dry-run`, `--allow-slow-types`.
+
+Example:
+
+  ./.scripts/sdk/publish-react.sh --yes
+
 Notes:
 - The scripts try to be safe: they check for `dist/`, require `npm` and `npx` where relevant, and will prompt or exit if not logged in for npm.
 - Avoid running these as `sudo` unless you understand the implications; the build script warns if run as root.
