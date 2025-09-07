@@ -37,4 +37,7 @@ checksum:
 
 release:
   github:
-    name: "{{ if .Tag }}{{ .Tag }}{{ else }}v{{ .Version }}{{ end }}"
+    owner: ha-sante   # 👈 replace
+    name: progressdb              # 👈 repo name
+  draft: false
+  prerelease: auto
