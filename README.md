@@ -15,9 +15,6 @@ ProgressDB is built specifically for chat threads and makes common chat workflow
 
 ProgressDB removes friction when building chat-first apps: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster.
 
-![ProgressDB Animation](/animation.gif)
-
-
 ## Quickstart — Run the service (download a release)
 
 Want to try ProgressDB in seconds? 🚀 Download a prebuilt release — no Go toolchain required.
