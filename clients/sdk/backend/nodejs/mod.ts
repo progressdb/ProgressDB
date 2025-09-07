@@ -1,7 +1,7 @@
-// JSR entrypoint. Re-export default factory and types from the SDK.
-export { default } from "./src/index.ts";
-export * from "./src/index.ts";
-export * from "./src/client.ts";
-export * from "./src/types.ts";
-export * from "./src/errors.ts";
-
+// JSR entrypoint: export a clean surface without duplicate names
+export { default as ProgressDB } from "./src/index.ts";
+export type { ProgressDBOptions } from "./src/index.ts";
+export { BackendClient } from "./src/client.ts";
+export type { BackendClientOptions } from "./src/client.ts";
+export type { Message, Thread } from "./src/types.ts";
+export { ApiError } from "./src/errors.ts";

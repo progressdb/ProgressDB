@@ -2,19 +2,15 @@
 set -eu
 
 # Publish the Node backend SDK to JSR
-# Usage: .scripts/publish-jsr.sh [--dry-run] [--no-sloppy]
+# Usage: .scripts/publish-jsr.sh [--dry-run]
 #   --dry-run    Preview publish only
-#   --no-sloppy  Do not pass --unstable-sloppy-imports to deno
 
 DRY_RUN="false"
-NO_SLOPPY="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)
       DRY_RUN="true"; shift ;;
-    --no-sloppy)
-      NO_SLOPPY="true"; shift ;;
     *)
       echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -39,12 +35,8 @@ ARGS=""
 if [ "$DRY_RUN" = "true" ]; then
   ARGS="$ARGS --dry-run"
 fi
-if [ "$NO_SLOPPY" != "true" ]; then
-  ARGS="$ARGS --unstable-sloppy-imports"
-fi
 
 echo "Publishing to JSR from $SDK_DIR ..."
 # shellcheck disable=SC2086
 deno publish $ARGS
 echo "JSR publish completed."
-

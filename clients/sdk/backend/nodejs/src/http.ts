@@ -1,4 +1,4 @@
-import { ApiError } from './errors';
+import { ApiError } from './errors.ts';
 
 export type HttpOptions = {
   timeoutMs?: number;
@@ -48,4 +48,3 @@ export async function httpRequest<T>(
     }
   }
 }
-
