@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 
 // Import the underlying ProgressDBClient and types from the TS SDK
-import ProgressDBClient, { SDKOptions, Message, Thread } from '../../typescript/src/index';
+// Import the published JS SDK package instead of referencing local TS sources.
+// This ensures the react package depends on the compiled @progressdb/js package.
+import ProgressDBClient, { SDKOptions, Message, Thread } from '@progressdb/js';
 
 // Provider + context
 export type UserSignature = { userId: string; signature: string };

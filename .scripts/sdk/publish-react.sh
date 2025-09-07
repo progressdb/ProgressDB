@@ -30,10 +30,33 @@ done
 echo "Publishing React SDK to JSR (Deno) registry..."
 cd "$SDK_DIR"
 
+# if [ "$EUID" -eq 0 ]; then
+#   echo "Do not run the publish script as root/sudo. Re-run without sudo to avoid file permission issues." >&2
+#   exit 1
+# fi
+
 if ! command -v npx >/dev/null 2>&1; then
   echo "npx not found. Install Node/npm to run jsr publish." >&2
   exit 2
 fi
+BUILT=0
+
+# Ensure built dist exists before JSR publish
+  if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
+    echo "dist/reactjs/src/index.js not found; building package before JSR publish"
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm not found. Install Node/npm to build the package." >&2
+    exit 2
+  fi
+  npm install --no-audit --no-fund
+  npm run build
+  BUILT=1
+fi
+
+  if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
+    echo "ERROR: dist/reactjs/src/index.js still missing after build. Aborting." >&2
+    exit 1
+  fi
 
 if [ "$ALLOW_SLOW" -eq 1 ]; then
   npx jsr publish --allow-slow-types
@@ -42,9 +65,13 @@ else
 fi
 echo "JSR publish completed."
 
-echo "Building for Node.js (npm)..."
-npm install --no-audit --no-fund
-npm run build
+echo "Preparing npm publish..."
+cd "$SDK_DIR"
+if [ $BUILT -eq 0 ]; then
+  echo "Building for Node.js (npm)..."
+  npm install --no-audit --no-fund
+  npm run build
+fi
 
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm not found. Install Node/npm to publish to npm." >&2
