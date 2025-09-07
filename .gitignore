@@ -6,3 +6,4 @@
 /server/config.yaml
 /server/.env.example
 /.gocache
+/.codex

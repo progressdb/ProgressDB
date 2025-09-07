@@ -1,7 +1,7 @@
 
 ![ProgressDB Logo](/docs/logo-colors.png)
 
-ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the server locally, install the SDKs, and perform basic operations.
+ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
 
 ## Why ProgressDB?
 
@@ -11,30 +11,36 @@ ProgressDB is built specifically for chat threads and makes common chat workflow
 - Built-in message versioning, edits, replies, reactions, and soft-deletes.
 - Optimized for fast threaded message retrievals and common chat patterns.
 - Straightforward encryption and API-key based access controls.
-- Ship quickly: small server, simple APIs, and SDKs for Python, Node and frontend use.
+- Ship quickly: small service, simple APIs, and SDKs for Python, Node and frontend use.
 
 ProgressDB removes friction when building chat-first apps: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster.
 
 
-## Quickstart — Run locally
+## Quickstart — Run the service (download a release)
 
-- **Prerequisites:** `go` (1.20+), `python3` (3.8+), `node` & `npm` (or `pnpm`/`yarn`).
-- **Dev (fast):** start the server from the repo root (uses local modules):
+Want to try ProgressDB in seconds? Download a prebuilt release — no Go toolchain required.
 
-  ```sh
-  ./.scripts/dev.sh
-  # or equivalently
-  go run ./server/cmd/progressdb
-  ```
+1. Visit Releases and pick the binary for your platform:
 
-- **Build binary:**
+   https://github.com/ha-sante/ProgressDB/releases
 
-  ```sh
-  ./.scripts/build.sh
-  # binary written to ./dist/progressdb by default
-  ```
+2. Extract and run (example for Linux/macOS):
 
-The server serves the admin viewer at `http://localhost:8080/viewer/`, the OpenAPI UI at `/docs/` and Prometheus metrics at `/metrics`.
+   ```sh
+   tar -xzf progressdb_0.1.0_linux_amd64.tar.gz
+   chmod +x progressdb
+   ./progressdb --db ./data
+   ```
+
+3. On Windows, unzip and run `progressdb.exe`.
+
+When the service starts it prints a friendly banner. After startup:
+
+- Open the admin viewer: `http://localhost:8080/viewer/`
+- Open the API docs: `http://localhost:8080/docs/`
+- Check metrics: `http://localhost:8080/metrics`
+
+That’s it — download, run, and you’re ready to connect with the SDKs below. It’s fast and fun: try sending a message and watch ProgressDB auto-create a thread for you.
 
 ## Install SDKs
 
