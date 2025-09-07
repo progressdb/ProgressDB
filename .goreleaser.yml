@@ -36,4 +36,4 @@ checksum:
 
 release:
   github:
-    name_template: "{{ if .Tag }}{{ .Tag }}{{ else }}v{{ .Version }}{{ end }}"
+    name: "{{ if .Tag }}{{ .Tag }}{{ else }}v{{ .Version }}{{ end }}"
