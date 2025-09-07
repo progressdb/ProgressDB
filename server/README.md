@@ -165,7 +165,7 @@ Examples
 - Minimal `.env`:
   - `PROGRESSDB_ADDR=0.0.0.0:8080`
   - `PROGRESSDB_DB_PATH=./data/progressdb`
-  - `PROGRESSDB_ENCRYPTION_KEY=b36ef5f7c11c1d29ab0b22789d9ed4b99f6b84c6a2a8f7f93c8f33485bc23a12`
+  - `PROGRESSDB_ENCRYPTION_KEY=REPLACE_WITH_YOUR_KEY`
 
 Metrics
 - Prometheus endpoint: `GET /metrics` (default registry via promhttp).
@@ -191,7 +191,7 @@ Security
   storage:
     db_path: "./data/progressdb"
   security:
-    encryption_key: "b36ef5f7c11c1d29ab0b22789d9ed4b99f6b84c6a2a8f7f93c8f33485bc23a12"
+    encryption_key: "REPLACE_WITH_YOUR_KEY"
     cors:
       allowed_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
     rate_limit:
