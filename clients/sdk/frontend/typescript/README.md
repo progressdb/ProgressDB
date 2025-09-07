@@ -3,9 +3,9 @@
 This lightweight SDK provides typed wrappers for ProgressDB HTTP endpoints described in `server/docs/openapi.yaml`.
 
 Installation (after published):
-
-  npm install @progrssdb/js
-
+```bash
+npm install @progressdb/js
+```
 Usage
 
 - Import and construct the client with your frontend API key and optionally a default user id/signature:
