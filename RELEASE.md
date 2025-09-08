@@ -137,6 +137,12 @@ Publishing docs:
 - [ ] Confirm GitHub Actions has `GITHUB_TOKEN` (automatic) and any optional secrets you need (NPM_TOKEN, PYPI_API_TOKEN, DOCKER credentials, GPG keys).
 - [ ] Verify that the goreleaser workflow runs and a GitHub Release is created with assets.
 
+
+git tag -d v0.1.1 && \
+git push origin :refs/tags/v0.1.1 && \
+git tag -a v0.1.1 -m "Release v0.1.1 with new file" && \
+git push origin v0.1.1
+
 ---
 
 If you want, I can now:

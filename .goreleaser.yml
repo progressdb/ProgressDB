@@ -1,0 +1,95 @@
+version: 2
+
+project_name: progressdb
+
+builds:
+  - id: progressdb
+    dir: ./server
+    main: ./cmd/progressdb
+    binary: progressdb
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids:
+      - progressdb
+    files:
+      - LICENSE.md
+    wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: ha-sante   # 👈 replace
+    name: progressdb              # 👈 repo name
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github   # or "git"
+  format: "{{.Message}} (by @{{.AuthorUsername}})"
+  filters:
+    exclude:
+      - "^docs:"   # don’t show docs commits
+      - "^test:"   # don’t show test commits
+  groups:
+    - title: Features
+      regexp: '^.*feat.*$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*fix.*$'
+      order: 1
+    - title: Others
+      order: 999
+
+dockers:
+  - id: dockerhub_amd64
+    image_templates:
+      - "docker.io/progressdb/progressdb:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/progressdb:{{ .Version }}-amd64"
+    dockerfile: goreleaser.Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+    ids:
+      - progressdb
+
+  - id: dockerhub_arm64
+    image_templates:
+      - "docker.io/progressdb/progressdb:{{ .Tag }}-arm64"
+      - "docker.io/progressdb/progressdb:{{ .Version }}-arm64"
+    dockerfile: goreleaser.Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+    ids:
+      - progressdb
+
+docker_manifests:
+  - name_template: "docker.io/progressdb/progressdb:{{ .Tag }}"
+    image_templates:
+      - "docker.io/progressdb/progressdb:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/progressdb:{{ .Tag }}-arm64"
+  - name_template: "docker.io/progressdb/progressdb:{{ .Version }}"
+    image_templates:
+      - "docker.io/progressdb/progressdb:{{ .Version }}-amd64"
+      - "docker.io/progressdb/progressdb:{{ .Version }}-arm64"

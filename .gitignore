@@ -82,7 +82,6 @@ coverage/
 
 # goreleaser
 /dist/
-.goreleaser.yml
 
 # Secrets
 secrets.yml
