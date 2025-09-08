@@ -47,3 +47,5 @@ Notes
 
 - For production, set a persistent DB path via `--db` and secure the server with API keys or TLS.
 - See `server/cmd/progressdb` for how flags and config are parsed.
+
+> **Security Tip:** For extra protection, we recommend running ProgressDB as a private service — for example, on your own VPS (AWS EC2, DigitalOcean, etc.) or behind a firewall. This helps ensure only your apps or trusted users can access the database. Always use strong API keys, restrict allowed origins (CORS), and consider IP whitelisting for production deployments.

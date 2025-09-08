@@ -196,15 +196,24 @@ Planned / In progress:
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - [ ] API versioning, retention policies, scaling and search
 
+
 ## Links
 
-- OpenAPI spec: `docs/openapi.yaml` (served at `/docs/` when the service is running)
-- Admin viewer: `viewer/` (served at `/viewer/` when the service is running)
-- Metrics endpoint: `/metrics` (Prometheus)
-- Backend SDKs: `clients/sdk/backend`
-- Frontend SDKs: `clients/sdk/frontend`
-- Releases (download binaries): https://github.com/ha-sante/ProgressDB/releases
-- Contribution guide: `CONTRIBUTING.md`
+**Documentation**
+- User Guide & API Reference: [`server/docs/usage.md`](server/docs/usage.md)
+- OpenAPI Specification (YAML): [`server/docs/openapi.yaml`](server/docs/openapi.yaml)  
+- Swagger UI (interactive docs): available at [`/docs/`](http://localhost:8080/docs) when the service is running
+- Contribution Guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
+**Production & Operations**
+- Admin Viewer: [`server/viewer/`](server/viewer/)  
+  (served at `/viewer/` when the service is running)
+- Metrics Endpoint: [`/metrics`](server/README.md#metrics) (Prometheus)
+- Releases (download binaries): [Releases](https://github.com/ha-sante/ProgressDB/releases)
+
+**SDKs**
+- Backend SDKs: [`clients/sdk/backend`](clients/sdk/backend)
+- Frontend SDKs: [`clients/sdk/frontend`](clients/sdk/frontend)
 
 ## How to start contributing
 

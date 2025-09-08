@@ -61,10 +61,21 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
                 }
             }
 
-			// Auth
+            // Auth
             role, key := authenticate(r, cfg)
             // Log authentication outcome (do not log full key content)
             slog.Debug("auth_check", "role", role, "key_present", key!="")
+
+            // Allow unauthenticated health checks for deployment probes.
+            // Probes often cannot send API keys; accept GET /healthz without
+            // authentication or rate-limiting so external systems can verify
+            // service liveness.
+            if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
+                r.Header.Set("X-Role-Name", "unauth")
+                next.ServeHTTP(w, r)
+                return
+            }
+
             if role == RoleUnauth && !cfg.AllowUnauth {
                 http.Error(w, "unauthorized", http.StatusUnauthorized)
                 slog.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
