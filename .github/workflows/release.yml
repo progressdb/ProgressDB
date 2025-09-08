@@ -40,12 +40,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Login to GHCR
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # GHCR publishing removed; only Docker Hub publishing is configured now.
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v2
@@ -54,9 +49,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Docker Hub credentials
+          # Docker Hub credentials are used by goreleaser to push images
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
-          # GHCR: use current actor + GITHUB_TOKEN for authentication
-          CR_USERNAME: ${{ github.actor }}
-          CR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
