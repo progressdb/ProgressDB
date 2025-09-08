@@ -138,10 +138,10 @@ Publishing docs:
 - [ ] Verify that the goreleaser workflow runs and a GitHub Release is created with assets.
 
 
-git tag -d v0.1.1 && \
-git push origin :refs/tags/v0.1.1 && \
-git tag -a v0.1.1 -m "Release v0.1.1 with new file" && \
-git push origin v0.1.1
+git tag -d v0.1.2 && \
+git push origin :refs/tags/v0.1.2 && \
+git tag -a v0.1.2 -m "Release v0.1.2 with new file" && \
+git push origin v0.1.2
 
 ---
 

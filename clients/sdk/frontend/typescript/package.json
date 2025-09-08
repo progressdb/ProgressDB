@@ -4,7 +4,7 @@
   "description": "ProgressDB frontend TypeScript SDK (compile to JS for npm)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": "./mod.ts",
+  "exports": "./dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
