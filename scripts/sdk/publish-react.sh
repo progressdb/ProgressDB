@@ -9,19 +9,22 @@ SDK_DIR="$ROOT_DIR/clients/sdk/frontend/reactjs"
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--allow-slow-types]
+Usage: $(basename "$0") [--allow-slow-types] [--no-jsr]
 
 Options:
   --allow-slow-types   Pass --allow-slow-types to jsr publish
+  --no-jsr             Skip publishing to JSR (only publish to npm)
   -h, --help           Show this help
 EOF
 }
 
 ALLOW_SLOW=0
+SKIP_JSR=0
 
 while [[ ${1:-} != "" ]]; do
   case "$1" in
     --allow-slow-types) ALLOW_SLOW=1; shift;;
+    --no-jsr) SKIP_JSR=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "Unknown arg: $1"; usage; exit 1;;
   esac
@@ -30,10 +33,10 @@ done
 echo "Publishing React SDK to JSR (Deno) registry..."
 cd "$SDK_DIR"
 
-# if [ "$EUID" -eq 0 ]; then
-#   echo "Do not run the publish script as root/sudo. Re-run without sudo to avoid file permission issues." >&2
-#   exit 1
-# fi
+if [ "$EUID" -eq 0 ]; then
+  echo "Do not run the publish script as root/sudo. Re-run without sudo to avoid file permission issues." >&2
+  exit 1
+fi
 
 if ! command -v npx >/dev/null 2>&1; then
   echo "npx not found. Install Node/npm to run jsr publish." >&2
@@ -42,8 +45,8 @@ fi
 BUILT=0
 
 # Ensure built dist exists before JSR publish
-  if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
-    echo "dist/reactjs/src/index.js not found; building package before JSR publish"
+if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
+  echo "dist/reactjs/src/index.js not found; building package before JSR publish"
   if ! command -v npm >/dev/null 2>&1; then
     echo "npm not found. Install Node/npm to build the package." >&2
     exit 2
@@ -53,17 +56,21 @@ BUILT=0
   BUILT=1
 fi
 
-  if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
-    echo "ERROR: dist/reactjs/src/index.js still missing after build. Aborting." >&2
-    exit 1
-  fi
-
-if [ "$ALLOW_SLOW" -eq 1 ]; then
-  npx jsr publish --allow-slow-types
-else
-  npx jsr publish
+if [ ! -f "$SDK_DIR/dist/reactjs/src/index.js" ]; then
+  echo "ERROR: dist/reactjs/src/index.js still missing after build. Aborting." >&2
+  exit 1
 fi
-echo "JSR publish completed."
+
+if [ "$SKIP_JSR" -eq 0 ]; then
+  if [ "$ALLOW_SLOW" -eq 1 ]; then
+    npx jsr publish --allow-slow-types
+  else
+    npx jsr publish
+  fi
+  echo "JSR publish completed."
+else
+  echo "Skipping JSR publish (--no-jsr passed)."
+fi
 
 echo "Preparing npm publish..."
 cd "$SDK_DIR"
