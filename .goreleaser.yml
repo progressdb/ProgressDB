@@ -60,8 +60,6 @@ changelog:
       order: 999
 
 dockers:
-  
-
   - id: dockerhub_amd64
     image_templates:
       - "docker.io/progressdb/progressdb:{{ .Tag }}-amd64"
