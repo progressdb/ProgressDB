@@ -123,6 +123,13 @@ func main() {
     // Serve the web viewer at /viewer/
     mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
 
+    // Liveness probe used by deployment systems and CI
+    mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("{\"status\":\"ok\"}"))
+    })
+
 	// API handler (catch-all under /)
 	mux.Handle("/", api.Handler())
 
