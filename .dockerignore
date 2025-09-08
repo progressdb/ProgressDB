@@ -1,0 +1,15 @@
+.git
+.github
+.gocache
+.gopath
+dist
+node_modules
+clients/**/node_modules
+server/.gopath
+.DS_Store
+.env
+.env.*
+*.log
+coverage/
+**/dist/
+

@@ -1,0 +1,638 @@
+openapi: 3.0.3
+info:
+  title: ProgressDB API
+  version: "0.1.0"
+  description: |
+    Author semantics and signing flow:
+      - Protected endpoints require a cryptographically-verified author identity, supplied
+        via the headers `X-User-ID` and `X-User-Signature` (HMAC-SHA256).
+      - Backend callers holding a backend API key may request an HMAC signature for a user
+        by calling `POST /v1/_sign`. Clients attach the returned signature to subsequent
+        requests as `X-User-Signature` with `X-User-ID`.
+      - For user-scoped operations the server uses the verified author derived from the
+        signature middleware (`X-User-ID` + `X-User-Signature`) as the canonical author.
+      - An explicit `author` query parameter is accepted only for trusted callers (role
+        `admin` or `backend`) and is rejected for regular/front-end callers to prevent
+        impersonation.
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                example:
+                  status: ok
+  /v1/messages:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/IncludeDeleted'
+    get:
+      summary: List messages for a thread
+      parameters:
+        - in: query
+          name: thread
+          schema:
+            type: string
+          description: Thread ID to list
+        - in: query
+          name: limit
+          schema:
+            type: integer
+          description: Optional limit of most recent messages
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thread:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+    post:
+      summary: Create a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+  /v1/messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    get:
+      summary: Get latest message version by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    put:
+      summary: Edit (append new version) a message by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      summary: Soft-delete a message by ID (append tombstone)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
+  /v1/messages/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    get:
+      summary: List all stored versions for a message ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Versions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /v1/messages/{id}/reactions:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    get:
+      summary: List reactions on a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  reactions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        reaction:
+                          type: string
+    post:
+      summary: Add or update a reaction on a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: identity id (opaque to server)
+                reaction:
+                  type: string
+              required: [id, reaction]
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /v1/messages/{id}/reactions/{identity}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    delete:
+      summary: Remove a reaction for an identity
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
+  /v1/threads/{threadID}/messages:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/IncludeDeleted'
+    post:
+      summary: Create a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    get:
+      summary: List messages in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+          description: Optional limit of most recent messages
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thread:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /v1/threads/{threadID}/messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    get:
+      summary: Get latest message by ID in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    put:
+      summary: Update (append new version) a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      summary: Soft-delete a message in a thread
+      parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
+  /v1/threads:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    post:
+      summary: Create a thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Thread'
+      responses:
+        "200":
+          description: Created thread
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+    get:
+      summary: List threads
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                items:
+                  $ref: '#/components/schemas/Thread'
+
+  /v1/_sign:
+    post:
+      summary: Issue an HMAC signature for a given user id (backend keys only)
+      description: |
+        Backend callers holding a backend API key may request an HMAC signature
+        for a user id. The response contains the `signature` which clients attach
+        to subsequent requests as `X-User-Signature` with `X-User-ID`.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+              required: [userId]
+      responses:
+        "200":
+          description: signature issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  signature:
+                    type: string
+
+  /v1/threads/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XUserID'
+      - $ref: '#/components/parameters/XUserSignature'
+    get:
+      summary: Get thread metadata by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+    delete:
+      summary: Delete thread metadata (not destructive)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+
+  /admin/health:
+    get:
+      summary: Admin health check (admin/backend keys only)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+
+  /admin/stats:
+    get:
+      summary: Admin stats (count threads/messages)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: integer
+                  messages:
+                    type: integer
+
+  /admin/threads:
+    get:
+      summary: List threads (admin/backend keys only)
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Thread'
+components:
+  schemas:
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Message ID (server-generated if missing)
+        thread:
+          type: string
+          description: Thread ID
+        author:
+          type: string
+        ts:
+          type: integer
+          format: int64
+          description: Timestamp in nanoseconds (server-filled if missing)
+        body:
+          description: Freeform JSON payload
+          nullable: true
+        reply_to:
+          type: string
+          description: Message ID this message replies to
+        deleted:
+          type: boolean
+          description: Soft-delete flag
+        reactions:
+          type: object
+          additionalProperties:
+            type: string
+      example:
+        id: msg-1700000000-1
+        thread: t1
+        author: u1
+        ts: 1700000000000000000
+        body:
+          text: "hello"
+          credit_card:
+            _enc: gcm
+            v: "BASE64_NONCE_CIPHERTEXT"
+
+    Thread:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Thread ID
+        title:
+          type: string
+          description: Thread title
+        slug:
+          type: string
+          description: Human-friendly URL slug generated from title and id
+        created_ts:
+          type: integer
+          format: int64
+          description: Creation timestamp in nanoseconds
+        updated_ts:
+          type: integer
+          format: int64
+          description: Last update timestamp in nanoseconds
+        author:
+          type: string
+          description: Thread creator
+        metadata:
+          type: object
+          description: Additional thread metadata
+          additionalProperties: true
+      required:
+        - id
+      example:
+        id: "t1"
+        title: "General Discussion"
+        slug: "general-discussion-t1"
+        created_ts: 1700000000000000000
+        updated_ts: 1700000000000000000
+        author: "u1"
+
+    EncryptedEnvelope:
+      type: object
+      properties:
+        _enc:
+          type: string
+          enum: [gcm]
+        v:
+          type: string
+          description: base64-encoded nonce|ciphertext
+      required: [_enc, v]
+
+  securitySchemes:
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Provide an admin or backend API key in the X-API-Key header or as Bearer in the Authorization header.
+  parameters:
+    XUserID:
+      name: X-User-ID
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Verified user id (provided alongside X-User-Signature)
+    XUserSignature:
+      name: X-User-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+      description: HMAC-SHA256 signature of the `X-User-ID` computed by a backend signer.
+    AuthorQuery:
+      name: author
+      in: query
+      required: false
+      schema:
+        type: string
+      description: |
+        Optional author override. Only allowed when the caller presents an admin or backend API key.
+        Regular (frontend) callers must use `X-User-ID`/`X-User-Signature` and cannot override author.
+    IncludeDeleted:
+      name: include_deleted
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: When true, include messages marked deleted (tombstones) in list responses.

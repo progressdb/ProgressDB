@@ -1,0 +1,27 @@
+{
+  "name": "@progressdb/node",
+  "version": "0.1.0",
+  "description": "ProgressDB backend SDK (Node.js, TypeScript) - thin wrappers for admin/backend endpoints",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "prepare": "npm run build",
+    "lint": "eslint . --ext .ts",
+    "test": "echo \"Run your tests\""
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE*"
+  ],
+  "keywords": ["progressdb","sdk","backend","typescript"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
