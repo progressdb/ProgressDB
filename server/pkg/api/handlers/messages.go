@@ -49,14 +49,18 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	// enforce author from verified signature middleware
-	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-		// override any client-supplied author with verified id
-		m.Author = authID
-	} else {
-		http.Error(w, `{"error":"missing or invalid author signature"}`, http.StatusUnauthorized)
-		return
-	}
+    // enforce author from verified signature middleware
+    if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
+        // override any client-supplied author with verified id
+        m.Author = authID
+    } else {
+        http.Error(w, `{"error":"missing or invalid author signature"}`, http.StatusUnauthorized)
+        return
+    }
+    // Ensure message role is present. Default to "user" when omitted.
+    if m.Role == "" {
+        m.Role = "user"
+    }
 	// Always generate server-side IDs for messages to avoid client-side impersonation
 	if m.Thread == "" {
 		m.Thread = utils.GenThreadID()
@@ -171,15 +175,19 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	m.ID = id
-	// enforce author from verified signature middleware
-	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-		if m.Author != "" && m.Author != authID {
-			http.Error(w, `{"error":"author in body does not match verified author"}`, http.StatusForbidden)
-			return
-		}
-		m.Author = authID
-	}
+    m.ID = id
+    // enforce author from verified signature middleware
+    if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
+        if m.Author != "" && m.Author != authID {
+            http.Error(w, `{"error":"author in body does not match verified author"}`, http.StatusForbidden)
+            return
+        }
+        m.Author = authID
+    }
+    // Ensure role is present; default to "user" if omitted
+    if m.Role == "" {
+        m.Role = "user"
+    }
 	if m.Thread == "" {
 		m.Thread = utils.GenThreadID()
 	}

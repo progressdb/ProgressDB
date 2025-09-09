@@ -10,6 +10,7 @@ export type Message = {
   id?: string;
   thread?: string;
   author?: string;
+  role?: string; // e.g. "user" | "system"; defaults to "user" when omitted
   ts?: number;
   body?: any;
   reply_to?: string;

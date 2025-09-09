@@ -255,6 +255,10 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"author field is required"}`, http.StatusUnauthorized)
 		return
 	}
+	// Ensure role is present; default to "user" if omitted
+	if m.Role == "" {
+		m.Role = "user"
+	}
 	m.Thread = threadID
 	// Always generate message IDs server-side
 	m.ID = utils.GenID()

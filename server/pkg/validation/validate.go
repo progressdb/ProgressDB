@@ -37,6 +37,7 @@ func ValidateMessage(m models.Message) error {
 		"id":     m.ID,
 		"thread": m.Thread,
 		"author": m.Author,
+		"role":   m.Role,
 		"ts":     m.TS,
 		"body":   m.Body,
 	}

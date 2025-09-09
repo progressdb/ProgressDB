@@ -2,6 +2,7 @@ export interface Message {
   id: string;
   thread: string;
   author: string;
+  role?: string;
   ts: number;
   body?: any;
   reply_to?: string;
@@ -17,4 +18,3 @@ export interface Thread {
   created_ts?: number;
   updated_ts?: number;
 }
-
