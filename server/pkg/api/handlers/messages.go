@@ -49,13 +49,13 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-    // enforce author from verified signature middleware
-    if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-        // override any client-supplied author with verified id
-        m.Author = authID
-    } else {
-        http.Error(w, `{"error":"missing or invalid author signature"}`, http.StatusUnauthorized)
+    // determine caller role and canonical author
+    // resolve canonical author (from signature, or backend-provided body/header)
+    if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+        http.Error(w, msg, code)
         return
+    } else {
+        m.Author = author
     }
     // Ensure message role is present. Default to "user" when omitted.
     if m.Role == "" {
@@ -176,13 +176,12 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
     m.ID = id
-    // enforce author from verified signature middleware
-    if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-        if m.Author != "" && m.Author != authID {
-            http.Error(w, `{"error":"author in body does not match verified author"}`, http.StatusForbidden)
-            return
-        }
-        m.Author = authID
+    // determine caller role and canonical author
+    if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+        http.Error(w, msg, code)
+        return
+    } else {
+        m.Author = author
     }
     // Ensure role is present; default to "user" if omitted
     if m.Role == "" {
@@ -235,17 +234,17 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
 		return
 	}
-	// verify author owns the message (or is admin)
-	authID := auth.AuthorIDFromContext(r.Context())
-	role := r.Header.Get("X-Role-Name")
-	if authID == "" && role != "admin" {
-		http.Error(w, `{"error":"missing or invalid author signature"}`, http.StatusUnauthorized)
-		return
-	}
-	if role != "admin" && m.Author != authID {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-		return
-	}
+    // verify author owns the message (or is admin)
+    author, code, msg := auth.ResolveAuthor(r, "")
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
+    role := r.Header.Get("X-Role-Name")
+    if role != "admin" && m.Author != author {
+        http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+        return
+    }
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
 	b, _ := json.Marshal(m)

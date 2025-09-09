@@ -44,19 +44,21 @@ func RegisterThreads(r *mux.Router) {
 // Otherwise the verified author from the signed-author middleware is used.
 // Returns (author, 0, "") on success or ("", status, jsonError) on failure.
 func resolveAuthor(r *http.Request) (string, int, string) {
-	authorQ := r.URL.Query().Get("author")
-	role := r.Header.Get("X-Role-Name")
-	if authorQ != "" {
-		if role != "admin" && role != "backend" {
-			return "", http.StatusForbidden, `{"error":"author override not permitted"}`
-		}
-		return authorQ, 0, ""
-	}
-	authorQ = auth.AuthorIDFromContext(r.Context())
-	if authorQ == "" {
-		return "", http.StatusBadRequest, `{"error":"author required"}`
-	}
-	return authorQ, 0, ""
+    authorQ := r.URL.Query().Get("author")
+    role := r.Header.Get("X-Role-Name")
+    if authorQ != "" {
+        if role != "admin" && role != "backend" {
+            return "", http.StatusForbidden, `{"error":"author override not permitted"}`
+        }
+        return authorQ, 0, ""
+    }
+    // Use the canonical resolution which handles frontend signatures and
+    // backend-supplied header authors.
+    if author, code, msg := auth.ResolveAuthor(r, ""); code != 0 {
+        return "", code, msg
+    } else {
+        return author, 0, ""
+    }
 }
 
 // createThread handles POST /threads to create a new thread.
@@ -70,13 +72,13 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	// derive author from verified signature middleware
-	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-		t.Author = authID
-	} else {
-		http.Error(w, `{"error":"author signature required"}`, http.StatusUnauthorized)
-		return
-	}
+    // resolve canonical author (signature or backend-provided)
+    if author, code, msg := auth.ResolveAuthor(r, t.Author); code != 0 {
+        http.Error(w, msg, code)
+        return
+    } else {
+        t.Author = author
+    }
 	// Always generate server-side thread IDs to avoid client-supplied IDs
 	t.ID = utils.GenThreadID()
 	if t.CreatedTS == 0 {
@@ -110,11 +112,11 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 func listThreads(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := resolveAuthor(r)
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
 	titleQ := r.URL.Query().Get("title")
 	slugQ := r.URL.Query().Get("slug")
 
@@ -248,12 +250,12 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	// enforce author from verified signature middleware
-	if authID := auth.AuthorIDFromContext(r.Context()); authID != "" {
-		m.Author = authID
-	} else {
-		http.Error(w, `{"error":"author field is required"}`, http.StatusUnauthorized)
+	// resolve canonical author (signature or backend-provided)
+	if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+		http.Error(w, msg, code)
 		return
+	} else {
+		m.Author = author
 	}
 	// Ensure role is present; default to "user" if omitted
 	if m.Role == "" {
