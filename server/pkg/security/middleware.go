@@ -181,11 +181,18 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string) {
 }
 
 func frontendAllowed(r *http.Request) bool {
-	// Allow only GET/POST /v1/messages and GET /healthz
+	// Allow health check
 	if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
 		return true
 	}
+	// Allow message create/list
 	if r.URL.Path == "/v1/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
+		return true
+	}
+	// Allow thread collection and thread-scoped APIs for frontend keys.
+	// Handlers themselves require a verified author (RequireSignedAuthor)
+	// and perform ownership checks where appropriate.
+	if strings.HasPrefix(r.URL.Path, "/v1/threads") {
 		return true
 	}
 	return false
