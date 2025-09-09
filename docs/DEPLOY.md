@@ -131,3 +131,64 @@ security:
 
 For questions about deployment or security considerations, reach out to the engineering owner or open an issue in the repo.
 
+## Input validation (prevent resource exhaustion)
+
+Even with signature checks and scoped API keys, unbounded user-provided data (titles, metadata, message bodies) can lead to excessive memory, storage, or CPU use. Enforce server-side validation to allow ample content while preventing pathological payloads.
+
+Recommended defaults (ample but bounded)
+- Thread title: max 200 characters
+- Thread metadata (JSON): max 8 KiB (8192 bytes) serialized
+- Message body (full JSON payload): max 64 KiB (65536 bytes)
+- Individual string fields inside message body (e.g., `body.text`): max 4096 characters
+- Number of items in arrays (e.g., `body.tags`): max 256
+
+Where to enforce
+- At the HTTP handler boundary (before DB writes) to fail fast.
+- Both structural validation (types, required fields) and size checks (bytes and per-field lengths).
+
+Example Go validation (conceptual)
+```go
+func validateThreadInput(t models.Thread) error {
+    if len(t.Title) > 200 {
+        return fmt.Errorf("title too long")
+    }
+    if bs, err := json.Marshal(t.Metadata); err == nil {
+        if len(bs) > 8192 { // 8 KiB
+            return fmt.Errorf("metadata too large")
+        }
+    }
+    return nil
+}
+
+func validateMessageInput(m models.Message) error {
+    if bs, err := json.Marshal(m.Body); err == nil {
+        if len(bs) > 65536 { // 64 KiB
+            return fmt.Errorf("message body too large")
+        }
+    }
+    if s, ok := m.Body["text"].(string); ok {
+        if utf8.RuneCountInString(s) > 4096 {
+            return fmt.Errorf("body.text too long")
+        }
+    }
+    return nil
+}
+```
+
+Configuration & tuning
+- Make limits configurable via `config.yaml` or environment variables (e.g., `PROGRESSDB_MAX_MSG_BYTES`, `PROGRESSDB_MAX_THREAD_META_BYTES`, `PROGRESSDB_MAX_TITLE_LEN`).
+- Start with conservative defaults in staging and tune after load testing.
+
+Monitoring & alerting
+- Emit metrics for validation rejections so you can detect abusive clients.
+- Alert on spikes in validation failures or sudden increases in thread/message creation.
+
+Operational notes
+- For large attachments, require clients to upload to object storage and include references in messages.
+- Keep validation and quotas consistent across API and admin tooling.
+
+Rollout checklist
+- [ ] Add validation checks to thread and message handlers.
+- [ ] Add config knobs for limits.
+- [ ] Test with large-but-valid and oversized payloads in staging.
+- [ ] Monitor validation metrics and thread/message rates after rollout.
