@@ -1,0 +1,133 @@
+# Productionization Guide
+
+This document lists production configuration, secrets, and operational guidance for running ProgressDB in a secure, reliable way.
+
+It complements `server/README.md` with prescriptive defaults and a checklist for production deployments.
+
+## Top-level goals
+
+- Secure network access (TLS, API keys)
+- Least-privilege API surface for frontend vs backend callers
+- Health and liveness probes that work with orchestration platforms
+- Observability (metrics, logs) and rate limiting to protect against spikes
+- Encryption of persisted data when required
+
+## Environment variables (recommended)
+
+The server supports both a YAML `config.yaml` and environment variables. For production we recommend setting these environment variables (or their equivalents in `config.yaml`) and keeping all secret values in a secrets manager.
+
+- `PROGRESSDB_ADDR` — Listen address (`host:port`), e.g. `0.0.0.0:8080`.
+- `PROGRESSDB_DB_PATH` — Pebble DB path (persistent volume), e.g. `/var/lib/progressdb`.
+- `PROGRESSDB_ENCRYPTION_KEY` — 64 hex chars (32 bytes) AES‑256‑GCM key. Generate with: `openssl rand -hex 32`.
+- `PROGRESSDB_ENCRYPT_FIELDS` — Optional, comma-separated JSON paths to field-encrypt (e.g. `body.credit_card,body.phi.*`).
+- `PROGRESSDB_CONFIG` — Optional path to `config.yaml` if you prefer file configs.
+- `PROGRESSDB_LOG_LEVEL` — `debug|info|warn|error` (default `info`).
+
+Security & API keys
+- `PROGRESSDB_API_BACKEND_KEYS` — Comma-separated backend (secret) keys (scope: all routes). Use strong, random keys (e.g. `sk_...`).
+- `PROGRESSDB_API_FRONTEND_KEYS` — Comma-separated frontend (public) keys (scope: limited to `GET|POST /v1/messages` and `GET /healthz`). Use distinct values (e.g. `pk_...`) and rotate independently.
+- 
+- `PROGRESSDB_API_ADMIN_KEYS` — Keys for admin tooling (full scope).
+- `PROGRESSDB_ALLOW_UNAUTH` — `false` in production. Only `true` for local/dev convenience.
+
+Networking & CORS
+- `PROGRESSDB_CORS_ORIGINS` — Comma-separated allowed origins for browsers (e.g. `https://app.example.com`). If empty, no CORS headers are emitted and browsers will block cross-origin requests.
+- `PROGRESSDB_IP_WHITELIST` — Comma-separated IPs allowed when IP whitelist is used (optional).
+
+Rate limiting
+- `PROGRESSDB_RATE_RPS` — Requests per second default per key/IP (e.g. `10`).
+- `PROGRESSDB_RATE_BURST` — Burst size for rate limiter (e.g. `20`).
+
+TLS
+- `PROGRESSDB_TLS_CERT` — Path to TLS cert file (PEM).
+- `PROGRESSDB_TLS_KEY` — Path to TLS key file (PEM).
+
+Other
+- `PROGRESSDB_ALLOW_UNAUTH` — Keep `false` for production so anonymous requests are rejected.
+
+## Equivalent `config.yaml` snippets
+
+server:
+  address: "0.0.0.0"
+  port: 8080
+  tls:
+    cert_file: "/etc/ssl/certs/progressdb.crt"
+    key_file: "/etc/ssl/private/progressdb.key"
+
+storage:
+  db_path: "/var/lib/progressdb"
+
+security:
+  encryption_key: "<64-hex-chars>"
+  cors:
+    allowed_origins: ["https://app.example.com"]
+  rate_limit:
+    rps: 10
+    burst: 20
+  ip_whitelist: []
+  api_keys:
+    backend: ["sk_example_backend"]
+    frontend: ["pk_example_frontend"]
+    admin: ["admin_example"]
+    allow_unauth: false
+
+## CORS behavior (summary)
+
+- If `security.cors.allowed_origins` (or `PROGRESSDB_CORS_ORIGINS`) is empty, the server does not set any CORS response headers. Browser-based cross-origin requests will be blocked by the browser.
+- To allow browser clients, list specific origins. Using `*` allows all origins but is not recommended for production.
+
+## Health checks
+
+- The server exposes `GET /healthz` which returns `{"status":"ok"}` and is allowed without an API key by default (this is intentional to support container orchestrators). Keep this endpoint public-only and avoid returning sensitive data there.
+- Use the `/metrics` endpoint for monitoring and alerting via Prometheus.
+
+## Secrets management
+
+- Do NOT store secrets (encryption keys, API keys) in Git. Use a secrets manager (AWS Secrets Manager, GCP Secret Manager, Vault, etc.) and inject secrets into the runtime environment or Kubernetes secrets.
+- Set file permissions to owner-read/write only if you use `config.yaml` or `.env` files: `chmod 600 config.yaml .env`.
+
+## Encryption & key rotation
+
+- `PROGRESSDB_ENCRYPTION_KEY` is used for AES‑256‑GCM full-message encryption and for field-level encryption.
+- Rotation requires re-encrypting data; plan a migration strategy (re-encrypt on read/write or run a background re-encrypt job with a rolling window).
+
+## Rate limiting & DOS protection
+
+- Enable `rate_limit` in config to protect the service. Tune `rps` and `burst` based on expected traffic and per-key allowances.
+- Use upstream load balancer WAF / firewall rules for coarse-grained protection.
+
+## Observability
+
+- Prometheus metrics at `/metrics` are enabled by default. Scrape with your Prometheus server and add alerting rules for error rates, latency, disk usage, and open file descriptors.
+- Structured logs (stdout) are emitted. Ship logs to your centralized logging solution (ELK, Loki, Datadog, etc.).
+
+## Backups & storage
+
+- Back up the Pebble DB directory regularly. Consider filesystem snapshots or periodic copy-outs to object storage.
+- Test restores to ensure backup integrity.
+
+## Deployment checklist
+
+- [ ] Generate a secure 32-byte encryption key: `openssl rand -hex 32` and store it in your secrets manager.
+- [ ] Create backend and frontend API keys; store them securely and inject into the runtime via secrets.
+- [ ] Configure TLS certs and key and verify TLS by curling the server.
+- [ ] Configure allowed CORS origins for your web frontend.
+- [ ] Enable rate limiting and monitoring.
+- [ ] Configure health checks in your orchestrator: use `GET /healthz` for liveness and readiness probes.
+- [ ] Set up Prometheus scraping on `/metrics`.
+- [ ] Set filesystem permissions for any config files: `chmod 600 config.yaml`.
+
+## Tips for rolling upgrades
+
+- Use health checks and graceful restarts. Let your orchestrator wait for `/healthz` to be healthy before routing traffic.
+- Maintain backwards compatibility for API keys — avoid rotating all keys at once.
+
+## CI/CD & releases
+
+- Use the provided `.goreleaser.yml` and GitHub Actions to produce release binaries and Docker images.
+- Tag releases and let GoReleaser create artifacts and releases.
+
+## Contact & support
+
+For questions about deployment or security considerations, reach out to the engineering owner or open an issue in the repo.
+

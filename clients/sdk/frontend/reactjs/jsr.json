@@ -2,5 +2,10 @@
     "name": "@progressdb/react",
     "version": "0.1.0",
     "license": "MIT",
-    "exports": "./mod.ts"
+    "exports": "./mod.ts",
+    "publish": {
+      "exclude": [
+        "!dist/**"
+      ]
+    }
   }
