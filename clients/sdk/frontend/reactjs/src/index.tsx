@@ -276,7 +276,18 @@ export function useThreads(deps: any[] = []) {
     return created;
   };
 
-  return { threads, loading, error, refresh: fetchThreads, create };
+  const update = async (id: string, patch: Partial<Thread>) => {
+    const updated = await client.updateThread(id, patch as Thread);
+    await fetchThreads();
+    return updated;
+  };
+
+  const remove = async (id: string) => {
+    await client.deleteThread(id);
+    await fetchThreads();
+  };
+
+  return { threads, loading, error, refresh: fetchThreads, create, update, remove };
 }
 
 // Reactions
