@@ -143,6 +143,10 @@ export class ProgressDBClient {
     return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
   }
 
+  updateThread(id: string, thread: Partial<Thread>, userId?: string, userSignature?: string): Promise<Thread> {
+    return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'PUT', thread, userId, userSignature) as Promise<Thread>;
+  }
+
   // Thread messages
   createThreadMessage(threadID: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
     return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages`, 'POST', msg, userId, userSignature) as Promise<Message>;

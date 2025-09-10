@@ -67,6 +67,9 @@ class ProgressDBClient:
     def create_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         return self.request("POST", "/v1/threads", thread)
 
+    def update_thread(self, id: str, thread: Dict[str, Any]) -> Dict[str, Any]:
+        return self.request("PUT", f"/v1/threads/{id}", thread)
+
     def get_thread(self, id: str) -> Dict[str, Any]:
         return self.request("GET", f"/v1/threads/{id}")
 

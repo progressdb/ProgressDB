@@ -70,6 +70,10 @@ export class BackendClient {
     return await this.request<Thread>('POST', '/v1/threads', t);
   }
 
+  async updateThread(id: string, t: Partial<Thread>): Promise<Thread> {
+    return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t);
+  }
+
   async createMessage(m: Partial<Message>): Promise<Message> {
     return await this.request<Message>('POST', '/v1/messages', m);
   }
