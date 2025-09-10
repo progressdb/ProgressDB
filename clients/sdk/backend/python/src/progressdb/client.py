@@ -61,8 +61,22 @@ class ProgressDBClient:
         return self.request("GET", "/admin/stats")
 
     # Threads
-    def list_threads(self) -> Dict[str, Any]:
-        return self.request("GET", "/v1/threads")
+    def list_threads(self, author: Optional[str] = None, title: Optional[str] = None, slug: Optional[str] = None) -> Dict[str, Any]:
+        """List threads.
+
+        Optional filters: `author`, `title`, `slug`. Backend callers should
+        provide an `author` (either via this query param or via X-User-ID header)
+        when using backend/admin keys.
+        """
+        qs = []
+        if author is not None:
+            qs.append(f"author={author}")
+        if title is not None:
+            qs.append(f"title={title}")
+        if slug is not None:
+            qs.append(f"slug={slug}")
+        path = "/v1/threads" + ("?" + "&".join(qs) if qs else "")
+        return self.request("GET", path)
 
     def create_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         return self.request("POST", "/v1/threads", thread)

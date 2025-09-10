@@ -56,8 +56,15 @@ export class BackendClient {
   }
 
   // threads
-  async listThreads(): Promise<Thread[]> {
-    const res = await this.request<{ threads: Thread[] }>('GET', '/v1/threads');
+  // Accept optional query filters. For backend callers the server requires
+  // an author to be supplied (either via signature or via query/header).
+  async listThreads(opts: { author?: string; title?: string; slug?: string } = {}): Promise<Thread[]> {
+    const qs = new URLSearchParams();
+    if (opts.author) qs.set('author', opts.author);
+    if (opts.title) qs.set('title', opts.title);
+    if (opts.slug) qs.set('slug', opts.slug);
+    const path = '/v1/threads' + (qs.toString() ? `?${qs.toString()}` : '');
+    const res = await this.request<{ threads: Thread[] }>('GET', path);
     return res.threads || [];
   }
 
