@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SDK_DIR="$ROOT_DIR/clients/sdk/frontend/nodejs"
+SDK_DIR="$ROOT_DIR/clients/sdk/backend/nodejs"
 
 ALLOW_SLOW=0
 
