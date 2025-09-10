@@ -27,4 +27,16 @@ Features
 
 - `sign_user(user_id)` — calls `POST /v1/_sign` (backend-only)
 - `admin_health()`, `admin_stats()` — admin endpoints
-- Thread and message helpers: `list_threads`, `create_thread`, `create_message`, `delete_thread`, etc.
+-- Thread and message helpers: `list_threads(author=None, title=None, slug=None)`, `create_thread`, `create_message`, `delete_thread`, etc.
+
+Note: `list_threads` accepts optional query filters `author`, `title`, and `slug`.
+Backend callers should provide `author` (either via this parameter or the
+`X-User-ID` header) when using backend/admin keys because the server requires an
+author to be resolved for this endpoint.
+
+## Thread helpers (notes)
+
+- `get_thread(id, author=None)` — retrieve thread metadata (title, slug, author, timestamps).
+  Backend callers should provide `author` when using backend/admin keys (either via this
+  parameter or by setting `X-User-ID` header) because the server requires author resolution
+  for this endpoint.

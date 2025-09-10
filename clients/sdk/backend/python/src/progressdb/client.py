@@ -84,8 +84,17 @@ class ProgressDBClient:
     def update_thread(self, id: str, thread: Dict[str, Any]) -> Dict[str, Any]:
         return self.request("PUT", f"/v1/threads/{id}", thread)
 
-    def get_thread(self, id: str) -> Dict[str, Any]:
-        return self.request("GET", f"/v1/threads/{id}")
+    def get_thread(self, id: str, author: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieve thread metadata by id.
+
+        For backend callers the server requires an author to be resolved. Supply
+        `author` to include it as a query parameter (or set `X-User-ID` header
+        via the optional `headers` parameter on `request` if you extend the SDK).
+        """
+        path = f"/v1/threads/{id}"
+        if author is not None:
+            path = path + f"?author={author}"
+        return self.request("GET", path)
 
     def delete_thread(self, id: str):
         return self.request("DELETE", f"/v1/threads/{id}")

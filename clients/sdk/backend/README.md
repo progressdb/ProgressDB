@@ -22,7 +22,12 @@ API surface (suggested)
 - `signUser(userId: string): Promise<{ userId: string, signature: string }>`
 - `adminHealth(): Promise<{status:string, service?:string}>`
 - `adminStats(): Promise<{ threads: number, messages: number }>`
-- `listThreads(opts?: {limit?: number, cursor?: string}): Promise<Thread[]>`
+-- `listThreads(opts?: { author?: string; title?: string; slug?: string }): Promise<Thread[]>`
+
+- `author` is important for backend calls: the server requires an author to be
+  resolved (via signature, `X-User-ID` header, or the `author` query param). For
+  GET collection endpoints (no request body) backend callers frequently supply
+  `author` as a query parameter or set `X-User-ID` on the request.
 - `deleteThread(id: string): Promise<void>`
 - `request<T>(method, path, opts?)` — low-level wrapper
 
@@ -50,3 +55,8 @@ Milestones / Roadmap
 - M2: add retries, ApiError, tests.
 - M3: docs + examples, release v0.1.0.
 
+## Client API notes
+
+- `listThreads(opts?: { author?: string; title?: string; slug?: string }): Promise<Thread[]>` — list threads with optional filters. Backend callers should provide `author` when using backend/admin keys.
+
+- `getThread(id: string, opts?: { author?: string }): Promise<Thread>` — retrieve thread metadata (title, slug, author, timestamps). For backend callers, include `opts.author` or set `X-User-ID` to satisfy server author resolution.

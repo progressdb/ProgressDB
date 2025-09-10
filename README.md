@@ -131,7 +131,7 @@ import ProgressDBClient from '@progressdb/js'
 
 const client = new ProgressDBClient({ baseUrl: 'http://localhost:8080', apiKey: 'pk_frontend' })
 
-// list threads
+// list threads (frontend: requires signed user; set `defaultUserId`/`defaultUserSignature`)
 const { threads } = await client.listThreads()
 
 // create a thread

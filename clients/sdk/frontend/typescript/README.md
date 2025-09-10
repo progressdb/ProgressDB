@@ -34,7 +34,18 @@ Offered methods (high level)
 - `health()` — Health check
 - Messages: `listMessages`, `createMessage`, `getMessage`, `updateMessage`, `deleteMessage`, `listMessageVersions`
 - Reactions: `listReactions`, `addOrUpdateReaction`, `removeReaction`
-- Threads: `createThread`, `listThreads`, `getThread`, `updateThread`, `deleteThread`
+-- Threads: `createThread`, `listThreads`, `getThread`, `updateThread`, `deleteThread`
+
+Notes on listing threads
+
+- The server supports filtering threads by `author`, `title` and `slug` via
+  query parameters. Backend SDKs expose these filters on `listThreads(opts)`.
+- Frontend callers use the signed-author flow: obtain a signature
+  (`POST /v1/_sign`) from your backend and provide `X-User-ID` and
+  `X-User-Signature` headers (the SDK accepts `defaultUserId` /
+  `defaultUserSignature` in `SDKOptions`). In that case you can call
+  `listThreads()` without providing an explicit `author` query param because
+  the server resolves the author from the signature.
 - Thread messages: `createThreadMessage`, `listThreadMessages`, `getThreadMessage`, `updateThreadMessage`, `deleteThreadMessage`
 - `signUser(userId)` — Admin-only signer endpoint (requires admin API key)
 

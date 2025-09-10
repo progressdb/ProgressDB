@@ -68,6 +68,13 @@ export class BackendClient {
     return res.threads || [];
   }
 
+  async getThread(id: string, opts: { author?: string } = {}): Promise<Thread> {
+    const qs = new URLSearchParams();
+    if (opts.author) qs.set('author', opts.author);
+    const path = `/v1/threads/${encodeURIComponent(id)}` + (qs.toString() ? `?${qs.toString()}` : '');
+    return await this.request<Thread>('GET', path);
+  }
+
   async deleteThread(id: string): Promise<void> {
     await this.request('DELETE', `/v1/threads/${encodeURIComponent(id)}`);
   }

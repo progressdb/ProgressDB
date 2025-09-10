@@ -45,9 +45,19 @@ Available methods (BackendClient)
 
 - Calls `GET /admin/stats` (admin/backend keys only).
 
-`listThreads(): Promise<Thread[]>`
+`listThreads(opts?: { author?: string; title?: string; slug?: string }): Promise<Thread[]>`
 
-- Calls `GET /v1/threads` and returns the `threads` array.
+- Calls `GET /v1/threads` and returns the `threads` array. Backend callers may
+  supply query filters via `opts`. Note: the server requires an `author` to be
+  resolved for this endpoint — backend callers should either provide `opts.author`
+  or set the `X-User-ID` header when using a backend/admin key.
+
+Example
+
+```ts
+// backend service listing threads for a specific author
+const threads = await db.listThreads({ author: 'service-account', title: 'General' })
+```
 
 `createThread(t: Partial<Thread>): Promise<Thread>`
 
@@ -56,6 +66,17 @@ Available methods (BackendClient)
 `deleteThread(id: string): Promise<void>`
 
 - Calls `DELETE /v1/threads/{id}`.
+
+`getThread(id: string, opts?: { author?: string }): Promise<Thread>`
+
+- Calls `GET /v1/threads/{id}` to retrieve thread metadata (title, slug, author, timestamps).
+- Backend callers should provide an `author` query param (or set `X-User-ID`) because the
+  server requires an author to be resolved for this endpoint. Example:
+
+```ts
+// backend service retrieving a thread's metadata for a particular author
+const thr = await db.getThread('thread-123', { author: 'service-account' })
+```
 
 `createMessage(m: Partial<Message>): Promise<Message>`
 
@@ -91,4 +112,3 @@ Next steps / recommendations
 - Add higher-level message APIs (`listMessages`, `getMessage`, `listMessageVersions`, reactions). I can implement these next.
 - Add a `fetch` override option to the factory for custom runtimes and tests.
 - Add unit tests and a CI workflow.
-

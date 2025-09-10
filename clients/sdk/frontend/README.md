@@ -16,6 +16,14 @@ Auth flow (recommended)
 2. Client calls the app backend (e.g., `POST /api/sign`) which uses the Backend SDK to call `/v1/_sign` and returns `{ signature }`.
 3. Client calls ProgressDB endpoints via the Frontend SDK and sets headers `X-User-ID` and `X-User-Signature`.
 
+Notes on listing threads
+
+- The server supports filtering threads by `author`, `title`, and `slug` via
+  query parameters. Backend SDKs expose those filters as `listThreads(opts)`.
+- Frontend callers using the signed-author flow should call `listThreads()` and
+  rely on the SDK's default `userId`/`userSignature` (or pass them directly);
+  the server will resolve the author from the signature.
+
 API surface (suggested)
 - `new FrontendClient({ baseUrl: string, fetch?: typeof fetch })`
 - `listThreads(opts?)`
@@ -41,4 +49,3 @@ File layout (suggested)
 Milestones
 - M1: scaffold, implement core methods and auth header helpers.
 - M2: examples and tests.
-
