@@ -192,3 +192,20 @@ Rollout checklist
 - [ ] Add config knobs for limits.
 - [ ] Test with large-but-valid and oversized payloads in staging.
 - [ ] Monitor validation metrics and thread/message rates after rollout.
+
+API changes: thread updates & soft-delete
+---------------------------------------
+
+- New: `PUT /v1/threads/{id}` — update thread metadata (title/attributes). Requires canonical author (verified signature for frontend; backend must supply `author` in body or via `X-User-ID`) or `admin` role.
+- New: soft-delete on `DELETE /v1/threads/{id}` — marks thread `deleted=true` and appends a tombstone message. Non-admins cannot see deleted threads; admins can.
+- Message `role` field: messages support an optional `role` field (e.g. `"user"`, `"system"`). The server defaults it to `"user"` when omitted.
+
+Backend-author requirement
+-------------------------
+
+- Backend callers using a backend key must provide an `author` value when not using signature-based authentication. The server will accept `author` from the request body or the `X-User-ID` header and use it as the canonical author for the operation. Frontend callers must continue to use the signed-author flow.
+
+Knock-on effects
+-----------------
+- Listings and thread message APIs hide soft-deleted threads for non-admins. Posting to or modifying messages in a soft-deleted thread is forbidden for non-admins.
+- Retention: soft-deleted threads continue to consume storage; plan a separate retention/GC job to hard-delete older deleted threads.

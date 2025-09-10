@@ -36,10 +36,10 @@ export default function App() {
 
 Provided hooks
 
-- `useProgressClient()` — returns the raw `ProgressDBClient` instance
+- `useProgressClient()` — returns the raw `ProgressDBClient` instance (you may call `client.updateThread(...)` directly)
 - `useMessages(threadId)` — list messages in a thread; provides `messages`, `loading`, `error`, `refresh`, `create`
 - `useMessage(id)` — get a single message; provides `message`, `loading`, `error`, `refresh`, `update`, `remove`
-- `useThreads()` — list/create threads
+- `useThreads()` — list/create threads (you can call `const client = useProgressClient(); await client.updateThread(id, { title: 'new' })` to update)
 - `useReactions(messageId)` — list/add/remove reactions
 
 Notes
@@ -69,5 +69,17 @@ The provider accepts an optional `getUserSignature` prop — a function that ret
 ```
 
 Important: `getUserSignature` is required and will be called once by the provider when the app loads (the provider caches the returned values in memory and — by default — in `sessionStorage` to avoid re-calling the backend for every operation). Do not call the server `/v1/_sign` endpoint directly from untrusted frontends. The `getUserSignature` callback should call a trusted backend endpoint that holds the admin/backend API key and returns only the signature for the frontend to use. Your backend should authenticate the requester before issuing signatures.
+
+Updating threads
+
+The React bindings do not add a separate helper for updating threads; you can use the underlying client returned by `useProgressClient()` to call `updateThread` added in the frontend SDK:
+
+```ts
+const client = useProgressClient();
+await client.updateThread(threadId, { title: 'New title' });
+// then refresh threads via your hook
+```
+
+Note: thread updates require canonical author (verified signature for frontend, or backend-provided `author` for backend callers) and only the author or admin may update a thread.
 
 The provider exposes a small helper hook `useUserSignature()` returning `{ userId, signature, loaded, loading, error, refresh, clear }` so you can refresh or clear the cached signature as needed.

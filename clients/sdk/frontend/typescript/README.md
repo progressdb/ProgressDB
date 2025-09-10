@@ -34,11 +34,15 @@ Offered methods (high level)
 - `health()` — Health check
 - Messages: `listMessages`, `createMessage`, `getMessage`, `updateMessage`, `deleteMessage`, `listMessageVersions`
 - Reactions: `listReactions`, `addOrUpdateReaction`, `removeReaction`
-- Threads: `createThread`, `listThreads`, `getThread`, `deleteThread`
+- Threads: `createThread`, `listThreads`, `getThread`, `updateThread`, `deleteThread`
 - Thread messages: `createThreadMessage`, `listThreadMessages`, `getThreadMessage`, `updateThreadMessage`, `deleteThreadMessage`
 - `signUser(userId)` — Admin-only signer endpoint (requires admin API key)
+
+Notes on `role` and authorship
+
+- Messages now include an optional `role` field (e.g. `"user"`, `"system"`). If omitted the server will set it to `"user"` by default.
+- Backend callers (using a backend API key) may provide the `author` field in the request body; frontend callers must use the signed-author flow (`X-User-ID` + `X-User-Signature`).
 
 Notes
 
 - This SDK is written in TypeScript and compiled to JS for distribution. The bundle is intentionally minimal and uses `fetch`. In Node, provide a global `fetch` polyfill or pass one via `SDKOptions.fetch`.
-
