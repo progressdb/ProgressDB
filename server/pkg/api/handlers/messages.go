@@ -69,6 +69,16 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
 	}
+	// prevent posting to deleted thread
+	if sthr, err := store.GetThread(m.Thread); err == nil {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
+			if th.Deleted && r.Header.Get("X-Role-Name") != "admin" {
+				http.Error(w, `{"error":"thread deleted"}`, http.StatusForbidden)
+				return
+			}
+		}
+	}
 	if err := validation.ValidateMessage(m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return

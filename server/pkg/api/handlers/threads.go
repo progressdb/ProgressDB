@@ -20,9 +20,10 @@ import (
 
 // RegisterThreads registers all thread-related HTTP routes to the provided router.
 func RegisterThreads(r *mux.Router) {
-	// Collection routes
-	r.HandleFunc("/threads", createThread).Methods(http.MethodPost)
-	r.HandleFunc("/threads", listThreads).Methods(http.MethodGet)
+    // Collection routes
+    r.HandleFunc("/threads", createThread).Methods(http.MethodPost)
+    r.HandleFunc("/threads", listThreads).Methods(http.MethodGet)
+    r.HandleFunc("/threads/{id}", updateThread).Methods(http.MethodPut)
 
 	// Single resource routes
 	r.HandleFunc("/threads/{id}", getThread).Methods(http.MethodGet)
@@ -127,14 +128,19 @@ func listThreads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var out []models.Thread
-	for _, v := range vals {
-		var th models.Thread
-		if err := json.Unmarshal([]byte(v), &th); err != nil {
-			continue
-		}
-		if th.Author != authorQ {
-			continue
-		}
+    for _, v := range vals {
+        var th models.Thread
+        if err := json.Unmarshal([]byte(v), &th); err != nil {
+            continue
+        }
+        // hide deleted threads for non-admins
+        role := r.Header.Get("X-Role-Name")
+        if th.Deleted && role != "admin" {
+            continue
+        }
+        if th.Author != authorQ {
+            continue
+        }
 		if titleQ != "" && !strings.Contains(strings.ToLower(th.Title), strings.ToLower(titleQ)) {
 			continue
 		}
@@ -173,15 +179,20 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var th models.Thread
-	if err := json.Unmarshal([]byte(s), &th); err != nil {
-		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
-		return
-	}
-	if th.Author != authorQ {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-		return
-	}
+    var th models.Thread
+    if err := json.Unmarshal([]byte(s), &th); err != nil {
+        http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+        return
+    }
+    role := r.Header.Get("X-Role-Name")
+    if th.Deleted && role != "admin" {
+        http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
+        return
+    }
+    if th.Author != authorQ {
+        http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+        return
+    }
 
 	_, _ = w.Write([]byte(s))
 }
@@ -190,42 +201,74 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 // Returns 404 if the thread does not exist.
 // The "author" query parameter is required and must match the thread's author.
 func deleteThread(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Content-Type", "application/json")
 
-	id := mux.Vars(r)["id"]
-	if id == "" {
-		http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
-		return
-	}
+    id := mux.Vars(r)["id"]
+    if id == "" {
+        http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
+        return
+    }
 
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := resolveAuthor(r)
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
+    // perform soft-delete via store helper (marks thread deleted + append tombstone)
+    if err := store.SoftDeleteThread(id, authorQ); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
+}
 
-	s, err := store.GetThread(id)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
-		return
-	}
-
-	var th models.Thread
-	if err := json.Unmarshal([]byte(s), &th); err != nil {
-		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
-		return
-	}
-	if th.Author != authorQ {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-		return
-	}
-
-	// If all checks pass, delete the thread (or mark as deleted, depending on implementation)
-	if err := store.DeleteThread(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+// updateThread handles PUT /threads/{id} to update thread metadata.
+func updateThread(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    id := mux.Vars(r)["id"]
+    if id == "" {
+        http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
+        return
+    }
+    var t models.Thread
+    if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+        http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+        return
+    }
+    // resolve author (signature or backend-provided)
+    author, code, msg := auth.ResolveAuthor(r, t.Author)
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
+    // load existing thread
+    s, err := store.GetThread(id)
+    if err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+        return
+    }
+    var th models.Thread
+    if err := json.Unmarshal([]byte(s), &th); err != nil {
+        http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+        return
+    }
+    role := r.Header.Get("X-Role-Name")
+    if role != "admin" && th.Author != author {
+        http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+        return
+    }
+    // Apply updates: allow title changes
+    if t.Title != "" {
+        th.Title = t.Title
+        th.Slug = utils.MakeSlug(th.Title, th.ID)
+    }
+    th.UpdatedTS = time.Now().UTC().UnixNano()
+    nb, _ := json.Marshal(th)
+    if err := store.SaveThread(th.ID, string(nb)); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
+    _ = json.NewEncoder(w).Encode(th)
 }
 
 // defaultThreadTitle generates a default title for new threads.
@@ -267,6 +310,17 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
 	}
+
+	// Prevent posting into deleted threads (non-admin callers)
+	if sthr, err := store.GetThread(m.Thread); err == nil {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
+			if th.Deleted && r.Header.Get("X-Role-Name") != "admin" {
+				http.Error(w, `{"error":"thread deleted"}`, http.StatusForbidden)
+				return
+			}
+		}
+	}
 	if err := validation.ValidateMessage(m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
@@ -283,14 +337,24 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 // Optional query parameter "limit" restricts the number of most recent messages returned.
 // The "author" query parameter is required.
 func listThreadMessages(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
-	threadID := mux.Vars(r)["threadID"]
-	msgs, err := store.ListMessages(threadID)
+    w.Header().Set("Content-Type", "application/json")
+    authorQ, code, msg := resolveAuthor(r)
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
+    threadID := mux.Vars(r)["threadID"]
+    // If the thread is soft-deleted, hide it from non-admin callers
+    if sthr, err := store.GetThread(threadID); err == nil {
+        var th models.Thread
+        if err := json.Unmarshal([]byte(sthr), &th); err == nil {
+            if th.Deleted && r.Header.Get("X-Role-Name") != "admin" {
+                http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
+                return
+            }
+        }
+    }
+    msgs, err := store.ListMessages(threadID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
