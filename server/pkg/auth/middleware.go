@@ -14,9 +14,6 @@ import (
 
 type ctxAuthorKey struct{}
 
-// (no exported getter needed; use config.GetSigningKeys and
-// config.GetBackendKeys as the single source of truth)
-
 // RequireSignedAuthor verifies HMAC signature headers and injects the
 // verified author id into the request context.
 func RequireSignedAuthor(next http.Handler) http.Handler {
@@ -26,19 +23,28 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 		userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 		sig := strings.TrimSpace(r.Header.Get("X-User-Signature"))
 
-		// Backend/admin callers: allow missing signature but accept header if present.
+		// Backend/admin callers: allow missing signature entirely, or accept
+		// a header-provided author without a signature. If a signature is
+		// present we will verify it below.
 		if role == "backend" || role == "admin" {
-			if userID == "" && sig == "" {
+			if sig == "" {
 				// No signature provided; allow the request through. Handlers may
 				// accept an author from body or X-User-ID header as appropriate.
 				next.ServeHTTP(w, r)
 				return
 			}
-			// If a signature is provided, verify it as usual.
+			// signature present -> fallthrough to verification logic
 		}
 
-		// For frontend or when signature is present, require and verify signature.
-		if userID == "" || sig == "" {
+		// If we reach here and there's no signature, the caller is not a
+		// trusted backend/admin and we must require signature headers.
+		if sig == "" {
+			slog.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
+			return
+		}
+		// signature is present; require userID as well
+		if userID == "" {
 			slog.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
 			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
 			return

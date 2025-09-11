@@ -32,7 +32,7 @@ type SecConfig struct {
 	AllowUnauth    bool
 }
 
-func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
+func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 	// Rate limiters keyed by API key or remote IP
 	limiters := &limiterPool{cfg: cfg}
 	return func(next http.Handler) http.Handler {

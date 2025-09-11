@@ -18,12 +18,12 @@ import (
 )
 
 func main() {
-    // build metadata - set via ldflags during build/release
-    var (
-        version   = "dev"
-        commit    = "none"
-        buildDate = "unknown"
-    )
+	// build metadata - set via ldflags during build/release
+	var (
+		version   = "dev"
+		commit    = "none"
+		buildDate = "unknown"
+	)
 	// Parse flags (moved into config package to centralize flag parsing)
 	_ = godotenv.Load(".env")
 	addrVal, dbVal, cfgVal, setFlags := config.ParseCommandFlags()
@@ -108,27 +108,27 @@ func main() {
 	if _, err := config.Load(cfgPath); err == nil {
 		srcs = append(srcs, "config")
 	}
-    // Include version/commit info in the startup banner when present.
-    verStr := version
-    if commit != "none" {
-        verStr = verStr + " (" + commit + ")"
-    }
-    if buildDate != "unknown" {
-        verStr = verStr + " @ " + buildDate
-    }
-    banner.Print(addr, dbPath, strings.Join(srcs, ", "), verStr)
+	// Include version/commit info in the startup banner when present.
+	verStr := version
+	if commit != "none" {
+		verStr = verStr + " (" + commit + ")"
+	}
+	if buildDate != "unknown" {
+		verStr = verStr + " @ " + buildDate
+	}
+	banner.Print(addr, dbPath, strings.Join(srcs, ", "), verStr)
 
 	mux := http.NewServeMux()
 
-    // Serve the web viewer at /viewer/
-    mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
+	// Serve the web viewer at /viewer/
+	mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
 
-    // Liveness probe used by deployment systems and CI
-    mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("{\"status\":\"ok\"}"))
-    })
+	// Liveness probe used by deployment systems and CI
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{\"status\":\"ok\"}"))
+	})
 
 	// API handler (catch-all under /)
 	mux.Handle("/", api.Handler())
@@ -182,7 +182,7 @@ func main() {
 	}
 	config.SetRuntime(rc)
 
-	wrapped := security.NewMiddleware(secCfg)(mux)
+	wrapped := security.AuthenticateRequestMiddleware(secCfg)(mux)
 
 	// TLS support: use values from effective cfg
 	cert := cfg.Server.TLS.CertFile
