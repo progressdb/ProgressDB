@@ -51,7 +51,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	}
     // determine caller role and canonical author
     // resolve canonical author (from signature, or backend-provided body/header)
-    if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+    if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
         http.Error(w, msg, code)
         return
     } else {
@@ -187,7 +187,7 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 	}
     m.ID = id
     // determine caller role and canonical author
-    if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+    if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
         http.Error(w, msg, code)
         return
     } else {
@@ -245,7 +245,7 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
     // verify author owns the message (or is admin)
-    author, code, msg := auth.ResolveAuthor(r, "")
+    author, code, msg := auth.ResolveAuthorFromRequest(r, "")
     if code != 0 {
         http.Error(w, msg, code)
         return

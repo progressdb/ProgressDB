@@ -44,23 +44,11 @@ func RegisterThreads(r *mux.Router) {
 // when the caller is an admin or backend role (middleware sets `X-Role-Name`).
 // Otherwise the verified author from the signed-author middleware is used.
 // Returns (author, 0, "") on success or ("", status, jsonError) on failure.
-func resolveAuthor(r *http.Request) (string, int, string) {
-    authorQ := r.URL.Query().Get("author")
-    role := r.Header.Get("X-Role-Name")
-    if authorQ != "" {
-        if role != "admin" && role != "backend" {
-            return "", http.StatusForbidden, `{"error":"author override not permitted"}`
-        }
-        return authorQ, 0, ""
-    }
-    // Use the canonical resolution which handles frontend signatures and
-    // backend-supplied header authors.
-    if author, code, msg := auth.ResolveAuthor(r, ""); code != 0 {
-        return "", code, msg
-    } else {
-        return author, 0, ""
-    }
-}
+// Use the canonical resolver in the auth package which prefers signature-verified
+// authors and falls back to backend-supplied author via header/body/query.
+// Handlers should call `auth.ResolveAuthorFromRequest(r, bodyAuthor)` where
+// `bodyAuthor` is the author supplied in the request body (if any), or the
+// empty string for GET/list endpoints.
 
 // createThread handles POST /threads to create a new thread.
 // The request body must contain a JSON object representing the thread.
@@ -74,7 +62,7 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
     // resolve canonical author (signature or backend-provided)
-    if author, code, msg := auth.ResolveAuthor(r, t.Author); code != 0 {
+    if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
         http.Error(w, msg, code)
         return
     } else {
@@ -113,7 +101,7 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 func listThreads(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-    authorQ, code, msg := resolveAuthor(r)
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
     if code != 0 {
         http.Error(w, msg, code)
         return
@@ -167,11 +155,11 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
 
 	s, err := store.GetThread(id)
 	if err != nil {
@@ -209,7 +197,7 @@ func deleteThread(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    authorQ, code, msg := resolveAuthor(r)
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
     if code != 0 {
         http.Error(w, msg, code)
         return
@@ -236,7 +224,7 @@ func updateThread(w http.ResponseWriter, r *http.Request) {
         return
     }
     // resolve author (signature or backend-provided)
-    author, code, msg := auth.ResolveAuthor(r, t.Author)
+    author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author)
     if code != 0 {
         http.Error(w, msg, code)
         return
@@ -294,7 +282,7 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// resolve canonical author (signature or backend-provided)
-	if author, code, msg := auth.ResolveAuthor(r, m.Author); code != 0 {
+	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
 		http.Error(w, msg, code)
 		return
 	} else {
@@ -338,7 +326,7 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 // The "author" query parameter is required.
 func listThreadMessages(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
-    authorQ, code, msg := resolveAuthor(r)
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
     if code != 0 {
         http.Error(w, msg, code)
         return
@@ -404,11 +392,11 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 // The "author" query parameter is required and must match the message's author.
 func getThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
 	id := mux.Vars(r)["id"]
 	s, err := store.GetLatestMessage(id)
 	if err != nil {
@@ -436,11 +424,11 @@ func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := vars["threadID"]
 	id := vars["id"]
 
-	authorQ, code, msg := resolveAuthor(r)
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+    if code != 0 {
+        http.Error(w, msg, code)
+        return
+    }
 	var m models.Message
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
@@ -476,7 +464,7 @@ func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 // The "author" query parameter is required and must match the message's author.
 func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	authorQ, code, msg := resolveAuthor(r)
+	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
 	if code != 0 {
 		http.Error(w, msg, code)
 		return
