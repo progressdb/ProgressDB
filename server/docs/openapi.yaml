@@ -364,6 +364,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/XUserID'
       - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/AuthorQuery'
     post:
       summary: Create a thread
       requestBody:
@@ -381,6 +382,18 @@ paths:
                 $ref: '#/components/schemas/Thread'
     get:
       summary: List threads
+      parameters:
+        - $ref: '#/components/parameters/AuthorQuery'
+        - in: query
+          name: title
+          schema:
+            type: string
+          description: Case-insensitive substring filter on thread title
+        - in: query
+          name: slug
+          schema:
+            type: string
+          description: Exact match on thread slug
       responses:
         "200":
           description: OK
@@ -430,6 +443,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/XUserID'
       - $ref: '#/components/parameters/XUserSignature'
+      - $ref: '#/components/parameters/AuthorQuery'
     get:
       summary: Get thread metadata by ID
       parameters:
@@ -453,6 +467,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/AuthorQuery'
       responses:
         "204":
           description: No content
@@ -609,17 +624,24 @@ components:
     XUserID:
       name: X-User-ID
       in: header
-      required: true
+      required: false
       schema:
         type: string
-      description: Verified user id (provided alongside X-User-Signature)
+      description: |
+        Verified user id. When present this header is used alongside `X-User-Signature`
+        for frontend-signed requests. Backend callers holding a backend/admin API key
+        may also supply `X-User-ID` without a signature to assert an author.
     XUserSignature:
       name: X-User-Signature
       in: header
-      required: true
+      required: false
       schema:
         type: string
-      description: HMAC-SHA256 signature of the `X-User-ID` computed by a backend signer.
+      description: |
+        HMAC-SHA256 signature of the `X-User-ID` computed by a backend signer.
+        Required for frontend callers (who do not hold backend keys). Backend callers
+        that possess a backend/admin API key may omit this header and instead set
+        `X-User-ID`.
     AuthorQuery:
       name: author
       in: query
