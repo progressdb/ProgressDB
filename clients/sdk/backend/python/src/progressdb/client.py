@@ -61,43 +61,45 @@ class ProgressDBClient:
         return self.request("GET", "/admin/stats")
 
     # Threads
-    def list_threads(self, author: Optional[str] = None, title: Optional[str] = None, slug: Optional[str] = None) -> Dict[str, Any]:
+    def list_threads(self, author: str, title: Optional[str] = None, slug: Optional[str] = None) -> Dict[str, Any]:
         """List threads.
 
-        Optional filters: `author`, `title`, `slug`. Backend callers should
-        provide an `author` (either via this query param or via X-User-ID header)
-        when using backend/admin keys.
+        Filters: `author` is required for backend callers. Optional filters: `title`, `slug`.
         """
-        qs = []
-        if author is not None:
-            qs.append(f"author={author}")
+        if not author:
+            raise ValueError("author is required for backend list_threads calls")
+        qs = [f"author={author}"]
         if title is not None:
             qs.append(f"title={title}")
         if slug is not None:
             qs.append(f"slug={slug}")
         path = "/v1/threads" + ("?" + "&".join(qs) if qs else "")
-        return self.request("GET", path)
+        return self.request("GET", path, headers={"X-User-ID": author})
 
-    def create_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
-        return self.request("POST", "/v1/threads", thread)
+    def create_thread(self, thread: Dict[str, Any], author: str) -> Dict[str, Any]:
+        if not author:
+            raise ValueError("author is required for backend create_thread calls")
+        return self.request("POST", "/v1/threads", thread, headers={"X-User-ID": author})
 
-    def update_thread(self, id: str, thread: Dict[str, Any]) -> Dict[str, Any]:
-        return self.request("PUT", f"/v1/threads/{id}", thread)
+    def update_thread(self, id: str, thread: Dict[str, Any], author: str) -> Dict[str, Any]:
+        if not author:
+            raise ValueError("author is required for backend update_thread calls")
+        return self.request("PUT", f"/v1/threads/{id}", thread, headers={"X-User-ID": author})
 
-    def get_thread(self, id: str, author: Optional[str] = None) -> Dict[str, Any]:
+    def get_thread(self, id: str, author: str) -> Dict[str, Any]:
         """Retrieve thread metadata by id.
 
-        For backend callers the server requires an author to be resolved. Supply
-        `author` to include it as a query parameter (or set `X-User-ID` header
-        via the optional `headers` parameter on `request` if you extend the SDK).
+        Backend callers must provide `author` and it will be sent in `X-User-ID`.
         """
+        if not author:
+            raise ValueError("author is required for backend get_thread calls")
         path = f"/v1/threads/{id}"
-        if author is not None:
-            path = path + f"?author={author}"
-        return self.request("GET", path)
+        return self.request("GET", path, headers={"X-User-ID": author})
 
-    def delete_thread(self, id: str):
-        return self.request("DELETE", f"/v1/threads/{id}")
+    def delete_thread(self, id: str, author: str):
+        if not author:
+            raise ValueError("author is required for backend delete_thread calls")
+        return self.request("DELETE", f"/v1/threads/{id}", headers={"X-User-ID": author})
 
     # Messages
     def list_messages(self, thread: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
@@ -109,14 +111,22 @@ class ProgressDBClient:
         path = "/v1/messages" + ("?" + "&".join(qs) if qs else "")
         return self.request("GET", path)
 
-    def create_message(self, msg: Dict[str, Any]) -> Dict[str, Any]:
-        return self.request("POST", "/v1/messages", msg)
+    def create_message(self, msg: Dict[str, Any], author: str) -> Dict[str, Any]:
+        if not author:
+            raise ValueError("author is required for backend create_message calls")
+        return self.request("POST", "/v1/messages", msg, headers={"X-User-ID": author})
 
-    def get_message(self, id: str) -> Dict[str, Any]:
-        return self.request("GET", f"/v1/messages/{id}")
+    def get_message(self, id: str, author: str) -> Dict[str, Any]:
+        if not author:
+            raise ValueError("author is required for backend get_message calls")
+        return self.request("GET", f"/v1/messages/{id}", headers={"X-User-ID": author})
 
-    def update_message(self, id: str, msg: Dict[str, Any]) -> Dict[str, Any]:
-        return self.request("PUT", f"/v1/messages/{id}", msg)
+    def update_message(self, id: str, msg: Dict[str, Any], author: str) -> Dict[str, Any]:
+        if not author:
+            raise ValueError("author is required for backend update_message calls")
+        return self.request("PUT", f"/v1/messages/{id}", msg, headers={"X-User-ID": author})
 
-    def delete_message(self, id: str):
-        return self.request("DELETE", f"/v1/messages/{id}")
+    def delete_message(self, id: str, author: str):
+        if not author:
+            raise ValueError("author is required for backend delete_message calls")
+        return self.request("DELETE", f"/v1/messages/{id}", headers={"X-User-ID": author})

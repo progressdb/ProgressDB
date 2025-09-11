@@ -28,9 +28,10 @@ export class BackendClient {
     } as Record<string,string>;
   }
 
-  async request<T>(method: string, path: string, body?: any): Promise<T> {
+  async request<T>(method: string, path: string, body?: any, extraHeaders: Record<string,string> = {}): Promise<T> {
     try {
-      return await httpRequest<T>(this.baseUrl, method, path, body, this.headers(), {
+      const headers = Object.assign({}, this.headers(), extraHeaders || {});
+      return await httpRequest<T>(this.baseUrl, method, path, body, headers, {
         timeoutMs: this.timeoutMs,
         maxRetries: this.maxRetries,
       });
@@ -58,38 +59,43 @@ export class BackendClient {
   // threads
   // Accept optional query filters. For backend callers the server requires
   // an author to be supplied (either via signature or via query/header).
-  async listThreads(opts: { author?: string; title?: string; slug?: string } = {}): Promise<Thread[]> {
+  async listThreads(opts: { author: string; title?: string; slug?: string }): Promise<Thread[]> {
+    if (!opts || !opts.author) throw new Error('author is required for backend listThreads calls');
     const qs = new URLSearchParams();
-    if (opts.author) qs.set('author', opts.author);
+    qs.set('author', opts.author);
     if (opts.title) qs.set('title', opts.title);
     if (opts.slug) qs.set('slug', opts.slug);
-    const path = '/v1/threads' + (qs.toString() ? `?${qs.toString()}` : '');
-    const res = await this.request<{ threads: Thread[] }>('GET', path);
+    const path = '/v1/threads' + `?${qs.toString()}`;
+    // prefer header transport for author (avoid leaking in logs); include as header
+    const res = await this.request<{ threads: Thread[] }>('GET', path, undefined, { 'X-User-ID': opts.author });
     return res.threads || [];
   }
 
-  async getThread(id: string, opts: { author?: string } = {}): Promise<Thread> {
-    const qs = new URLSearchParams();
-    if (opts.author) qs.set('author', opts.author);
-    const path = `/v1/threads/${encodeURIComponent(id)}` + (qs.toString() ? `?${qs.toString()}` : '');
-    return await this.request<Thread>('GET', path);
+  async getThread(id: string, author: string): Promise<Thread> {
+    if (!author) throw new Error('author is required for backend getThread calls');
+    const path = `/v1/threads/${encodeURIComponent(id)}`;
+    return await this.request<Thread>('GET', path, undefined, { 'X-User-ID': author });
   }
 
-  async deleteThread(id: string): Promise<void> {
-    await this.request('DELETE', `/v1/threads/${encodeURIComponent(id)}`);
+  async deleteThread(id: string, author: string): Promise<void> {
+    if (!author) throw new Error('author is required for backend deleteThread calls');
+    await this.request('DELETE', `/v1/threads/${encodeURIComponent(id)}`, undefined, { 'X-User-ID': author });
   }
 
   // low-level helpers
-  async createThread(t: Partial<Thread>): Promise<Thread> {
-    return await this.request<Thread>('POST', '/v1/threads', t);
+  async createThread(t: Partial<Thread>, author: string): Promise<Thread> {
+    if (!author) throw new Error('author is required for backend createThread calls');
+    return await this.request<Thread>('POST', '/v1/threads', t, { 'X-User-ID': author });
   }
 
-  async updateThread(id: string, t: Partial<Thread>): Promise<Thread> {
-    return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t);
+  async updateThread(id: string, t: Partial<Thread>, author: string): Promise<Thread> {
+    if (!author) throw new Error('author is required for backend updateThread calls');
+    return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t, { 'X-User-ID': author });
   }
 
-  async createMessage(m: Partial<Message>): Promise<Message> {
-    return await this.request<Message>('POST', '/v1/messages', m);
+  async createMessage(m: Partial<Message>, author: string): Promise<Message> {
+    if (!author) throw new Error('author is required for backend createMessage calls');
+    return await this.request<Message>('POST', '/v1/messages', m, { 'X-User-ID': author });
   }
 }
 

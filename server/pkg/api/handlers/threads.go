@@ -39,17 +39,6 @@ func RegisterThreads(r *mux.Router) {
 	r.HandleFunc("/threads/{threadID}/messages/{id}", deleteThreadMessage).Methods(http.MethodDelete)
 }
 
-// resolveAuthor determines the effective author for a request.
-// If the client provided an `author` query parameter it is only accepted
-// when the caller is an admin or backend role (middleware sets `X-Role-Name`).
-// Otherwise the verified author from the signed-author middleware is used.
-// Returns (author, 0, "") on success or ("", status, jsonError) on failure.
-// Use the canonical resolver in the auth package which prefers signature-verified
-// authors and falls back to backend-supplied author via header/body/query.
-// Handlers should call `auth.ResolveAuthorFromRequest(r, bodyAuthor)` where
-// `bodyAuthor` is the author supplied in the request body (if any), or the
-// empty string for GET/list endpoints.
-
 // createThread handles POST /threads to create a new thread.
 // The request body must contain a JSON object representing the thread.
 // The "author" field is required in the body.

@@ -18,11 +18,11 @@ const db = ProgressDB({ baseUrl: 'https://api.example.com', apiKey: process.env.
 // Sign a user id (backend-only)
 const { signature } = await db.signUser('user-123')
 
-// Create thread
-const thread = await db.createThread({ title: 'General' })
+// Create thread (backend must provide author)
+const thread = await db.createThread({ title: 'General' }, 'service-account')
 
-// Create message
-const msg = await db.createMessage({ thread: thread.id, body: { text: 'hello' } })
+// Create message (backend must provide author)
+const msg = await db.createMessage({ thread: thread.id, body: { text: 'hello' } }, 'service-account')
 ```
 
 Available methods (BackendClient)
@@ -59,28 +59,29 @@ Example
 const threads = await db.listThreads({ author: 'service-account', title: 'General' })
 ```
 
-`createThread(t: Partial<Thread>): Promise<Thread>`
+`createThread(t: Partial<Thread>, author: string): Promise<Thread>`
 
-- Calls `POST /v1/threads`. Server assigns `id`, `author`, `slug`, and timestamps.
+- Calls `POST /v1/threads`. Backend callers must supply `author` which is sent as `X-User-ID`.
+  Server assigns `id`, `slug`, and timestamps.
 
-`deleteThread(id: string): Promise<void>`
+`deleteThread(id: string, author: string): Promise<void>`
 
-- Calls `DELETE /v1/threads/{id}`.
+- Calls `DELETE /v1/threads/{id}`. Backend callers must supply `author`.
 
-`getThread(id: string, opts?: { author?: string }): Promise<Thread>`
+`getThread(id: string, author: string): Promise<Thread>`
 
 - Calls `GET /v1/threads/{id}` to retrieve thread metadata (title, slug, author, timestamps).
-- Backend callers should provide an `author` query param (or set `X-User-ID`) because the
-  server requires an author to be resolved for this endpoint. Example:
+- Backend callers must provide `author` (sent as `X-User-ID`). Example:
 
 ```ts
 // backend service retrieving a thread's metadata for a particular author
-const thr = await db.getThread('thread-123', { author: 'service-account' })
+const thr = await db.getThread('thread-123', 'service-account')
 ```
 
-`createMessage(m: Partial<Message>): Promise<Message>`
+`createMessage(m: Partial<Message>, author: string): Promise<Message>`
 
-- Calls `POST /v1/messages`. Server generates the message `id` and sets `author` from the verified signature.
+- Calls `POST /v1/messages`. Backend callers must provide `author` sent as `X-User-ID`.
+  Server generates the message `id` and sets `author` from the provided header or signature.
 
 Types
 

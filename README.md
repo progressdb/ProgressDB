@@ -103,11 +103,11 @@ client = ProgressDBClient(base_url='http://localhost:8080', api_key='ADMIN_KEY')
 # Sign a user id (backend-only)
 sig = client.sign_user('user-123')
 
-# Create a thread
-thread = client.create_thread({'title': 'General'})
+# Create a thread (provide author)
+thread = client.create_thread({'title': 'General'}, author='service-account')
 
-# Create a message
-msg = client.create_message({'thread': thread['id'], 'body': {'text': 'hello'}})
+# Create a message (provide author)
+msg = client.create_message({'thread': thread['id'], 'body': {'text': 'hello'}}, author='service-account')
 ```
 
 Node (backend):
@@ -118,8 +118,8 @@ import ProgressDB from '@progressdb/node'
 const client = new ProgressDB({ baseUrl: 'http://localhost:8080', apiKey: process.env.PROGRESSDB_ADMIN_KEY })
 
 await client.signUser('user-123')
-const thread = await client.createThread({ title: 'General' })
-await client.createMessage({ thread: thread.id, body: { text: 'hello' } })
+const thread = await client.createThread({ title: 'General' }, 'service-account')
+await client.createMessage({ thread: thread.id, body: { text: 'hello' } }, 'service-account')
 ```
 
 
