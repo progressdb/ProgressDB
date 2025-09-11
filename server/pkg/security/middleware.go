@@ -42,7 +42,10 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+				// Allow common methods used by the API (including mutation methods).
+				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
+				// Cache preflight response for 10 minutes to reduce preflight traffic.
+				w.Header().Set("Access-Control-Max-Age", "600")
 				// Include common custom headers used by the SDKs (X-API-Key) and
 				// the signed-author flow (X-User-ID, X-User-Signature). Keep this
 				// list in sync with any client headers you expect to receive.

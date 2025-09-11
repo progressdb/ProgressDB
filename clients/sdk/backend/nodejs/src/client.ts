@@ -59,6 +59,13 @@ export class BackendClient {
   // threads
   // Accept optional query filters. For backend callers the server requires
   // an author to be supplied (either via signature or via query/header).
+  /**
+   * List threads for a specific author.
+   *
+   * Backend callers MUST supply `author`. The author is sent as `X-User-ID`.
+   * Optional filters: `title` (substring) and `slug` (exact match).
+   * Throws immediately if `author` is missing.
+   */
   async listThreads(opts: { author: string; title?: string; slug?: string }): Promise<Thread[]> {
     if (!opts || !opts.author) throw new Error('author is required for backend listThreads calls');
     const qs = new URLSearchParams();
@@ -71,28 +78,54 @@ export class BackendClient {
     return res.threads || [];
   }
 
+  /**
+   * Retrieve thread metadata by id.
+   *
+   * Backend callers MUST supply `author` which is sent as `X-User-ID`.
+   * The server will resolve and validate the author; mismatches will be rejected.
+   */
   async getThread(id: string, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend getThread calls');
     const path = `/v1/threads/${encodeURIComponent(id)}`;
     return await this.request<Thread>('GET', path, undefined, { 'X-User-ID': author });
   }
 
+  /**
+   * Soft-delete a thread by id.
+   *
+   * Backend callers MUST supply `author` (sent as `X-User-ID`).
+   */
   async deleteThread(id: string, author: string): Promise<void> {
     if (!author) throw new Error('author is required for backend deleteThread calls');
     await this.request('DELETE', `/v1/threads/${encodeURIComponent(id)}`, undefined, { 'X-User-ID': author });
   }
 
   // low-level helpers
+  /**
+   * Create a new thread.
+   *
+   * Backend callers MUST supply `author` which is sent as `X-User-ID`.
+   * The server will generate the thread id/slug and assign timestamps.
+   */
   async createThread(t: Partial<Thread>, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend createThread calls');
     return await this.request<Thread>('POST', '/v1/threads', t, { 'X-User-ID': author });
   }
 
+  /**
+   * Update thread metadata (title, etc.).
+   *
+   * Backend callers MUST supply `author` (sent as `X-User-ID`).
+   */
   async updateThread(id: string, t: Partial<Thread>, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend updateThread calls');
     return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t, { 'X-User-ID': author });
   }
 
+  /**
+   * Create a message. Backend callers MUST supply `author` (sent as `X-User-ID`).
+   * The server will generate the message id and timestamps.
+   */
   async createMessage(m: Partial<Message>, author: string): Promise<Message> {
     if (!author) throw new Error('author is required for backend createMessage calls');
     return await this.request<Message>('POST', '/v1/messages', m, { 'X-User-ID': author });
