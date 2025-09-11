@@ -49,18 +49,18 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-    // determine caller role and canonical author
-    // resolve canonical author (from signature, or backend-provided body/header)
-    if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
-        http.Error(w, msg, code)
-        return
-    } else {
-        m.Author = author
-    }
-    // Ensure message role is present. Default to "user" when omitted.
-    if m.Role == "" {
-        m.Role = "user"
-    }
+	// determine caller role and canonical author
+	// resolve canonical author (from signature, or backend-provided body/header)
+	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
+		http.Error(w, msg, code)
+		return
+	} else {
+		m.Author = author
+	}
+	// Ensure message role is present. Default to "user" when omitted.
+	if m.Role == "" {
+		m.Role = "user"
+	}
 	// Always generate server-side IDs for messages to avoid client-side impersonation
 	if m.Thread == "" {
 		m.Thread = utils.GenThreadID()
@@ -185,18 +185,18 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-    m.ID = id
-    // determine caller role and canonical author
-    if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
-        http.Error(w, msg, code)
-        return
-    } else {
-        m.Author = author
-    }
-    // Ensure role is present; default to "user" if omitted
-    if m.Role == "" {
-        m.Role = "user"
-    }
+	m.ID = id
+	// determine caller role and canonical author
+	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
+		http.Error(w, msg, code)
+		return
+	} else {
+		m.Author = author
+	}
+	// Ensure role is present; default to "user" if omitted
+	if m.Role == "" {
+		m.Role = "user"
+	}
 	if m.Thread == "" {
 		m.Thread = utils.GenThreadID()
 	}
@@ -244,17 +244,17 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
 		return
 	}
-    // verify author owns the message (or is admin)
-    author, code, msg := auth.ResolveAuthorFromRequest(r, "")
-    if code != 0 {
-        http.Error(w, msg, code)
-        return
-    }
-    role := r.Header.Get("X-Role-Name")
-    if role != "admin" && m.Author != author {
-        http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-        return
-    }
+	// verify author owns the message (or is admin)
+	author, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	if code != 0 {
+		http.Error(w, msg, code)
+		return
+	}
+	role := r.Header.Get("X-Role-Name")
+	if role != "admin" && m.Author != author {
+		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+		return
+	}
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
 	b, _ := json.Marshal(m)
@@ -287,7 +287,6 @@ func listMessageVersions(w http.ResponseWriter, r *http.Request) {
 		Versions []json.RawMessage `json:"versions"`
 	}{ID: id, Versions: out})
 }
-
 
 // getReactions handles GET /messages/{id}/reactions to list all reactions for a message.
 // Path parameter: "id" (string, required): message ID.

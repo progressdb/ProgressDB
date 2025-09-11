@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"golang.org/x/time/rate"
+
+	"progressdb/pkg/logging"
 )
 
 type Role int
@@ -35,8 +37,8 @@ func NewMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 	limiters := &limiterPool{cfg: cfg}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Log incoming request basic info
-			slog.Info("incoming_request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			// Centralized safe request logging (redacts sensitive headers)
+			logging.LogRequest(r)
 			// CORS preflight
 			origin := r.Header.Get("Origin")
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {

@@ -280,7 +280,7 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 	for k := range backendKeys {
 		signingKeys[k] = struct{}{}
 	}
-    // Signing keys are identical to backend API keys (no separate fallback).
+	// Signing keys are identical to backend API keys (no separate fallback).
 	return backendKeys, signingKeys, envUsed
 }
 

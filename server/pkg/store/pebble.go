@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-    "progressdb/pkg/security"
-    "progressdb/pkg/models"
-    "progressdb/pkg/utils"
+	"progressdb/pkg/models"
+	"progressdb/pkg/security"
+	"progressdb/pkg/utils"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -277,54 +277,54 @@ func DeleteThread(threadID string) error {
 		slog.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
-    slog.Info("thread_deleted", "thread", threadID)
-    return nil
+	slog.Info("thread_deleted", "thread", threadID)
+	return nil
 }
 
 // SoftDeleteThread marks the thread as deleted and appends a tombstone message.
 func SoftDeleteThread(threadID, actor string) error {
-    if db == nil {
-        return fmt.Errorf("pebble not opened; call store.Open first")
-    }
-    key := []byte("thread:" + threadID + ":meta")
-    v, closer, err := db.Get(key)
-    if err != nil {
-        slog.Error("soft_delete_load_failed", "thread", threadID, "error", err)
-        return err
-    }
-    if closer != nil {
-        defer closer.Close()
-    }
-    var th models.Thread
-    if err := json.Unmarshal(v, &th); err != nil {
-        slog.Error("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
-        return err
-    }
-    th.Deleted = true
-    th.DeletedTS = time.Now().UTC().UnixNano()
-    nb, _ := json.Marshal(th)
-    if err := db.Set(key, nb, pebble.Sync); err != nil {
-        slog.Error("soft_delete_save_failed", "thread", threadID, "error", err)
-        return err
-    }
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	key := []byte("thread:" + threadID + ":meta")
+	v, closer, err := db.Get(key)
+	if err != nil {
+		slog.Error("soft_delete_load_failed", "thread", threadID, "error", err)
+		return err
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+	var th models.Thread
+	if err := json.Unmarshal(v, &th); err != nil {
+		slog.Error("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
+		return err
+	}
+	th.Deleted = true
+	th.DeletedTS = time.Now().UTC().UnixNano()
+	nb, _ := json.Marshal(th)
+	if err := db.Set(key, nb, pebble.Sync); err != nil {
+		slog.Error("soft_delete_save_failed", "thread", threadID, "error", err)
+		return err
+	}
 
-    // append tombstone message to the thread
-    tomb := models.Message{
-        ID:      utils.GenID(),
-        Thread:  threadID,
-        Author:  actor,
-        TS:      time.Now().UTC().UnixNano(),
-        Body:    map[string]interface{}{"_event": "thread_deleted", "by": actor},
-        Deleted: true,
-    }
-    tb, _ := json.Marshal(tomb)
-    if err := SaveMessage(threadID, tomb.ID, string(tb)); err != nil {
-        slog.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
-        return err
-    }
+	// append tombstone message to the thread
+	tomb := models.Message{
+		ID:      utils.GenID(),
+		Thread:  threadID,
+		Author:  actor,
+		TS:      time.Now().UTC().UnixNano(),
+		Body:    map[string]interface{}{"_event": "thread_deleted", "by": actor},
+		Deleted: true,
+	}
+	tb, _ := json.Marshal(tomb)
+	if err := SaveMessage(threadID, tomb.ID, string(tb)); err != nil {
+		slog.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
+		return err
+	}
 
-    slog.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
-    return nil
+	slog.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
+	return nil
 }
 
 // ListThreads returns all saved thread metadata values.
