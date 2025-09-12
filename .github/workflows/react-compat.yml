@@ -9,6 +9,7 @@ jobs:
   react-compat:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         react-version: [17, 18, 19]
         node-version: [18]
@@ -24,8 +25,14 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: Install root deps
-        run: npm ci
+      - name: Install reactjs package deps
+        working-directory: clients/sdk/frontend/reactjs
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-package-lock
+          fi
 
       - name: Install React ${{ matrix.react-version }} in reactjs package
         working-directory: clients/sdk/frontend/reactjs
