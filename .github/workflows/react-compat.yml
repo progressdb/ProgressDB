@@ -27,6 +27,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+          cache-dependency-path: clients/sdk/frontend/reactjs/package-lock.json
 
       - name: Install reactjs package deps
         run: |
