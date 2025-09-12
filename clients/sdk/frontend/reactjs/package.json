@@ -1,6 +1,6 @@
 {
   "name": "@progressdb/react",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "React hooks and provider for ProgressDB frontend SDK",
   "main": "dist/reactjs/src/index.js",
   "types": "dist/reactjs/src/index.d.ts",
