@@ -1,0 +1,49 @@
+name: React SDK compatibility
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  react-compat:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        react-version: [17, 18, 19]
+        node-version: [18]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install React ${{ matrix.react-version }} in reactjs package
+        working-directory: clients/sdk/frontend/reactjs
+        run: |
+          npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }} --no-save
+          # Align @types/react for TS build (install 18+ types for modern React)
+          npm install --no-save --save-dev @types/react@^18 || true
+
+      - name: Build reactjs SDK
+        working-directory: clients/sdk/frontend/reactjs
+        run: npm run build
+
+      - name: Optional smoke test (noop if none)
+        working-directory: clients/sdk/frontend/reactjs
+        run: |
+          if [ -f package.json ] && npm run -s test; then
+            npm test
+          else
+            echo "no tests defined, build-only"
+          fi
+

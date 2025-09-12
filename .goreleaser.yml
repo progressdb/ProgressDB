@@ -44,7 +44,9 @@ release:
 
 changelog:
   use: github   # or "git"
-  format: "{{.Message}} (by @{{.AuthorUsername}})"
+  # Prefer GitHub username when available so changelog lines tag users (e.g. @octocat).
+  # Fall back to author name or email when username mapping is not available.
+  format: "{{.Message}} (by {{- if .AuthorUsername -}}@{{.AuthorUsername}}{{- else if .AuthorName -}}{{.AuthorName}}{{- else -}}{{.AuthorEmail}}{{- end -}})"
   filters:
     exclude:
       - "^docs:"   # don’t show docs commits

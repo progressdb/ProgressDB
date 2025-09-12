@@ -11,14 +11,14 @@
     "prepare": "npm run build"
   },
   "peerDependencies": {
-    "react": "^16.8 || ^17 || ^18"
+    "react": "^16.8 || ^17 || ^18 || ^19"
   },
   "dependencies": {
     "@progressdb/js": "^0.1.2"
   },
   "devDependencies": {
     "typescript": "^4.9.5",
-    "@types/react": "^17.0.0"
+    "@types/react": "^18.0.0"
   },
   "files": ["dist"],
   "keywords": ["progressdb","react","sdk","hooks"],
