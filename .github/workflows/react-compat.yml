@@ -30,26 +30,42 @@ jobs:
 
       - name: Install reactjs package deps
         run: |
+          echo "Files before installing dependencies:"
+          ls -al
           if [ -f package-lock.json ]; then
             npm ci
           else
             npm install --no-package-lock
           fi
+          echo "Files after installing dependencies:"
+          ls -al
 
       - name: Install React ${{ matrix.react-version }} in reactjs package
         run: |
+          echo "Files before installing React:"
+          ls -al
           npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }} --no-save
           # Align @types/react for TS build (install 18+ types for modern React)
           npm install --no-save --save-dev @types/react@^18 || true
+          echo "Files after installing React:"
+          ls -al
 
       - name: Build reactjs SDK
-        run: npm run build
+        run: |
+          echo "Files before build:"
+          ls -al
+          npm run build
+          echo "Files after build:"
+          ls -al
 
       - name: Optional smoke test (noop if none)
         run: |
+          echo "Files before test:"
+          ls -al
           if [ -f package.json ] && npm run -s test; then
             npm test
           else
             echo "no tests defined, build-only"
           fi
-
+          echo "Files after test:"
+          ls -al
