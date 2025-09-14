@@ -10,7 +10,7 @@ This document describes the miniKMS implementation shipped with ProgressDB, how 
 
 ## Components
 
-- `server/cmd/minikms` — the miniKMS HTTP server (HTTP over UDS). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
+- `minikms` — the miniKMS HTTP server (separate project/binary; HTTP over UDS). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
 - `server/pkg/kms/remote_client.go` — client adapter used by the server to talk to miniKMS over the UDS.
 - `server/pkg/kms/local.go` — embedded dev provider (kept for local testing only).
 - `server/pkg/security` — pluggable security bridge. The server calls `security.CreateDEKForThread`, `security.EncryptWithKey`, `security.DecryptWithKey` to interact with the provider.
@@ -75,7 +75,7 @@ Description=ProgressDB miniKMS
 [Service]
 User=minikms
 Group=minikms
-ExecStart=/opt/progressdb/minikms --socket /var/run/progressdb-minikms.sock --data-dir /var/lib/progressdb/minikms
+ExecStart=/usr/local/bin/minikms --socket /var/run/progressdb-minikms.sock --data-dir /var/lib/progressdb/minikms
 LimitMEMLOCK=infinity
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -105,4 +105,3 @@ This is the authoritative miniKMS reference for ProgressDB. If you want, I can n
 - add a resumable migration worker (background job) and an admin CLI to run/monitor it, or
 - add tests and CI for rotation and migration, or
 - add the systemd/k8s example files and a more detailed runbook.
-

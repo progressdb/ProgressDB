@@ -114,7 +114,7 @@ func main() {
 	// always spawn the child for production deployments
 	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
 	if bin == "" {
-		bin = "./server/cmd/minikms/minikms"
+		bin = "/usr/local/bin/minikms"
 	}
 	args := []string{"--socket", socket, "--data-dir", dataDir}
 	// pass allowed UIDs to child so it can accept peer-credential-authenticated

@@ -14,11 +14,12 @@
 - [x] Auth - *(authenticated authors & accessible datas)*
 - [ ] Performance - *(measure & alert for low speeds & public banners)*
 - [ ] Backups - *(cloud backups)*
-- [x] Encryption - *(data encryption - local or cloud kms~hsm backed)*
+- [x] Encryption - *(data encryption - local easy kms)*
 - [ ] State Changes - *(shutdowns, health, restarts)*
 - [ ] Sockets - *(realtime subscriptions, webhooks)*
 - [ ] Updates - *(api versioning & image or instance upgrades)*
 - [ ] Retention - *(data retention policy)*
+- [ ] Encryption - *(data encryption - cloud kms~hsm backed)*
 
 ## Backend SDKs
 

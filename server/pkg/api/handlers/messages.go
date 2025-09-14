@@ -13,8 +13,9 @@ import (
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
-	"github.com/gorilla/mux"
 	"sort"
+
+	"github.com/gorilla/mux"
 )
 
 // RegisterMessages registers HTTP handlers for message-related endpoints.

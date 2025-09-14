@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"encoding/json"
+	"progressdb/pkg/kmsapi"
 )
 
 // securityRandReadImpl reads cryptographically secure random bytes.
@@ -25,31 +26,16 @@ func securityRandReadImpl(b []byte) (int, error) { return rand.Read(b) }
 var key []byte
 var (
 	providerMu sync.RWMutex
-	provider   KMSProvider
+	provider   kmsapi.KMSProvider
 	keyLocked  bool
 )
 
 // KMSProvider mirrors the minimal interface expected by the security layer.
 // Implementations may be provided by the kms package and registered at
 // runtime via RegisterKMSProvider.
-type KMSProvider interface {
-	Enabled() bool
-	Encrypt(plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error)
-	Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error)
-	CreateDEK() (keyID string, wrapped []byte, err error)
-	CreateDEKForThread(threadID string) (keyID string, wrapped []byte, err error)
-	EncryptWithKey(keyID string, plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error)
-	DecryptWithKey(keyID string, ciphertext, iv, aad []byte) (plaintext []byte, err error)
-	WrapDEK(dek []byte) ([]byte, error)
-	UnwrapDEK(wrapped []byte) ([]byte, error)
-	// GetWrapped returns the wrapped DEK blob for a key id managed by the provider.
-	GetWrapped(keyID string) ([]byte, error)
-	Health() error
-	Close() error
-}
 
 // RegisterKMSProvider registers a provider for use by the security package.
-func RegisterKMSProvider(p KMSProvider) {
+func RegisterKMSProvider(p kmsapi.KMSProvider) {
 	providerMu.Lock()
 	defer providerMu.Unlock()
 	provider = p
