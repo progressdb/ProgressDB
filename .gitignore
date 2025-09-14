@@ -88,3 +88,5 @@ secrets.yml
 *.pem
 .aws/credentials
 server/.gopath/
+.notes/
+NOTES.md

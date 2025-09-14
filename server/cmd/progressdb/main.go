@@ -123,27 +123,29 @@ func main() {
 	env := map[string]string{
 		"PROGRESSDB_MINIKMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
 	}
-	ctx := context.Background()
-	ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
-	if err != nil {
-		log.Fatalf("failed to start miniKMS: %v", err)
-	}
-	child = ch
+    ctx, cancel := context.WithCancel(context.Background())
+    ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
+    if err != nil {
+        log.Fatalf("failed to start miniKMS: %v", err)
+    }
+    child = ch
 	// server relies on UDS peer-credential auth; do not use API key here.
 	rc := kms.NewRemoteClient(socket)
 	security.RegisterKMSProvider(rc)
 	// ensure child is stopped on shutdown
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		s := <-sigc
-		log.Printf("signal received: %v, shutting down", s)
-		_ = rc.Close()
-		if child != nil {
-			_ = child.Stop(5 * time.Second)
-		}
-		os.Exit(0)
-	}()
+    go func() {
+        s := <-sigc
+        log.Printf("signal received: %v, shutting down", s)
+        // cancel background contexts (including child start/monitor)
+        cancel()
+        _ = rc.Close()
+        if child != nil {
+            _ = child.Stop(5 * time.Second)
+        }
+        os.Exit(0)
+    }()
 	// Determine config sources summary (flags/env/config)
 	srcs := []string{}
 	if len(setFlags) > 0 {
@@ -220,16 +222,16 @@ func main() {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-	// Populate the global runtime config with backend and signing keys.
-	rc := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-	for k := range backendKeys {
-		rc.BackendKeys[k] = struct{}{}
-		rc.SigningKeys[k] = struct{}{}
-	}
-	for k := range signingKeys {
-		rc.SigningKeys[k] = struct{}{}
-	}
-	config.SetRuntime(rc)
+    // Populate the global runtime config with backend and signing keys.
+    runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
+    for k := range backendKeys {
+        runtimeCfg.BackendKeys[k] = struct{}{}
+        runtimeCfg.SigningKeys[k] = struct{}{}
+    }
+    for k := range signingKeys {
+        runtimeCfg.SigningKeys[k] = struct{}{}
+    }
+    config.SetRuntime(runtimeCfg)
 
 	wrapped := security.AuthenticateRequestMiddleware(secCfg)(mux)
 

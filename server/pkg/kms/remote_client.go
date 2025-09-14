@@ -18,10 +18,13 @@ type RemoteClient struct {
 
 // NewRemoteClient returns a client bound to addr (unix socket path).
 func NewRemoteClient(addr string) *RemoteClient {
-	tr := &http.Transport{}
-	tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		return net.Dial("unix", addr)
-	}
+    tr := &http.Transport{}
+    tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+        // Use a Dialer that respects the provided context when dialing the
+        // unix domain socket address.
+        var d net.Dialer
+        return d.DialContext(ctx, "unix", addr)
+    }
 	return &RemoteClient{addr: addr, httpc: &http.Client{Transport: tr}}
 }
 
@@ -56,9 +59,10 @@ func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, erro
 	if resp.StatusCode != 200 {
 		return "", nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
-	var out struct {
-		KeyID, Wrapped string `json:"key_id","wrapped"`
-	}
+    var out struct {
+        KeyID  string `json:"key_id"`
+        Wrapped string `json:"wrapped"`
+    }
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", nil, err
 	}
