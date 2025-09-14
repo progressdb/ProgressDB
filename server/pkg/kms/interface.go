@@ -20,9 +20,9 @@ type KMSProvider interface {
 
 	// CreateDEK generates a new data-encryption-key and returns an opaque
 	// key identifier and the wrapped key material.
-    CreateDEK() (keyID string, wrapped []byte, kekID string, kekVersion string, err error)
-    // CreateDEKForThread creates a DEK scoped to a specific thread id.
-    CreateDEKForThread(threadID string) (keyID string, wrapped []byte, kekID string, kekVersion string, err error)
+	CreateDEK() (keyID string, wrapped []byte, kekID string, kekVersion string, err error)
+	// CreateDEKForThread creates a DEK scoped to a specific thread id.
+	CreateDEKForThread(threadID string) (keyID string, wrapped []byte, kekID string, kekVersion string, err error)
 	// EncryptWithKey encrypts plaintext under the DEK identified by keyID.
 	EncryptWithKey(keyID string, plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error)
 	// DecryptWithKey decrypts ciphertext under the DEK identified by keyID.
@@ -35,7 +35,7 @@ type KMSProvider interface {
 	UnwrapDEK(wrapped []byte) ([]byte, error)
 
 	// GetWrapped returns the wrapped DEK blob for a key id managed by the provider.
-    GetWrapped(keyID string) ([]byte, error)
+	GetWrapped(keyID string) ([]byte, error)
 
 	// Health returns nil when the KMS is ready to serve requests.
 	Health() error

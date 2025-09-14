@@ -90,4 +90,4 @@ secrets.yml
 server/.gopath/
 .notes/
 NOTES.md
-.minikms/
+.kms/

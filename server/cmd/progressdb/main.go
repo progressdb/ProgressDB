@@ -100,28 +100,28 @@ func main() {
 	if err := store.Open(dbPath); err != nil {
 		log.Fatalf("failed to open pebble at %s: %v", dbPath, err)
 	}
-	// Always spawn the miniKMS child process and register the remote provider.
+	// Always spawn the KMS child process and register the remote provider.
 	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
 	if socket == "" {
-		socket = "/tmp/progressdb-minikms.sock"
+		socket = "/tmp/progressdb-kms.sock"
 	}
 	dataDir := os.Getenv("PROGRESSDB_KMS_DATA_DIR")
 	if dataDir == "" {
-		dataDir = "./minikms-data"
+		dataDir = "./kms-data"
 	}
 
 	var child *kms.CmdHandle
 	// always spawn the child for production deployments
 	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
 	if bin == "" {
-		bin = "/usr/local/bin/minikms"
+		bin = "/usr/local/bin/kms"
 	}
 	args := []string{"--socket", socket, "--data-dir", dataDir}
 	// pass allowed UIDs to child so it can accept peer-credential-authenticated
 	// connections from this server process. We do NOT pass API keys to avoid
 	// keeping secrets in the server process memory.
 	env := map[string]string{
-		"PROGRESSDB_MINIKMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
+		"PROGRESSDB_KMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
 	}
 
 	// Determine encryption usage and require key file when enabled.
@@ -132,12 +132,12 @@ func main() {
 	}
 	if useEnc {
 		// require master key file path
-		mkFile := strings.TrimSpace(os.Getenv("PROGRESSDB_MINIKMS_MASTER_KEY_FILE"))
+		mkFile := strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"))
 		if mkFile == "" {
-			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but PROGRESSDB_MINIKMS_MASTER_KEY_FILE is not set. Provide a path to a 64-hex (32-byte) key file.")
+			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but PROGRESSDB_KMS_MASTER_KEY_FILE is not set. Provide a path to a 64-hex (32-byte) key file.")
 		}
 		// pass file path to child
-		env["PROGRESSDB_MINIKMS_MASTER_KEY_FILE"] = mkFile
+		env["PROGRESSDB_KMS_MASTER_KEY_FILE"] = mkFile
 	}
 	var cancel context.CancelFunc
 	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
@@ -146,16 +146,16 @@ func main() {
 		cancel = cancelLocal
 		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
 		if err != nil {
-			log.Fatalf("failed to start miniKMS: %v", err)
+			log.Fatalf("failed to start KMS: %v", err)
 		}
 		child = ch
 
 		rc = kms.NewRemoteClient(socket)
 		security.RegisterKMSProvider(rc)
 		// Verify remote KMS is healthy before continuing; fail fast with
-		// actionable message so operators know to install/start miniKMS.
+		// actionable message so operators know to install/start KMS.
 		if err := rc.Health(); err != nil {
-			log.Fatalf("miniKMS health check failed at %s: %v; ensure miniKMS is installed and PROGRESSDB_MINIKMS_ALLOWED_UIDS permits this process", socket, err)
+			log.Fatalf("KMS health check failed at %s: %v; ensure KMS is installed and PROGRESSDB_KMS_ALLOWED_UIDS permits this process", socket, err)
 		}
 	}
 	// ensure child is stopped on shutdown

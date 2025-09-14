@@ -237,7 +237,7 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 	// Create remote client bound to same socket as server
 	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
 	if socket == "" {
-		socket = "/tmp/progressdb-minikms.sock"
+		socket = "/tmp/progressdb-kms.sock"
 	}
 	rc := kms.NewRemoteClient(socket)
 

@@ -116,16 +116,16 @@ func SetKeyHex(hexKey string) error {
 
 // Enabled returns true if encryption key is configured.
 func Enabled() bool {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    // Require a registered provider for production operation. Relying on an
-    // in-process master key is deprecated when deploying with an external
-    // KMS: the server should fail-fast if no provider is registered.
-    if p != nil && p.Enabled() {
-        return true
-    }
-    return false
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	// Require a registered provider for production operation. Relying on an
+	// in-process master key is deprecated when deploying with an external
+	// KMS: the server should fail-fast if no provider is registered.
+	if p != nil && p.Enabled() {
+		return true
+	}
+	return false
 }
 
 // Encrypt returns nonce|ciphertext using AES-256-GCM.
@@ -139,8 +139,8 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-	// If provider returned a separate iv, append or combine as needed.
-	// Providers typically return a nonce|ciphertext blob and iv==nil.
+		// If provider returned a separate iv, append or combine as needed.
+		// Providers typically return a nonce|ciphertext blob and iv==nil.
 		if iv != nil && len(iv) > 0 {
 			return append(iv, ct...), nil
 		}
@@ -201,38 +201,38 @@ func Decrypt(data []byte) ([]byte, error) {
 
 // CreateDEK delegates to the registered provider to create a new DEK.
 func CreateDEK() (string, []byte, string, string, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return "", nil, "", "", errors.New("no kms provider registered")
-    }
-    // provider.CreateDEK now returns kek metadata
-    type createIf interface {
-        CreateDEK() (string, []byte, string, string, error)
-    }
-    if c, ok := p.(createIf); ok {
-        return c.CreateDEK()
-    }
-    return "", nil, "", "", errors.New("provider does not support CreateDEK with kek metadata")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, "", "", errors.New("no kms provider registered")
+	}
+	// provider.CreateDEK now returns kek metadata
+	type createIf interface {
+		CreateDEK() (string, []byte, string, string, error)
+	}
+	if c, ok := p.(createIf); ok {
+		return c.CreateDEK()
+	}
+	return "", nil, "", "", errors.New("provider does not support CreateDEK with kek metadata")
 }
 
 // CreateDEKForThread requests a DEK scoped to the provided threadID.
 func CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return "", nil, "", "", errors.New("no kms provider registered")
-    }
-    type threadCreator interface {
-        CreateDEKForThread(string) (string, []byte, string, string, error)
-    }
-    if tc, ok := p.(threadCreator); ok {
-        return tc.CreateDEKForThread(threadID)
-    }
-    // fallback to generic CreateDEK
-    return CreateDEK()
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, "", "", errors.New("no kms provider registered")
+	}
+	type threadCreator interface {
+		CreateDEKForThread(string) (string, []byte, string, string, error)
+	}
+	if tc, ok := p.(threadCreator); ok {
+		return tc.CreateDEKForThread(threadID)
+	}
+	// fallback to generic CreateDEK
+	return CreateDEK()
 }
 
 // EncryptWithKey delegates an encryption request to the registered KMS

@@ -23,8 +23,8 @@ func AuditSign(b []byte) (string, error) {
 
 // LockMemory/UnlockMemory provided by platform-specific files in this package.
 
-// Additional helper functions expected by main.go
-func securityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
+// Exported helper used by callers outside this package.
+func SecurityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
 
 // EncryptWithKeyBytes provides a helper to wrap dek with new raw key bytes.
 func EncryptWithKeyBytes(kb, dek []byte) ([]byte, error) {

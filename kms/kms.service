@@ -1,0 +1,16 @@
+[Unit]
+Description=KMS service for ProgressDB
+After=network.target
+
+[Service]
+User=kms
+Group=kms
+ExecStart=/usr/local/bin/kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms
+LimitMEMLOCK=infinity
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+

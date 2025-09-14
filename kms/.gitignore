@@ -1,5 +1,5 @@
 bin/
-minikms
+kms
 *.log
 *.tmp
 

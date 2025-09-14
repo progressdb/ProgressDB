@@ -53,20 +53,20 @@ func SaveMessage(threadID, msgID, msg string) error {
 	if security.Enabled() {
 		// Per-thread DEK encryption using provider-level EncryptWithKey.
 		keyID, kerr := GetThreadKey(threadID)
-        if kerr != nil || keyID == "" {
-            nid, _, kekID, kekVer, cerr := security.CreateDEKForThread(threadID)
-            if cerr != nil {
-                return cerr
-            }
-            keyID = nid
-            // persist mapping locally so server restarts can find the mapping
-            _ = SaveThreadKey(threadID, keyID)
-            // persist thread->key metadata (includes kek id/version)
-            meta := map[string]string{"key_id": keyID, "kek_id": kekID, "kek_version": kekVer}
-            if mb, err := json.Marshal(meta); err == nil {
-                _ = SaveKey("kms:map:threadmeta:"+threadID, mb)
-            }
-        }
+		if kerr != nil || keyID == "" {
+			nid, _, kekID, kekVer, cerr := security.CreateDEKForThread(threadID)
+			if cerr != nil {
+				return cerr
+			}
+			keyID = nid
+			// persist mapping locally so server restarts can find the mapping
+			_ = SaveThreadKey(threadID, keyID)
+			// persist thread->key metadata (includes kek id/version)
+			meta := map[string]string{"key_id": keyID, "kek_id": kekID, "kek_version": kekVer}
+			if mb, err := json.Marshal(meta); err == nil {
+				_ = SaveKey("kms:map:threadmeta:"+threadID, mb)
+			}
+		}
 		enc, _, _, eerr := security.EncryptWithKey(keyID, data, nil)
 		if eerr != nil {
 			return eerr

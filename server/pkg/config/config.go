@@ -86,11 +86,11 @@ type Config struct {
 			Burst int     `yaml:"burst"`
 		} `yaml:"rate_limit"`
 		IPWhitelist []string `yaml:"ip_whitelist"`
-            APIKeys     struct {
-                Backend   []string `yaml:"backend"`
-                Frontend  []string `yaml:"frontend"`
-                Admin     []string `yaml:"admin"`
-            } `yaml:"api_keys"`
+		APIKeys     struct {
+			Backend  []string `yaml:"backend"`
+			Frontend []string `yaml:"frontend"`
+			Admin    []string `yaml:"admin"`
+		} `yaml:"api_keys"`
 	} `yaml:"security"`
 	Logging struct {
 		Level  string `yaml:"level"`
@@ -258,7 +258,7 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Security.APIKeys.Admin = parseList(v)
 	}
-    // PROGRESSDB_ALLOW_UNAUTH has been removed: API access always requires an API key.
+	// PROGRESSDB_ALLOW_UNAUTH has been removed: API access always requires an API key.
 	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {
 		envUsed = true
 		cfg.Server.TLS.CertFile = c

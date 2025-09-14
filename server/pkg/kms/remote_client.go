@@ -52,7 +52,7 @@ func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) { return nil, E
 func (r *RemoteClient) Health() error                            { return ErrNotImplemented }
 func (r *RemoteClient) Close() error                             { return nil }
 
-// Health probes the remote miniKMS service. It expects a 200 response from
+// Health probes the remote KMS service. It expects a 200 response from
 // `/healthz` (or `/health`) and returns an error with body text when the
 // response status is not OK.
 func (r *RemoteClient) HealthCheck() error {
@@ -78,7 +78,7 @@ func (r *RemoteClient) HealthCheck() error {
 	return fmt.Errorf("health probe failed: %v", lastErr)
 }
 
-// CreateDEKForThread requests the miniKMS to create a DEK for a thread.
+// CreateDEKForThread requests the KMS to create a DEK for a thread.
 func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
 	req := map[string]string{"thread_id": threadID}
 	b, _ := json.Marshal(req)
@@ -110,7 +110,7 @@ func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, stri
 	return out.KeyID, wb, out.KekID, out.KekVersion, nil
 }
 
-// GetWrapped returns wrapped DEK from remote miniKMS
+// GetWrapped returns wrapped DEK from remote KMS
 func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	url := fmt.Sprintf("http://unix/get_wrapped?key_id=%s", keyID)
 	reqq, _ := http.NewRequest("GET", url, nil)
@@ -131,7 +131,7 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(out.Wrapped)
 }
 
-// EncryptWithKey delegates encryption to remote miniKMS
+// EncryptWithKey delegates encryption to remote KMS
 func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]byte, []byte, string, error) {
 	req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
 	b, _ := json.Marshal(req)
@@ -159,7 +159,7 @@ func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]by
 	return ct, nil, "v1", nil
 }
 
-// DecryptWithKey delegates decryption to remote miniKMS
+// DecryptWithKey delegates decryption to remote KMS
 func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) ([]byte, error) {
 	req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
 	b, _ := json.Marshal(req)
@@ -183,31 +183,31 @@ func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) 
 	return base64.StdEncoding.DecodeString(out.Plaintext)
 }
 
-// RewrapKey requests the miniKMS to rewrap the stored DEK identified by keyID
+// RewrapKey requests the KMS to rewrap the stored DEK identified by keyID
 // using the provided new KEK (hex). It returns the new kek_id from the service
 // when successful.
 func (r *RemoteClient) RewrapKey(keyID, newKEKHex string) (newKekID string, err error) {
-    req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
-    b, _ := json.Marshal(req)
-    url := "http://unix/rewrap"
-    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
-    reqq.Header.Set("Content-Type", "application/json")
-    resp, err := r.httpc.Do(reqq)
-    if err != nil {
-        return "", err
-    }
-    defer resp.Body.Close()
-    body, _ := io.ReadAll(resp.Body)
-    if resp.StatusCode != 200 {
-        return "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-    }
-    var out struct{
-        Status string `json:"status"`
-        KeyID string `json:"key_id"`
-        KekID string `json:"kek_id"`
-    }
-    if err := json.Unmarshal(body, &out); err != nil {
-        return "", err
-    }
-    return out.KekID, nil
+	req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
+	b, _ := json.Marshal(req)
+	url := "http://unix/rewrap"
+	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+	reqq.Header.Set("Content-Type", "application/json")
+	resp, err := r.httpc.Do(reqq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var out struct {
+		Status string `json:"status"`
+		KeyID  string `json:"key_id"`
+		KekID  string `json:"kek_id"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", err
+	}
+	return out.KekID, nil
 }
