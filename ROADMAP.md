@@ -1,6 +1,6 @@
  # ProgressDB Development Roadmap
 
-## Server Development
+## Service Development
 
 - [x] Logging
 - [x] Metrics

@@ -5,10 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -21,6 +24,7 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/keys", adminListKeys).Methods(http.MethodGet)
 	r.HandleFunc("/keys/{key}", adminGetKey).Methods(http.MethodGet)
 	r.HandleFunc("/rotate_thread_dek", adminRotateThreadDEK).Methods(http.MethodPost)
+	r.HandleFunc("/rewrap_batch", adminRewrapBatch).Methods(http.MethodPost)
 	slog.Info("admin_routes_registered")
 }
 
@@ -140,22 +144,145 @@ func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// create new DEK for thread
-    newKeyID, _, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
-    if err != nil {
-        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-        return
-    }
-    // persist metadata
-    meta := map[string]string{"key_id": newKeyID, "kek_id": kekID, "kek_version": kekVer}
-    if mb, merr := json.Marshal(meta); merr == nil {
-        _ = store.SaveKey("kms:map:threadmeta:"+req.ThreadID, mb)
-    }
+	newKeyID, _, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	// persist metadata
+	meta := map[string]string{"key_id": newKeyID, "kek_id": kekID, "kek_version": kekVer}
+	if mb, merr := json.Marshal(meta); merr == nil {
+		_ = store.SaveKey("kms:map:threadmeta:"+req.ThreadID, mb)
+	}
 	// perform migration
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
+}
+
+// adminRewrapBatch triggers rewrap operations for DEKs related to threads.
+// Request JSON:
+// { "thread_ids": ["t1","t2"], "all": false, "new_kek_hex": "<hex>", "parallelism": 4 }
+func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	var req struct {
+		ThreadIDs   []string `json:"thread_ids"`
+		All         bool     `json:"all"`
+		NewKEKHex   string   `json:"new_kek_hex"`
+		Parallelism int      `json:"parallelism"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.NewKEKHex) == "" {
+		http.Error(w, `{"error":"missing new_kek_hex"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Parallelism <= 0 {
+		req.Parallelism = 4
+	}
+
+	// Determine thread IDs
+	var threads []string
+	if req.All {
+		tvals, err := store.ListThreads()
+		if err != nil {
+			http.Error(w, `{"error":"failed list threads"}`, http.StatusInternalServerError)
+			return
+		}
+		for _, t := range tvals {
+			var th models.Thread
+			if err := json.Unmarshal([]byte(t), &th); err != nil {
+				continue
+			}
+			threads = append(threads, th.ID)
+		}
+	} else {
+		threads = req.ThreadIDs
+	}
+
+	if len(threads) == 0 {
+		http.Error(w, `{"error":"no threads specified"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Build unique list of key IDs from thread metadata
+	keyIDs := make(map[string]struct{})
+	for _, tid := range threads {
+		// lookup thread meta
+		if bm, err := store.GetKey("kms:map:threadmeta:" + tid); err == nil {
+			var meta map[string]string
+			if err := json.Unmarshal([]byte(bm), &meta); err == nil {
+				if kid, ok := meta["key_id"]; ok && kid != "" {
+					keyIDs[kid] = struct{}{}
+				}
+			}
+		}
+		if kid, _ := store.GetThreadKey(tid); kid != "" {
+			keyIDs[kid] = struct{}{}
+		}
+	}
+
+	if len(keyIDs) == 0 {
+		http.Error(w, `{"error":"no key mappings found for provided threads"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Create remote client bound to same socket as server
+	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
+	if socket == "" {
+		socket = "/tmp/progressdb-minikms.sock"
+	}
+	rc := kms.NewRemoteClient(socket)
+
+	// Concurrency
+	sem := make(chan struct{}, req.Parallelism)
+	type res struct {
+		Key string
+		Err string
+		Kek string
+	}
+	resCh := make(chan res, len(keyIDs))
+	for kid := range keyIDs {
+		sem <- struct{}{}
+		go func(k string) {
+			defer func() { <-sem }()
+			newKek, err := rc.RewrapKey(k, strings.TrimSpace(req.NewKEKHex))
+			if err != nil {
+				resCh <- res{Key: k, Err: err.Error()}
+				return
+			}
+			resCh <- res{Key: k, Kek: newKek}
+		}(kid)
+	}
+	// wait for all
+	for i := 0; i < cap(sem); i++ {
+		sem <- struct{}{}
+	}
+	close(resCh)
+
+	// gather results
+	out := map[string]map[string]string{}
+	for rres := range resCh {
+		if _, ok := out[rres.Key]; !ok {
+			out[rres.Key] = map[string]string{}
+		}
+		if rres.Err != "" {
+			out[rres.Key]["status"] = "error"
+			out[rres.Key]["error"] = rres.Err
+		} else {
+			out[rres.Key]["status"] = "ok"
+			out[rres.Key]["kek_id"] = rres.Kek
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // isAdmin checks if the request is from an admin or backend.

@@ -178,8 +178,7 @@ Security
 - API keys:
   - Backend keys: `security.api_keys.backend: ["sk_...", ...]` or env `PROGRESSDB_API_BACKEND_KEYS`.
   - Frontend keys: `security.api_keys.frontend: ["pk_...", ...]` or env `PROGRESSDB_API_FRONTEND_KEYS`.
-  - Allow unauth (dev only): `security.api_keys.allow_unauth: true` or env `PROGRESSDB_ALLOW_UNAUTH=true`.
-  - Scope: frontend keys may only call `GET/POST /v1/messages` and `GET /healthz`.
+  - Scope: frontend keys may only call `GET/POST /v1/messages` and the health endpoint. All API access requires an API key; there is no allow-unauth mode.
 
 - Minimal `config.yaml`:
   server:
@@ -201,7 +200,6 @@ Security
     api_keys:
       backend:  ["sk_example"]
       frontend: ["pk_example"]
-      allow_unauth: false
   logging:
     level: "info"
 

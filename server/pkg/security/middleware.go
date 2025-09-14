@@ -22,14 +22,13 @@ const (
 )
 
 type SecConfig struct {
-	AllowedOrigins []string
-	RPS            float64
-	Burst          int
-	IPWhitelist    []string
-	BackendKeys    map[string]struct{}
-	FrontendKeys   map[string]struct{}
-	AdminKeys      map[string]struct{}
-	AllowUnauth    bool
+    AllowedOrigins []string
+    RPS            float64
+    Burst          int
+    IPWhitelist    []string
+    BackendKeys    map[string]struct{}
+    FrontendKeys   map[string]struct{}
+    AdminKeys      map[string]struct{}
 }
 
 func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
@@ -76,21 +75,21 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// Log authentication outcome (do not log full key content)
 			slog.Debug("auth_check", "role", role, "key_present", key != "")
 
-			// Allow unauthenticated health checks for deployment probes.
-			// Probes often cannot send API keys; accept GET /healthz without
-			// authentication or rate-limiting so external systems can verify
-			// service liveness.
-			if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
-				r.Header.Set("X-Role-Name", "unauth")
-				next.ServeHTTP(w, r)
-				return
-			}
+        // Allow unauthenticated health checks for deployment probes.
+        // Probes often cannot send API keys; accept GET /healthz without
+        // authentication so external systems can verify service liveness.
+        if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
+            r.Header.Set("X-Role-Name", "unauth")
+            next.ServeHTTP(w, r)
+            return
+        }
 
-			if role == RoleUnauth && !cfg.AllowUnauth {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				slog.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
-				return
-			}
+        // Do not allow unauthenticated requests for other endpoints.
+        if role == RoleUnauth {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            slog.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+            return
+        }
 
 			// Expose role name for handlers
 			var roleName string
@@ -186,14 +185,10 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string) {
 }
 
 func frontendAllowed(r *http.Request) bool {
-	// Allow health check
-	if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
-		return true
-	}
-	// Allow message create/list
-	if r.URL.Path == "/v1/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
-		return true
-	}
+    // Allow message create/list
+    if r.URL.Path == "/v1/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
+        return true
+    }
 	// Allow thread collection and thread-scoped APIs for frontend keys.
 	// Handlers themselves require a verified author (RequireSignedAuthor)
 	// and perform ownership checks where appropriate.

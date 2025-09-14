@@ -28,7 +28,6 @@ Security & API keys
 - `PROGRESSDB_API_FRONTEND_KEYS` — Comma-separated frontend (public) keys (scope: limited to `GET|POST /v1/messages` and `GET /healthz`). Use distinct values (e.g. `pk_...`) and rotate independently.
 - 
 - `PROGRESSDB_API_ADMIN_KEYS` — Keys for admin tooling (full scope).
-- `PROGRESSDB_ALLOW_UNAUTH` — `false` in production. Only `true` for local/dev convenience.
 
 Networking & CORS
 - `PROGRESSDB_CORS_ORIGINS` — Comma-separated allowed origins for browsers (e.g. `https://app.example.com`). If empty, no CORS headers are emitted and browsers will block cross-origin requests.
@@ -41,9 +40,6 @@ Rate limiting
 TLS
 - `PROGRESSDB_TLS_CERT` — Path to TLS cert file (PEM).
 - `PROGRESSDB_TLS_KEY` — Path to TLS key file (PEM).
-
-Other
-- `PROGRESSDB_ALLOW_UNAUTH` — Keep `false` for production so anonymous requests are rejected.
 
 ## Equivalent `config.yaml` snippets
 
@@ -65,11 +61,10 @@ security:
     rps: 10
     burst: 20
   ip_whitelist: []
-  api_keys:
-    backend: ["sk_example_backend"]
-    frontend: ["pk_example_frontend"]
-    admin: ["admin_example"]
-    allow_unauth: false
+    api_keys:
+      backend: ["sk_example_backend"]
+      frontend: ["pk_example_frontend"]
+      admin: ["admin_example"]
 
 ## CORS behavior (summary)
 

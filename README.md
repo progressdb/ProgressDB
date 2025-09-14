@@ -187,7 +187,7 @@ Implemented (ready to use):
 - [x] Backend SDKs (Node, Python)
 - [x] Frontend SDKs (TypeScript, React)
 - [x] Simple data viewer
-- [x] Encryption key management & rotation
+- [x] Encryption & key management
 
 Planned / In progress:
 

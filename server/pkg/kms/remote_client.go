@@ -182,3 +182,32 @@ func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) 
 	}
 	return base64.StdEncoding.DecodeString(out.Plaintext)
 }
+
+// RewrapKey requests the miniKMS to rewrap the stored DEK identified by keyID
+// using the provided new KEK (hex). It returns the new kek_id from the service
+// when successful.
+func (r *RemoteClient) RewrapKey(keyID, newKEKHex string) (newKekID string, err error) {
+    req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
+    b, _ := json.Marshal(req)
+    url := "http://unix/rewrap"
+    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+    reqq.Header.Set("Content-Type", "application/json")
+    resp, err := r.httpc.Do(reqq)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+    body, _ := io.ReadAll(resp.Body)
+    if resp.StatusCode != 200 {
+        return "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+    }
+    var out struct{
+        Status string `json:"status"`
+        KeyID string `json:"key_id"`
+        KekID string `json:"kek_id"`
+    }
+    if err := json.Unmarshal(body, &out); err != nil {
+        return "", err
+    }
+    return out.KekID, nil
+}
