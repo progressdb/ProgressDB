@@ -1,13 +1,16 @@
 package kms
 
 import (
-	"bytes"
-	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"net"
-	"net/http"
+    "bytes"
+    "context"
+    "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "io"
+    "strings"
+    "net"
+    "net/http"
+    "time"
 )
 
 // RemoteClient implements KMSProvider over an HTTP-over-unix transport.
@@ -25,7 +28,10 @@ func NewRemoteClient(addr string) *RemoteClient {
         var d net.Dialer
         return d.DialContext(ctx, "unix", addr)
     }
-	return &RemoteClient{addr: addr, httpc: &http.Client{Transport: tr}}
+    client := &http.Client{Transport: tr}
+    // Default request timeout to avoid hanging requests
+    client.Timeout = 10 * time.Second
+    return &RemoteClient{addr: addr, httpc: client}
 }
 
 func (r *RemoteClient) Enabled() bool { return true }
@@ -38,39 +44,68 @@ func (r *RemoteClient) Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, er
 	return nil, fmt.Errorf("remote client Decrypt: %w", ErrNotImplemented)
 }
 
-func (r *RemoteClient) CreateDEK() (string, []byte, error)       { return "", nil, ErrNotImplemented }
+func (r *RemoteClient) CreateDEK() (string, []byte, string, string, error) { return "", nil, "", "", ErrNotImplemented }
 func (r *RemoteClient) WrapDEK(dek []byte) ([]byte, error)       { return nil, ErrNotImplemented }
 func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) { return nil, ErrNotImplemented }
 func (r *RemoteClient) Health() error                            { return ErrNotImplemented }
 func (r *RemoteClient) Close() error                             { return nil }
 
-// CreateDEKForThread requests the miniKMS to create a DEK for a thread.
-func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, error) {
-	req := map[string]string{"thread_id": threadID}
-	b, _ := json.Marshal(req)
-	url := "http://unix/create_dek_for_thread"
-	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
-	reqq.Header.Set("Content-Type", "application/json")
-	resp, err := r.httpc.Do(reqq)
-	if err != nil {
-		return "", nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-    var out struct {
-        KeyID  string `json:"key_id"`
-        Wrapped string `json:"wrapped"`
+// Health probes the remote miniKMS service. It expects a 200 response from
+// `/healthz` (or `/health`) and returns an error with body text when the
+// response status is not OK.
+func (r *RemoteClient) Health() error {
+    // try /healthz then /health
+    paths := []string{"/healthz", "/health"}
+    var lastErr error
+    for _, p := range paths {
+        url := "http://unix" + p
+        req, _ := http.NewRequest("GET", url, nil)
+        resp, err := r.httpc.Do(req)
+        if err != nil {
+            lastErr = err
+            continue
+        }
+        body, _ := io.ReadAll(resp.Body)
+        _ = resp.Body.Close()
+        if resp.StatusCode == 200 {
+            return nil
+        }
+        // include body in error for diagnostics
+        return fmt.Errorf("health %s: status %d: %s", p, resp.StatusCode, strings.TrimSpace(string(body)))
     }
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", nil, err
-	}
-	wb, err := base64.StdEncoding.DecodeString(out.Wrapped)
-	if err != nil {
-		return "", nil, err
-	}
-	return out.KeyID, wb, nil
+    return fmt.Errorf("health probe failed: %v", lastErr)
+}
+
+// CreateDEKForThread requests the miniKMS to create a DEK for a thread.
+func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
+    req := map[string]string{"thread_id": threadID}
+    b, _ := json.Marshal(req)
+    url := "http://unix/create_dek_for_thread"
+    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+    reqq.Header.Set("Content-Type", "application/json")
+    resp, err := r.httpc.Do(reqq)
+    if err != nil {
+        return "", nil, "", "", err
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
+        body, _ := io.ReadAll(resp.Body)
+        return "", nil, "", "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+    }
+    var out struct {
+        KeyID     string `json:"key_id"`
+        Wrapped   string `json:"wrapped"`
+        KekID     string `json:"kek_id"`
+        KekVersion string `json:"kek_version"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+        return "", nil, "", "", err
+    }
+    wb, err := base64.StdEncoding.DecodeString(out.Wrapped)
+    if err != nil {
+        return "", nil, "", "", err
+    }
+    return out.KeyID, wb, out.KekID, out.KekVersion, nil
 }
 
 // GetWrapped returns wrapped DEK from remote miniKMS

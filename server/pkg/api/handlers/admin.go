@@ -140,11 +140,16 @@ func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// create new DEK for thread
-	newKeyID, _, err := security.CreateDEKForThread(req.ThreadID)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+    newKeyID, _, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
+    if err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
+    // persist metadata
+    meta := map[string]string{"key_id": newKeyID, "kek_id": kekID, "kek_version": kekVer}
+    if mb, merr := json.Marshal(meta); merr == nil {
+        _ = store.SaveKey("kms:map:threadmeta:"+req.ThreadID, mb)
+    }
 	// perform migration
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)

@@ -130,8 +130,13 @@ func main() {
     }
     child = ch
 	// server relies on UDS peer-credential auth; do not use API key here.
-	rc := kms.NewRemoteClient(socket)
-	security.RegisterKMSProvider(rc)
+    rc := kms.NewRemoteClient(socket)
+    security.RegisterKMSProvider(rc)
+    // Verify remote KMS is healthy before continuing; fail fast with
+    // actionable message so operators know to install/start miniKMS.
+    if err := rc.Health(); err != nil {
+        log.Fatalf("miniKMS health check failed at %s: %v; ensure miniKMS is installed and PROGRESSDB_MINIKMS_ALLOWED_UIDS permits this process", socket, err)
+    }
 	// ensure child is stopped on shutdown
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
