@@ -79,4 +79,4 @@ Thanks for your interest in contributing to ProgressDB — we appreciate it! Thi
 - After approval, a maintainer will merge the PR and ensure CI passes.
 
 
-![ProgressDB Animation](/animation.gif)
+![ProgressDB Animation](/.github/animation.gif)
