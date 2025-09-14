@@ -117,64 +117,65 @@ func main() {
 		bin = "/usr/local/bin/minikms"
 	}
 	args := []string{"--socket", socket, "--data-dir", dataDir}
-    // pass allowed UIDs to child so it can accept peer-credential-authenticated
-    // connections from this server process. We do NOT pass API keys to avoid
-    // keeping secrets in the server process memory.
-    env := map[string]string{
-        "PROGRESSDB_MINIKMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
-    }
+	// pass allowed UIDs to child so it can accept peer-credential-authenticated
+	// connections from this server process. We do NOT pass API keys to avoid
+	// keeping secrets in the server process memory.
+	env := map[string]string{
+		"PROGRESSDB_MINIKMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
+	}
 
-    // Determine encryption usage and require key file when enabled.
-    useEnc := false
-    switch strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION"))) {
-    case "1", "true", "yes":
-        useEnc = true
-    }
-    if useEnc {
-        // require master key file path
-        mkFile := strings.TrimSpace(os.Getenv("PROGRESSDB_MINIKMS_MASTER_KEY_FILE"))
-        if mkFile == "" {
-            log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but PROGRESSDB_MINIKMS_MASTER_KEY_FILE is not set. Provide a path to a 64-hex (32-byte) key file.")
-        }
-        // pass file path to child
-        env["PROGRESSDB_MINIKMS_MASTER_KEY_FILE"] = mkFile
-    }
-    var cancel context.CancelFunc
-    if useEnc {
-        ctx, cancelLocal := context.WithCancel(context.Background())
-        cancel = cancelLocal
-        ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
-        if err != nil {
-            log.Fatalf("failed to start miniKMS: %v", err)
-        }
-        child = ch
-    }
-    // server relies on UDS peer-credential auth; only register a KMS provider
-    // when encryption is enabled. When encryption is disabled we do not
-    // autostart or register a KMS provider.
-    if useEnc {
-        rc := kms.NewRemoteClient(socket)
-        security.RegisterKMSProvider(rc)
-        // Verify remote KMS is healthy before continuing; fail fast with
-        // actionable message so operators know to install/start miniKMS.
-        if err := rc.Health(); err != nil {
-            log.Fatalf("miniKMS health check failed at %s: %v; ensure miniKMS is installed and PROGRESSDB_MINIKMS_ALLOWED_UIDS permits this process", socket, err)
-        }
-    }
+	// Determine encryption usage and require key file when enabled.
+	useEnc := false
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION"))) {
+	case "1", "true", "yes":
+		useEnc = true
+	}
+	if useEnc {
+		// require master key file path
+		mkFile := strings.TrimSpace(os.Getenv("PROGRESSDB_MINIKMS_MASTER_KEY_FILE"))
+		if mkFile == "" {
+			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but PROGRESSDB_MINIKMS_MASTER_KEY_FILE is not set. Provide a path to a 64-hex (32-byte) key file.")
+		}
+		// pass file path to child
+		env["PROGRESSDB_MINIKMS_MASTER_KEY_FILE"] = mkFile
+	}
+	var cancel context.CancelFunc
+	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
+	if useEnc {
+		ctx, cancelLocal := context.WithCancel(context.Background())
+		cancel = cancelLocal
+		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
+		if err != nil {
+			log.Fatalf("failed to start miniKMS: %v", err)
+		}
+		child = ch
+
+		rc = kms.NewRemoteClient(socket)
+		security.RegisterKMSProvider(rc)
+		// Verify remote KMS is healthy before continuing; fail fast with
+		// actionable message so operators know to install/start miniKMS.
+		if err := rc.Health(); err != nil {
+			log.Fatalf("miniKMS health check failed at %s: %v; ensure miniKMS is installed and PROGRESSDB_MINIKMS_ALLOWED_UIDS permits this process", socket, err)
+		}
+	}
 	// ensure child is stopped on shutdown
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-    go func() {
-        s := <-sigc
-        log.Printf("signal received: %v, shutting down", s)
-        // cancel background contexts (including child start/monitor)
-        cancel()
-        _ = rc.Close()
-        if child != nil {
-            _ = child.Stop(5 * time.Second)
-        }
-        os.Exit(0)
-    }()
+	go func() {
+		s := <-sigc
+		log.Printf("signal received: %v, shutting down", s)
+		// cancel background contexts (including child start/monitor)
+		if cancel != nil {
+			cancel()
+		}
+		if rc != nil {
+			_ = rc.Close()
+		}
+		if child != nil {
+			_ = child.Stop(5 * time.Second)
+		}
+		os.Exit(0)
+	}()
 	// Determine config sources summary (flags/env/config)
 	srcs := []string{}
 	if len(setFlags) > 0 {
@@ -219,15 +220,15 @@ func main() {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	// Build security middleware from config/env
-    secCfg := security.SecConfig{
-        AllowedOrigins: nil,
-        RPS:            0,
-        Burst:          0,
-        IPWhitelist:    nil,
-        BackendKeys:    map[string]struct{}{},
-        FrontendKeys:   map[string]struct{}{},
-        AdminKeys:      map[string]struct{}{},
-    }
+	secCfg := security.SecConfig{
+		AllowedOrigins: nil,
+		RPS:            0,
+		Burst:          0,
+		IPWhitelist:    nil,
+		BackendKeys:    map[string]struct{}{},
+		FrontendKeys:   map[string]struct{}{},
+		AdminKeys:      map[string]struct{}{},
+	}
 	// Apply CORS, rate limits and security keys from effective cfg
 	secCfg.AllowedOrigins = append(secCfg.AllowedOrigins, cfg.Security.CORS.AllowedOrigins...)
 	if cfg.Security.RateLimit.RPS > 0 {
@@ -239,7 +240,7 @@ func main() {
 	if len(cfg.Security.IPWhitelist) > 0 {
 		secCfg.IPWhitelist = append(secCfg.IPWhitelist, cfg.Security.IPWhitelist...)
 	}
-    // API access always requires keys; no allow-unauth option.
+	// API access always requires keys; no allow-unauth option.
 	for k := range backendKeys {
 		secCfg.BackendKeys[k] = struct{}{}
 	}
@@ -250,16 +251,16 @@ func main() {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-    // Populate the global runtime config with backend and signing keys.
-    runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-    for k := range backendKeys {
-        runtimeCfg.BackendKeys[k] = struct{}{}
-        runtimeCfg.SigningKeys[k] = struct{}{}
-    }
-    for k := range signingKeys {
-        runtimeCfg.SigningKeys[k] = struct{}{}
-    }
-    config.SetRuntime(runtimeCfg)
+	// Populate the global runtime config with backend and signing keys.
+	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
+	for k := range backendKeys {
+		runtimeCfg.BackendKeys[k] = struct{}{}
+		runtimeCfg.SigningKeys[k] = struct{}{}
+	}
+	for k := range signingKeys {
+		runtimeCfg.SigningKeys[k] = struct{}{}
+	}
+	config.SetRuntime(runtimeCfg)
 
 	wrapped := security.AuthenticateRequestMiddleware(secCfg)(mux)
 

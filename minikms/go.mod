@@ -1,9 +1,9 @@
 module github.com/progressdb/minikms
 
-go 1.20
+go 1.21
 
-require (
-    github.com/progressdb/progressdb v0.0.0
-)
+toolchain go1.22.3
 
-replace github.com/progressdb/progressdb => ..
+require golang.org/x/sys v0.11.0
+
+replace progressdb => ../server

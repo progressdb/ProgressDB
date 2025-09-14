@@ -34,6 +34,7 @@ export PROGRESSDB_MINIKMS_MASTER_KEY_FILE="$KEY_FILE"
 export PROGRESSDB_KMS_SOCKET="$SOCKET"
 export PROGRESSDB_KMS_DATA_DIR="$DATA_DIR"
 export PROGRESSDB_USE_ENCRYPTION="true"
+export PROGRESSDB_MINIKMS_ALLOWED_UIDS=$(id -u)
 
 echo "[dev-minikms] starting minikms (logs -> $KEY_DIR/minikms.log)"
 "$BIN_DIR/minikms" --socket "$SOCKET" --data-dir "$DATA_DIR" > "$KEY_DIR/minikms.log" 2>&1 &
@@ -74,4 +75,3 @@ echo "  tail -f $KEY_DIR/minikms.log $KEY_DIR/server.log"
 echo "Press Ctrl+C to stop and cleanup."
 
 wait
-
