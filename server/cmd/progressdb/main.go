@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -12,10 +18,13 @@ import (
 	"progressdb/pkg/api"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
+	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
 	"progressdb/pkg/validation"
 )
+
+// generateHex removed; server no longer generates API keys (we rely on peer UIDs)
 
 func main() {
 	// build metadata - set via ldflags during build/release
@@ -55,11 +64,7 @@ func main() {
 	} else {
 		dbPath = dbVal
 	}
-	if cfg.Security.EncryptionKey != "" {
-		if err := security.SetKeyHex(cfg.Security.EncryptionKey); err != nil {
-			log.Fatalf("invalid encryption key: %v", err)
-		}
-	}
+	// Embedded KEK is not used in external-only deployment; do not set master key here.
 	if len(cfg.Security.Fields) > 0 {
 		fields := make([]security.EncField, 0, len(cfg.Security.Fields))
 		for _, f := range cfg.Security.Fields {
@@ -95,6 +100,50 @@ func main() {
 	if err := store.Open(dbPath); err != nil {
 		log.Fatalf("failed to open pebble at %s: %v", dbPath, err)
 	}
+	// Always spawn the miniKMS child process and register the remote provider.
+	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
+	if socket == "" {
+		socket = "/tmp/progressdb-minikms.sock"
+	}
+	dataDir := os.Getenv("PROGRESSDB_KMS_DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./minikms-data"
+	}
+
+	var child *kms.CmdHandle
+	// always spawn the child for production deployments
+	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
+	if bin == "" {
+		bin = "./server/cmd/minikms/minikms"
+	}
+	args := []string{"--socket", socket, "--data-dir", dataDir}
+	// pass allowed UIDs to child so it can accept peer-credential-authenticated
+	// connections from this server process. We do NOT pass API keys to avoid
+	// keeping secrets in the server process memory.
+	env := map[string]string{
+		"PROGRESSDB_MINIKMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
+	}
+	ctx := context.Background()
+	ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
+	if err != nil {
+		log.Fatalf("failed to start miniKMS: %v", err)
+	}
+	child = ch
+	// server relies on UDS peer-credential auth; do not use API key here.
+	rc := kms.NewRemoteClient(socket)
+	security.RegisterKMSProvider(rc)
+	// ensure child is stopped on shutdown
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		s := <-sigc
+		log.Printf("signal received: %v, shutting down", s)
+		_ = rc.Close()
+		if child != nil {
+			_ = child.Stop(5 * time.Second)
+		}
+		os.Exit(0)
+	}()
 	// Determine config sources summary (flags/env/config)
 	srcs := []string{}
 	if len(setFlags) > 0 {

@@ -3,7 +3,9 @@ package security
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -11,12 +13,54 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"encoding/json"
 )
 
+// securityRandReadImpl reads cryptographically secure random bytes.
+func securityRandReadImpl(b []byte) (int, error) { return rand.Read(b) }
+
 var key []byte
+var (
+	providerMu sync.RWMutex
+	provider   KMSProvider
+	keyLocked  bool
+)
+
+// KMSProvider mirrors the minimal interface expected by the security layer.
+// Implementations may be provided by the kms package and registered at
+// runtime via RegisterKMSProvider.
+type KMSProvider interface {
+	Enabled() bool
+	Encrypt(plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error)
+	Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error)
+	CreateDEK() (keyID string, wrapped []byte, err error)
+	CreateDEKForThread(threadID string) (keyID string, wrapped []byte, err error)
+	EncryptWithKey(keyID string, plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error)
+	DecryptWithKey(keyID string, ciphertext, iv, aad []byte) (plaintext []byte, err error)
+	WrapDEK(dek []byte) ([]byte, error)
+	UnwrapDEK(wrapped []byte) ([]byte, error)
+	// GetWrapped returns the wrapped DEK blob for a key id managed by the provider.
+	GetWrapped(keyID string) ([]byte, error)
+	Health() error
+	Close() error
+}
+
+// RegisterKMSProvider registers a provider for use by the security package.
+func RegisterKMSProvider(p KMSProvider) {
+	providerMu.Lock()
+	defer providerMu.Unlock()
+	provider = p
+}
+
+// UnregisterKMSProvider removes any registered provider.
+func UnregisterKMSProvider() {
+	providerMu.Lock()
+	defer providerMu.Unlock()
+	provider = nil
+}
 
 type EncField struct {
 	Path      string
@@ -58,6 +102,10 @@ func HasFieldPolicy() bool { return len(fieldRules) > 0 }
 // SetKeyHex sets the AES-256-GCM key from a hex string.
 func SetKeyHex(hexKey string) error {
 	if hexKey == "" {
+		if key != nil && keyLocked {
+			_ = UnlockMemory(key)
+			keyLocked = false
+		}
 		key = nil
 		return nil
 	}
@@ -68,15 +116,47 @@ func SetKeyHex(hexKey string) error {
 	if l := len(b); l != 32 {
 		return errors.New("encryption key must be 32 bytes (AES-256)")
 	}
+	// If an existing key is present and locked, unlock it first.
+	if key != nil && keyLocked {
+		_ = UnlockMemory(key)
+		keyLocked = false
+	}
 	key = b
+	if err := LockMemory(key); err == nil {
+		keyLocked = true
+	}
 	return nil
 }
 
 // Enabled returns true if encryption key is configured.
-func Enabled() bool { return len(key) == 32 }
+func Enabled() bool {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p != nil && p.Enabled() {
+		return true
+	}
+	return len(key) == 32
+}
 
 // Encrypt returns nonce|ciphertext using AES-256-GCM.
 func Encrypt(plaintext []byte) ([]byte, error) {
+	// Delegate to registered KMS provider when present.
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p != nil && p.Enabled() {
+		ct, iv, _, err := p.Encrypt(plaintext, nil)
+		if err != nil {
+			return nil, err
+		}
+		// If provider returned a separate iv, append or combine as needed.
+		// Our LocalProvider returns a nonce|ciphertext blob and iv==nil.
+		if iv != nil && len(iv) > 0 {
+			return append(iv, ct...), nil
+		}
+		return ct, nil
+	}
 	if !Enabled() {
 		// No-op: return copy of plaintext
 		out := append([]byte(nil), plaintext...)
@@ -101,6 +181,15 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 
 // Decrypt expects nonce|ciphertext.
 func Decrypt(data []byte) ([]byte, error) {
+	// Delegate to registered provider when present.
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p != nil && p.Enabled() {
+		// provider.Decrypt accepts ciphertext, iv, aad. Our adapter assumes
+		// ciphertext may already include nonce prefix; pass iv=nil.
+		return p.Decrypt(data, nil, nil)
+	}
 	if !Enabled() {
 		return append([]byte(nil), data...), nil
 	}
@@ -119,6 +208,169 @@ func Decrypt(data []byte) ([]byte, error) {
 	nonce := data[:ns]
 	ct := data[ns:]
 	return gcm.Open(nil, nonce, ct, nil)
+}
+
+// CreateDEK delegates to the registered provider to create a new DEK.
+func CreateDEK() (string, []byte, error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, errors.New("no kms provider registered")
+	}
+	return p.CreateDEK()
+}
+
+// CreateDEKForThread requests a DEK scoped to the provided threadID.
+func CreateDEKForThread(threadID string) (string, []byte, error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, errors.New("no kms provider registered")
+	}
+	// If provider implements CreateDEKForThread, call it; otherwise fall back.
+	type threadCreator interface {
+		CreateDEKForThread(string) (string, []byte, error)
+	}
+	if tc, ok := p.(threadCreator); ok {
+		return tc.CreateDEKForThread(threadID)
+	}
+	return p.CreateDEK()
+}
+
+// EncryptWithKey delegates an encryption request to the registered KMS
+// provider using a DEK referenced by keyID.
+func EncryptWithKey(keyID string, plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, nil, "", errors.New("no kms provider registered")
+	}
+	type encIf interface {
+		EncryptWithKey(string, []byte, []byte) ([]byte, []byte, string, error)
+	}
+	if e, ok := p.(encIf); ok {
+		return e.EncryptWithKey(keyID, plaintext, aad)
+	}
+	return nil, nil, "", errors.New("provider does not support EncryptWithKey")
+}
+
+// DecryptWithKey delegates decryption to the registered KMS provider.
+func DecryptWithKey(keyID string, ciphertext, iv, aad []byte) (plaintext []byte, err error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	type decIf interface {
+		DecryptWithKey(string, []byte, []byte, []byte) ([]byte, error)
+	}
+	if d, ok := p.(decIf); ok {
+		return d.DecryptWithKey(keyID, ciphertext, iv, aad)
+	}
+	return nil, errors.New("provider does not support DecryptWithKey")
+}
+
+// GetWrappedDEK returns the wrapped DEK blob for a given key id.
+func GetWrappedDEK(keyID string) ([]byte, error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	return p.GetWrapped(keyID)
+}
+
+// UnwrapDEK delegates to provider to unwrap a wrapped DEK.
+func UnwrapDEK(wrapped []byte) ([]byte, error) {
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	return p.UnwrapDEK(wrapped)
+}
+
+// EncryptWithRawKey performs AES-256-GCM encryption using the provided raw key (DEK).
+// It returns nonce|ciphertext (nonce prepended) similar to Encrypt.
+func EncryptWithRawKey(dek, plaintext []byte) ([]byte, error) {
+	if len(dek) != 32 {
+		return nil, errors.New("invalid DEK length")
+	}
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	out := gcm.Seal(nil, nonce, plaintext, nil)
+	return append(nonce, out...), nil
+}
+
+// DecryptWithRawKey decrypts a nonce|ciphertext blob using the provided raw DEK.
+func DecryptWithRawKey(dek, data []byte) ([]byte, error) {
+	if len(dek) != 32 {
+		return nil, errors.New("invalid DEK length")
+	}
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(data) < ns {
+		return nil, errors.New("ciphertext too short")
+	}
+	nonce := data[:ns]
+	ct := data[ns:]
+	return gcm.Open(nil, nonce, ct, nil)
+}
+
+// EncryptWithKeyBytes wraps provided plaintext bytes using the supplied KEK
+// bytes using AES-GCM. Returns nonce|ciphertext blob.
+func EncryptWithKeyBytes(kek, plaintext []byte) ([]byte, error) {
+	if len(kek) != 32 {
+		return nil, errors.New("kek must be 32 bytes")
+	}
+	block, err := aes.NewCipher(kek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	out := gcm.Seal(nil, nonce, plaintext, nil)
+	return append(nonce, out...), nil
+}
+
+// AuditSign returns a base64 HMAC-SHA256 signature of the provided message
+// using the master KEK when available. Returns error if master key not set.
+func AuditSign(msg []byte) (string, error) {
+	if !Enabled() || key == nil {
+		return "", errors.New("master key not configured")
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(msg)
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 // envelope represents an encrypted JSON field value.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"progressdb/pkg/models"
+	"progressdb/pkg/security"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 
@@ -19,6 +20,7 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/threads", adminListThreads).Methods(http.MethodGet)
 	r.HandleFunc("/keys", adminListKeys).Methods(http.MethodGet)
 	r.HandleFunc("/keys/{key}", adminGetKey).Methods(http.MethodGet)
+	r.HandleFunc("/rotate_thread_dek", adminRotateThreadDEK).Methods(http.MethodPost)
 	slog.Info("admin_routes_registered")
 }
 
@@ -119,6 +121,36 @@ func adminGetKey(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	_, _ = w.Write([]byte(v))
+}
+
+func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	var req struct {
+		ThreadID string `json:"thread_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+	if req.ThreadID == "" {
+		http.Error(w, `{"error":"missing thread_id"}`, http.StatusBadRequest)
+		return
+	}
+	// create new DEK for thread
+	newKeyID, _, err := security.CreateDEKForThread(req.ThreadID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	// perform migration
+	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 }
 
 // isAdmin checks if the request is from an admin or backend.

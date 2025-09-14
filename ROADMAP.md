@@ -14,7 +14,7 @@
 - [x] Auth - *(authenticated authors & accessible datas)*
 - [ ] Performance - *(measure & alert for low speeds & public banners)*
 - [ ] Backups - *(cloud backups)*
-- [ ] Encryption - *(backend encryption)*
+- [x] Encryption - *(data encryption - local or cloud kms~hsm backed)*
 - [ ] State Changes - *(shutdowns, health, restarts)*
 - [ ] Sockets - *(realtime subscriptions, webhooks)*
 - [ ] Updates - *(api versioning & image or instance upgrades)*

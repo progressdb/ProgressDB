@@ -187,12 +187,12 @@ Implemented (ready to use):
 - [x] Backend SDKs (Node, Python)
 - [x] Frontend SDKs (TypeScript, React)
 - [x] Simple data viewer
+- [x] Encryption key management & rotation
 
 Planned / In progress:
 
 - [ ] Performance benchmarking & SLO/alerts
 - [ ] Backups & tested restores
-- [ ] Encryption key management & rotation
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - [ ] API versioning, retention policies, scaling and search
 

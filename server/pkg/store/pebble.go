@@ -51,24 +51,22 @@ func SaveMessage(threadID, msgID, msg string) error {
 	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 	data := []byte(msg)
 	if security.Enabled() {
-		if security.HasFieldPolicy() {
-			if out, err := security.EncryptJSONFields(data); err == nil {
-				data = out
-			} else {
-				// Fallback: full-message encryption if not JSON
-				enc, err := security.Encrypt(data)
-				if err != nil {
-					return err
-				}
-				data = enc
+		// Per-thread DEK encryption using provider-level EncryptWithKey.
+		keyID, kerr := GetThreadKey(threadID)
+		if kerr != nil || keyID == "" {
+			nid, _, cerr := security.CreateDEKForThread(threadID)
+			if cerr != nil {
+				return cerr
 			}
-		} else {
-			enc, err := security.Encrypt(data)
-			if err != nil {
-				return err
-			}
-			data = enc
+			keyID = nid
+			// persist mapping locally so server restarts can find the mapping
+			_ = SaveThreadKey(threadID, keyID)
 		}
+		enc, _, _, eerr := security.EncryptWithKey(keyID, data, nil)
+		if eerr != nil {
+			return eerr
+		}
+		data = enc
 	}
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
 		slog.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
@@ -404,6 +402,91 @@ func GetKey(key string) (string, error) {
 	}
 	slog.Debug("get_key_ok", "key", key, "len", len(v))
 	return string(v), nil
+}
+
+// SaveKey stores an arbitrary key/value pair. Use with caution; callers should
+// choose a safe namespace (e.g. "kms:dek:").
+func SaveKey(key string, value []byte) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	if err := db.Set([]byte(key), value, pebble.Sync); err != nil {
+		slog.Error("save_key_failed", "key", key, "error", err)
+		return err
+	}
+	slog.Debug("save_key_ok", "key", key, "len", len(value))
+	return nil
+}
+
+// SaveThreadKey maps a threadID to a keyID for its DEK.
+func SaveThreadKey(threadID, keyID string) error {
+	return SaveKey("kms:map:thread:"+threadID, []byte(keyID))
+}
+
+// GetThreadKey returns the keyID mapping for a given threadID or empty string
+// when none exists.
+func GetThreadKey(threadID string) (string, error) {
+	v, err := GetKey("kms:map:thread:" + threadID)
+	if err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
+// RotateThreadDEK migrates all messages in a thread from the old DEK to a
+// new DEK identified by newKeyID. It backs up original values under keys
+// prefixed with `backup:migrate:` before overwriting. On success it updates
+// the thread->key mapping to the new key.
+func RotateThreadDEK(threadID, newKeyID string) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	oldKeyID, _ := GetThreadKey(threadID)
+	if oldKeyID == newKeyID {
+		return nil
+	}
+	prefix := []byte("thread:" + threadID + ":msg:")
+	iter, err := db.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), prefix) {
+			break
+		}
+		k := append([]byte(nil), iter.Key()...)
+		v := append([]byte(nil), iter.Value()...)
+		// decrypt with old DEK
+		pt, derr := security.DecryptWithKey(oldKeyID, v, nil, nil)
+		if derr != nil {
+			return fmt.Errorf("decrypt message failed: %w", derr)
+		}
+		// encrypt with new DEK
+		ct, _, _, eerr := security.EncryptWithKey(newKeyID, pt, nil)
+		// zeroize plaintext
+		for i := range pt {
+			pt[i] = 0
+		}
+		if eerr != nil {
+			return fmt.Errorf("encrypt with new key failed: %w", eerr)
+		}
+		// backup original value
+		backupKey := append([]byte("backup:migrate:"), k...)
+		if err := db.Set(backupKey, v, pebble.Sync); err != nil {
+			return fmt.Errorf("backup failed: %w", err)
+		}
+		// overwrite with new ciphertext
+		if err := db.Set(k, ct, pebble.Sync); err != nil {
+			return fmt.Errorf("write new ciphertext failed: %w", err)
+		}
+	}
+	// update mapping
+	if err := SaveThreadKey(threadID, newKeyID); err != nil {
+		return fmt.Errorf("save thread key mapping failed: %w", err)
+	}
+	return iter.Error()
 }
 
 func likelyJSON(b []byte) bool {
