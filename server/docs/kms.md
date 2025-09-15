@@ -18,15 +18,14 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 
 ## Runtime flow (normal)
 
-1. On startup the server spawns KMS (or you may run it externally). The server passes allowed peer UIDs to the child (so KMS can accept UDS peer credentials).
+1. On startup the server spawns KMS (or you may run it externally). The server and KMS communicate over a Unix Domain Socket (UDS).
 2. Server registers `RemoteClient` pointing at the child UDS socket and delegates KMS operations to it.
 3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
 4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
 
 ## Authentication & Authorization
 
-- Primary (recommended): UDS peer-credential (SO_PEERCRED on Linux, getpeereid on BSD/macOS). KMS accepts requests only from configured peer UIDs (env `PROGRESSDB_KMS_ALLOWED_UIDS`).
-- Policy: the server sets `PROGRESSDB_KMS_ALLOWED_UIDS` to its UID when spawning the child, so local server→KMS calls are allowed without secrets in memory.
+- Primary (recommended): UDS peer-credential (SO_PEERCRED on Linux, getpeereid on BSD/macOS). KMS records the peer UID for logging and auditing, but it does not enforce an allowlist — caller authorization should be enforced by the supervising environment or by limiting access to the socket.
 - API-key fallback: removed for the default local spawn flow. (If you need remote KMS, you must add a secure auth method such as mTLS or short-lived tokens.)
 
 ## API (internal HTTP over UDS)
@@ -44,6 +43,16 @@ Notes: these endpoints are internal and are intended to be called by the server 
 - KEK rotation: KMS exposes `/rotate_kek` which accepts a new KEK (hex). The handler:
   - iterates all stored wrapped-DEK metadata in the metadata store (Pebble DB), unwraps each DEK with the current KEK, rewraps it with the new KEK, updates its metadata (version/kek id), and keeps a file backup snapshot per-key under `kms-deks-backup/` for recovery.
   - after successful rewrap of all DEKs, swaps the active KEK to the new value.
+
+Configuration and startup secrets
+
+- KMS accepts an optional `--config <path>` parameter that points to a YAML file. When supplied KMS will read the master key file path and the allowed peer UIDs from this file and will not use environment variables for those startup secrets. This is the recommended secure operating mode.
+
+Example `config.yaml` (self-contained):
+
+```yaml
+master_key_hex: "<64-hex-bytes>"
+```
 - DEK rotation (per-thread): the server exposes an admin endpoint `/admin/rotate_thread_dek` which:
   - creates a new DEK for the thread and calls a migration routine that decrypts each message with the old DEK and encrypts it with the new DEK, backing up old ciphertexts before overwrite. This is a blocking migration; for production you should run it as a resumable background job (see next steps).
 

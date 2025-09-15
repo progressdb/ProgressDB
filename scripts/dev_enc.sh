@@ -58,11 +58,9 @@ if [ ! -f "$MKFILE" ]; then
 fi
 
 # --- Section: Export environment variables for server and KMS ---
-export PROGRESSDB_KMS_MASTER_KEY_FILE="$MKFILE"
 export PROGRESSDB_KMS_SOCKET="$SOCKET"
 export PROGRESSDB_KMS_DATA_DIR="$DATA_DIR"
 export PROGRESSDB_USE_ENCRYPTION="true"
-export PROGRESSDB_KMS_ALLOWED_UIDS=$(id -u)
 
 # --- Section: Remove any stale socket file ---
 rm -f "$SOCKET" || true
@@ -114,4 +112,3 @@ echo "  tail -f $KMS_LOG $SERVER_LOG"
 echo "Press Ctrl+C to stop and cleanup."
 
 wait
-

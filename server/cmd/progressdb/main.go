@@ -124,12 +124,6 @@ func main() {
 		bin = filepath.Join(filepath.Dir(exePath), "kms")
 	}
 	args := []string{"--socket", socket, "--data-dir", dataDir}
-	// pass allowed UIDs to child so it can accept peer-credential-authenticated
-	// connections from this server process. We do NOT pass API keys to avoid
-	// keeping secrets in the server process memory.
-	env := map[string]string{
-		"PROGRESSDB_KMS_ALLOWED_UIDS": fmt.Sprintf("%d", os.Getuid()),
-	}
 
 	// Determine encryption usage and require key file when enabled.
 	useEnc := false
@@ -138,13 +132,24 @@ func main() {
 		useEnc = true
 	}
 	if useEnc {
-		// require master key file path
-		mkFile := strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"))
-		if mkFile == "" {
-			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but PROGRESSDB_KMS_MASTER_KEY_FILE is not set. Provide a path to a 64-hex (32-byte) key file.")
+		// require master key file provided in server config; environment
+		// variable PROGRESSDB_KMS_MASTER_KEY_FILE is deprecated and removed.
+		if cfg.Security.KMS.MasterKeyFile == "" {
+			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but no master key file path provided in server config. Provide a path to a 64-hex (32-byte) key file via server config.")
 		}
-		// pass file path to child
-		env["PROGRESSDB_KMS_MASTER_KEY_FILE"] = mkFile
+		mkFile := strings.TrimSpace(cfg.Security.KMS.MasterKeyFile)
+		keyb, err := os.ReadFile(mkFile)
+		if err != nil {
+			log.Fatalf("failed to read master key file %s: %v", mkFile, err)
+		}
+		mk := strings.TrimSpace(string(keyb))
+		// write kms config into dataDir
+		kmsCfgPath := filepath.Join(dataDir, "kms-config.yaml")
+		kmsCfg := fmt.Sprintf("master_key_hex: \"%s\"\n", mk)
+		if err := os.WriteFile(kmsCfgPath, []byte(kmsCfg), 0600); err != nil {
+			log.Fatalf("failed to write kms config: %v", err)
+		}
+		args = append(args, "--config", kmsCfgPath)
 	}
 
 	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
@@ -190,6 +195,11 @@ func main() {
 			}
 		}
 
+		// Provide an empty environment to the child process, since 'env' was undefined.
+		// kms.StartChild expects a map[string]string for the environment.
+		// We'll provide an empty map to indicate no environment variables.
+		env := map[string]string{}
+
 		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env, extraFiles)
 		if parentListenerClose != nil {
 			// close parent's copy of listener now that child inherited it
@@ -205,7 +215,7 @@ func main() {
 		// Verify remote KMS is healthy before continuing; fail fast with
 		// actionable message so operators know to install/start KMS.
 		if err := rc.Health(); err != nil {
-			log.Fatalf("KMS health check failed at %s: %v; ensure KMS is installed and PROGRESSDB_KMS_ALLOWED_UIDS permits this process", socket, err)
+			log.Fatalf("KMS health check failed at %s: %v; ensure KMS is installed and reachable", socket, err)
 		}
 	}
 	// ensure child is stopped on shutdown

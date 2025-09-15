@@ -14,8 +14,7 @@ Configuration
 - Environment variables used by the server to talk to KMS:
   - `PROGRESSDB_KMS_SOCKET` — UDS path (default `/tmp/progressdb-kms.sock`).
   - `PROGRESSDB_KMS_DATA_DIR` — directory where KMS stores metadata and audit logs.
-  - `PROGRESSDB_KMS_MASTER_KEY_FILE` — optional path to a file containing the master KEK (64 hex chars) for KMS to load; if omitted KMS may generate an ephemeral key for dev only.
-  - `PROGRESSDB_KMS_ALLOWED_UIDS` — comma-separated numeric UIDs allowed to connect to KMS via UDS peer credentials.
+  - The KMS master key should be provided via the server configuration; when the server spawns the KMS child it will embed the key into the child's `--config` YAML (self-contained). The environment variable `PROGRESSDB_KMS_MASTER_KEY_FILE` is removed.
 
 API and behavior
 - The server delegates encryption operations to KMS via a RemoteClient over UDS.

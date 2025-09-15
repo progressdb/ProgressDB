@@ -102,10 +102,10 @@ func SetKeyHex(hexKey string) error {
 	if l := len(b); l != 32 {
 		return errors.New("encryption key must be 32 bytes (AES-256)")
 	}
-    if key != nil && keyLocked {
-        _ = conn.UnlockMemory(key)
-        keyLocked = false
-    }
+	if key != nil && keyLocked {
+		_ = conn.UnlockMemory(key)
+		keyLocked = false
+	}
 	key = b
 	if err := conn.LockMemory(key); err == nil {
 		keyLocked = true

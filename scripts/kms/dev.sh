@@ -18,7 +18,7 @@ BIN_DIR="$ROOT_DIR/bin"
 KMS_BIN="$BIN_DIR/kms"
 SOCKET="/tmp/progressdb-kms.sock"
 KEY_DIR="$ROOT_DIR/.kms"
-KEY_FILE="$KEY_DIR/kek.hex"
+KEY_FILE_HEX=""
 DATA_DIR="$KEY_DIR/data"
 BUILD=1
 
@@ -37,12 +37,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "[dev-kms] using key file: $KEY_FILE"
-if [ ! -f "$KEY_FILE" ]; then
-  echo "[dev-kms] generating test KEK..."
-  openssl rand -hex 32 > "$KEY_FILE"
-  chmod 600 "$KEY_FILE"
+if [ -z "$KEY_FILE_HEX" ]; then
+  echo "[dev-kms] generating test KEK hex..."
+  KEY_FILE_HEX=$(openssl rand -hex 32)
 fi
+
 
 if [[ $BUILD -eq 1 ]]; then
   echo "[dev-kms] building kms binary..."
@@ -53,18 +52,20 @@ fi
 
 rm -f "$SOCKET" || true
 
-export PROGRESSDB_KMS_MASTER_KEY_FILE="$KEY_FILE"
-export PROGRESSDB_KMS_SOCKET="$SOCKET"
-export PROGRESSDB_KMS_DATA_DIR="$DATA_DIR"
-export PROGRESSDB_USE_ENCRYPTION="true"
-export PROGRESSDB_KMS_ALLOWED_UIDS="$(id -u)"
+# Write a self-contained YAML config consumed by KMS for startup secrets.
+# The config embeds the master key hex directly so no extra secret files
+# are required on disk.
+CONFIG_FILE="$KEY_DIR/config.yaml"
+cat > "$CONFIG_FILE" <<EOF
+master_key_hex: "$KEY_FILE_HEX"
+EOF
 
 LOG_DIR="$KEY_DIR/logs"
 mkdir -p "$LOG_DIR"
 KMS_LOG="$LOG_DIR/kms.log"
 
 echo "[dev-kms] starting kms (logs -> $KMS_LOG)"
-"$KMS_BIN" --socket "$SOCKET" --data-dir "$DATA_DIR" > "$KMS_LOG" 2>&1 &
+"$KMS_BIN" --socket "$SOCKET" --data-dir "$DATA_DIR" --config "$CONFIG_FILE" > "$KMS_LOG" 2>&1 &
 KMS_PID=$!
 echo "[dev-kms] kms pid=$KMS_PID"
 
@@ -98,4 +99,3 @@ echo "  tail -f $KMS_LOG"
 echo "Press Ctrl+C to stop and cleanup."
 
 wait
-

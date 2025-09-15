@@ -98,7 +98,6 @@ type Config struct {
 			DataDir       string `yaml:"data_dir"`
 			Binary        string `yaml:"binary"`
 			MasterKeyFile string `yaml:"master_key_file"`
-			AllowedUIDs   string `yaml:"allowed_uids"`
 		} `yaml:"kms"`
 	} `yaml:"security"`
 	Logging struct {
@@ -287,14 +286,11 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Security.KMS.Binary = v
 	}
-	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
-		envUsed = true
-		cfg.Security.KMS.MasterKeyFile = v
-	}
-	if v := os.Getenv("PROGRESSDB_KMS_ALLOWED_UIDS"); v != "" {
-		envUsed = true
-		cfg.Security.KMS.AllowedUIDs = v
-	}
+	// PROGRESSDB_KMS_MASTER_KEY_FILE environment variable removed: KMS
+	// master key should be configured via server config and passed to the
+	// KMS child as an embedded config. Do not read this value from env.
+	// NOTE: KMS allowed UIDs concept removed; authorization is handled
+	// by the supervising process and KMS config file.
 	// PROGRESSDB_ALLOW_UNAUTH has been removed: API access always requires an API key.
 	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {
 		envUsed = true
