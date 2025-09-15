@@ -3,7 +3,11 @@ name: React SDK compatibility
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'clients/sdk/frontend/**'
   pull_request:
+    paths:
+      - 'clients/sdk/frontend/**'
 
 jobs:
   react-compat:
