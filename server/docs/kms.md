@@ -42,15 +42,15 @@ Notes: these endpoints are internal and are intended to be called by the server 
 ## Rotation
 
 - KEK rotation: KMS exposes `/rotate_kek` which accepts a new KEK (hex). The handler:
-  - reads all persisted wrapped-DEK metadata, unwraps each DEK with the current KEK, rewraps it with the new KEK, writes updated metadata and increments version, and keeps a backup of old metadata under `kms-deks-backup/`.
+  - iterates all stored wrapped-DEK metadata in the metadata store (Pebble DB), unwraps each DEK with the current KEK, rewraps it with the new KEK, updates its metadata (version/kek id), and keeps a file backup snapshot per-key under `kms-deks-backup/` for recovery.
   - after successful rewrap of all DEKs, swaps the active KEK to the new value.
 - DEK rotation (per-thread): the server exposes an admin endpoint `/admin/rotate_thread_dek` which:
   - creates a new DEK for the thread and calls a migration routine that decrypts each message with the old DEK and encrypts it with the new DEK, backing up old ciphertexts before overwrite. This is a blocking migration; for production you should run it as a resumable background job (see next steps).
 
 ## Persistence & backups
 
-- Wrapped DEKs: stored in `<data-dir>/kms-deks/<keyid>.json` (JSON KeyMeta with base64 wrapped blob). Backup created by rotate_kek and backup writes under `<data-dir>/kms-deks-backup/`.
-- Thread->key mapping: stored in Pebble under `kms:map:thread:<threadID>`.
+- Wrapped DEKs and their metadata: stored in a compact Pebble DB file at `<data-dir>/kms.db` (prefixed keys, e.g. `meta:<keyid>`). Backups for rotate/rewrap operations are written as individual files under `<data-dir>/kms-deks-backup/` to preserve a human-readable history and allow ad-hoc recovery.
+- Thread->key mapping: stored in Pebble under keys such as `kms:map:thread:<threadID>`.
 - Messages: stored under `thread:<threadID>:msg:<timestamp>-<seq>` as either ciphertext (nonce|ct) when encrypted.
 
 ## Audit
@@ -94,4 +94,3 @@ WantedBy=multi-user.target
 ---
 
 This is the authoritative KMS reference for ProgressDB.
-

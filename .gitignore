@@ -93,3 +93,4 @@ NOTES.md
 .kms/
 bin/
 .dev-kms/
+.gocache_modules/
