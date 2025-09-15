@@ -67,7 +67,7 @@ Configuration
   - server.address: host/interface (e.g., `0.0.0.0`)
   - server.port: 8080
   - storage.db_path: `./data/progressdb`
-  - security.encryption_key: 32‑byte hex (AES‑256‑GCM)
+  - encryption: use the external KMS provider (see `server/docs/kms.md`)
   - logging.level: `info` (reserved; simple stdout logging used in MVP)
   - validation:
     - required: list of dot-paths that must exist (e.g., `body.text`).
@@ -84,7 +84,7 @@ Environment Variables
   - `PROGRESSDB_ADDRESS`: host/interface (used with `PROGRESSDB_PORT`).
   - `PROGRESSDB_PORT`: port number (string accepted, e.g., `8080`).
   - `PROGRESSDB_DB_PATH`: Pebble database path.
-  - `PROGRESSDB_ENCRYPTION_KEY`: 64‑hex chars (32 bytes) for AES‑256‑GCM.
+  - `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `server/docs/kms.md`.
   - `PROGRESSDB_CONFIG`: path to `config.yaml` (optional; you can also pass `--config`).
   - `PROGRESSDB_LOG_LEVEL`: `debug|info|warn|error` (optional hint; stdout only).
 
@@ -157,15 +157,15 @@ Field-Level Encryption
   - Old records without envelopes are treated as plaintext.
   - Full-message encrypted records continue to be supported; field-level and full-message modes are mutually exclusive per deployment.
 - Operational notes:
-  - Key: single symmetric key via `PROGRESSDB_ENCRYPTION_KEY` or config.
-  - Rotation: plan a re-encrypt migration; envelopes allow in-place rotation with versioning (e.g., add `_kid`).
-  - Performance: path matching and per-field crypto add overhead; cache compiled path matchers.
+  - Note: local symmetric key support has been removed; use an external KMS instead. See `server/docs/kms.md`.
+  - Rotation: use KMS rotation procedures; the KMS rewraps DEKs and updates metadata.
+  - Performance: per-field crypto adds overhead; benchmark and cache matchers as needed.
 
 Examples
 - Minimal `.env`:
   - `PROGRESSDB_ADDR=0.0.0.0:8080`
   - `PROGRESSDB_DB_PATH=./data/progressdb`
-  - `PROGRESSDB_ENCRYPTION_KEY=REPLACE_WITH_YOUR_KEY`
+  - Encryption: configure and run an external KMS. See `server/docs/kms.md` for examples and runbook.
 
 Metrics
 - Prometheus endpoint: `GET /metrics` (default registry via promhttp).
@@ -190,7 +190,7 @@ Security
   storage:
     db_path: "./data/progressdb"
   security:
-    encryption_key: "REPLACE_WITH_YOUR_KEY"
+    # Encryption is provided by an external KMS. See server/docs/kms.md
     cors:
       allowed_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
     rate_limit:

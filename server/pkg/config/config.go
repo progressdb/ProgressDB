@@ -72,9 +72,9 @@ type Config struct {
 	Storage struct {
 		DBPath string `yaml:"db_path"`
 	} `yaml:"storage"`
-	Security struct {
-		EncryptionKey string `yaml:"encryption_key"`
-		Fields        []struct {
+    Security struct {
+        // EncryptionKey removed - deployments must use an external KMS
+        Fields        []struct {
 			Path      string `yaml:"path"`
 			Algorithm string `yaml:"algorithm"`
 		} `yaml:"fields"`
@@ -87,10 +87,19 @@ type Config struct {
 		} `yaml:"rate_limit"`
 		IPWhitelist []string `yaml:"ip_whitelist"`
 		APIKeys     struct {
-			Backend  []string `yaml:"backend"`
-			Frontend []string `yaml:"frontend"`
-			Admin    []string `yaml:"admin"`
+			Backend     []string `yaml:"backend"`
+			Frontend    []string `yaml:"frontend"`
+			Admin       []string `yaml:"admin"`
+			AllowUnauth bool     `yaml:"allow_unauth"`
 		} `yaml:"api_keys"`
+
+		KMS struct {
+			Socket        string `yaml:"socket"`
+			DataDir       string `yaml:"data_dir"`
+			Binary        string `yaml:"binary"`
+			MasterKeyFile string `yaml:"master_key_file"`
+			AllowedUIDs   string `yaml:"allowed_uids"`
+		} `yaml:"kms"`
 	} `yaml:"security"`
 	Logging struct {
 		Level  string `yaml:"level"`
@@ -211,10 +220,7 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Storage.DBPath = v
 	}
-	if v := os.Getenv("PROGRESSDB_ENCRYPTION_KEY"); v != "" {
-		envUsed = true
-		cfg.Security.EncryptionKey = v
-	}
+    // PROGRESSDB_ENCRYPTION_KEY deprecated and removed: prefer KMS
 	if v := os.Getenv("PROGRESSDB_ENCRYPT_FIELDS"); v != "" {
 		envUsed = true
 		parts := parseList(v)
@@ -257,6 +263,37 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 	if v := os.Getenv("PROGRESSDB_API_ADMIN_KEYS"); v != "" {
 		envUsed = true
 		cfg.Security.APIKeys.Admin = parseList(v)
+	}
+	if v := os.Getenv("PROGRESSDB_API_ALLOW_UNAUTH"); v != "" {
+		envUsed = true
+		vl := strings.ToLower(strings.TrimSpace(v))
+		if vl == "1" || vl == "true" || vl == "yes" {
+			cfg.Security.APIKeys.AllowUnauth = true
+		} else {
+			cfg.Security.APIKeys.AllowUnauth = false
+		}
+	}
+
+	// KMS related env overrides
+	if v := os.Getenv("PROGRESSDB_KMS_SOCKET"); v != "" {
+		envUsed = true
+		cfg.Security.KMS.Socket = v
+	}
+	if v := os.Getenv("PROGRESSDB_KMS_DATA_DIR"); v != "" {
+		envUsed = true
+		cfg.Security.KMS.DataDir = v
+	}
+	if v := os.Getenv("PROGRESSDB_KMS_BINARY"); v != "" {
+		envUsed = true
+		cfg.Security.KMS.Binary = v
+	}
+	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
+		envUsed = true
+		cfg.Security.KMS.MasterKeyFile = v
+	}
+	if v := os.Getenv("PROGRESSDB_KMS_ALLOWED_UIDS"); v != "" {
+		envUsed = true
+		cfg.Security.KMS.AllowedUIDs = v
 	}
 	// PROGRESSDB_ALLOW_UNAUTH has been removed: API access always requires an API key.
 	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {

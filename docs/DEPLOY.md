@@ -18,7 +18,7 @@ The server supports both a YAML `config.yaml` and environment variables. For pro
 
 - `PROGRESSDB_ADDR` — Listen address (`host:port`), e.g. `0.0.0.0:8080`.
 - `PROGRESSDB_DB_PATH` — Pebble DB path (persistent volume), e.g. `/var/lib/progressdb`.
-- `PROGRESSDB_ENCRYPTION_KEY` — 64 hex chars (32 bytes) AES‑256‑GCM key. Generate with: `openssl rand -hex 32`.
+- `PROGRESSDB_ENCRYPTION_KEY` — deprecated/removed: use an external KMS instead (see `server/docs/kms.md`).
 - `PROGRESSDB_ENCRYPT_FIELDS` — Optional, comma-separated JSON paths to field-encrypt (e.g. `body.credit_card,body.phi.*`).
 - `PROGRESSDB_CONFIG` — Optional path to `config.yaml` if you prefer file configs.
 - `PROGRESSDB_LOG_LEVEL` — `debug|info|warn|error` (default `info`).
@@ -54,7 +54,8 @@ storage:
   db_path: "/var/lib/progressdb"
 
 security:
-  encryption_key: "<64-hex-chars>"
+  # encryption is provided by an external KMS; configure under security.kms
+  # e.g. security.kms.master_key_file: "/run/secrets/progressdb_kek.hex"
   cors:
     allowed_origins: ["https://app.example.com"]
   rate_limit:
@@ -83,7 +84,7 @@ security:
 
 ## Encryption & key rotation
 
-- `PROGRESSDB_ENCRYPTION_KEY` is used for AES‑256‑GCM full-message encryption and for field-level encryption.
+`PROGRESSDB_ENCRYPTION_KEY` is deprecated/removed. Use an external KMS; see `server/docs/kms.md`.
 - Rotation requires re-encrypting data; plan a migration strategy (re-encrypt on read/write or run a background re-encrypt job with a rolling window).
 
 ## Rate limiting & DOS protection

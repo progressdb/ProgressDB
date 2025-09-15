@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -114,7 +115,12 @@ func main() {
 	// always spawn the child for production deployments
 	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
 	if bin == "" {
-		bin = "/usr/local/bin/kms"
+		// KMS binary is in the same folder as this file (progressdb)
+		exePath, err := os.Executable()
+		if err != nil {
+			log.Fatalf("failed to determine executable path: %v", err)
+		}
+		bin = filepath.Join(filepath.Dir(exePath), "kms")
 	}
 	args := []string{"--socket", socket, "--data-dir", dataDir}
 	// pass allowed UIDs to child so it can accept peer-credential-authenticated
@@ -139,8 +145,17 @@ func main() {
 		// pass file path to child
 		env["PROGRESSDB_KMS_MASTER_KEY_FILE"] = mkFile
 	}
-	var cancel context.CancelFunc
+
 	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
+
+	// Log encryption state for operators
+	if useEnc {
+		// rc is nil here, because it is only initialized after KMS child is started below.
+		log.Printf("encryption enabled: true (KMS socket=%s)", socket)
+	} else {
+		log.Printf("encryption enabled: false")
+	}
+	var cancel context.CancelFunc
 	if useEnc {
 		ctx, cancelLocal := context.WithCancel(context.Background())
 		cancel = cancelLocal
