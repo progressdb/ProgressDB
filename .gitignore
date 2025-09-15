@@ -94,3 +94,5 @@ NOTES.md
 bin/
 .dev-kms/
 .gocache_modules/
+_devternal/
+.trunk/

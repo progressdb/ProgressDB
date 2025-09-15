@@ -1,46 +1,61 @@
- # ProgressDB Development Roadmap
+# ProgressDB Development Roadmap
 
-## Service Development
+**Service Development**
 
-- [x] Logging
-- [x] Metrics
-- [x] Documentation - *(api & general docs)*
-- [x] Testing Suite & Tests - *(api & utils)*
-- [x] Config Flags - *(inline flags etc)*
-- [x] Security *- (cors, apikeys, tls etc)*
-- [x] Rate limiting
-- [x] Messages - *(edits ~ versioning, deletes, replies, reacts)*
-- [x] Threads - *(crud a thread, relationship with messages & effects)*
-- [x] Auth - *(authenticated authors & accessible datas)*
-- [ ] Performance - *(measure & alert for low speeds & public banners)*
-- [ ] Backups - *(cloud backups)*
-- [x] Encryption - *(data encryption - local easy kms)*
-- [ ] State Changes - *(shutdowns, health, restarts)*
-- [ ] Sockets - *(realtime subscriptions, webhooks)*
-- [ ] Updates - *(api versioning & image or instance upgrades)*
-- [ ] Retention - *(data retention policy)*
-- [ ] Encryption - *(data encryption - cloud kms~hsm backed)*
+- [x]  Logging
+- [x]  Metrics
+- [ ]  Performance - *(measure & alert for low speeds & public banners)*
+- [x]  Documentation - *(api & general docs)*
+- [x]  Testing Suite & Tests - *(api & utils)*
+- [x]  Config Flags - *(inline flags etc)*
+- [x]  Security *- (cors, apikeys, tls etc)*
+- [x]  Rate limiting
+- [x]  Messages - *(edits ~ versioning, deletes, replies, reacts)*
+- [x]  Threads - *(crud a thread, relationship with messages & effects - base at most, id and names for threads)*
+- [x]  Auth - *(authenticated authors & accessible datas)*
+- [ ]  Updates - *(api versioning & image or instance upgrades)*
+- [ ]  Sockets - *(realtime subscriptions, webhooks)*
+- [ ]  Encryption - *(kms~hsm backed encryptions)*
+- [x]  Encryption - *(local kms encryption)*
+- [ ]  State Changes - *(shutdowns, health, restarts - integrity checks etc)*
+- [ ]  Backups - *(cloud backups)*
+- [ ]  Retention - *(data retention policy)*
+- [ ]  Encryption - *(cloud backed kms~hsm encryption)*
 
-## Backend SDKs
+**Backend SDKs**
 
-- [x] Nodejs SDK
-- [x] Python SDK
+- [x]  Nodejs SDK
+- [x]  Python SDK
 
-## Frontend SDKs
+**Frontend SDKs**
 
-- [x] Typescript SDK - *(provides the direct methods to e.g fetch threads etc)*
-- [x] React SDK - *(provides easy hooks e.g ThreadInfo, ThreadMessages)*
+- [x]  Typescript SDK - *(provides the direct methods to e.g fetch threads etc)*
+- [x]  React SDK - *(provides easy hooks e.g ThreadInfo, ThreadMessages)*
 
-## System Upgrades
+**User Products**
 
-- [ ] Scaling - *(clustering, performance tests etc)*
-- [ ] Realtime - *(websockets & subscribers + client cache)*
-- [ ] Search - *(per author messages or threads search)*
-- [ ] Sounds - *(sent, received message sounds)*
+- [x]  Docker Image
+- [x]  Binaries
+- [ ]  Github registry image
 
-## Developer Tools
+**System Upgrades**
 
-- [x] Data Viewer - *(easy data viewer using admin keys)*
-- [ ] Debug Mode - *(logs everything)*
-- [ ] CLI - *(easy analytics & status inspection)*
-- [ ] ProgressCloud - *(managed hosting service)*
+- [ ]  Scaling - *(clustering, performance tests etc)*
+- [ ]  Realtime - *(websockets & subscribers + client cache)*
+- [ ]  Search - *(per author messages or threads search)*
+- [ ]  Sounds - *(sent, received message sounds)*
+
+**Experience Upgrades**
+
+- [ ]  AI tooling - *(thread summary & event callbacks etc)*
+- [ ]  Third Integrations - *(vercelai, chromadb, langchain etc)*
+- [ ]  Start Templates - *(nextjs, react, vue)*
+- [ ]  Replies - *(add sdk helpers)*
+- [ ]  React - *(add sdk helpers)*
+
+**Developer Tools**
+
+- [x]  Data Viewer - *(easy data viewer using admin keys)*
+- [ ]  Debug Mode - *(logs everything)*
+- [ ]  CLI - *(easy analytics & status inspection)*
+- [ ]  ProgressCloud - *(managed hosting service)*
