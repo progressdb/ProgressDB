@@ -72,9 +72,9 @@ type Config struct {
 	Storage struct {
 		DBPath string `yaml:"db_path"`
 	} `yaml:"storage"`
-    Security struct {
-        // EncryptionKey removed - deployments must use an external KMS
-        Fields        []struct {
+	Security struct {
+		// EncryptionKey removed - deployments must use an external KMS
+		Fields []struct {
 			Path      string `yaml:"path"`
 			Algorithm string `yaml:"algorithm"`
 		} `yaml:"fields"`
@@ -220,7 +220,7 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Storage.DBPath = v
 	}
-    // PROGRESSDB_ENCRYPTION_KEY deprecated and removed: prefer KMS
+	// PROGRESSDB_ENCRYPTION_KEY deprecated and removed: prefer KMS
 	if v := os.Getenv("PROGRESSDB_ENCRYPT_FIELDS"); v != "" {
 		envUsed = true
 		parts := parseList(v)

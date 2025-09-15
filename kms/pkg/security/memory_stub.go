@@ -8,4 +8,3 @@ func LockMemory(b []byte) error { return nil }
 
 // UnlockMemory is a no-op on unsupported platforms.
 func UnlockMemory(b []byte) error { return nil }
-

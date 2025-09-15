@@ -26,7 +26,7 @@ type CmdHandle struct {
 // (socketPath) to appear. It returns a CmdHandle that the caller may Stop.
 // The function keeps environment minimal and does not pass secrets on the
 // command-line. Caller is responsible for cleanup of socketPath if needed.
-func StartChild(ctx context.Context, binary string, args []string, socketPath string, uid, gid uint32, readyTimeout time.Duration, env map[string]string) (*CmdHandle, error) {
+func StartChild(ctx context.Context, binary string, args []string, socketPath string, uid, gid uint32, readyTimeout time.Duration, env map[string]string, extraFiles []*os.File) (*CmdHandle, error) {
 	if _, err := os.Stat(binary); err != nil {
 		return nil, fmt.Errorf("binary not found: %w", err)
 	}
@@ -46,6 +46,10 @@ func StartChild(ctx context.Context, binary string, args []string, socketPath st
 		baseEnv = append(baseEnv, k+"="+v)
 	}
 	cmd.Env = baseEnv
+	// Attach any extra inherited files (e.g. listener FDs). These become fd 3+
+	if len(extraFiles) > 0 {
+		cmd.ExtraFiles = extraFiles
+	}
 
 	// Drop privileges for the child when supported
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
@@ -74,29 +78,33 @@ func StartChild(ctx context.Context, binary string, args []string, socketPath st
 	// start a goroutine to reap the child process and report its exit
 	go func() { h.done <- cmd.Wait() }()
 
-	// wait for readiness
-	deadline := time.Now().Add(readyTimeout)
-	for {
-		if socketPath == "" {
-			// no readiness check configured; assume started
-			break
-		}
-		if _, err := os.Stat(socketPath); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			// try to kill process
-			_ = cmd.Process.Kill()
-			// include captured output for diagnostics
-			out := h.Stdout.String()
-			errout := h.Stderr.String()
-			return nil, fmt.Errorf("kms readiness timeout, socket %s not available; stdout=%q stderr=%q", socketPath, out, errout)
-		}
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			return nil, ctx.Err()
-		case <-time.After(100 * time.Millisecond):
+	// wait for readiness. If we've passed an inherited FD (extraFiles != nil)
+	// assume the child is ready once it has started because the listener is
+	// already bound by the parent and there is no socket path to stat.
+	if len(extraFiles) == 0 {
+		deadline := time.Now().Add(readyTimeout)
+		for {
+			if socketPath == "" {
+				// no readiness check configured; assume started
+				break
+			}
+			if _, err := os.Stat(socketPath); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				// try to kill process
+				_ = cmd.Process.Kill()
+				// include captured output for diagnostics
+				out := h.Stdout.String()
+				errout := h.Stderr.String()
+				return nil, fmt.Errorf("kms readiness timeout, socket %s not available; stdout=%q stderr=%q", socketPath, out, errout)
+			}
+			select {
+			case <-ctx.Done():
+				_ = cmd.Process.Kill()
+				return nil, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
 	}
 

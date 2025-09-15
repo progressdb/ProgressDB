@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -159,7 +160,41 @@ func main() {
 	if useEnc {
 		ctx, cancelLocal := context.WithCancel(context.Background())
 		cancel = cancelLocal
-		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env)
+		// Create and bind the unix-domain socket in the parent so we can pass
+		// the listener FD to the child. This avoids TOCTOU races on the
+		// filesystem path. If we cannot create the listener for any reason we
+		// fall back to letting the child bind the socket itself.
+		var extraFiles []*os.File
+		var parentListenerClose func()
+		if socket != "" {
+			// ensure socket directory exists
+			if dir := filepath.Dir(socket); dir != "" {
+				_ = os.MkdirAll(dir, 0700)
+			}
+			// try to create listener here
+			if ln, err := net.Listen("unix", socket); err == nil {
+				if ul, ok := ln.(*net.UnixListener); ok {
+					if f, ferr := ul.File(); ferr == nil {
+						extraFiles = append(extraFiles, f)
+						// parent will close its copy of listener after spawn
+						parentListenerClose = func() {
+							_ = ln.Close()
+							_ = f.Close()
+						}
+					} else {
+						_ = ln.Close()
+					}
+				} else {
+					_ = ln.Close()
+				}
+			}
+		}
+
+		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env, extraFiles)
+		if parentListenerClose != nil {
+			// close parent's copy of listener now that child inherited it
+			parentListenerClose()
+		}
 		if err != nil {
 			log.Fatalf("failed to start KMS: %v", err)
 		}

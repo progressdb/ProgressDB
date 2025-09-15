@@ -91,3 +91,5 @@ server/.gopath/
 .notes/
 NOTES.md
 .kms/
+bin/
+.dev-kms/
