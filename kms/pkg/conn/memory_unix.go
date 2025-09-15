@@ -1,7 +1,7 @@
 //go:build linux || darwin || freebsd || netbsd || openbsd
 // +build linux darwin freebsd netbsd openbsd
 
-package security
+package conn
 
 import "golang.org/x/sys/unix"
 

@@ -2,11 +2,11 @@ package security
 
 import (
 	"context"
-    "encoding/base64"
-    "encoding/hex"
-    "errors"
-    "fmt"
-    "time"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"time"
 
 	wrapping "github.com/hashicorp/go-kms-wrapping/v2"
 	aead "github.com/hashicorp/go-kms-wrapping/v2/aead"
@@ -51,9 +51,9 @@ func (h *hashicorpProvider) Encrypt(plaintext, aad []byte) (ciphertext, iv []byt
 }
 
 func (h *hashicorpProvider) Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error) {
-    keyId, _ := h.w.KeyId(h.ctx)
-    info := &wrapping.BlobInfo{Ciphertext: append(iv, ciphertext...), KeyInfo: &wrapping.KeyInfo{KeyId: keyId}}
-    return h.w.Decrypt(h.ctx, info, wrapping.WithAad(aad))
+	keyId, _ := h.w.KeyId(h.ctx)
+	info := &wrapping.BlobInfo{Ciphertext: append(iv, ciphertext...), KeyInfo: &wrapping.KeyInfo{KeyId: keyId}}
+	return h.w.Decrypt(h.ctx, info, wrapping.WithAad(aad))
 }
 
 func (h *hashicorpProvider) CreateDEK() (string, []byte, error) {
@@ -68,7 +68,7 @@ func (h *hashicorpProvider) CreateDEK() (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
-    return fmt.Sprintf("k_%d", time.Now().UnixNano()), info.Ciphertext, nil
+	return fmt.Sprintf("k_%d", time.Now().UnixNano()), info.Ciphertext, nil
 }
 
 func (h *hashicorpProvider) CreateDEKForThread(threadID string) (string, []byte, error) {
@@ -103,10 +103,12 @@ func (h *hashicorpProvider) GetWrapped(keyID string) ([]byte, error) {
 func (h *hashicorpProvider) Health() error { return nil }
 
 func (h *hashicorpProvider) Close() error {
-    if f, ok := any(h.w).(interface{ Finalize(context.Context, ...wrapping.Option) error }); ok {
-        return f.Finalize(h.ctx)
-    }
-    return nil
+	if f, ok := any(h.w).(interface {
+		Finalize(context.Context, ...wrapping.Option) error
+	}); ok {
+		return f.Finalize(h.ctx)
+	}
+	return nil
 }
 
 // helper to create provider from hex key string

@@ -21,7 +21,7 @@ func AuditSign(b []byte) (string, error) {
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-// LockMemory/UnlockMemory provided by platform-specific files in this package.
+// LockMemory/UnlockMemory provided by platform-specific files in `pkg/conn`.
 
 // Exported helper used by callers outside this package.
 func SecurityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
