@@ -46,11 +46,12 @@
 
 **Experience Upgrades**
 
-- [ ]  AI tooling - *(thread summary & event callbacks etc)*
 - [ ]  Third Integrations - *(vercelai, chromadb, langchain etc)*
 - [ ]  Start Templates - *(nextjs, react, vue)*
 - [ ]  Replies - *(add sdk helpers)*
 - [ ]  React - *(add sdk helpers)*
+- [ ]  Summaries - *(add sdk helpers)*
+- [ ]  Events - *(add sdk helpers)*
 
 **Developer Tools**
 

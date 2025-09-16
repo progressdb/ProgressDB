@@ -12,7 +12,7 @@ This file documents the environment variables used by the ProgressDB server and 
 - `PROGRESSDB_API_FRONTEND_KEYS`: Comma-separated frontend API keys (limited scope for frontend SDKs).
 - `PROGRESSDB_API_ADMIN_KEYS`: Comma-separated admin API keys.
 
--- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. You may provide the master KEK either directly as `security.kms.master_key_hex` (a 64-hex string) or as a path to a file via `security.kms.master_key_file`.
+	- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string).
 - `PROGRESSDB_ENCRYPT_FIELDS`: Comma-separated field paths to encrypt.
 
 - `PROGRESSDB_KMS_BINARY`: Optional path to a KMS binary that the server may spawn when encryption is enabled. If unset the server will search for a `kms` sibling next to the ProgressDB executable.
