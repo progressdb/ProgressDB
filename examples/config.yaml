@@ -1,54 +1,34 @@
 server:
-  # HTTP listen address and port
+  # Server listen address and TLS settings
   address: "0.0.0.0"
   port: 8080
   tls:
-    # Provide cert_file and key_file to enable HTTPS
-    cert_file: ""   # set for TLS
-    key_file: ""    # set for TLS
+    cert_file: ""
+    key_file: ""
 
 storage:
-  # Pebble DB path for server storage
   db_path: "./.database"
 
-security:  
-  # Selective field encryption rules. Each entry: { path: "a.b.c", algorithm: "aes-gcm" }
+security:
   fields: []
-
   cors:
     allowed_origins:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
-
   rate_limit:
     rps: 10
     burst: 20
-
-  ip_whitelist: []   # e.g., ["127.0.0.1"]
-
+  ip_whitelist: []
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
     admin: ["admin_example_key"]
-    allow_unauth: true
 
-  # KMS configuration - used when encryption is enabled
   kms:
-    # Unix socket path where the spawned or external KMS listens
     socket: "/tmp/progressdb-kms.sock"
-
-    # Directory for KMS to store wrapped DEKs, audit logs and backups
     data_dir: "./kms-data"
-
-    # Optional: path to KMS binary (if server should spawn a local child)
     binary: "/usr/local/bin/kms"
-
-    # Optional: path to a file containing a 64-hex (32-byte) KEK for KMS.
-    # If empty, KMS may generate an ephemeral KEK (development only).
     master_key_file: ""
-
-    # Optional: comma-separated numeric UIDs that KMS will accept via UDS peer creds
-    allowed_uids: ""
 
 logging:
   level: "info"

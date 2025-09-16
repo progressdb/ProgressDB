@@ -15,7 +15,6 @@
 - [x]  Auth - *(authenticated authors & accessible datas)*
 - [ ]  Updates - *(api versioning & image or instance upgrades)*
 - [ ]  Sockets - *(realtime subscriptions, webhooks)*
-- [ ]  Encryption - *(kms~hsm backed encryptions)*
 - [x]  Encryption - *(local kms encryption)*
 - [ ]  State Changes - *(shutdowns, health, restarts - integrity checks etc)*
 - [ ]  Backups - *(cloud backups)*

@@ -90,7 +90,6 @@ type Config struct {
 			Backend     []string `yaml:"backend"`
 			Frontend    []string `yaml:"frontend"`
 			Admin       []string `yaml:"admin"`
-			AllowUnauth bool     `yaml:"allow_unauth"`
 		} `yaml:"api_keys"`
 
 		KMS struct {
@@ -263,15 +262,8 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Security.APIKeys.Admin = parseList(v)
 	}
-	if v := os.Getenv("PROGRESSDB_API_ALLOW_UNAUTH"); v != "" {
-		envUsed = true
-		vl := strings.ToLower(strings.TrimSpace(v))
-		if vl == "1" || vl == "true" || vl == "yes" {
-			cfg.Security.APIKeys.AllowUnauth = true
-		} else {
-			cfg.Security.APIKeys.AllowUnauth = false
-		}
-	}
+	// The option to allow unauthenticated API access has been removed;
+	// API access requires a valid API key. Any legacy env var is ignored.
 
 	// KMS related env overrides
 	if v := os.Getenv("PROGRESSDB_KMS_SOCKET"); v != "" {

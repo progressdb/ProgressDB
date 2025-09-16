@@ -25,8 +25,6 @@ import (
 	"progressdb/pkg/validation"
 )
 
-// generateHex removed; server no longer generates API keys (we rely on peer UIDs)
-
 func main() {
 	// build metadata - set via ldflags during build/release
 	var (
