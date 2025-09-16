@@ -27,56 +27,48 @@ import (
 )
 
 func main() {
-	// build metadata - set via ldflags during build/release
+	// Build metadata (set via ldflags at build/release)
 	var (
 		version   = "dev"
 		commit    = "none"
 		buildDate = "unknown"
 	)
-	// Parse flags (moved into config package to centralize flag parsing)
-	_ = godotenv.Load(".env")
-	addrVal, dbVal, cfgVal, setFlags := config.ParseCommandFlags()
 
-	// Resolve config path (file flag wins over env)
-	cfgPath := config.ResolveConfigPath(cfgVal, setFlags["config"])
+	_ = godotenv.Load(".env") // Load .env if present (no error if missing)
 
-	// Load effective config (file + env) and canonical app-level config
-	cfg, backendKeys, signingKeys, envUsed, err := config.LoadEffective(cfgPath)
+	// load config options
+	flags := config.ParseConfigFlags()
+	fileCfg, fileExists, err := config.ParseConfigFile(flags)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatalf("failed to load config file: %v", err)
+	}
+	envCfg, envRes := config.ParseConfigEnvs()
+
+	// load effective config (chooses a single source according to policy)
+	eff, err := config.LoadEffectiveConfig(flags, fileCfg, fileExists, envCfg, envRes)
+	if err != nil {
+		log.Fatalf("failed to build effective config: %v", err)
 	}
 
-	// Apply loaded config values for encryption and validation, but respect
-	// explicit flags: flags win over config/env when provided by the user.
-	var addr string
-	var dbPath string
-	if !setFlags["addr"] {
-		addr = cfg.Addr()
-	} else {
-		addr = addrVal
+	// publish runtime keys based on chosen effective config (no mixing)
+	bk := map[string]struct{}{}
+	for _, k := range eff.Config.Security.APIKeys.Backend {
+		bk[k] = struct{}{}
 	}
-    if !setFlags["db"] {
-        if p := cfg.Server.DBPath; p != "" {
-            dbPath = p
-        } else {
-            dbPath = dbVal
-        }
-    } else {
-        dbPath = dbVal
-    }
-	// Embedded KEK is not used in external-only deployment; do not set master key here.
-	// Load encryption field rules. Prefer `security.fields` if present
-	// (users moved the block under security), otherwise fall back to the
-	// legacy `encryption.fields` block.
-	var fieldSrc []struct {
-		Path      string
-		Algorithm string
+	sk := map[string]struct{}{}
+	for _, k := range eff.Config.Security.APIKeys.Backend {
+		sk[k] = struct{}{}
 	}
-    if len(cfg.Security.Encryption.Fields) > 0 {
-        fieldSrc = cfg.Security.Encryption.Fields
-    } else if len(cfg.Security.Fields) > 0 {
-        fieldSrc = cfg.Security.Fields
-    }
+	config.SetRuntime(&config.RuntimeConfig{BackendKeys: bk, SigningKeys: sk})
+
+	// --- Encryption field policy setup ---
+	var fieldSrc []config.FieldEntry
+	switch {
+	case len(eff.Config.Security.Encryption.Fields) > 0:
+		fieldSrc = eff.Config.Security.Encryption.Fields
+	case len(eff.Config.Security.Fields) > 0:
+		fieldSrc = eff.Config.Security.Fields
+	}
 	if len(fieldSrc) > 0 {
 		fields := make([]security.EncField, 0, len(fieldSrc))
 		for _, f := range fieldSrc {
@@ -86,19 +78,24 @@ func main() {
 			log.Fatalf("invalid encryption fields: %v", err)
 		}
 	}
-	// Validation rules
-	vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
-	vr.Required = append(vr.Required, cfg.Validation.Required...)
-	for _, t := range cfg.Validation.Types {
+
+	// --- Validation rules setup ---
+	vr := validation.Rules{
+		Types:  map[string]string{},
+		MaxLen: map[string]int{},
+		Enums:  map[string][]string{},
+	}
+	vr.Required = append(vr.Required, eff.Config.Validation.Required...)
+	for _, t := range eff.Config.Validation.Types {
 		vr.Types[t.Path] = t.Type
 	}
-	for _, ml := range cfg.Validation.MaxLen {
+	for _, ml := range eff.Config.Validation.MaxLen {
 		vr.MaxLen[ml.Path] = ml.Max
 	}
-	for _, e := range cfg.Validation.Enums {
+	for _, e := range eff.Config.Validation.Enums {
 		vr.Enums[e.Path] = append([]string{}, e.Values...)
 	}
-	for _, wt := range cfg.Validation.WhenThen {
+	for _, wt := range eff.Config.Validation.WhenThen {
 		vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{
 			WhenPath: wt.When.Path,
 			Equals:   wt.When.Equals,
@@ -107,11 +104,12 @@ func main() {
 	}
 	validation.SetRules(vr)
 
-	// Flags explicitly set win over env/config for addr and dbPath (handled above).
-	if err := store.Open(dbPath); err != nil {
-		log.Fatalf("failed to open pebble at %s: %v", dbPath, err)
+	// --- Open DB ---
+	if err := store.Open(eff.DBPath); err != nil {
+		log.Fatalf("failed to open pebble at %s: %v", eff.DBPath, err)
 	}
-	// Always spawn the KMS child process and register the remote provider.
+
+	// --- KMS/Encryption setup ---
 	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
 	if socket == "" {
 		socket = "/tmp/progressdb-kms.sock"
@@ -120,27 +118,24 @@ func main() {
 	if dataDir == "" {
 		dataDir = "./kms-data"
 	}
-
-	var child *kms.CmdHandle
-	// always spawn the child for production deployments
 	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
 	if bin == "" {
-		// KMS binary is in the same folder as this file (progressdb)
 		exePath, err := os.Executable()
 		if err != nil {
 			log.Fatalf("failed to determine executable path: %v", err)
 		}
 		bin = filepath.Join(filepath.Dir(exePath), "kms")
 	}
-	// args is not used when using launcher; launcher will read the config file.
 
-	var kmsCfgPath string
+	var (
+		kmsCfgPath string
+		child      *kms.CmdHandle
+		rc         *kms.RemoteClient
+		cancel     context.CancelFunc
+	)
 
-	// Determine encryption usage and require key file when enabled.
-    // Determine whether encryption is enabled. Prefer an explicit
-    // environment setting when present; otherwise fall back to the
-    // server config value `security.encryption.use`.
-    useEnc := cfg.Security.Encryption.Use
+	// Determine if encryption is enabled (env overrides config)
+	useEnc := eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
 		switch strings.ToLower(ev) {
 		case "1", "true", "yes":
@@ -149,28 +144,23 @@ func main() {
 			useEnc = false
 		}
 	}
+
 	if useEnc {
-		// Determine master key: prefer an embedded hex value in config, but
-		// fall back to reading the configured master key file path. The
-		// `master_key_hex` config allows operators to embed the 64-hex KEK
-		// directly in the server config for environments where that is
-		// acceptable; otherwise `master_key_file` remains supported.
+		// --- Master key selection and validation ---
 		var mk string
-		// prefer a master key file when provided (safer for orchestrators);
-		// fall back to an embedded hex value only when no file is configured.
-		if strings.TrimSpace(cfg.Security.KMS.MasterKeyFile) != "" {
-			mkFile := strings.TrimSpace(cfg.Security.KMS.MasterKeyFile)
+		switch {
+		case strings.TrimSpace(eff.Config.Security.KMS.MasterKeyFile) != "":
+			mkFile := strings.TrimSpace(eff.Config.Security.KMS.MasterKeyFile)
 			keyb, err := os.ReadFile(mkFile)
 			if err != nil {
 				log.Fatalf("failed to read master key file %s: %v", mkFile, err)
 			}
 			mk = strings.TrimSpace(string(keyb))
-		} else if strings.TrimSpace(cfg.Security.KMS.MasterKeyHex) != "" {
-			mk = strings.TrimSpace(cfg.Security.KMS.MasterKeyHex)
-		} else {
+		case strings.TrimSpace(eff.Config.Security.KMS.MasterKeyHex) != "":
+			mk = strings.TrimSpace(eff.Config.Security.KMS.MasterKeyHex)
+		default:
 			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but no master key provided in server config. Set security.kms.master_key_file or security.kms.master_key_hex")
 		}
-		// Validate master key hex: must be 64 hex chars (32 bytes)
 		if mk == "" {
 			log.Fatalf("master key is empty")
 		}
@@ -178,45 +168,39 @@ func main() {
 			log.Fatalf("invalid master_key_hex: must be 64-hex (32 bytes)")
 		}
 
-		// Build launcher config and create secure config file for child
+		// --- Write secure KMS launcher config ---
 		lcfg := &kms.LauncherConfig{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}
 		kmsCfgPath, err = kms.CreateSecureConfigFile(lcfg, dataDir)
 		if err != nil {
 			log.Fatalf("failed to write kms config: %v", err)
 		}
-		// let StartChild handle config path; do not pass --config in args here
 	}
 
-	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
-
-	// Log encryption state for operators
+	// --- Log encryption state ---
 	if useEnc {
-		// rc is nil here, because it is only initialized after KMS child is started below.
 		log.Printf("encryption enabled: true (KMS socket=%s)", socket)
 	} else {
 		log.Printf("encryption enabled: false")
 	}
-	var cancel context.CancelFunc
+
+	// --- KMS child process and remote client ---
 	if useEnc {
 		ctx, cancelLocal := context.WithCancel(context.Background())
 		cancel = cancelLocal
-		// Create and bind the unix-domain socket in the parent so we can pass
-		// the listener FD to the child. This avoids TOCTOU races on the
-		// filesystem path. If we cannot create the listener for any reason we
-		// fall back to letting the child bind the socket itself.
-		var parentListenerClose func()
-		var ln *net.UnixListener
+
+		// Try to pre-bind the unix socket in parent (avoid TOCTOU)
+		var (
+			parentListenerClose func()
+			ln                  *net.UnixListener
+		)
 		if socket != "" {
-			// ensure socket directory exists
 			if dir := filepath.Dir(socket); dir != "" {
 				_ = os.MkdirAll(dir, 0700)
 			}
-			// try to create listener here
 			if l, err := net.Listen("unix", socket); err == nil {
 				if ul, ok := l.(*net.UnixListener); ok {
 					ln = ul
 					if f, ferr := ul.File(); ferr == nil {
-						// parent will close its copy of listener after spawn
 						parentListenerClose = func() {
 							_ = ul.Close()
 							_ = f.Close()
@@ -230,8 +214,7 @@ func main() {
 			}
 		}
 
-		// Start child using launcher. launcher will use the config file we
-		// created above (kmsCfgPath).
+		// Start KMS child process (launcher reads config file)
 		h, err := kms.StartChildLauncher(ctx, bin, kmsCfgPath, ln)
 		if parentListenerClose != nil {
 			parentListenerClose()
@@ -239,8 +222,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to start KMS: %v", err)
 		}
-		// wrap handle into the existing child type for compatibility with
-		// shutdown paths that call child.Stop
 		child = &kms.CmdHandle{Cmd: h.Cmd}
 		rc = kms.NewRemoteClient(socket)
 		security.RegisterKMSProvider(rc)
@@ -248,13 +229,13 @@ func main() {
 			log.Fatalf("KMS health check failed at %s: %v; ensure KMS is installed and reachable", socket, err)
 		}
 	}
-	// ensure child is stopped on shutdown
+
+	// --- Graceful shutdown: stop KMS, close remote client, cancel contexts ---
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-sigc
 		log.Printf("signal received: %v, shutting down", s)
-		// cancel background contexts (including child start/monitor)
 		if cancel != nil {
 			cancel()
 		}
@@ -266,102 +247,84 @@ func main() {
 		}
 		os.Exit(0)
 	}()
-	// Determine config sources summary (flags/env/config)
-	srcs := []string{}
-	if len(setFlags) > 0 {
+
+	// --- Banner: show config sources and build info ---
+	var srcs []string
+	switch eff.Source {
+	case "flags":
 		srcs = append(srcs, "flags")
-	}
-	// detect env (based on LoadEffective result)
-	if envUsed {
+	case "env":
 		srcs = append(srcs, "env")
-	}
-	// config file present?
-	if _, err := config.Load(cfgPath); err == nil {
+	case "config":
 		srcs = append(srcs, "config")
 	}
-	// Include version/commit info in the startup banner when present.
 	verStr := version
 	if commit != "none" {
-		verStr = verStr + " (" + commit + ")"
+		verStr += " (" + commit + ")"
 	}
 	if buildDate != "unknown" {
-		verStr = verStr + " @ " + buildDate
+		verStr += " @ " + buildDate
 	}
-	banner.Print(addr, dbPath, strings.Join(srcs, ", "), verStr)
+	banner.Print(eff.Addr, eff.DBPath, strings.Join(srcs, ", "), verStr)
 
+	// --- HTTP server setup ---
 	mux := http.NewServeMux()
-
-	// Serve the web viewer at /viewer/
-	mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
-
-	// Liveness probe used by deployment systems and CI
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer")))) // Web viewer
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {                   // Liveness probe
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}"))
 	})
+	mux.Handle("/", api.Handler())                                              // API handler
+	mux.Handle("/docs/", httpSwagger.Handler(httpSwagger.URL("/openapi.yaml"))) // Swagger UI
+	mux.Handle("/openapi.yaml", http.FileServer(http.Dir("./docs")))            // OpenAPI spec
+	mux.Handle("/metrics", promhttp.Handler())                                  // Prometheus metrics
 
-	// API handler (catch-all under /)
-	mux.Handle("/", api.Handler())
-
-	// Serve Swagger UI at /docs and the OpenAPI spec at /openapi.yaml
-	mux.Handle("/docs/", httpSwagger.Handler(httpSwagger.URL("/openapi.yaml")))
-	mux.Handle("/openapi.yaml", http.FileServer(http.Dir("./docs")))
-	mux.Handle("/metrics", promhttp.Handler())
-
-	// Build security middleware from config/env
+	// --- Security middleware config ---
 	secCfg := security.SecConfig{
-		AllowedOrigins: nil,
-		RPS:            0,
-		Burst:          0,
-		IPWhitelist:    nil,
+		AllowedOrigins: append([]string{}, eff.Config.Security.CORS.AllowedOrigins...),
+		RPS:            eff.Config.Security.RateLimit.RPS,
+		Burst:          eff.Config.Security.RateLimit.Burst,
+		IPWhitelist:    append([]string{}, eff.Config.Security.IPWhitelist...),
 		BackendKeys:    map[string]struct{}{},
 		FrontendKeys:   map[string]struct{}{},
 		AdminKeys:      map[string]struct{}{},
 	}
-	// Apply CORS, rate limits and security keys from effective cfg
-	secCfg.AllowedOrigins = append(secCfg.AllowedOrigins, cfg.Security.CORS.AllowedOrigins...)
-	if cfg.Security.RateLimit.RPS > 0 {
-		secCfg.RPS = cfg.Security.RateLimit.RPS
-	}
-	if cfg.Security.RateLimit.Burst > 0 {
-		secCfg.Burst = cfg.Security.RateLimit.Burst
-	}
-	if len(cfg.Security.IPWhitelist) > 0 {
-		secCfg.IPWhitelist = append(secCfg.IPWhitelist, cfg.Security.IPWhitelist...)
-	}
-	// API access always requires keys; no allow-unauth option.
-	for k := range backendKeys {
+	for _, k := range eff.Config.Security.APIKeys.Backend {
 		secCfg.BackendKeys[k] = struct{}{}
 	}
-	for _, k := range cfg.Security.APIKeys.Frontend {
+	for _, k := range eff.Config.Security.APIKeys.Frontend {
 		secCfg.FrontendKeys[k] = struct{}{}
 	}
-	for _, k := range cfg.Security.APIKeys.Admin {
+	for _, k := range eff.Config.Security.APIKeys.Admin {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-	// Populate the global runtime config with backend and signing keys.
-	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-	for k := range backendKeys {
+	// --- Global runtime config: backend/signing keys ---
+	runtimeCfg := &config.RuntimeConfig{
+		BackendKeys: map[string]struct{}{},
+		SigningKeys: map[string]struct{}{},
+	}
+	for _, k := range eff.Config.Security.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}
-	for k := range signingKeys {
+	for _, k := range eff.Config.Security.APIKeys.Backend {
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}
 	config.SetRuntime(runtimeCfg)
 
+	// --- Wrap mux with security/auth middleware ---
 	wrapped := security.AuthenticateRequestMiddleware(secCfg)(mux)
 
-	// TLS support: use values from effective cfg
-	cert := cfg.Server.TLS.CertFile
-	key := cfg.Server.TLS.KeyFile
+	// --- Serve HTTP (TLS if configured) ---
+	cert := eff.Config.Server.TLS.CertFile
+	key := eff.Config.Server.TLS.KeyFile
 	var errServe error
 	if cert != "" && key != "" {
-		errServe = http.ListenAndServeTLS(addr, cert, key, wrapped)
+		errServe = http.ListenAndServeTLS(eff.Addr, cert, key, wrapped)
 	} else {
-		errServe = http.ListenAndServe(addr, wrapped)
+		errServe = http.ListenAndServe(eff.Addr, wrapped)
 	}
 	if errServe != nil {
 		log.Fatal(errServe)
