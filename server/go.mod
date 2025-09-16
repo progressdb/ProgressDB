@@ -13,10 +13,10 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
-
-// local kms module used for launcher
-require github.com/progressdb/kms v0.0.0
+require (
+	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
+)
 
 replace github.com/progressdb/kms => ../kms
 
