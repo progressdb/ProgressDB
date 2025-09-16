@@ -12,7 +12,7 @@ This file documents the environment variables used by the ProgressDB server and 
 - `PROGRESSDB_API_FRONTEND_KEYS`: Comma-separated frontend API keys (limited scope for frontend SDKs).
 - `PROGRESSDB_API_ADMIN_KEYS`: Comma-separated admin API keys.
 
-- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string). For convenience in development you may also set the master KEK via the environment variable `PROGRESSDB_KMS_MASTER_KEY_HEX` (or the legacy alias `PROGRESSDB_ENCRYPTION_MKEY_HEX`) — note that file-based provisioning remains preferred.
+ - `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string). F
  - `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
 
 - `PROGRESSDB_KMS_BINARY`: Optional path to a KMS binary that the server may spawn when encryption is enabled. If unset the server will search for a `kms` sibling next to the ProgressDB executable.
@@ -34,7 +34,7 @@ This file documents the environment variables used by the ProgressDB server and 
 
 - `server.address`, `server.port`: Bind address and port.
 - `server.tls.cert_file`, `server.tls.key_file`: Optional TLS cert/key.
-- `storage.db_path`: Pebble DB path for server storage.
+- `server.db_path`: Pebble DB path for server storage.
 - `security.fields`: List of selective encryption rules (each entry: `{ path: "a.b.c", algorithm: "aes-gcm" }`).
 - `security.cors.allowed_origins`: List of allowed origins.
 - `security.rate_limit.rps`, `security.rate_limit.burst`: Rate limiting values.

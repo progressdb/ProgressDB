@@ -66,7 +66,7 @@ Configuration
 - Config file: `config.yaml` (YAML)
   - server.address: host/interface (e.g., `0.0.0.0`)
   - server.port: 8080
-  - storage.db_path: `./data/progressdb`
+  - server.db_path: `./data/progressdb`
   - encryption: use the external KMS provider (see `server/docs/kms.md`)
   - logging.level: `info` (reserved; simple stdout logging used in MVP)
   - validation:

@@ -55,15 +55,15 @@ func main() {
 	} else {
 		addr = addrVal
 	}
-	if !setFlags["db"] {
-		if p := cfg.Storage.DBPath; p != "" {
-			dbPath = p
-		} else {
-			dbPath = dbVal
-		}
-	} else {
-		dbPath = dbVal
-	}
+    if !setFlags["db"] {
+        if p := cfg.Server.DBPath; p != "" {
+            dbPath = p
+        } else {
+            dbPath = dbVal
+        }
+    } else {
+        dbPath = dbVal
+    }
 	// Embedded KEK is not used in external-only deployment; do not set master key here.
 	// Load encryption field rules. Prefer `security.fields` if present
 	// (users moved the block under security), otherwise fall back to the
@@ -72,11 +72,11 @@ func main() {
 		Path      string
 		Algorithm string
 	}
-	if len(cfg.Security.Fields) > 0 {
-		fieldSrc = cfg.Security.Fields
-	} else if len(cfg.Encryption.Fields) > 0 {
-		fieldSrc = cfg.Encryption.Fields
-	}
+    if len(cfg.Security.Encryption.Fields) > 0 {
+        fieldSrc = cfg.Security.Encryption.Fields
+    } else if len(cfg.Security.Fields) > 0 {
+        fieldSrc = cfg.Security.Fields
+    }
 	if len(fieldSrc) > 0 {
 		fields := make([]security.EncField, 0, len(fieldSrc))
 		for _, f := range fieldSrc {
@@ -137,10 +137,10 @@ func main() {
 	var kmsCfgPath string
 
 	// Determine encryption usage and require key file when enabled.
-	// Determine whether encryption is enabled. Prefer an explicit
-	// environment setting when present; otherwise fall back to the
-	// server config value `encryption.use`.
-	useEnc := cfg.Encryption.Use
+    // Determine whether encryption is enabled. Prefer an explicit
+    // environment setting when present; otherwise fall back to the
+    // server config value `security.encryption.use`.
+    useEnc := cfg.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
 		switch strings.ToLower(ev) {
 		case "1", "true", "yes":
