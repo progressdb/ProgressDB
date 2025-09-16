@@ -53,7 +53,8 @@ func main() {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigc
+		s := <-sigc
+		log.Printf("signal received: %v, shutdown requested", s)
 		cancel()
 	}()
 

@@ -16,7 +16,7 @@
 - [ ]  Updates - *(api versioning & image or instance upgrades)*
 - [ ]  Sockets - *(realtime subscriptions, webhooks)*
 - [x]  Encryption - *(local kms encryption)*
-- [ ]  State Changes - *(shutdowns, health, restarts - integrity checks etc)*
+- [x]  State Changes - *(shutdowns, health, restarts - integrity checks etc)*
 - [ ]  Backups - *(cloud backups)*
 - [ ]  Retention - *(data retention policy)*
 - [ ]  Encryption - *(cloud backed kms~hsm encryption)*

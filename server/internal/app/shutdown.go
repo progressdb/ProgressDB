@@ -1,0 +1,55 @@
+package app
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"progressdb/pkg/store"
+)
+
+// Shutdown attempts to gracefully stop all running components.
+func (a *App) Shutdown(ctx context.Context) error {
+	log.Printf("shutdown: requested")
+	a.state = "shutting_down"
+
+	// 1) stop accepting new requests
+	if a.srv != nil {
+		log.Printf("shutdown: stopping HTTP server")
+		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := a.srv.Shutdown(ctx2); err != nil {
+			log.Printf("shutdown: http shutdown error: %v", err)
+		} else {
+			log.Printf("shutdown: http shutdown complete")
+		}
+	}
+
+	// 2) stop KMS child
+	if a.child != nil {
+		log.Printf("shutdown: stopping KMS child")
+		if err := a.child.Stop(5 * time.Second); err != nil {
+			log.Printf("shutdown: kms stop error: %v", err)
+		} else {
+			log.Printf("shutdown: kms stopped")
+		}
+	}
+
+	// 3) close KMS remote client
+	if a.rc != nil {
+		log.Printf("shutdown: closing KMS client")
+		if err := a.rc.Close(); err != nil {
+			log.Printf("shutdown: kms client close error: %v", err)
+		}
+	}
+
+	// 4) close store
+	log.Printf("shutdown: closing store")
+	if err := store.Close(); err != nil {
+		log.Printf("shutdown: store close error: %v", err)
+	}
+
+	a.state = "stopped"
+	log.Printf("shutdown: complete")
+	return nil
+}

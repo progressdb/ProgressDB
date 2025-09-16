@@ -36,6 +36,24 @@ func Open(path string) error {
 	return nil
 }
 
+// Close closes the opened pebble DB if present.
+func Close() error {
+	if db == nil {
+		return nil
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+	db = nil
+	slog.Info("pebble_closed")
+	return nil
+}
+
+// Ready reports whether the store is opened and ready.
+func Ready() bool {
+	return db != nil
+}
+
 // SaveMessage appends a message to a thread by inserting a new key with
 // a sortable timestamp prefix. Messages are ordered by insertion time.
 // SaveMessage appends a message to a thread and indexes it by message ID
