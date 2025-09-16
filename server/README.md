@@ -123,7 +123,7 @@ Encryption Policy
   - Writes: value bytes are encrypted with AES‑256‑GCM (nonce|ciphertext stored).
   - Reads: values are decrypted transparently before returning via API.
 - Selective field-level encryption (configurable):
-  - Define JSON paths under `security.fields` or via `PROGRESSDB_ENCRYPT_FIELDS` (comma-separated paths).
+  - Define JSON paths under `encryption.fields` or via `PROGRESSDB_ENCRYPTION_FIELDS` (comma-separated paths).
   - Example config:
     encryption:
       fields:

@@ -4,16 +4,16 @@ This file documents the environment variables used by the ProgressDB server and 
 
 ## Environment variables (examples shown in `examples/.env.example`)
 
-- `PROGRESSDB_ADDR` / `PROGRESSDB_ADDRESS` / `PROGRESSDB_PORT`: Server bind address. `PROGRESSDB_ADDR` may be `host:port`.
-- `PROGRESSDB_DB_PATH`: Pebble DB path where server data is stored.
-- `PROGRESSDB_CONFIG`: Optional path to a YAML config file. Flags and explicit values override config file values.
+- `PROGRESSDB_SERVER_ADDR` / `PROGRESSDB_SERVER_ADDRESS` / `PROGRESSDB_SERVER_PORT`: Server bind address. `PROGRESSDB_SERVER_ADDR` may be `host:port`. (Legacy `PROGRESSDB_ADDR` / `PROGRESSDB_ADDRESS` / `PROGRESSDB_PORT` accepted.)
+- `PROGRESSDB_SERVER_DB_PATH`: Pebble DB path where server data is stored. (Legacy `PROGRESSDB_DB_PATH` accepted.)
+- `PROGRESSDB_SERVER_CONFIG`: Optional path to a YAML config file. Flags and explicit values override config file values. (Legacy `PROGRESSDB_CONFIG` accepted.)
 
 - `PROGRESSDB_API_BACKEND_KEYS`: Comma-separated backend API keys (server-authorized keys for backend operations).
 - `PROGRESSDB_API_FRONTEND_KEYS`: Comma-separated frontend API keys (limited scope for frontend SDKs).
 - `PROGRESSDB_API_ADMIN_KEYS`: Comma-separated admin API keys.
 
-	- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string).
-- `PROGRESSDB_ENCRYPT_FIELDS`: Comma-separated field paths to encrypt.
+- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string). For convenience in development you may also set the master KEK via the environment variable `PROGRESSDB_KMS_MASTER_KEY_HEX` (or the legacy alias `PROGRESSDB_ENCRYPTION_MKEY_HEX`) — note that file-based provisioning remains preferred.
+ - `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
 
 - `PROGRESSDB_KMS_BINARY`: Optional path to a KMS binary that the server may spawn when encryption is enabled. If unset the server will search for a `kms` sibling next to the ProgressDB executable.
 - `PROGRESSDB_KMS_SOCKET`: Unix-domain socket path used to connect to the KMS (default `/tmp/progressdb-kms.sock`).
@@ -28,7 +28,7 @@ This file documents the environment variables used by the ProgressDB server and 
 ## Deprecated / removed
 
 - `PROGRESSDB_API_ALLOW_UNAUTH`: Removed. The server requires API keys for all endpoints except `GET /healthz`.
-- `PROGRESSDB_KMS_MASTER_KEY_FILE` (env): Removed. The KMS master key should be provided in the server config YAML (`security.kms.master_key_file`) when encryption is enabled.
+-- `PROGRESSDB_KMS_MASTER_KEY_FILE` (env): Optional. For development you may set this env var to point to a file containing the 64-hex KEK; the server prefers file-based KEK provisioning. In production prefer orchestrator secrets or a secret manager.
 
 ## Config file (`examples/config.yaml`)
 
@@ -41,7 +41,8 @@ This file documents the environment variables used by the ProgressDB server and 
 - `security.ip_whitelist`: List of whitelisted IPs.
 - `security.api_keys.backend|frontend|admin`: API key lists used by the server.
 - `security.kms.socket`, `security.kms.data_dir`, `security.kms.binary`: KMS integration settings (socket, data dir, optional binary path).
-- `security.kms.master_key_hex`: Optional: embed the 64-hex (32-byte) KEK directly in the server config. Use only for controlled environments.
+ - `encryption.use`: Boolean to enable encryption when true. This may be overridden by the environment variable `PROGRESSDB_USE_ENCRYPTION`.
+ - `security.kms.master_key_hex`: Optional: embed the 64-hex (32-byte) KEK directly in the server config. Use only for controlled environments.
 
 - `security.kms.master_key_file`: Path to a file containing the 64-hex (32-byte) KEK that the server will embed into the KMS child's config when encryption is enabled. This must be set when `PROGRESSDB_USE_ENCRYPTION=true` if `master_key_hex` is not used.
 - `logging.level`: Logging level (`info`, `debug`, etc.).

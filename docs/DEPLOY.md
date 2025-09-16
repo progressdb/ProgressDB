@@ -19,7 +19,7 @@ The server supports both a YAML `config.yaml` and environment variables. For pro
 - `PROGRESSDB_ADDR` — Listen address (`host:port`), e.g. `0.0.0.0:8080`.
 - `PROGRESSDB_DB_PATH` — Pebble DB path (persistent volume), e.g. `/var/lib/progressdb`.
 - `PROGRESSDB_ENCRYPTION_KEY` — deprecated/removed: use an external KMS instead (see `server/docs/kms.md`).
-- `PROGRESSDB_ENCRYPT_FIELDS` — Optional, comma-separated JSON paths to field-encrypt (e.g. `body.credit_card,body.phi.*`).
+- `PROGRESSDB_ENCRYPTION_FIELDS` — Optional, comma-separated JSON paths to field-encrypt (e.g. `body.credit_card,body.phi.*`).
 - `PROGRESSDB_CONFIG` — Optional path to `config.yaml` if you prefer file configs.
 - `PROGRESSDB_LOG_LEVEL` — `debug|info|warn|error` (default `info`).
 

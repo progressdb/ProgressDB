@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
-    "strings"
-    "encoding/hex"
+	"strings"
 	"syscall"
 	"time"
 
@@ -65,9 +65,21 @@ func main() {
 		dbPath = dbVal
 	}
 	// Embedded KEK is not used in external-only deployment; do not set master key here.
+	// Load encryption field rules. Prefer `security.fields` if present
+	// (users moved the block under security), otherwise fall back to the
+	// legacy `encryption.fields` block.
+	var fieldSrc []struct {
+		Path      string
+		Algorithm string
+	}
 	if len(cfg.Security.Fields) > 0 {
-		fields := make([]security.EncField, 0, len(cfg.Security.Fields))
-		for _, f := range cfg.Security.Fields {
+		fieldSrc = cfg.Security.Fields
+	} else if len(cfg.Encryption.Fields) > 0 {
+		fieldSrc = cfg.Encryption.Fields
+	}
+	if len(fieldSrc) > 0 {
+		fields := make([]security.EncField, 0, len(fieldSrc))
+		for _, f := range fieldSrc {
 			fields = append(fields, security.EncField{Path: f.Path, Algorithm: f.Algorithm})
 		}
 		if err := security.SetFieldPolicy(fields); err != nil {
@@ -96,7 +108,6 @@ func main() {
 	validation.SetRules(vr)
 
 	// Flags explicitly set win over env/config for addr and dbPath (handled above).
-
 	if err := store.Open(dbPath); err != nil {
 		log.Fatalf("failed to open pebble at %s: %v", dbPath, err)
 	}
@@ -126,10 +137,17 @@ func main() {
 	var kmsCfgPath string
 
 	// Determine encryption usage and require key file when enabled.
-	useEnc := false
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION"))) {
-	case "1", "true", "yes":
-		useEnc = true
+	// Determine whether encryption is enabled. Prefer an explicit
+	// environment setting when present; otherwise fall back to the
+	// server config value `encryption.use`.
+	useEnc := cfg.Encryption.Use
+	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
+		switch strings.ToLower(ev) {
+		case "1", "true", "yes":
+			useEnc = true
+		default:
+			useEnc = false
+		}
 	}
 	if useEnc {
 		// Determine master key: prefer an embedded hex value in config, but

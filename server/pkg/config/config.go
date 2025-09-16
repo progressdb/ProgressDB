@@ -102,7 +102,18 @@ type Config struct {
 			// child KMS config instead of reading it from a file.
 			MasterKeyHex  string `yaml:"master_key_hex"`
 		} `yaml:"kms"`
-	} `yaml:"security"`
+    } `yaml:"security"`
+    // Encryption block controls whether encryption features are active and
+    // defines field-level selective encryption rules. This is separate
+    // from the KMS configuration which describes how to run/connect to
+    // the KMS child process.
+    Encryption struct {
+        Use    bool `yaml:"use"`
+        Fields []struct {
+            Path      string `yaml:"path"`
+            Algorithm string `yaml:"algorithm"`
+        } `yaml:"fields"`
+    } `yaml:"encryption"`
 	Logging struct {
 		Level  string `yaml:"level"`
 		Format string `yaml:"format"` // text|json
@@ -195,45 +206,67 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		return parts
 	}
 
-	if v := os.Getenv("PROGRESSDB_ADDR"); v != "" {
-		envUsed = true
-		if h, p, err := net.SplitHostPort(v); err == nil {
-			cfg.Server.Address = h
-			if pi, err := strconv.Atoi(p); err == nil {
-				cfg.Server.Port = pi
-			}
-		} else {
-			cfg.Server.Address = v
-		}
-	} else {
-		if host := os.Getenv("PROGRESSDB_ADDRESS"); host != "" {
-			envUsed = true
-			cfg.Server.Address = host
-		}
-		if port := os.Getenv("PROGRESSDB_PORT"); port != "" {
-			envUsed = true
-			if pi, err := strconv.Atoi(port); err == nil {
-				cfg.Server.Port = pi
-			}
-		}
-	}
+    // Server-scoped env vars take precedence when present.
+    if v := os.Getenv("PROGRESSDB_SERVER_ADDR"); v != "" {
+        envUsed = true
+        if h, p, err := net.SplitHostPort(v); err == nil {
+            cfg.Server.Address = h
+            if pi, err := strconv.Atoi(p); err == nil {
+                cfg.Server.Port = pi
+            }
+        } else {
+            cfg.Server.Address = v
+        }
+    } else if v := os.Getenv("PROGRESSDB_ADDR"); v != "" {
+        envUsed = true
+        if h, p, err := net.SplitHostPort(v); err == nil {
+            cfg.Server.Address = h
+            if pi, err := strconv.Atoi(p); err == nil {
+                cfg.Server.Port = pi
+            }
+        } else {
+            cfg.Server.Address = v
+        }
+    } else {
+        if host := os.Getenv("PROGRESSDB_SERVER_ADDRESS"); host != "" {
+            envUsed = true
+            cfg.Server.Address = host
+        }
+        if port := os.Getenv("PROGRESSDB_SERVER_PORT"); port != "" {
+            envUsed = true
+            if pi, err := strconv.Atoi(port); err == nil {
+                cfg.Server.Port = pi
+            }
+        }
+    }
 
-	if v := os.Getenv("PROGRESSDB_DB_PATH"); v != "" {
-		envUsed = true
-		cfg.Storage.DBPath = v
-	}
-	// PROGRESSDB_ENCRYPTION_KEY deprecated and removed: prefer KMS
-	if v := os.Getenv("PROGRESSDB_ENCRYPT_FIELDS"); v != "" {
-		envUsed = true
-		parts := parseList(v)
-		cfg.Security.Fields = nil
-		for _, p := range parts {
-			cfg.Security.Fields = append(cfg.Security.Fields, struct {
-				Path      string `yaml:"path"`
-				Algorithm string `yaml:"algorithm"`
-			}{Path: p, Algorithm: "aes-gcm"})
-		}
-	}
+    if v := os.Getenv("PROGRESSDB_SERVER_DB_PATH"); v != "" {
+        envUsed = true
+        cfg.Storage.DBPath = v
+    } else if v := os.Getenv("PROGRESSDB_DB_PATH"); v != "" {
+        envUsed = true
+        cfg.Storage.DBPath = v
+    }
+    // Encryption fields: comma-separated list of field paths to encrypt.
+    // Use PROGRESSDB_ENCRYPTION_FIELDS to populate the config encryption
+    // block for dev convenience (overrides config file when present).
+    if v := os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"); v != "" {
+        envUsed = true
+        parts := parseList(v)
+        // Prefer populating security.fields (users may place encryption
+        // rules under security). Also populate the encryption block for
+        // backwards compatibility.
+        cfg.Security.Fields = nil
+        cfg.Encryption.Fields = nil
+        for _, p := range parts {
+            entry := struct {
+                Path      string `yaml:"path"`
+                Algorithm string `yaml:"algorithm"`
+            }{Path: p, Algorithm: "aes-gcm"}
+            cfg.Security.Fields = append(cfg.Security.Fields, entry)
+            cfg.Encryption.Fields = append(cfg.Encryption.Fields, entry)
+        }
+    }
 	if v := os.Getenv("PROGRESSDB_CORS_ORIGINS"); v != "" {
 		envUsed = true
 		cfg.Security.CORS.AllowedOrigins = parseList(v)
@@ -282,12 +315,40 @@ func LoadEnvOverrides(cfg *Config) (map[string]struct{}, map[string]struct{}, bo
 		envUsed = true
 		cfg.Security.KMS.Binary = v
 	}
-	// PROGRESSDB_KMS_MASTER_KEY_FILE environment variable removed: KMS
-	// master key should be configured via server config and passed to the
-	// KMS child as an embedded config. Do not read this value from env.
-	// NOTE: KMS allowed UIDs concept removed; authorization is handled
-	// by the supervising process and KMS config file.
-	// PROGRESSDB_ALLOW_UNAUTH has been removed: API access always requires an API key.
+    // Allow optional provisioning of the master key via env for
+    // convenience in dev scenarios. File-based master keys are still
+    // preferred and take precedence when set in the server config.
+    if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
+        envUsed = true
+        cfg.Security.KMS.MasterKeyFile = v
+    }
+    if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"); v != "" {
+        envUsed = true
+        cfg.Security.KMS.MasterKeyHex = v
+    }
+    // Backwards-compatibility alias for the hex env var
+    if v := os.Getenv("PROGRESSDB_ENCRYPTION_MKEY_HEX"); v != "" && cfg.Security.KMS.MasterKeyHex == "" {
+        envUsed = true
+        cfg.Security.KMS.MasterKeyHex = v
+    }
+    // Allow overriding whether encryption is enabled via env. This sets
+    // the top-level encryption.use flag which controls whether encryption
+    // features are active; KMS configuration is separate.
+    if v := os.Getenv("PROGRESSDB_USE_ENCRYPTION"); v != "" {
+        envUsed = true
+        switch strings.ToLower(strings.TrimSpace(v)) {
+        case "1", "true", "yes":
+            cfg.Encryption.Use = true
+        default:
+            cfg.Encryption.Use = false
+        }
+    }
+    // The KMS master key may be provided via server config (preferred) or
+    // via environment variables for convenience in development. The
+    // precedence for the effective master key is: config.master_key_file
+    // (file) -> config.master_key_hex (embedded) -> env-provided hex.
+    // Authorization and production-grade provisioning should use files
+    // or orchestrator secrets rather than environment variables.
 	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {
 		envUsed = true
 		cfg.Server.TLS.CertFile = c
@@ -326,11 +387,15 @@ func LoadEffective(path string) (*Config, map[string]struct{}, map[string]struct
 // ResolveConfigPath decides the config file path using the flag-provided value
 // and the environment variable `PROGRESSDB_CONFIG` when the flag was not set.
 func ResolveConfigPath(flagPath string, flagSet bool) string {
-	if flagSet {
-		return flagPath
-	}
-	if p := os.Getenv("PROGRESSDB_CONFIG"); p != "" {
-		return p
-	}
-	return flagPath
+    if flagSet {
+        return flagPath
+    }
+    // prefer server-scoped env var
+    if p := os.Getenv("PROGRESSDB_SERVER_CONFIG"); p != "" {
+        return p
+    }
+    if p := os.Getenv("PROGRESSDB_CONFIG"); p != "" {
+        return p
+    }
+    return flagPath
 }

@@ -7,10 +7,9 @@ server:
     key_file: ""
 
 storage:
-  db_path: "./.database"
+  db_path: "./data/progressdb"
 
 security:
-  fields: []
   cors:
     allowed_origins:
       - "http://localhost:3000"
@@ -18,21 +17,21 @@ security:
   rate_limit:
     rps: 10
     burst: 20
-  ip_whitelist: []
+  ip_whitelist:
+    - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
-    admin: ["admin_example_key"]
-
+    admin: ["admin_example"]
+  encryption:
+    use: false
+    fields: []
   kms:
     socket: "/tmp/progressdb-kms.sock"
     data_dir: "./kms-data"
     binary: "/usr/local/bin/kms"
-    # Provide the KMS master KEK either directly here as a 64-hex string
-    # using `master_key_hex` or via a path to a file containing the hex
-    # string using `master_key_file`.
-    master_key_hex: ""
     master_key_file: ""
+    master_key_hex: ""
 
 logging:
   level: "info"
