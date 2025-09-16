@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -123,7 +122,9 @@ func main() {
 		}
 		bin = filepath.Join(filepath.Dir(exePath), "kms")
 	}
-	args := []string{"--socket", socket, "--data-dir", dataDir}
+	// args is not used when using launcher; launcher will read the config file.
+
+	var kmsCfgPath string
 
 	// Determine encryption usage and require key file when enabled.
 	useEnc := false
@@ -138,18 +139,21 @@ func main() {
 			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but no master key file path provided in server config. Provide a path to a 64-hex (32-byte) key file via server config.")
 		}
 		mkFile := strings.TrimSpace(cfg.Security.KMS.MasterKeyFile)
+		if mkFile == "" {
+			log.Fatalf("encryption enabled but server config missing security.kms.master_key_file")
+		}
 		keyb, err := os.ReadFile(mkFile)
 		if err != nil {
 			log.Fatalf("failed to read master key file %s: %v", mkFile, err)
 		}
 		mk := strings.TrimSpace(string(keyb))
-		// write kms config into dataDir
-		kmsCfgPath := filepath.Join(dataDir, "kms-config.yaml")
-		kmsCfg := fmt.Sprintf("master_key_hex: \"%s\"\n", mk)
-		if err := os.WriteFile(kmsCfgPath, []byte(kmsCfg), 0600); err != nil {
+		// Build launcher config and create secure config file for child
+		lcfg := &kms.LauncherConfig{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}
+		kmsCfgPath, err = kms.CreateSecureConfigFile(lcfg, dataDir)
+		if err != nil {
 			log.Fatalf("failed to write kms config: %v", err)
 		}
-		args = append(args, "--config", kmsCfgPath)
+		// let StartChild handle config path; do not pass --config in args here
 	}
 
 	var rc *kms.RemoteClient // Declare rc here so it is available in the shutdown goroutine
@@ -169,51 +173,46 @@ func main() {
 		// the listener FD to the child. This avoids TOCTOU races on the
 		// filesystem path. If we cannot create the listener for any reason we
 		// fall back to letting the child bind the socket itself.
-		var extraFiles []*os.File
 		var parentListenerClose func()
+		var ln *net.UnixListener
 		if socket != "" {
 			// ensure socket directory exists
 			if dir := filepath.Dir(socket); dir != "" {
 				_ = os.MkdirAll(dir, 0700)
 			}
 			// try to create listener here
-			if ln, err := net.Listen("unix", socket); err == nil {
-				if ul, ok := ln.(*net.UnixListener); ok {
+			if l, err := net.Listen("unix", socket); err == nil {
+				if ul, ok := l.(*net.UnixListener); ok {
+					ln = ul
 					if f, ferr := ul.File(); ferr == nil {
-						extraFiles = append(extraFiles, f)
 						// parent will close its copy of listener after spawn
 						parentListenerClose = func() {
-							_ = ln.Close()
+							_ = ul.Close()
 							_ = f.Close()
 						}
 					} else {
-						_ = ln.Close()
+						_ = ul.Close()
 					}
 				} else {
-					_ = ln.Close()
+					_ = l.Close()
 				}
 			}
 		}
 
-		// Provide an empty environment to the child process, since 'env' was undefined.
-		// kms.StartChild expects a map[string]string for the environment.
-		// We'll provide an empty map to indicate no environment variables.
-		env := map[string]string{}
-
-		ch, err := kms.StartChild(ctx, bin, args, socket, 0, 0, 10*time.Second, env, extraFiles)
+		// Start child using launcher. launcher will use the config file we
+		// created above (kmsCfgPath).
+		h, err := kms.StartChildLauncher(ctx, bin, kmsCfgPath, ln)
 		if parentListenerClose != nil {
-			// close parent's copy of listener now that child inherited it
 			parentListenerClose()
 		}
 		if err != nil {
 			log.Fatalf("failed to start KMS: %v", err)
 		}
-		child = ch
-
+		// wrap handle into the existing child type for compatibility with
+		// shutdown paths that call child.Stop
+		child = &kms.CmdHandle{Cmd: h.Cmd}
 		rc = kms.NewRemoteClient(socket)
 		security.RegisterKMSProvider(rc)
-		// Verify remote KMS is healthy before continuing; fail fast with
-		// actionable message so operators know to install/start KMS.
 		if err := rc.Health(); err != nil {
 			log.Fatalf("KMS health check failed at %s: %v; ensure KMS is installed and reachable", socket, err)
 		}
