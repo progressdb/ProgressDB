@@ -28,6 +28,10 @@ security:
     socket: "/tmp/progressdb-kms.sock"
     data_dir: "./kms-data"
     binary: "/usr/local/bin/kms"
+    # Provide the KMS master KEK either directly here as a 64-hex string
+    # using `master_key_hex` or via a path to a file containing the hex
+    # string using `master_key_file`.
+    master_key_hex: ""
     master_key_file: ""
 
 logging:

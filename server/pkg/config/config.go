@@ -97,6 +97,10 @@ type Config struct {
 			DataDir       string `yaml:"data_dir"`
 			Binary        string `yaml:"binary"`
 			MasterKeyFile string `yaml:"master_key_file"`
+			// MasterKeyHex may contain the 64-hex KEK directly in the server
+			// config. When present the server will embed this value into the
+			// child KMS config instead of reading it from a file.
+			MasterKeyHex  string `yaml:"master_key_hex"`
 		} `yaml:"kms"`
 	} `yaml:"security"`
 	Logging struct {

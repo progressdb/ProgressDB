@@ -8,7 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
+    "strings"
+    "encoding/hex"
 	"syscall"
 	"time"
 
@@ -131,20 +132,34 @@ func main() {
 		useEnc = true
 	}
 	if useEnc {
-		// require master key file provided in server config; environment
-		// variable PROGRESSDB_KMS_MASTER_KEY_FILE is deprecated and removed.
-		if cfg.Security.KMS.MasterKeyFile == "" {
-			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but no master key file path provided in server config. Provide a path to a 64-hex (32-byte) key file via server config.")
+		// Determine master key: prefer an embedded hex value in config, but
+		// fall back to reading the configured master key file path. The
+		// `master_key_hex` config allows operators to embed the 64-hex KEK
+		// directly in the server config for environments where that is
+		// acceptable; otherwise `master_key_file` remains supported.
+		var mk string
+		// prefer a master key file when provided (safer for orchestrators);
+		// fall back to an embedded hex value only when no file is configured.
+		if strings.TrimSpace(cfg.Security.KMS.MasterKeyFile) != "" {
+			mkFile := strings.TrimSpace(cfg.Security.KMS.MasterKeyFile)
+			keyb, err := os.ReadFile(mkFile)
+			if err != nil {
+				log.Fatalf("failed to read master key file %s: %v", mkFile, err)
+			}
+			mk = strings.TrimSpace(string(keyb))
+		} else if strings.TrimSpace(cfg.Security.KMS.MasterKeyHex) != "" {
+			mk = strings.TrimSpace(cfg.Security.KMS.MasterKeyHex)
+		} else {
+			log.Fatalf("PROGRESSDB_USE_ENCRYPTION=true but no master key provided in server config. Set security.kms.master_key_file or security.kms.master_key_hex")
 		}
-		mkFile := strings.TrimSpace(cfg.Security.KMS.MasterKeyFile)
-		if mkFile == "" {
-			log.Fatalf("encryption enabled but server config missing security.kms.master_key_file")
+		// Validate master key hex: must be 64 hex chars (32 bytes)
+		if mk == "" {
+			log.Fatalf("master key is empty")
 		}
-		keyb, err := os.ReadFile(mkFile)
-		if err != nil {
-			log.Fatalf("failed to read master key file %s: %v", mkFile, err)
+		if kb, err := hex.DecodeString(mk); err != nil || len(kb) != 32 {
+			log.Fatalf("invalid master_key_hex: must be 64-hex (32 bytes)")
 		}
-		mk := strings.TrimSpace(string(keyb))
+
 		// Build launcher config and create secure config file for child
 		lcfg := &kms.LauncherConfig{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}
 		kmsCfgPath, err = kms.CreateSecureConfigFile(lcfg, dataDir)

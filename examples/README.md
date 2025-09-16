@@ -12,7 +12,7 @@ This file documents the environment variables used by the ProgressDB server and 
 - `PROGRESSDB_API_FRONTEND_KEYS`: Comma-separated frontend API keys (limited scope for frontend SDKs).
 - `PROGRESSDB_API_ADMIN_KEYS`: Comma-separated admin API keys.
 
-- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key file defined in the server config (`security.kms.master_key_file`).
+-- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. You may provide the master KEK either directly as `security.kms.master_key_hex` (a 64-hex string) or as a path to a file via `security.kms.master_key_file`.
 - `PROGRESSDB_ENCRYPT_FIELDS`: Comma-separated field paths to encrypt.
 
 - `PROGRESSDB_KMS_BINARY`: Optional path to a KMS binary that the server may spawn when encryption is enabled. If unset the server will search for a `kms` sibling next to the ProgressDB executable.
@@ -41,10 +41,11 @@ This file documents the environment variables used by the ProgressDB server and 
 - `security.ip_whitelist`: List of whitelisted IPs.
 - `security.api_keys.backend|frontend|admin`: API key lists used by the server.
 - `security.kms.socket`, `security.kms.data_dir`, `security.kms.binary`: KMS integration settings (socket, data dir, optional binary path).
-- `security.kms.master_key_file`: Path to a file containing the 64-hex (32-byte) KEK that the server will embed into the KMS child's config when encryption is enabled. This must be set when `PROGRESSDB_USE_ENCRYPTION=true`.
+- `security.kms.master_key_hex`: Optional: embed the 64-hex (32-byte) KEK directly in the server config. Use only for controlled environments.
+
+- `security.kms.master_key_file`: Path to a file containing the 64-hex (32-byte) KEK that the server will embed into the KMS child's config when encryption is enabled. This must be set when `PROGRESSDB_USE_ENCRYPTION=true` if `master_key_hex` is not used.
 - `logging.level`: Logging level (`info`, `debug`, etc.).
 
-If you need the server to run with encryption enabled locally, create a `config.yaml` with `security.kms.master_key_file` pointing to a file containing a single 64-hex string (32 bytes) and set `PROGRESSDB_USE_ENCRYPTION=true` in your environment. The server will spawn or connect to the KMS and manage DEKs via the configured socket.
+If you need the server to run with encryption enabled locally, create a `config.yaml` with either `security.kms.master_key_hex` set to a single 64-hex string (32 bytes) or `security.kms.master_key_file` pointing to a file containing the hex string, and set `PROGRESSDB_USE_ENCRYPTION=true` in your environment. The server will spawn or connect to the KMS and manage DEKs via the configured socket.
 
 If you'd like, I can also generate a minimal `examples/dev.env` and a `examples/dev-config.yaml` that are ready-to-run for local development.
-
