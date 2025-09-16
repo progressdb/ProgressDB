@@ -107,39 +107,9 @@ KMS_LOG="$LOG_DIR/kms.log"
 echo "[dev-kms][debug] Log directory: $LOG_DIR"
 echo "[dev-kms][debug] KMS log file: $KMS_LOG"
 
-echo "[dev-kms] starting kms (logs -> $KMS_LOG)"
+echo "[dev-kms] starting kms in foreground (config -> $CONFIG_FILE)"
 echo "[dev-kms][debug] Launch command: $KMS_BIN --socket $SOCKET --data-dir $DATA_DIR --config $CONFIG_FILE"
-"$KMS_BIN" --socket "$SOCKET" --data-dir "$DATA_DIR" --config "$CONFIG_FILE" > "$KMS_LOG" 2>&1 &
-KMS_PID=$!
-echo "[dev-kms] kms pid=$KMS_PID"
 
-echo "[dev-kms][debug] Waiting for socket $SOCKET (max 10s)..."
-for i in $(seq 1 100); do
-  if [ -S "$SOCKET" ]; then
-    break
-  fi
-  sleep 0.1
-done
-if [ ! -S "$SOCKET" ]; then
-  echo "[dev-kms] kms failed to create socket. see logs:" 
-  tail -n +1 "$KMS_LOG"
-  kill "$KMS_PID" || true
-  exit 1
-fi
-
-cleanup() {
-  echo "[dev-kms] stopping..."
-  if [[ -n "${KMS_PID-}" ]]; then
-    kill "$KMS_PID" 2>/dev/null || true
-    wait "$KMS_PID" 2>/dev/null || true
-  fi
-  rm -f "$SOCKET" || true
-}
-
-trap cleanup EXIT INT TERM
-
-echo "[dev-kms] dev KMS running. To view logs:"
-echo "  tail -f $KMS_LOG"
-echo "Press Ctrl+C to stop and cleanup."
-
-wait
+# Run in foreground so logs appear in this terminal. KMS will receive
+# signals (Ctrl+C) and perform graceful shutdown.
+exec "$KMS_BIN" --socket "$SOCKET" --data-dir "$DATA_DIR" --config "$CONFIG_FILE"
