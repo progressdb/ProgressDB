@@ -1,17 +1,18 @@
 package app
 
 import (
-	"context"
-	"encoding/hex"
-	"fmt"
-	"log"
-	"net"
-	"os"
-	"path/filepath"
-	"strings"
+    "context"
+    "encoding/hex"
+    "fmt"
+    "log"
+    "net"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "strings"
 
-	"progressdb/pkg/kms"
-	"progressdb/pkg/security"
+    "progressdb/pkg/kms"
+    "progressdb/pkg/security"
 )
 
 // setupKMS starts and registers KMS when encryption is enabled.
@@ -24,14 +25,23 @@ func (a *App) setupKMS(ctx context.Context) error {
 	if dataDir == "" {
 		dataDir = "./kms-data"
 	}
-	bin := os.Getenv("PROGRESSDB_KMS_BINARY")
-	if bin == "" {
-		exePath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("failed to determine executable path: %w", err)
-		}
-		bin = filepath.Join(filepath.Dir(exePath), "kms")
-	}
+    bin := os.Getenv("PROGRESSDB_KMS_BINARY")
+    if bin == "" {
+        // Prefer an installed `kms` binary on PATH (e.g. installed via
+        // `go install github.com/progressdb/kms/cmd/kms@latest`). This makes
+        // runtime deployment easier: operators can install the KMS into
+        // $GOBIN or /usr/local/bin and the server will spawn that binary.
+        if p, err := exec.LookPath("kms"); err == nil {
+            bin = p
+        } else {
+            // Fallback for local development: look for a sibling `kms`
+            exePath, err := os.Executable()
+            if err != nil {
+                return fmt.Errorf("failed to determine executable path: %w", err)
+            }
+            bin = filepath.Join(filepath.Dir(exePath), "kms")
+        }
+    }
 
 	useEnc := a.eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
