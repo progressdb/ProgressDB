@@ -1,4 +1,4 @@
-module github.com/progressdb/kms
+module github.com/ha-sante/progressdb/kms
 
 go 1.21
 
