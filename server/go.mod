@@ -18,7 +18,6 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 )
 
-replace github.com/ha-sante/ProgressDB/kms => ../kms
 
 require (
 	github.com/DataDog/zstd v1.4.5 // indirect
