@@ -2,10 +2,10 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"os"
 	"sync"
-	"gopkg.in/yaml.v3"
 )
 
 // RuntimeConfig holds runtime key sets for use by other packages.

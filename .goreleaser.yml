@@ -18,6 +18,34 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
+  - id: kmsd
+    dir: ./kms/cmd/kmsd
+    main: ./main.go
+    binary: kmsd
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
+
+  - id: progressdb-with-kms
+    dir: ./server
+    main: ./cmd/progressdb
+    binary: progressdb-with-kms
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }} -X main.embedKMS=true
 
 archives:
   - id: default

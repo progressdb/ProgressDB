@@ -1,21 +1,21 @@
 package handlers
 
 import (
-    "crypto/rand"
-    "encoding/hex"
-    "encoding/json"
-    "log/slog"
-    "net/http"
-    "net/url"
-    "os"
-    "progressdb/pkg/kms"
-    "progressdb/pkg/models"
-    "progressdb/pkg/security"
-    "progressdb/pkg/store"
-    "progressdb/pkg/utils"
-    "strings"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"progressdb/pkg/kms"
+	"progressdb/pkg/models"
+	"progressdb/pkg/security"
+	"progressdb/pkg/store"
+	"progressdb/pkg/utils"
+	"strings"
 
-    "github.com/gorilla/mux"
+	"github.com/gorilla/mux"
 )
 
 // RegisterAdmin registers admin-only routes onto the admin subrouter.
@@ -291,19 +291,19 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 // adminGenerateKEK generates a new random 32-byte KEK and returns it as a
 // 64-hex string in JSON: { "kek_hex": "..." }
 func adminGenerateKEK(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-        return
-    }
-    // generate 32 random bytes
-    b := make([]byte, 32)
-    if _, err := rand.Read(b); err != nil {
-        http.Error(w, `{"error":"failed to generate key"}`, http.StatusInternalServerError)
-        return
-    }
-    kek := hex.EncodeToString(b)
-    w.Header().Set("Content-Type", "application/json")
-    _ = json.NewEncoder(w).Encode(map[string]string{"kek_hex": kek})
+	if !isAdmin(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	// generate 32 random bytes
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		http.Error(w, `{"error":"failed to generate key"}`, http.StatusInternalServerError)
+		return
+	}
+	kek := hex.EncodeToString(b)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"kek_hex": kek})
 }
 
 // isAdmin checks if the request is from an admin or backend.

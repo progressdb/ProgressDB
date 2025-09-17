@@ -125,6 +125,12 @@ func Enabled() bool {
 	if p != nil && p.Enabled() {
 		return true
 	}
+	// Fallback: allow an in-process master key (AES-256) when configured.
+	// This enables an "embedded" KMS mode where the server holds the
+	// master key instead of talking to an external daemon.
+	if key != nil && len(key) == 32 {
+		return true
+	}
 	return false
 }
 

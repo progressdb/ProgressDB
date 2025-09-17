@@ -1,19 +1,15 @@
 package app
 
 import (
-    "context"
-    "encoding/hex"
-    "fmt"
-    "log"
-    "net"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "strings"
+	"context"
+	"encoding/hex"
+	"fmt"
+	"log"
+	"os"
+	"strings"
 
-    launcher "github.com/ha-sante/ProgressDB/kms/pkg/launcher"
-    "progressdb/pkg/kms"
-    "progressdb/pkg/security"
+	"progressdb/pkg/kms"
+	"progressdb/pkg/security"
 )
 
 // setupKMS starts and registers KMS when encryption is enabled.
@@ -22,24 +18,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 	if socket == "" {
 		socket = "/tmp/progressdb-kms.sock"
 	}
-	dataDir := os.Getenv("PROGRESSDB_KMS_DATA_DIR")
-	if dataDir == "" {
-		dataDir = "./kms-data"
-	}
-    // Discover kms binary: prefer an installed `kms` on PATH, otherwise
-    // fall back to a sibling `kms` next to the server executable. Do not
-    // consult an environment variable for the binary path.
-    var bin string
-    if p, err := exec.LookPath("kms"); err == nil {
-        bin = p
-    } else {
-        exePath, err := os.Executable()
-        if err != nil {
-            return fmt.Errorf("failed to determine executable path: %w", err)
-        }
-        bin = filepath.Join(filepath.Dir(exePath), "kms")
-    }
-
+	// dataDir is unused in embedded/external modes; kept for legacy configs.
 	useEnc := a.eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
 		switch strings.ToLower(ev) {
@@ -77,56 +56,42 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return fmt.Errorf("invalid master_key_hex: must be 64-hex (32 bytes)")
 	}
 
-    // write launcher config using the external kms launcher's helper
-    kmsCfgPath, err := launcher.CreateSecureConfigFile(&launcher.Config{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}, dataDir)
-    if err != nil {
-        return fmt.Errorf("failed to write kms config: %w", err)
-    }
+	// Decide KMS mode: embedded (default) or external. Embedded mode uses a
+	// local master key (provided in server config) and keeps key material in
+	// process memory. External mode assumes an already-running `kmsd` and
+	// communicates over the configured socket.
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MODE")))
+	if mode == "" {
+		mode = "embedded"
+	}
 
-	// prebind socket
-	var (
-		parentListenerClose func()
-		ln                  *net.UnixListener
-	)
-	if socket != "" {
-		if dir := filepath.Dir(socket); dir != "" {
-			_ = os.MkdirAll(dir, 0700)
+	switch mode {
+	case "embedded":
+		// Construct an embedded HashiCorp AEAD provider and register it with
+		// the server's security layer so the rest of the code uses the
+		// KMS abstraction rather than direct key material handling.
+		prov, err := kms.NewHashicorpEmbeddedProvider(ctx, mk)
+		if err != nil {
+			return fmt.Errorf("failed to initialize embedded KMS provider: %w", err)
 		}
-		if l, err := net.Listen("unix", socket); err == nil {
-			if ul, ok := l.(*net.UnixListener); ok {
-				ln = ul
-				if f, ferr := ul.File(); ferr == nil {
-					parentListenerClose = func() {
-						_ = ul.Close()
-						_ = f.Close()
-					}
-				} else {
-					_ = ul.Close()
-				}
-			} else {
-				_ = l.Close()
-			}
+		security.RegisterKMSProvider(prov)
+		log.Printf("encryption enabled: true (embedded mode, hashicorp AEAD)")
+		return nil
+	case "external":
+		if socket == "" {
+			socket = "/tmp/progressdb-kms.sock"
 		}
+		a.rc = kms.NewRemoteClient(socket)
+		security.RegisterKMSProvider(a.rc)
+		if err := a.rc.Health(); err != nil {
+			return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", socket, err)
+		}
+		kctx, cancel := context.WithCancel(ctx)
+		a.cancel = cancel
+		go func() { <-kctx.Done() }()
+		log.Printf("encryption enabled: true (external KMS socket=%s)", socket)
+		return nil
+	default:
+		return fmt.Errorf("unknown PROGRESSDB_KMS_MODE=%q; must be embedded or external", mode)
 	}
-
-    h, err := launcher.StartChild(ctx, bin, kmsCfgPath, ln)
-    if parentListenerClose != nil {
-        parentListenerClose()
-    }
-	if err != nil {
-		return fmt.Errorf("failed to start KMS: %w", err)
-	}
-	a.child = &kms.CmdHandle{Cmd: h.Cmd}
-	a.rc = kms.NewRemoteClient(socket)
-	security.RegisterKMSProvider(a.rc)
-	if err := a.rc.Health(); err != nil {
-		return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", socket, err)
-	}
-
-	kctx, cancel := context.WithCancel(ctx)
-	a.cancel = cancel
-	go func() { <-kctx.Done() }()
-	log.Printf("encryption enabled: true (KMS socket=%s)", socket)
-	_ = kmsCfgPath // keep variable if future use
-	return nil
 }
