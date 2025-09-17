@@ -14,9 +14,13 @@ elif [[ -f "$ROOT_DIR/.env" ]]; then
   set -a; . "$ROOT_DIR/.env"; set +a
 fi
 
+source "$ROOT_DIR/scripts/dev_env.sh"
+DEV_CFG="$DEV_CFG"
+echo "DEV: using config $DEV_CFG"
+
 mkdir -p .gopath/pkg/mod
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 # export GOSUMDB=off
 
-exec go run ./cmd/progressdb "$@"
+exec go run ./cmd/progressdb --config "$DEV_CFG" "$@"
