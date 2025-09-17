@@ -37,6 +37,11 @@ type App struct {
 func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*App, error) {
 	_ = godotenv.Load(".env")
 
+	// validate effective config early and fail fast
+	if err := validateConfig(eff); err != nil {
+		return nil, err
+	}
+
 	// runtime keys
 	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
 	for _, k := range eff.Config.Security.APIKeys.Backend {

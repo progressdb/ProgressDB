@@ -17,6 +17,6 @@ fi
 mkdir -p .gopath/pkg/mod
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
-export GOSUMDB=off
+# export GOSUMDB=off
 
 exec go run ./cmd/progressdb "$@"
