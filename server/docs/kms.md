@@ -80,7 +80,7 @@ in production.
 
 ## Runbook (quick)
 
-- Start KMS (server will spawn by default): ensure KMS binary is present or set `PROGRESSDB_KMS_BINARY`.
+-- Start KMS (server will spawn by default): ensure a `kms` binary is present on `PATH` or placed alongside the server executable.
 - Recommended systemd unit for KMS (example for operations):
 
 ```

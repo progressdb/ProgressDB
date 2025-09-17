@@ -18,7 +18,7 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 )
 
-replace github.com/progressdb/kms => ../kms
+replace github.com/ha-sante/ProgressDB/kms => ../kms
 
 require (
 	github.com/DataDog/zstd v1.4.5 // indirect
@@ -38,6 +38,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/mux v1.8.1
+	github.com/ha-sante/ProgressDB/kms v0.0.0-20250917165323-aca965e56d56
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.16.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

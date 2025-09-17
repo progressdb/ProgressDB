@@ -7,15 +7,15 @@ This document explains how to install the ProgressDB KMS binary and how the serv
 - **Release binary:** download the prebuilt `kms` artifact from the project releases and place it in `/usr/local/bin` (or another path in `PATH`).
 
 **Service / process model**
-- The server expects a KMS process to be available when encryption is enabled. When starting, the server will resolve which KMS binary to use in the following order:
-  - If `PROGRESSDB_KMS_BINARY` is set, use that path.
-  - Otherwise, prefer an installed `kms` binary found on `PATH` (i.e. `kms` in `which kms`).
+  - The server expects a KMS process to be available when encryption is enabled. When starting, the server will resolve which `kms` binary to use in the following order:
+  - Prefer an installed `kms` binary found on `PATH` (i.e. `which kms`).
   - Otherwise, fall back to a sibling `kms` binary next to the ProgressDB executable (development fallback).
+  - The server does not consult a `PROGRESSDB_KMS_BINARY` environment variable.
 - Once the binary is determined, the server will create a small secure config file (master key, socket path, data-dir) and spawn the KMS as a child process. The server may also choose to prebind the UDS socket and pass the listener to the child to preserve peer credential behavior.
 
 **Environment & configuration**
 - `PROGRESSDB_USE_ENCRYPTION`: `true|1|yes` to enable encryption features in the server.
-- `PROGRESSDB_KMS_BINARY`: Optional path to the `kms` binary to spawn. If unset, server will search `PATH` for `kms`, then fallback to sibling.
+- `PROGRESSDB_KMS_BINARY`: deprecated — the server no longer reads this env var. Ensure `kms` is available on `PATH` or placed alongside the server executable.
 - `PROGRESSDB_KMS_SOCKET`: Unix socket path used for server ↔ KMS communication (default `/tmp/progressdb-kms.sock`).
 - `PROGRESSDB_KMS_DATA_DIR`: Directory where KMS stores metadata and logs (default `./kms-data`).
 - Server config keys: `security.kms.master_key_hex` or `security.kms.master_key_file` — supply a master KEK for the KMS to use on startup. If not provided, KMS will generate an ephemeral master key (dev only).
@@ -48,8 +48,7 @@ Ensure directories used by the KMS have restrictive permissions (e.g. `/var/lib/
 - Local development: the server includes a `replace` directive in its `go.mod` pointing to `../kms` for local testing. For production deployments, remove the `replace` and depend on published releases.
 
 **Troubleshooting**
-- If the server fails to start KMS: check `PROGRESSDB_KMS_BINARY` and `PATH` for an available `kms` binary; check logs in the KMS data-dir for startup errors.
+- If the server fails to start KMS: check `PATH` and ensure a `kms` binary is available, and check logs in the KMS data-dir for startup errors.
 - If peer UID is not available: ensure the server is passing an inherited UDS listener to the child process, or run KMS as a separate service and configure the server to use that socket.
 
 For more details about the KMS internals and available HTTP endpoints, see `kms/README.md` and the `kms` package documentation in the repository.
-

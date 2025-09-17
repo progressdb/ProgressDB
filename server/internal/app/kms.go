@@ -11,6 +11,7 @@ import (
     "path/filepath"
     "strings"
 
+    launcher "github.com/ha-sante/ProgressDB/kms/pkg/launcher"
     "progressdb/pkg/kms"
     "progressdb/pkg/security"
 )
@@ -25,22 +26,18 @@ func (a *App) setupKMS(ctx context.Context) error {
 	if dataDir == "" {
 		dataDir = "./kms-data"
 	}
-    bin := os.Getenv("PROGRESSDB_KMS_BINARY")
-    if bin == "" {
-        // Prefer an installed `kms` binary on PATH (e.g. installed via
-        // `go install github.com/progressdb/kms/cmd/kms@latest`). This makes
-        // runtime deployment easier: operators can install the KMS into
-        // $GOBIN or /usr/local/bin and the server will spawn that binary.
-        if p, err := exec.LookPath("kms"); err == nil {
-            bin = p
-        } else {
-            // Fallback for local development: look for a sibling `kms`
-            exePath, err := os.Executable()
-            if err != nil {
-                return fmt.Errorf("failed to determine executable path: %w", err)
-            }
-            bin = filepath.Join(filepath.Dir(exePath), "kms")
+    // Discover kms binary: prefer an installed `kms` on PATH, otherwise
+    // fall back to a sibling `kms` next to the server executable. Do not
+    // consult an environment variable for the binary path.
+    var bin string
+    if p, err := exec.LookPath("kms"); err == nil {
+        bin = p
+    } else {
+        exePath, err := os.Executable()
+        if err != nil {
+            return fmt.Errorf("failed to determine executable path: %w", err)
         }
+        bin = filepath.Join(filepath.Dir(exePath), "kms")
     }
 
 	useEnc := a.eff.Config.Security.Encryption.Use
@@ -80,12 +77,11 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return fmt.Errorf("invalid master_key_hex: must be 64-hex (32 bytes)")
 	}
 
-	// write launcher config
-	lcfg := &kms.LauncherConfig{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}
-	kmsCfgPath, err := kms.CreateSecureConfigFile(lcfg, dataDir)
-	if err != nil {
-		return fmt.Errorf("failed to write kms config: %w", err)
-	}
+    // write launcher config using the external kms launcher's helper
+    kmsCfgPath, err := launcher.CreateSecureConfigFile(&launcher.Config{MasterKeyHex: mk, Socket: socket, DataDir: dataDir}, dataDir)
+    if err != nil {
+        return fmt.Errorf("failed to write kms config: %w", err)
+    }
 
 	// prebind socket
 	var (
@@ -113,10 +109,10 @@ func (a *App) setupKMS(ctx context.Context) error {
 		}
 	}
 
-	h, err := kms.StartChildLauncher(ctx, bin, kmsCfgPath, ln)
-	if parentListenerClose != nil {
-		parentListenerClose()
-	}
+    h, err := launcher.StartChild(ctx, bin, kmsCfgPath, ln)
+    if parentListenerClose != nil {
+        parentListenerClose()
+    }
 	if err != nil {
 		return fmt.Errorf("failed to start KMS: %w", err)
 	}

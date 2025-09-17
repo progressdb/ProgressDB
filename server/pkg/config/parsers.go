@@ -176,10 +176,10 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envUsed = true
 		envCfg.Security.KMS.DataDir = v
 	}
-	if v := os.Getenv("PROGRESSDB_KMS_BINARY"); v != "" {
-		envUsed = true
-		envCfg.Security.KMS.Binary = v
-	}
+	// PROGRESSDB_KMS_BINARY is intentionally not supported; the server
+	// discovers and spawns the KMS binary from PATH or alongside the
+	// server executable. Operators who wish to run a custom binary should
+	// run it themselves or modify the server launcher.
 	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
 		envUsed = true
 		envCfg.Security.KMS.MasterKeyFile = v

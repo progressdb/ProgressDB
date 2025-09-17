@@ -15,7 +15,7 @@ This file documents the environment variables used by the ProgressDB server and 
  - `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string). F
  - `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
 
-- `PROGRESSDB_KMS_BINARY`: Optional path to a KMS binary that the server may spawn when encryption is enabled. If unset the server will search for a `kms` sibling next to the ProgressDB executable.
+-- `PROGRESSDB_KMS_BINARY`: deprecated — the server no longer supports this environment variable. Ensure `kms` is on your `PATH` or place it next to the server executable; the server will spawn the `kms` binary when encryption is enabled.
 - `PROGRESSDB_KMS_SOCKET`: Unix-domain socket path used to connect to the KMS (default `/tmp/progressdb-kms.sock`).
 - `PROGRESSDB_KMS_DATA_DIR`: Directory for KMS data, wrapped DEKs, audit logs and backups.
 
