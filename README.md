@@ -1,5 +1,5 @@
 
-![ProgressDB Logo](/docs/logo-colors.png)
+![ProgressDB Logo](/docs/images/logo-colors.png)
 
 ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
 
