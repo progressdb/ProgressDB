@@ -1,0 +1,34 @@
+server:
+  address: "0.0.0.0"
+  port: 8080
+  db_path: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/database/"
+  tls:
+    cert_file: ""
+    key_file: ""
+
+security:
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  rate_limit:
+    rps: 10
+    burst: 20
+  ip_whitelist:
+    - "127.0.0.1"
+  api_keys:
+    backend: ["sk_example"]
+    frontend: ["pk_example"]
+    admin: ["admin_example"]
+  encryption:
+    use: true
+    fields: []
+  kms:
+    socket: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/progressdb-kms.sock"
+    data_dir: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/kmsdb"
+    binary: ""
+    master_key_file: ""
+    master_key_hex: "60324e8965b4ee7188d2cc0dfcb7928d53851aa8fcd1044884e30c9af28413c1"
+
+logging:
+  level: "info"
