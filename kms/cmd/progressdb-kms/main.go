@@ -31,7 +31,7 @@ func main() {
 	// load config if provided
 	var masterHex string
 	if *cfgPath != "" {
-		if b, err := os.ReadFile(*cfgPath); err == nil {
+		if b, errCfg := os.ReadFile(*cfgPath); errCfg == nil {
 			var m map[string]string
 			_ = yaml.Unmarshal(b, &m)
 			masterHex = m["master_key_hex"]
@@ -43,16 +43,16 @@ func main() {
 
 	var provider kmss.KMSProvider
 	if masterHex != "" {
-		p, err := kmss.NewHashicorpProviderFromHex(context.Background(), masterHex)
-		if err != nil {
-			log.Fatalf("failed to init provider: %v", err)
+		p, errProv := kmss.NewHashicorpProviderFromHex(context.Background(), masterHex)
+		if errProv != nil {
+			log.Fatalf("failed to init provider: %v", errProv)
 		}
 		provider = p
 	}
 
-	st, err := store.New(*dataDir + "/kms.db")
-	if err != nil {
-		log.Fatalf("failed to open store: %v", err)
+	st, errStore := store.New(*dataDir + "/kms.db")
+	if errStore != nil {
+		log.Fatalf("failed to open store: %v", errStore)
 	}
 	defer st.Close()
 
@@ -62,7 +62,99 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	mux.HandleFunc("/create_dek_for_thread", func(w http.ResponseWriter, r *http.Request) {
+	// register handlers
+	mux.HandleFunc("/create_dek_for_thread", createDEKHandler(provider, st))
+	mux.HandleFunc("/get_wrapped", getWrappedHandler(st))
+	mux.HandleFunc("/encrypt", encryptHandler(provider, st))
+	mux.HandleFunc("/decrypt", decryptHandler(provider, st))
+	mux.HandleFunc("/rewrap", rewrapHandler(provider, st))
+
+	// choose listener
+	addr := *socket
+	var ln net.Listener
+	var errListen error
+	addr = strings.TrimPrefix(addr, "unix://")
+	if strings.HasPrefix(addr, "/") {
+		// unix socket
+		_ = os.Remove(addr)
+		ln, errListen = net.Listen("unix", addr)
+		if errListen != nil {
+			log.Fatalf("listen unix %s: %v", addr, errListen)
+		}
+		// set perms
+		_ = os.Chmod(addr, 0600)
+		log.Printf("listening on unix socket %s", addr)
+	} else {
+		ln, errListen = net.Listen("tcp", addr)
+		if errListen != nil {
+			log.Fatalf("listen tcp %s: %v", addr, errListen)
+		}
+		log.Printf("listening on %s", addr)
+	}
+
+	srv := &http.Server{Handler: mux}
+	if errServe := srv.Serve(ln); errServe != nil && errServe != http.ErrServerClosed {
+		log.Fatalf("server failed: %v", errServe)
+	}
+}
+
+func randRead(b []byte) (int, error) {
+	return crand.Read(b)
+}
+
+func mustDecodeBase64(s string) []byte {
+	if s == "" {
+		return nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return b
+	}
+	return []byte(s)
+}
+
+// helper encrypt/decrypt using raw DEK (nonce|ciphertext format)
+func encryptWithRaw(dek, plaintext []byte) (string, error) {
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := randRead(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nil, nonce, plaintext, nil)
+	return base64.StdEncoding.EncodeToString(append(nonce, ct...)), nil
+}
+
+func decryptWithRaw(dek []byte, b64 string) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(data) < ns {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	nonce := data[:ns]
+	ct := data[ns:]
+	return gcm.Open(nil, nonce, ct, nil)
+}
+
+// HTTP handlers (return handler funcs so we can capture dependencies)
+func createDEKHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "no provider configured", http.StatusInternalServerError)
 			return
@@ -85,9 +177,11 @@ func main() {
 		out := map[string]string{"key_id": kid, "wrapped": base64.StdEncoding.EncodeToString(wrapped), "kek_id": "", "kek_version": ""}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
-	})
+	}
+}
 
-	mux.HandleFunc("/get_wrapped", func(w http.ResponseWriter, r *http.Request) {
+func getWrappedHandler(st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		keyID := r.URL.Query().Get("key_id")
 		if keyID == "" {
 			http.Error(w, "missing key_id", http.StatusBadRequest)
@@ -103,50 +197,14 @@ func main() {
 		out := map[string]string{"wrapped": m["wrapped"]}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
-	})
-
-	encryptWithRaw := func(dek, plaintext []byte) (string, error) {
-		block, err := aes.NewCipher(dek)
-		if err != nil {
-			return "", err
-		}
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return "", err
-		}
-		nonce := make([]byte, gcm.NonceSize())
-		if _, err := randRead(nonce); err != nil {
-			return "", err
-		}
-		ct := gcm.Seal(nil, nonce, plaintext, nil)
-		return base64.StdEncoding.EncodeToString(append(nonce, ct...)), nil
 	}
+}
 
-	decryptWithRaw := func(dek []byte, b64 string) ([]byte, error) {
-		data, err := base64.StdEncoding.DecodeString(b64)
-		if err != nil {
-			return nil, err
-		}
-		block, err := aes.NewCipher(dek)
-		if err != nil {
-			return nil, err
-		}
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return nil, err
-		}
-		ns := gcm.NonceSize()
-		if len(data) < ns {
-			return nil, fmt.Errorf("ciphertext too short")
-		}
-		nonce := data[:ns]
-		ct := data[ns:]
-		return gcm.Open(nil, nonce, ct, nil)
-	}
-
-	mux.HandleFunc("/encrypt", func(w http.ResponseWriter, r *http.Request) {
+func encryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			KeyID, Plaintext string `json:"key_id" json:"plaintext"`
+			KeyID     string `json:"key_id"`
+			Plaintext string `json:"plaintext"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -171,11 +229,14 @@ func main() {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"ciphertext": ct})
-	})
+	}
+}
 
-	mux.HandleFunc("/decrypt", func(w http.ResponseWriter, r *http.Request) {
+func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			KeyID, Ciphertext string `json:"key_id" json:"ciphertext"`
+			KeyID      string `json:"key_id"`
+			Ciphertext string `json:"ciphertext"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -200,11 +261,14 @@ func main() {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"plaintext": base64.StdEncoding.EncodeToString(pt)})
-	})
+	}
+}
 
-	mux.HandleFunc("/rewrap", func(w http.ResponseWriter, r *http.Request) {
+func rewrapHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			KeyID, NewKEKHex string `json:"key_id" json:"new_kek_hex"`
+			KeyID     string `json:"key_id"`
+			NewKEKHex string `json:"new_kek_hex"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -237,49 +301,5 @@ func main() {
 		nb, _ := json.Marshal(m)
 		_ = st.SaveKeyMeta(req.KeyID, nb)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "key_id": req.KeyID, "kek_id": "local"})
-	})
-
-	// choose listener
-	addr := *socket
-	var ln net.Listener
-	var err error
-	if strings.HasPrefix(addr, "unix://") {
-		addr = strings.TrimPrefix(addr, "unix://")
 	}
-	if strings.HasPrefix(addr, "/") {
-		// unix socket
-		_ = os.Remove(addr)
-		ln, err = net.Listen("unix", addr)
-		if err != nil {
-			log.Fatalf("listen unix %s: %v", addr, err)
-		}
-		// set perms
-		_ = os.Chmod(addr, 0600)
-		log.Printf("listening on unix socket %s", addr)
-	} else {
-		ln, err = net.Listen("tcp", addr)
-		if err != nil {
-			log.Fatalf("listen tcp %s: %v", addr, err)
-		}
-		log.Printf("listening on %s", addr)
-	}
-
-	srv := &http.Server{Handler: mux}
-	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server failed: %v", err)
-	}
-}
-
-func randRead(b []byte) (int, error) {
-	return crand.Read(b)
-}
-
-func mustDecodeBase64(s string) []byte {
-	if s == "" {
-		return nil
-	}
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return b
-	}
-	return []byte(s)
 }

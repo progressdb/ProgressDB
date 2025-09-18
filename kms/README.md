@@ -13,13 +13,13 @@ From the repository root (builds the `progressdb-kms` binary into `./bin`):
 
 ```
 cd kms
-go build -o ../bin/progressdb-kms ./cmd/kms
+go build -o ../bin/progressdb-kms ./cmd/progressdb-kms
 ```
 
 Or using the module path directly:
 
 ```
-go build -o bin/progressdb-kms ./cmd/kms
+go build -o bin/progressdb-kms ./cmd/progressdb-kms
 ```
 
 ## Run (production)

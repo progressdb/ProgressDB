@@ -1,13 +1,13 @@
 # KMS Installation & Spawn Guide
 
-This document explains how to install the ProgressDB KMS binary and how the server spawns and connects to it. The KMS is implemented as a Go module and includes a small CLI at `cmd/kms` so it can be installed as a standalone binary and launched as a separate process.
+This document explains how to install the ProgressDB KMS binary and how the server spawns and connects to it. The KMS is implemented as a Go module and includes a small CLI at `cmd/progressdb-kms` so it can be installed as a standalone binary and launched as a separate process.
 
 **Install:**
 - **Go (recommended / development):** build the CLI locally and name the binary `progressdb-kms`:
 
   ```sh
   cd kms
-  go build -o ../bin/progressdb-kms ./cmd/kms
+  go build -o ../bin/progressdb-kms ./cmd/progressdb-kms
   ```
 
   Alternatively use Goreleaser or your packaging tool to produce `progressdb-kms` as a release artifact.
