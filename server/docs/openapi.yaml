@@ -525,6 +525,134 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Thread'
+
+  /admin/keys:
+    get:
+      summary: List keys in the underlying store (admin/backend keys only)
+      description: Returns a JSON object with an array of matching key names. Use the optional `prefix` query parameter to filter results.
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: query
+          name: prefix
+          schema:
+            type: string
+          description: Optional prefix to filter returned keys
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeysList'
+              examples:
+                example:
+                  value:
+                    keys: ["kms:dek:thread1","kms:map:threadmeta:thread1"]
+
+  /admin/keys/{key}:
+    get:
+      summary: Get the raw value for a given key (admin/backend keys only)
+      description: Returns the raw stored value for the provided key name. The key path parameter must be URL-escaped when calling this endpoint.
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+          description: URL-escaped key name
+      responses:
+        "200":
+          description: The raw key value
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+
+  /admin/rotate_thread_dek:
+    post:
+      summary: Rotate a thread's DEK (admin/backend keys only)
+      description: Generates a new DEK for the specified thread and performs an in-place rotation. Returns the new key id on success.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateThreadDEKRequest'
+            examples:
+              example:
+                value:
+                  thread_id: "t1"
+      responses:
+        "200":
+          description: Rotation initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RotateThreadDEKResponse'
+              examples:
+                example:
+                  value:
+                    status: "ok"
+                    new_key: "key-1234"
+
+  /admin/rewrap_batch:
+    post:
+      summary: Rewrap DEKs for multiple threads (admin/backend keys only)
+      description: Rewrap existing DEKs under a new KEK by invoking the remote KMS rewrap operation. Supply either `thread_ids` or set `all: true` to operate across all threads.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RewrapBatchRequest'
+            examples:
+              example:
+                value:
+                  thread_ids: ["t1","t2"]
+                  new_kek_hex: "<64-hex-bytes>"
+                  parallelism: 4
+      responses:
+        "200":
+          description: Results map keyed by key id
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/RewrapResultEntry'
+              examples:
+                example:
+                  value:
+                    "key-1234": { status: "ok", kek_id: "kek-1" }
+                    "key-5678": { status: "error", error: "wrap failed" }
+
+  /admin/generate_kek:
+    post:
+      summary: Generate a new random KEK (admin/backend keys only)
+      description: Produces a new 32-byte KEK returned as a 64-hex string. Use this for rewrap operations in admin flows.
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: KEK generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateKEKResponse'
+              examples:
+                example:
+                  value:
+                    kek_hex: "60324e8965b4ee7188d2cc0dfcb7928d53851aa8fcd1044884e30c9af28413c1"
 components:
   schemas:
     Message:
@@ -613,6 +741,59 @@ components:
           type: string
           description: base64-encoded nonce|ciphertext
       required: [_enc, v]
+
+    KeysList:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: string
+
+    RotateThreadDEKRequest:
+      type: object
+      properties:
+        thread_id:
+          type: string
+      required: [thread_id]
+
+    RotateThreadDEKResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        new_key:
+          type: string
+
+    RewrapBatchRequest:
+      type: object
+      properties:
+        thread_ids:
+          type: array
+          items:
+            type: string
+        all:
+          type: boolean
+        new_kek_hex:
+          type: string
+        parallelism:
+          type: integer
+
+    RewrapResultEntry:
+      type: object
+      properties:
+        status:
+          type: string
+        error:
+          type: string
+        kek_id:
+          type: string
+
+    GenerateKEKResponse:
+      type: object
+      properties:
+        kek_hex:
+          type: string
 
   securitySchemes:
     AdminApiKey:

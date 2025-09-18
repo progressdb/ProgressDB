@@ -1,7 +1,7 @@
 server:
   address: "0.0.0.0"
   port: 8080
-  db_path: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/database/"
+  db_path: "./database"
   tls:
     cert_file: ""
     key_file: ""
@@ -24,11 +24,12 @@ security:
     use: true
     fields: []
   kms:
-    endpoint: "127.0.0.1:6820"
-    data_dir: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/kmsdb"
+    endpoint: ""
+    data_dir: ""
     binary: ""
     master_key_file: ""
-    master_key_hex: "60324e8965b4ee7188d2cc0dfcb7928d53851aa8fcd1044884e30c9af28413c1"
+    master_key_hex: ""
 
 logging:
   level: "info"
+
