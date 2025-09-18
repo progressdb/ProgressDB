@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 
 	"encoding/json"
-	"progressdb/pkg/kmsapi"
+	"progressdb/pkg/kms"
 )
 
 // securityRandReadImpl reads cryptographically secure random bytes.
@@ -26,7 +26,7 @@ func securityRandReadImpl(b []byte) (int, error) { return rand.Read(b) }
 var key []byte
 var (
 	providerMu sync.RWMutex
-	provider   kmsapi.KMSProvider
+	provider   kms.KMSProvider
 	keyLocked  bool
 )
 
@@ -35,7 +35,7 @@ var (
 // runtime via RegisterKMSProvider.
 
 // RegisterKMSProvider registers a provider for use by the security package.
-func RegisterKMSProvider(p kmsapi.KMSProvider) {
+func RegisterKMSProvider(p kms.KMSProvider) {
 	providerMu.Lock()
 	defer providerMu.Unlock()
 	provider = p

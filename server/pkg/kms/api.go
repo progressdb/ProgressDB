@@ -1,4 +1,4 @@
-package kmsapi
+package kms
 
 // KMSProvider is the minimal interface used by the server to interact with
 // an external KMS provider (KMS or others). Implementations may live in

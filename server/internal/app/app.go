@@ -23,7 +23,6 @@ type App struct {
 	buildDate string
 
 	// KMS/runtime
-	child  *kms.CmdHandle
 	rc     *kms.RemoteClient
 	cancel context.CancelFunc
 

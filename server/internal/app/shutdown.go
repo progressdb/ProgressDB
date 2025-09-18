@@ -25,17 +25,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// 2) stop KMS child
-	if a.child != nil {
-		log.Printf("shutdown: stopping KMS child")
-		if err := a.child.Stop(5 * time.Second); err != nil {
-			log.Printf("shutdown: kms stop error: %v", err)
-		} else {
-			log.Printf("shutdown: kms stopped")
-		}
-	}
-
-	// 3) close KMS remote client
+	// 2) close KMS remote client
 	if a.rc != nil {
 		log.Printf("shutdown: closing KMS client")
 		if err := a.rc.Close(); err != nil {

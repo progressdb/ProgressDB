@@ -23,13 +23,10 @@ type RemoteClient struct {
 func NewRemoteClient(addr string) *RemoteClient {
 	tr := &http.Transport{}
 	tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		// Use a Dialer that respects the provided context when dialing the
-		// unix domain socket address.
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", addr)
 	}
 	client := &http.Client{Transport: tr}
-	// Default request timeout to avoid hanging requests
 	client.Timeout = 10 * time.Second
 	return &RemoteClient{addr: addr, httpc: client}
 }
@@ -37,26 +34,24 @@ func NewRemoteClient(addr string) *RemoteClient {
 func (r *RemoteClient) Enabled() bool { return true }
 
 func (r *RemoteClient) Encrypt(plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error) {
-	return nil, nil, "", fmt.Errorf("remote client Encrypt: %w", ErrNotImplemented)
+	return nil, nil, "", fmt.Errorf("remote client Encrypt: not implemented")
 }
 
 func (r *RemoteClient) Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error) {
-	return nil, fmt.Errorf("remote client Decrypt: %w", ErrNotImplemented)
+	return nil, fmt.Errorf("remote client Decrypt: not implemented")
 }
 
 func (r *RemoteClient) CreateDEK() (string, []byte, string, string, error) {
-	return "", nil, "", "", ErrNotImplemented
+	return "", nil, "", "", fmt.Errorf("not implemented")
 }
-func (r *RemoteClient) WrapDEK(dek []byte) ([]byte, error)       { return nil, ErrNotImplemented }
-func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) { return nil, ErrNotImplemented }
-func (r *RemoteClient) Health() error                            { return ErrNotImplemented }
-func (r *RemoteClient) Close() error                             { return nil }
+func (r *RemoteClient) WrapDEK(dek []byte) ([]byte, error) { return nil, fmt.Errorf("not implemented") }
+func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (r *RemoteClient) Health() error { return fmt.Errorf("not implemented") }
+func (r *RemoteClient) Close() error  { return nil }
 
-// Health probes the remote KMS service. It expects a 200 response from
-// `/healthz` (or `/health`) and returns an error with body text when the
-// response status is not OK.
 func (r *RemoteClient) HealthCheck() error {
-	// try /healthz then /health
 	paths := []string{"/healthz", "/health"}
 	var lastErr error
 	for _, p := range paths {
@@ -72,13 +67,11 @@ func (r *RemoteClient) HealthCheck() error {
 		if resp.StatusCode == 200 {
 			return nil
 		}
-		// include body in error for diagnostics
 		return fmt.Errorf("health %s: status %d: %s", p, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return fmt.Errorf("health probe failed: %v", lastErr)
 }
 
-// CreateDEKForThread requests the KMS to create a DEK for a thread.
 func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
 	req := map[string]string{"thread_id": threadID}
 	b, _ := json.Marshal(req)
@@ -110,7 +103,6 @@ func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, stri
 	return out.KeyID, wb, out.KekID, out.KekVersion, nil
 }
 
-// GetWrapped returns wrapped DEK from remote KMS
 func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	url := fmt.Sprintf("http://unix/get_wrapped?key_id=%s", keyID)
 	reqq, _ := http.NewRequest("GET", url, nil)
@@ -131,7 +123,6 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(out.Wrapped)
 }
 
-// EncryptWithKey delegates encryption to remote KMS
 func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]byte, []byte, string, error) {
 	req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
 	b, _ := json.Marshal(req)
@@ -159,7 +150,6 @@ func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]by
 	return ct, nil, "v1", nil
 }
 
-// DecryptWithKey delegates decryption to remote KMS
 func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) ([]byte, error) {
 	req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
 	b, _ := json.Marshal(req)
@@ -183,9 +173,6 @@ func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) 
 	return base64.StdEncoding.DecodeString(out.Plaintext)
 }
 
-// RewrapKey requests the KMS to rewrap the stored DEK identified by keyID
-// using the provided new KEK (hex). It returns the new kek_id from the service
-// when successful.
 func (r *RemoteClient) RewrapKey(keyID, newKEKHex string) (newKekID string, err error) {
 	req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
 	b, _ := json.Marshal(req)

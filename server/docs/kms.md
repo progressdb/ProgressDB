@@ -11,15 +11,17 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 ## Components
 
 - `kms` — the KMS HTTP server (separate project/binary; HTTP over UDS). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
-- `server/pkg/kms/remote_client.go` — client adapter used by the server to talk to KMS over the UDS.
-- `server/pkg/kms/starter.go` — helper the server uses to spawn and supervise the KMS child.
+ - `server/pkg/kms/external.go` — client adapter used by the server to talk to KMS over the UDS.
+- The server no longer auto-spawns a KMS child by default; it can run in
+  embedded mode (in-process) or talk to an external `kmsd` process via the
+  remote client.
 - `server/pkg/security` — pluggable security bridge. The server calls `security.CreateDEKForThread`, `security.EncryptWithKey`, `security.DecryptWithKey` to interact with the provider.
 - `server/pkg/store` — stores wrapped DEK metadata, thread->key mapping, and messages.
 
 ## Runtime flow (normal)
 
-1. On startup the server spawns KMS (or you may run it externally). The server and KMS communicate over a Unix Domain Socket (UDS).
-2. Server registers `RemoteClient` pointing at the child UDS socket and delegates KMS operations to it.
+1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `kmsd` process. Communication with an external KMS typically uses a Unix Domain Socket (UDS) or HTTP.
+2. In external mode the server constructs a `RemoteClient` pointing at the configured socket and delegates KMS operations to it.
 3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
 4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
 
