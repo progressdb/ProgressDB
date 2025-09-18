@@ -404,9 +404,8 @@ paths:
                 properties:
                   threads:
                     type: array
-                items:
-                  $ref: '#/components/schemas/Thread'
-
+                    items:
+                      $ref: '#/components/schemas/Thread'
   /v1/_sign:
     post:
       summary: Issue an HMAC signature for a given user id (backend keys only)
@@ -606,7 +605,7 @@ paths:
   /admin/rewrap_batch:
     post:
       summary: Rewrap DEKs for multiple threads (admin/backend keys only)
-      description: Rewrap existing DEKs under a new KEK by invoking the remote KMS rewrap operation. Supply either `thread_ids` or set `all: true` to operate across all threads.
+      description: Rewrap existing DEKs under a new KEK by invoking the remote KMS rewrap operation. Supply either thread_ids or set all to "true" to operate across all threads.
       security:
         - AdminApiKey: []
       requestBody:

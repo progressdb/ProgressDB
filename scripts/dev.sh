@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Ensure we run under bash (arrays and ${BASH_SOURCE} required). If invoked with
+# sh, re-exec under bash so `set -u` and array usages work correctly.
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
 set -euo pipefail
 
 # Interactive dev launcher. Prompts whether to enable encryption and which mode,
@@ -12,8 +17,13 @@ MODE="embedded"
 WAIT_KMS=0
 WAIT_TIMEOUT=30
 
-POSITIONAL=()
-while [[ $# -gt 0 ]]; do
+# If the current shell does not support bash arrays (e.g. invoked via `sh`),
+# re-exec the script under `bash` so array usage later works.
+if ! ( eval 'tmp=()' ) 2>/dev/null; then
+  exec bash "$0" "$@"
+fi
+
+while [ $# -gt 0 ]; do
   case "$1" in
     --enc)
       USE_ENC=1; shift ;;
@@ -26,18 +36,20 @@ while [[ $# -gt 0 ]]; do
     --wait-timeout)
       WAIT_TIMEOUT="$2"; shift 2 ;;
     --)
-      shift; POSITIONAL+=("$@"); break ;;
-    -*|--*)
-      # unknown flag; forward to server
-      POSITIONAL+=("$1"); shift ;;
-    *) POSITIONAL+=("$1"); shift ;;
+      shift; break ;;
+    -*)
+      # unknown flag: stop parsing and leave remaining args for the server
+      break ;;
+    *)
+      # positional -> leave for server
+      break ;;
   esac
 done
-set -- "${POSITIONAL[@]}"
+# Remaining "$@" are forwarded to the server command
 
 if [[ $USE_ENC -eq 0 ]]; then
-  # If no flags provided, run interactive prompt
-  if [[ ${#POSITIONAL[@]} -eq 0 && $USE_ENC -eq 0 ]]; then
+  # If no flags provided and no forwarded server args, run interactive prompt
+  if [[ $# -eq 0 && $USE_ENC -eq 0 ]]; then
     echo "Start development server"
     read -r -p "Enable encryption (y/N)? " ENC_ANS
     ENC_ANS="${ENC_ANS:-n}"
@@ -73,5 +85,5 @@ else
   mkdir -p .gopath/pkg/mod
   export GOPATH="$PWD/.gopath"
   export GOMODCACHE="$PWD/.gopath/pkg/mod"
-  exec go run ./cmd/progressdb --config "$CFG" "${POSITIONAL[@]:+${POSITIONAL[@]}}"
+  exec go run ./cmd/progressdb --config "$CFG" "$@"
 fi

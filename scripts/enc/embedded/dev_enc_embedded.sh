@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Embedded-mode encrypted dev runner (per-mode folder)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# project root is three levels up from scripts/enc/embedded
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TEMPLATE="$SCRIPT_DIR/config.template.yaml"
 OUT_CFG="$SCRIPT_DIR/config.generated.yaml"
 
@@ -27,4 +28,3 @@ export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 
 exec go run ./cmd/progressdb --config "$OUT_CFG" "$@"
-

@@ -3,7 +3,8 @@ set -euo pipefail
 
 # External-mode encrypted dev runner (per-mode folder). Does NOT auto-start KMS.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# project root is three levels up from scripts/enc/external
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TEMPLATE="$SCRIPT_DIR/config.template.yaml"
 OUT_CFG="$SCRIPT_DIR/config.generated.yaml"
 
@@ -11,19 +12,22 @@ WAIT_KMS=0
 WAIT_TIMEOUT=30
 
 # Simple arg parsing for local options: --wait-kms [--wait-timeout N]
-POSITIONAL=()
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
   case "$1" in
     --wait-kms)
       WAIT_KMS=1; shift ;;
     --wait-timeout)
       WAIT_TIMEOUT="$2"; shift 2 ;;
     --)
-      shift; POSITIONAL+=("$@"); break ;;
-    *) POSITIONAL+=("$1"); shift ;;
+      shift; break ;;
+    -*)
+      # unknown flag: stop parsing and leave remaining args for server
+      break ;;
+    *)
+      # positional arg: stop parsing and leave remaining args
+      break ;;
   esac
 done
-set -- "${POSITIONAL[@]}"
 
 if [[ ! -f "$TEMPLATE" ]]; then
   echo "Missing template: $TEMPLATE" >&2; exit 1
