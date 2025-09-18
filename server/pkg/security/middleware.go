@@ -72,21 +72,10 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			}
 
 			// Auth
-			role, key := authenticate(r, cfg)
-			// Convert role to string for logging
-			var roleStr string
-			switch role {
-			case RoleFrontend:
-				roleStr = "frontend"
-			case RoleBackend:
-				roleStr = "backend"
-			case RoleAdmin:
-				roleStr = "admin"
-			default:
-				roleStr = "unauth"
-			}
+			role, key, hasAPIKey := authenticate(r, cfg)
+
 			// Log authentication outcome (do not log full key content)
-			logger.Log.Debug("auth_check", zap.String("role", roleStr), zap.Bool("key_present", key != ""))
+			logger.Log.Debug("auth_check", zap.Any("role", role), zap.Bool("has_api_key", hasAPIKey))
 
 			// Allow unauthenticated health checks for deployment probes.
 			// Probes often cannot send API keys; accept GET /healthz without
@@ -97,11 +86,16 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 				return
 			}
 
-			// Do not allow unauthenticated requests for other endpoints.
+			// Do not allow unauthenticated requests for other endpoints unless
+			// the request carries signature headers (X-User-ID + X-User-Signature),
+			// in which case signature verification middleware will handle auth.
 			if role == RoleUnauth {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				logger.Log.Warn("request_unauthorized", zap.String("path", r.URL.Path), zap.String("remote", r.RemoteAddr))
-				return
+				if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					logger.Log.Warn("request_unauthorized", zap.String("path", r.URL.Path), zap.String("remote", r.RemoteAddr))
+					return
+				}
+				// otherwise, allow through so signature middleware can verify
 			}
 
 			// Expose role name for handlers
@@ -128,7 +122,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// Rate limiting
 			if !limiters.Allow(key) {
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-				logger.Log.Warn("rate_limited", zap.Bool("key_present", key != ""), zap.String("path", r.URL.Path))
+				logger.Log.Warn("rate_limited", zap.Bool("has_api_key", hasAPIKey), zap.String("path", r.URL.Path))
 				return
 			}
 
@@ -170,7 +164,7 @@ func ipWhitelisted(ip string, list []string) bool {
 	return false
 }
 
-func authenticate(r *http.Request, cfg SecConfig) (Role, string) {
+func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
 	// Prefer Authorization: Bearer <key>, fallback to X-API-Key
 	auth := r.Header.Get("Authorization")
 	var key string
@@ -181,20 +175,22 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string) {
 		key = r.Header.Get("X-API-Key")
 	}
 	if key == "" {
-		return RoleUnauth, clientIP(r)
+		// no API key present: return unauth role with client IP as identifier,
+		// and signal that no API key was provided (hasAPIKey=false)
+		return RoleUnauth, clientIP(r), false
 	}
 	if cfg.AdminKeys != nil {
 		if _, ok := cfg.AdminKeys[key]; ok {
-			return RoleAdmin, key
+			return RoleAdmin, key, true
 		}
 	}
 	if _, ok := cfg.BackendKeys[key]; ok {
-		return RoleBackend, key
+		return RoleBackend, key, true
 	}
 	if _, ok := cfg.FrontendKeys[key]; ok {
-		return RoleFrontend, key
+		return RoleFrontend, key, true
 	}
-	return RoleUnauth, key
+	return RoleUnauth, key, true
 }
 
 func frontendAllowed(r *http.Request) bool {

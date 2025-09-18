@@ -404,5 +404,3 @@ func deleteReaction(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// thread-scoped message handlers moved to handlers/threads.go

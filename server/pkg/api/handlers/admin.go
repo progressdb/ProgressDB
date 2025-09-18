@@ -153,11 +153,16 @@ func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-	// persist metadata
-	meta := map[string]string{"key_id": newKeyID, "kek_id": kekID, "kek_version": kekVer}
-	if mb, merr := json.Marshal(meta); merr == nil {
-		_ = store.SaveKey("kms:map:threadmeta:"+req.ThreadID, mb)
-	}
+    // persist metadata into thread record (canonical location)
+    if s, err := store.GetThread(req.ThreadID); err == nil {
+        var th models.Thread
+        if err := json.Unmarshal([]byte(s), &th); err == nil {
+            th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: "", KEKID: kekID, KEKVersion: kekVer}
+            if nb, merr := json.Marshal(th); merr == nil {
+                _ = store.SaveThread(th.ID, string(nb))
+            }
+        }
+    }
 	// perform migration
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
@@ -220,17 +225,15 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 	keyIDs := make(map[string]struct{})
 	for _, tid := range threads {
 		// lookup thread meta
-		if bm, err := store.GetKey("kms:map:threadmeta:" + tid); err == nil {
-			var meta map[string]string
-			if err := json.Unmarshal([]byte(bm), &meta); err == nil {
-				if kid, ok := meta["key_id"]; ok && kid != "" {
-					keyIDs[kid] = struct{}{}
-				}
-			}
-		}
-		if kid, _ := store.GetThreadKey(tid); kid != "" {
-			keyIDs[kid] = struct{}{}
-		}
+        // read canonical thread metadata to get key id
+        if s, err := store.GetThread(tid); err == nil {
+            var th models.Thread
+            if err := json.Unmarshal([]byte(s), &th); err == nil {
+                if th.KMS.KeyID != "" {
+                    keyIDs[th.KMS.KeyID] = struct{}{}
+                }
+            }
+        }
 	}
 
 	if len(keyIDs) == 0 {

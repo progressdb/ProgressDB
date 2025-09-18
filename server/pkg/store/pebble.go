@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"progressdb/pkg/logger"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,14 @@ var db *pebble.DB
 // seq provides a small counter to reduce key collisions when multiple
 // messages share the same nanosecond timestamp.
 var seq uint64
+var threadLocks sync.Map // map[string]*sync.Mutex
+
+func lockForThread(threadID string) func() {
+	v, _ := threadLocks.LoadOrStore(threadID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return func() { mu.Unlock() }
+}
 
 // Open opens (or creates) a Pebble database at the given path and keeps
 // a global handle for simple usage in this package.
@@ -69,22 +78,20 @@ func SaveMessage(threadID, msgID, msg string) error {
 	s := atomic.AddUint64(&seq, 1)
 	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 	data := []byte(msg)
+	// Encryption: use thread metadata's DEK (provisioned at thread creation time)
 	if security.Enabled() {
-		// Per-thread DEK encryption using provider-level EncryptWithKey.
-		keyID, kerr := GetThreadKey(threadID)
-		if kerr != nil || keyID == "" {
-			nid, _, kekID, kekVer, cerr := security.CreateDEKForThread(threadID)
-			if cerr != nil {
-				return cerr
-			}
-			keyID = nid
-			// persist mapping locally so server restarts can find the mapping
-			_ = SaveThreadKey(threadID, keyID)
-			// persist thread->key metadata (includes kek id/version)
-			meta := map[string]string{"key_id": keyID, "kek_id": kekID, "kek_version": kekVer}
-			if mb, err := json.Marshal(meta); err == nil {
-				_ = SaveKey("kms:map:threadmeta:"+threadID, mb)
-			}
+		// read thread metadata
+		sthr, terr := GetThread(threadID)
+		if terr != nil {
+			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
+		}
+		var th models.Thread
+		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
+			return fmt.Errorf("invalid thread metadata: %w", err)
+		}
+		keyID := th.KMS.KeyID
+		if keyID == "" {
+			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
 		}
 		enc, _, _, eerr := security.EncryptWithKey(keyID, data, nil)
 		if eerr != nil {
@@ -92,6 +99,7 @@ func SaveMessage(threadID, msgID, msg string) error {
 		}
 		data = enc
 	}
+
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
 		logger.Log.Error("save_message_failed", zap.String("thread", threadID), zap.String("key", key), zap.Error(err))
 		return err
@@ -122,6 +130,17 @@ func ListMessages(threadID string) ([]string, error) {
 	defer iter.Close()
 
 	var out []string
+	// preload thread's KeyID once for efficient per-message decrypt
+	var threadKeyID string
+	if security.Enabled() {
+		if sthr, terr := GetThread(threadID); terr == nil {
+			var th models.Thread
+			if err := json.Unmarshal([]byte(sthr), &th); err == nil {
+				threadKeyID = th.KMS.KeyID
+			}
+		}
+	}
+
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
@@ -143,14 +162,27 @@ func ListMessages(threadID string) ([]string, error) {
 					}
 				}
 			} else {
-				dec, err := security.Decrypt(v)
-				if err != nil {
-					// tolerate legacy plaintext JSON values
-					if !likelyJSON(v) {
-						return nil, err
+				// Prefer provider-backed per-thread DEK decryption when available.
+				if threadKeyID != "" {
+					if dec, derr := security.DecryptWithKey(threadKeyID, v, nil, nil); derr == nil {
+						v = dec
+					} else {
+						// fall back to generic decrypt which may handle embedded master-key mode
+						if dec2, err := security.Decrypt(v); err == nil {
+							v = dec2
+						} else if !likelyJSON(v) {
+							return nil, derr
+						}
 					}
 				} else {
-					v = dec
+					if dec, err := security.Decrypt(v); err != nil {
+						// tolerate legacy plaintext JSON values
+						if !likelyJSON(v) {
+							return nil, err
+						}
+					} else {
+						v = dec
+					}
 				}
 			}
 		}
@@ -191,8 +223,8 @@ func ListMessageVersions(msgID string) ([]string, error) {
 					return nil, err
 				}
 			} else {
-				dec, err := security.Decrypt(v)
-				if err != nil {
+				// Prefer provider-backed per-thread DEK decryption when available.
+				if dec, err := security.Decrypt(v); err != nil {
 					if !likelyJSON(v) {
 						return nil, err
 					}
@@ -443,19 +475,8 @@ func SaveKey(key string, value []byte) error {
 }
 
 // SaveThreadKey maps a threadID to a keyID for its DEK.
-func SaveThreadKey(threadID, keyID string) error {
-	return SaveKey("kms:map:thread:"+threadID, []byte(keyID))
-}
-
-// GetThreadKey returns the keyID mapping for a given threadID or empty string
-// when none exists.
-func GetThreadKey(threadID string) (string, error) {
-	v, err := GetKey("kms:map:thread:" + threadID)
-	if err != nil {
-		return "", err
-	}
-	return v, nil
-}
+// Deprecated: per-thread DEK mapping is now stored in thread metadata (thread:<id>:meta).
+// Use GetThread to read the canonical KMS metadata at thread.KMS.KeyID.
 
 // RotateThreadDEK migrates all messages in a thread from the old DEK to a
 // new DEK identified by newKeyID. It backs up original values under keys
@@ -465,7 +486,14 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	oldKeyID, _ := GetThreadKey(threadID)
+	// read existing thread metadata for oldKeyID
+	oldKeyID := ""
+	if s, err := GetThread(threadID); err == nil {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(s), &th); err == nil {
+			oldKeyID = th.KMS.KeyID
+		}
+	}
 	if oldKeyID == newKeyID {
 		return nil
 	}
@@ -506,9 +534,17 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
-	// update mapping
-	if err := SaveThreadKey(threadID, newKeyID); err != nil {
-		return fmt.Errorf("save thread key mapping failed: %w", err)
+	// update mapping: persist into thread metadata key so readers use canonical location
+	if s, terr := GetThread(threadID); terr == nil {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(s), &th); err == nil {
+			th.KMS.KeyID = newKeyID
+			if nb, merr := json.Marshal(th); merr == nil {
+				if err := SaveThread(th.ID, string(nb)); err != nil {
+					return fmt.Errorf("save thread key mapping failed: %w", err)
+				}
+			}
+		}
 	}
 	return iter.Error()
 }

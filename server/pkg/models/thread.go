@@ -14,4 +14,19 @@ type Thread struct {
 	// Deleted marks a thread as soft-deleted; DeletedTS records deletion time (ns)
 	Deleted   bool  `json:"deleted,omitempty"`
 	DeletedTS int64 `json:"deleted_ts,omitempty"`
+
+	// KMS holds optional per-thread DEK metadata used for encrypting child messages.
+	KMS KMSMeta `json:"kms,omitempty"`
+}
+
+type KMSMeta struct {
+    KeyID      string `json:"key_id,omitempty"`
+    WrappedDEK string `json:"wrapped_dek,omitempty"`
+    KEKID      string `json:"kek_id,omitempty"`
+    KEKVersion string `json:"kek_version,omitempty"`
+}
+
+// Extend Thread with optional KMS metadata
+func (t *Thread) WithKMS(meta KMSMeta) {
+    // note: we add the field dynamically via JSON when marshaling; keep simple accessor
 }

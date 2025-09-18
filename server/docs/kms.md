@@ -68,7 +68,7 @@ in production.
 ## Persistence & backups
 
 - Wrapped DEKs and their metadata: stored in a compact Pebble DB file at `<data-dir>/kms.db` (prefixed keys, e.g. `meta:<keyid>`). Backups for rotate/rewrap operations are written as individual files under `<data-dir>/kms-deks-backup/` to preserve a human-readable history and allow ad-hoc recovery.
-- Thread->key mapping: stored in Pebble under keys such as `kms:map:thread:<threadID>`.
+ - Thread->key mapping: stored in thread metadata under `thread:<threadID>:meta` (field `kms.key_id`).
 - Messages: stored under `thread:<threadID>:msg:<timestamp>-<seq>` as either ciphertext (nonce|ct) when encrypted.
 
 ## Audit

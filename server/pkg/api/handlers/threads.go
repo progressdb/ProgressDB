@@ -1,21 +1,23 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
+    "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
 
-	"progressdb/pkg/auth"
-	"progressdb/pkg/models"
-	"progressdb/pkg/store"
-	"progressdb/pkg/utils"
-	"progressdb/pkg/validation"
+    "progressdb/pkg/auth"
+    "progressdb/pkg/models"
+    "progressdb/pkg/security"
+    "progressdb/pkg/store"
+    "progressdb/pkg/utils"
+    "progressdb/pkg/validation"
 
-	"github.com/gorilla/mux"
+    "github.com/gorilla/mux"
 )
 
 // RegisterThreads registers all thread-related HTTP routes to the provided router.
@@ -57,8 +59,8 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	} else {
 		t.Author = author
 	}
-	// Always generate server-side thread IDs to avoid client-supplied IDs
-	t.ID = utils.GenThreadID()
+    // Always generate server-side thread IDs to avoid client-supplied IDs
+    t.ID = utils.GenThreadID()
 	if t.CreatedTS == 0 {
 		t.CreatedTS = time.Now().UTC().UnixNano()
 	}
@@ -68,16 +70,31 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	if t.Slug == "" {
 		t.Slug = utils.MakeSlug(t.Title, t.ID)
 	}
-	if t.UpdatedTS == 0 {
-		t.UpdatedTS = t.CreatedTS
-	}
+    if t.UpdatedTS == 0 {
+        t.UpdatedTS = t.CreatedTS
+    }
 
-	b, _ := json.Marshal(t)
-	if err := store.SaveThread(t.ID, string(b)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-	_ = json.NewEncoder(w).Encode(t)
+    // If encryption enabled, provision a per-thread DEK now and embed metadata
+    if security.Enabled() {
+        keyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(t.ID)
+        if err != nil {
+            http.Error(w, `{"error":"failed to provision thread DEK"}`, http.StatusInternalServerError)
+            return
+        }
+        t.KMS = models.KMSMeta{
+            KeyID:      keyID,
+            WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
+            KEKID:      kekID,
+            KEKVersion: kekVer,
+        }
+    }
+
+    b, _ := json.Marshal(t)
+    if err := store.SaveThread(t.ID, string(b)); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
+    _ = json.NewEncoder(w).Encode(t)
 }
 
 // listThreads handles GET /threads to retrieve a list of threads.
@@ -366,6 +383,16 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// sort by TS ascending
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
+	// If there are no messages to return, respond with an empty list rather
+	// than treating it as an authorization failure. If messages exist but
+	// none belong to the verified author, then forbid the request.
+	if len(out) == 0 {
+		_ = json.NewEncoder(w).Encode(struct {
+			Thread   string           `json:"thread"`
+			Messages []models.Message `json:"messages"`
+		}{Thread: threadID, Messages: out})
+		return
+	}
 	if !authorFound {
 		http.Error(w, `{"error":"author not found in any message in this thread"}`, http.StatusForbidden)
 		return

@@ -547,7 +547,7 @@ paths:
               examples:
                 example:
                   value:
-                    keys: ["kms:dek:thread1","kms:map:threadmeta:thread1"]
+                  keys: ["kms:dek:thread1"]
 
   /admin/keys/{key}:
     get:
