@@ -2,12 +2,10 @@ package kms
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -15,20 +13,27 @@ import (
 
 // RemoteClient implements KMSProvider over an HTTP-over-unix transport.
 type RemoteClient struct {
-	addr  string
-	httpc *http.Client
+	addr    string
+	httpc   *http.Client
+	baseURL string
 }
 
 // NewRemoteClient returns a client bound to addr (unix socket path).
 func NewRemoteClient(addr string) *RemoteClient {
-	tr := &http.Transport{}
-	tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", addr)
+    // Determine transport based on addr format. Support:
+    // - plain host:port (e.g. "127.0.0.1:8080")
+    // - full URL (http://host:port)
+	var client *http.Client
+	base := ""
+	// Accept either a full URL (`http://host:port`) or a host:port string.
+	client = &http.Client{}
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		base = strings.TrimRight(addr, "/")
+	} else {
+		base = "http://" + strings.TrimRight(addr, "/")
 	}
-	client := &http.Client{Transport: tr}
 	client.Timeout = 10 * time.Second
-	return &RemoteClient{addr: addr, httpc: client}
+	return &RemoteClient{addr: addr, httpc: client, baseURL: base}
 }
 
 func (r *RemoteClient) Enabled() bool { return true }
@@ -48,14 +53,14 @@ func (r *RemoteClient) WrapDEK(dek []byte) ([]byte, error) { return nil, fmt.Err
 func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (r *RemoteClient) Health() error { return fmt.Errorf("not implemented") }
+func (r *RemoteClient) Health() error { return r.HealthCheck() }
 func (r *RemoteClient) Close() error  { return nil }
 
 func (r *RemoteClient) HealthCheck() error {
 	paths := []string{"/healthz", "/health"}
 	var lastErr error
 	for _, p := range paths {
-		url := "http://unix" + p
+		url := r.baseURL + p
 		req, _ := http.NewRequest("GET", url, nil)
 		resp, err := r.httpc.Do(req)
 		if err != nil {
@@ -75,7 +80,7 @@ func (r *RemoteClient) HealthCheck() error {
 func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
 	req := map[string]string{"thread_id": threadID}
 	b, _ := json.Marshal(req)
-	url := "http://unix/create_dek_for_thread"
+	url := r.baseURL + "/create_dek_for_thread"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
 	reqq.Header.Set("Content-Type", "application/json")
 	resp, err := r.httpc.Do(reqq)
@@ -104,7 +109,7 @@ func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, stri
 }
 
 func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
-	url := fmt.Sprintf("http://unix/get_wrapped?key_id=%s", keyID)
+	url := fmt.Sprintf("%s/get_wrapped?key_id=%s", r.baseURL, keyID)
 	reqq, _ := http.NewRequest("GET", url, nil)
 	resp, err := r.httpc.Do(reqq)
 	if err != nil {
@@ -126,7 +131,7 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]byte, []byte, string, error) {
 	req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
 	b, _ := json.Marshal(req)
-	url := "http://unix/encrypt"
+	url := r.baseURL + "/encrypt"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
 	reqq.Header.Set("Content-Type", "application/json")
 	resp, err := r.httpc.Do(reqq)
@@ -153,7 +158,7 @@ func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]by
 func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) ([]byte, error) {
 	req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
 	b, _ := json.Marshal(req)
-	url := "http://unix/decrypt"
+	url := r.baseURL + "/decrypt"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
 	reqq.Header.Set("Content-Type", "application/json")
 	resp, err := r.httpc.Do(reqq)
@@ -176,7 +181,7 @@ func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) 
 func (r *RemoteClient) RewrapKey(keyID, newKEKHex string) (newKekID string, err error) {
 	req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
 	b, _ := json.Marshal(req)
-	url := "http://unix/rewrap"
+	url := r.baseURL + "/rewrap"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
 	reqq.Header.Set("Content-Type", "application/json")
 	resp, err := r.httpc.Do(reqq)

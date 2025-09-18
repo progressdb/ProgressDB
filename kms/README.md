@@ -1,6 +1,6 @@
 # KMS
 
-The KMS binary provides wrap/unwrap, DEK management, encrypt/decrypt, and KEK rotation over an HTTP-over-UDS API for ProgressDB.
+The KMS binary provides wrap/unwrap, DEK management, encrypt/decrypt, and KEK rotation over HTTP/TCP for ProgressDB.
 
 ## Prerequisites
 
@@ -24,10 +24,10 @@ go build -o bin/progressdb-kms ./cmd/progressdb-kms
 
 ## Run (production)
 
-Basic invocation:
+Basic invocation (TCP):
 
 ```
-bin/progressdb-kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms
+bin/progressdb-kms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms
 ```
 
 
@@ -44,14 +44,14 @@ master_key_hex: "<64-hex-bytes>"
 Notes:
 
 - Wrapped DEKs and metadata are stored in a Pebble DB file at `<data-dir>/kms.db` (keys are namespaced, e.g. `meta:<keyid>`). Rotate operations still write per-key backup snapshots under `<data-dir>/kms-deks-backup/`.
-- The KMS will identify the peer UID from UDS peer credentials for logging; it does not enforce an allowlist of caller UIDs. Restrict socket access via filesystem permissions for best security.
+ - Protect the KMS HTTP endpoint using network controls or transport authentication (mTLS/tokens); the KMS records caller information in audit logs and does not itself enforce an allowlist.
 
 ## Run (development)
 
 There is a convenience dev script to build and run KMS locally (starts only the KMS):
 
 ```
-./scripts/kms/dev.sh [--no-build] [--kms-bin <path>] [--socket <path>] [--data-dir <path>] [--mkfile <path>]
+./scripts/kms/dev.sh [--no-build] [--kms-bin <path>] [--endpoint <addr>] [--data-dir <path>] [--mkfile <path>]
 ```
 
 Examples:
@@ -72,7 +72,7 @@ Examples:
 
 ## Troubleshooting
 
-- If peer-credential checks fail, verify the server and KMS are running under expected UIDs and that socket filesystem permissions restrict access to the KMS socket appropriately.
+- If connectivity or authentication checks fail, verify the KMS HTTP endpoint is reachable and that transport authentication (mTLS, tokens) is configured correctly.
 - If `mlock` fails, check `ulimit -l` or systemd `LimitMEMLOCK` settings.
 
 ## Packaging

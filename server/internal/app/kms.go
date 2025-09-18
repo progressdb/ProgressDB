@@ -14,10 +14,7 @@ import (
 
 // setupKMS starts and registers KMS when encryption is enabled.
 func (a *App) setupKMS(ctx context.Context) error {
-	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
-	if socket == "" {
-		socket = "/tmp/progressdb-kms.sock"
-	}
+    socket := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
 	// dataDir is unused in embedded/external modes; kept for legacy configs.
 	useEnc := a.eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
@@ -79,7 +76,8 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return nil
 	case "external":
 		if socket == "" {
-			socket = "/tmp/progressdb-kms.sock"
+			// default to localhost TCP HTTP for external KMS
+			socket = "127.0.0.1:6820"
 		}
 		a.rc = kms.NewRemoteClient(socket)
 		security.RegisterKMSProvider(a.rc)

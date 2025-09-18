@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 
 	kmss "github.com/progressdb/kms/pkg/security"
 	"github.com/progressdb/kms/pkg/store"
@@ -21,11 +20,11 @@ import (
 )
 
 func main() {
-	var (
-		socket  = flag.String("socket", "/tmp/progressdb-kms.sock", "socket path (unix) or address")
-		dataDir = flag.String("data-dir", "./kms-data", "data directory")
-		cfgPath = flag.String("config", "", "optional config yaml")
-	)
+    var (
+        endpoint  = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
+        dataDir   = flag.String("data-dir", "./kms-data", "data directory")
+        cfgPath   = flag.String("config", "", "optional config yaml")
+    )
 	flag.Parse()
 
 	// load config if provided
@@ -70,27 +69,12 @@ func main() {
 	mux.HandleFunc("/rewrap", rewrapHandler(provider, st))
 
 	// choose listener
-	addr := *socket
-	var ln net.Listener
-	var errListen error
-	addr = strings.TrimPrefix(addr, "unix://")
-	if strings.HasPrefix(addr, "/") {
-		// unix socket
-		_ = os.Remove(addr)
-		ln, errListen = net.Listen("unix", addr)
-		if errListen != nil {
-			log.Fatalf("listen unix %s: %v", addr, errListen)
-		}
-		// set perms
-		_ = os.Chmod(addr, 0600)
-		log.Printf("listening on unix socket %s", addr)
-	} else {
-		ln, errListen = net.Listen("tcp", addr)
-		if errListen != nil {
-			log.Fatalf("listen tcp %s: %v", addr, errListen)
-		}
-		log.Printf("listening on %s", addr)
-	}
+    addr := *endpoint
+    ln, err := net.Listen("tcp", addr)
+    if err != nil {
+        log.Fatalf("listen tcp %s: %v", addr, err)
+    }
+    log.Printf("listening on %s", addr)
 
 	srv := &http.Server{Handler: mux}
 	if errServe := srv.Serve(ln); errServe != nil && errServe != http.ErrServerClosed {

@@ -5,8 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./kms-data:/var/lib/progressdb/kms
-      - /var/run/progressdb:/var/run/progressdb
-    command: ["/usr/local/bin/progressdb-kms", "--socket", "/var/run/progressdb/kms.sock", "--data-dir", "/var/lib/progressdb/kms"]
+    command: ["/usr/local/bin/progressdb-kms", "--endpoint", "0.0.0.0:6820", "--data-dir", "/var/lib/progressdb/kms"]
     networks:
       - progressdb_net
 
@@ -18,10 +17,8 @@ services:
     environment:
       PROGRESSDB_USE_ENCRYPTION: "true"
       PROGRESSDB_KMS_MODE: "external"
-      PROGRESSDB_KMS_SOCKET: "unix:///var/run/progressdb/kms.sock"
-      # mount path where server can access the UDS created by progressdb-kms
-    volumes:
-      - /var/run/progressdb:/var/run/progressdb:ro
+      PROGRESSDB_KMS_ENDPOINT: "progressdb-kms:6820"
+      # server connects to the KMS over TCP at the endpoint in PROGRESSDB_KMS_ENDPOINT
     depends_on:
       - progressdb-kms
     networks:

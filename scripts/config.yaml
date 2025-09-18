@@ -25,7 +25,7 @@ security:
     use: false
     fields: []
   kms:
-    socket: "/tmp/progressdb-kms.sock"
+    socket: "127.0.0.1:6820"
     data_dir: "./kms-data"
     binary: "/usr/local/bin/progressdb-kms"
     master_key_file: ""

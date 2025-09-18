@@ -5,13 +5,13 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 ## Overview
 
 - Purpose: provide a local, hardened key service used to manage master KEK and wrap per-thread DEKs. It keeps the high-value KEK out of the main server process and performs wrap/unwrap + encryption operations.
-- Process model: KMS runs as a separate process (spawned by the server by default). The server uses a small RemoteClient over a Unix Domain Socket (UDS) to call the KMS.
+ - Process model: KMS runs as a separate process (spawned by the server by default). The server uses a small RemoteClient over HTTP/TCP to call the KMS.
 - Threat model: protects against accidental key leakage and reduces blast radius of server compromises. It is NOT a replacement for HSM/cloud KMS for the highest assurance levels.
 
 ## Components
 
-- `kms` — the KMS HTTP server (separate project/binary; HTTP over UDS). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
- - `server/pkg/kms/external.go` — client adapter used by the server to talk to KMS over the UDS.
+ - `kms` — the KMS HTTP server (separate project/binary; HTTP over TCP). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
+ - `server/pkg/kms/external.go` — client adapter used by the server to talk to KMS over HTTP/TCP.
  - The server no longer auto-spawns a KMS child by default; it can run in
   embedded mode (in-process) or talk to an external `progressdb-kms` process via the
   remote client.
@@ -20,17 +20,17 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 
 ## Runtime flow (normal)
 
-1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `progressdb-kms` process. Communication with an external KMS typically uses a Unix Domain Socket (UDS) or HTTP.
+1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `progressdb-kms` process. Communication with an external KMS uses HTTP over TCP.
 2. In external mode the server constructs a `RemoteClient` pointing at the configured socket and delegates KMS operations to it.
 3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
 4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
 
 ## Authentication & Authorization
 
-- Primary (recommended): UDS peer-credential (SO_PEERCRED on Linux, getpeereid on BSD/macOS). KMS records the peer UID for logging and auditing, but it does not enforce an allowlist — caller authorization should be enforced by the supervising environment or by limiting access to the socket.
+ - Primary (recommended): secure the KMS HTTP endpoint with network-level protections or transport auth (mTLS, tokens). The KMS records caller information in audit logs; caller authorization should be enforced by the supervising environment.
 - API-key fallback: removed for the default local spawn flow. (If you need remote KMS, you must add a secure auth method such as mTLS or short-lived tokens.)
 
-## API (internal HTTP over UDS)
+## API (internal HTTP)
 
 - POST `/create_dek_for_thread` { "thread_id": "..." } → { "key_id": "...", "wrapped": "<base64>" }
 - GET `/get_wrapped?key_id=...` → { "wrapped": "<base64>" }
@@ -38,7 +38,7 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 - POST `/decrypt` { "key_id": "...", "ciphertext": "<base64>" } → { "plaintext": "<base64>" }
 - POST `/rotate_kek` { "new_kek_hex": "..." } — admin endpoint to rewrap all DEKs under a new KEK.
 
-Notes: these endpoints are internal and are intended to be called by the server process over the UDS. They require peer-cred auth.
+Notes: these endpoints are internal and are intended to be called by the server process over HTTP/TCP. Protect the endpoint via mTLS, tokens or network controls.
 
 ## Rotation
 
@@ -94,7 +94,7 @@ After=network.target
 Type=simple
 User=kms
 Group=kms
-ExecStart=/usr/local/bin/progressdb-kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
+ExecStart=/usr/local/bin/progressdb-kms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
 LimitMEMLOCK=infinity
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -104,12 +104,12 @@ ProtectSystem=full
 WantedBy=multi-user.target
 ```
 
-- Ensure socket directory ownership and permissions: `chown kms:kms /var/run && chmod 0700 /var/run` and the socket file will be 0600.
+- Ensure runtime directories ownership and permissions: `chown kms:kms /var/run && chmod 0700 /var/run`. When using a TCP endpoint, ensure network-level access controls are configured (firewall, mTLS, etc.).
 - Backup KEKs/metadata before rotation; rotate KEK during low-activity windows and verify decrypts of sample messages.
 
 ## Tests & validation
 
-- Add unit tests for encrypt/decrypt, CreateDEKForThread, and KEK rotation. Add an integration test that spawns KMS (UDS) and performs encrypt->decrypt and rotate_kek.
+ - Add unit tests for encrypt/decrypt, CreateDEKForThread, and KEK rotation. Add an integration test that spawns KMS (HTTP) and performs encrypt->decrypt and rotate_kek.
 
 ---
 

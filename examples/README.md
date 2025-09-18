@@ -15,7 +15,7 @@ This file documents the environment variables used by the ProgressDB server and 
  	- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server enables encryption and requires a master key provided in the server config. Provide the master key via `security.kms.master_key_file` (recommended) or `security.kms.master_key_hex` (development).
  	- `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
 
- 	- `PROGRESSDB_KMS_SOCKET`: Unix-domain socket path used to connect to the KMS (default `/tmp/progressdb-kms.sock`).
+	- `PROGRESSDB_KMS_ENDPOINT`: Address used to connect to the KMS. Must be a TCP host:port (e.g. `127.0.0.1:6820`) or a full URL (e.g. `http://kms:6820`). Default is `127.0.0.1:6820` for external HTTP mode.
  	- `PROGRESSDB_KMS_DATA_DIR`: Directory for KMS data, wrapped DEKs, audit logs and backups.
 
 		`PROGRESSDB_KMS_BINARY` is deprecated. The server binary includes both embedded and external KMS implementations; set `PROGRESSDB_KMS_MODE=embedded` or `PROGRESSDB_KMS_MODE=external` at runtime to choose which behavior is used.
@@ -41,7 +41,7 @@ This file documents the environment variables used by the ProgressDB server and 
 - `security.rate_limit.rps`, `security.rate_limit.burst`: Rate limiting values.
 - `security.ip_whitelist`: List of whitelisted IPs.
 - `security.api_keys.backend|frontend|admin`: API key lists used by the server.
-- `security.kms.socket`, `security.kms.data_dir`, `security.kms.binary`: KMS integration settings (socket, data dir, optional binary path).
+  - `security.kms.endpoint`, `security.kms.data_dir`, `security.kms.binary`: KMS integration settings (endpoint, data dir, optional binary path).
  - `encryption.use`: Boolean to enable encryption when true. This may be overridden by the environment variable `PROGRESSDB_USE_ENCRYPTION`.
  - `security.kms.master_key_hex`: Optional: embed the 64-hex (32-byte) KEK directly in the server config. Use only for controlled environments.
 

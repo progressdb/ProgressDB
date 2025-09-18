@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Dev helper: build and run the KMS only with a test KEK file.
-# Usage: ./scripts/kms/dev.sh [--no-build] [--kms-bin <path>] [--socket <path>] [--data-dir <path>] [--mkfile <path>]
+# Usage: ./scripts/kms/dev.sh [--no-build] [--kms-bin <path>] [--endpoint <addr>] [--data-dir <path>] [--mkfile <path>]
 
 # Ensure we're running under bash (re-exec if invoked via 'sh') so we can
 # rely on ${BASH_SOURCE[0]} when available.
@@ -34,14 +34,14 @@ fi
 # Defaults (override via CLI args)
 BIN_DIR="$ROOT_DIR/bin"
 KMS_BIN="$BIN_DIR/kms"
-SOCKET="/tmp/progressdb-kms.sock"
+ENDPOINT="127.0.0.1:6820"
 KEY_DIR="$ROOT_DIR/.kms"
 KEY_FILE_HEX=""
 DATA_DIR="$KEY_DIR/data"
 
 echo "[dev-kms][debug] BIN_DIR: $BIN_DIR"
 echo "[dev-kms][debug] KMS_BIN: $KMS_BIN"
-echo "[dev-kms][debug] SOCKET: $SOCKET"
+echo "[dev-kms][debug] ENDPOINT: $ENDPOINT"
 echo "[dev-kms][debug] KEY_DIR: $KEY_DIR"
 echo "[dev-kms][debug] DATA_DIR: $DATA_DIR"
 
@@ -49,19 +49,19 @@ mkdir -p "$KEY_DIR" "$DATA_DIR" "$BIN_DIR"
 
 # Default: build the kms binary unless `--no-build` is passed.
 BUILD=1
-# Simple arg parsing: --no-build, --kms-bin <path>, --socket <path>, --data-dir <path>
+# Simple arg parsing: --no-build, --kms-bin <path>, --endpoint <addr>, --data-dir <path>
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-build)
       BUILD=0; shift ;;
     --kms-bin)
       KMS_BIN="$2"; shift 2 ;;
-    --socket)
-      SOCKET="$2"; shift 2 ;;
+    --endpoint)
+      ENDPOINT="$2"; shift 2 ;;
     --data-dir)
       DATA_DIR="$2"; shift 2 ;;
     --help|-h)
-      echo "Usage: $0 [--no-build] [--kms-bin <path>] [--socket <path>] [--data-dir <path>]"; exit 0 ;;
+      echo "Usage: $0 [--no-build] [--kms-bin <path>] [--endpoint <addr>] [--data-dir <path>]"; exit 0 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -86,7 +86,7 @@ else
   echo "[dev-kms][debug] Skipping build; using $KMS_BIN"
 fi
 
-rm -f "$SOCKET" || true
+# no-op: endpoint is TCP address; nothing to remove
 
 # Write a self-contained YAML config consumed by KMS for startup secrets.
 # The config embeds the master key hex directly so no extra secret files
@@ -108,8 +108,8 @@ echo "[dev-kms][debug] Log directory: $LOG_DIR"
 echo "[dev-kms][debug] KMS log file: $KMS_LOG"
 
 echo "[dev-kms] starting kms in foreground (config -> $CONFIG_FILE)"
-echo "[dev-kms][debug] Launch command: $KMS_BIN --socket $SOCKET --data-dir $DATA_DIR --config $CONFIG_FILE"
+echo "[dev-kms][debug] Launch command: $KMS_BIN --endpoint $ENDPOINT --data-dir $DATA_DIR --config $CONFIG_FILE"
 
 # Run in foreground so logs appear in this terminal. KMS will receive
 # signals (Ctrl+C) and perform graceful shutdown.
-exec "$KMS_BIN" --socket "$SOCKET" --data-dir "$DATA_DIR" --config "$CONFIG_FILE"
+exec "$KMS_BIN" --endpoint "$ENDPOINT" --data-dir "$DATA_DIR" --config "$CONFIG_FILE"

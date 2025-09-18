@@ -16,14 +16,14 @@ This document explains how to install the ProgressDB KMS binary and how the serv
 **Service / process model**
 
 - Embedded: the server includes an embedded KMS provider and, when `PROGRESSDB_KMS_MODE=embedded`, performs KMS operations in-process using the embedded library.
-- External: the server expects an external `progressdb-kms` process to be running and configured; when `PROGRESSDB_KMS_MODE=external` the server connects to the configured socket (e.g. UDS) to delegate KMS operations.
+ - External: the server expects an external `progressdb-kms` process to be running and configured; when `PROGRESSDB_KMS_MODE=external` the server connects to the configured endpoint (HTTP host:port) to delegate KMS operations.
 
 The server does not automatically spawn `progressdb-kms` by default. Operators who prefer the server to manage a child `progressdb-kms` process may implement that supervision externally (systemd, container runtime, or wrapper scripts). For external mode, ensure a `progressdb-kms` binary is available (install via `go install github.com/progressdb/kms/cmd/progressdb-kms@latest` or from releases) and start it before starting the server.
 
 **Environment & configuration**
 - `PROGRESSDB_USE_ENCRYPTION`: `true|1|yes` to enable encryption features in the server.
 - `PROGRESSDB_KMS_BINARY`: deprecated — the server no longer reads this env var. Ensure `kms` is available on `PATH` or placed alongside the server executable.
-- `PROGRESSDB_KMS_SOCKET`: Unix socket path used for server ↔ KMS communication (default `/tmp/progressdb-kms.sock`).
+- `PROGRESSDB_KMS_ENDPOINT`: Address used for server ↔ KMS communication. Must be a TCP host:port (e.g. `127.0.0.1:6820`) or a full URL (e.g. `http://kms.example:6820`). The server defaults to `127.0.0.1:6820` for external mode.
 - `PROGRESSDB_KMS_DATA_DIR`: Directory where KMS stores metadata and logs (default `./kms-data`).
 - Server config keys: `security.kms.master_key_hex` or `security.kms.master_key_file` — supply a master KEK for the KMS to use on startup. If not provided, KMS will generate an ephemeral master key (dev only).
 
@@ -39,7 +39,7 @@ After=network.target
 Type=simple
 User=progressdb
 Group=progressdb
-ExecStart=/usr/local/bin/progressdb-kms --socket /var/run/progressdb/kms.sock --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
+ExecStart=/usr/local/bin/progressdb-kms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
 Restart=on-failure
 RestartSec=5
 
@@ -47,15 +47,15 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Ensure directories used by the KMS have restrictive permissions (e.g. `/var/lib/progressdb/kms` `700`, and socket `0600`). The KMS binary will create files with `0600` where appropriate.
+Ensure directories used by the KMS have restrictive permissions (e.g. `/var/lib/progressdb/kms` `700`). When using HTTP/TCP, ensure the endpoint is reachable only from trusted hosts and protected by network controls or transport auth (mTLS/tokens).
 
 **Operational notes**
-- Authorization: when KMS runs as a separate process bound to a Unix Domain Socket, the KMS inspects peer credentials (UID) for logging. If you choose to run KMS in-process (not recommended for production), you must rely on the server's auth middleware instead.
+ - Authorization: protect the KMS HTTP endpoint using network-level controls (firewall / service mesh) or transport auth (mTLS, tokens). The server should not be relied upon to supply the master key in external mode.
  - Upgrade & install: tag a git release for the `github.com/progressdb/kms` module and use your release artifacts (or `go build -o`) to produce `progressdb-kms` for installation.
 - Local development: the server includes a `replace` directive in its `go.mod` pointing to `../kms` for local testing. For production deployments, remove the `replace` and depend on published releases.
 
 **Troubleshooting**
 - If the server fails to start KMS: check `PATH` and ensure a `kms` binary is available, and check logs in the KMS data-dir for startup errors.
-- If peer UID is not available: ensure the server is passing an inherited UDS listener to the child process, or run KMS as a separate service and configure the server to use that socket.
+- If caller identity is required, run the KMS behind an authenticated transport (mTLS or tokens) or inside a trusted network segment.
 
 For more details about the KMS internals and available HTTP endpoints, see `kms/README.md` and the `kms` package documentation in the repository.

@@ -238,10 +238,10 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create remote client bound to same socket as server
-	socket := os.Getenv("PROGRESSDB_KMS_SOCKET")
-	if socket == "" {
-		socket = "/tmp/progressdb-kms.sock"
-	}
+    socket := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
+    if socket == "" {
+        socket = "127.0.0.1:6820"
+    }
 	rc := kms.NewRemoteClient(socket)
 
 	// Concurrency
