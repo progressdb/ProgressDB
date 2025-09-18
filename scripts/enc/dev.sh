@@ -5,14 +5,14 @@ set -euo pipefail
 # repository-local developer config. This script writes
 # `scripts/encrypted/config.yaml` with `security.encryption.use: true`
 # and embeds a generated master key hex into the config. It ensures
-# the KMS data directory and socket path are prepared, then runs the
+# the KMS data directory and endpoint are prepared, then runs the
 # server with the config. No extra flags or backgrounding — the
 # server runs in the foreground.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENCRYPTED_DIR="$ROOT_DIR/scripts/enc"
 CFG_PATH="$ENCRYPTED_DIR/config.yaml"
-SOCKET_PATH="$ENCRYPTED_DIR/progressdb-kms.sock"
+ENDPOINT="127.0.0.1:6820"
 DATA_DIR="$ENCRYPTED_DIR/kmsdb"
 DB_PATH="$ENCRYPTED_DIR/database"
 
@@ -48,7 +48,7 @@ security:
     use: true
     fields: []
   kms:
-    socket: "$SOCKET_PATH"
+    endpoint: "$ENDPOINT"
     data_dir: "$DATA_DIR"
     binary: ""
     master_key_file: ""
@@ -59,9 +59,6 @@ logging:
 YAML
 
 echo "Wrote encrypted dev config: $CFG_PATH"
-
-# Remove any stale socket file; the server/KMS will create a real unix socket
-rm -f "$SOCKET_PATH" || true
 
 # Ensure DB directory exists (Pebble will create directory if needed)
 mkdir -p "$(dirname "$DB_PATH")"

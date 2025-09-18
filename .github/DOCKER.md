@@ -48,6 +48,30 @@ Useful endpoints
 - Health check: `http://localhost:8080/healthz`
 - Prometheus metrics: `http://localhost:8080/metrics`
 
+KMS (optional) — running the KMS as a container
+
+ProgressDB ships a separate KMS container image `progressdb/progressdb-kms`. To run it locally and point the server at it:
+
+```sh
+docker run -d \
+  --name progressdb-kms \
+  -p 6820:6820 \
+  -v $PWD/kms-data:/var/lib/progressdb/kms \
+  docker.io/progressdb/progressdb-kms:latest --endpoint 0.0.0.0:6820 --data-dir /var/lib/progressdb/kms
+```
+
+Then start the server and point it to the KMS:
+
+```sh
+docker run -d \
+  --name progressdb \
+  -p 8080:8080 \
+  -e PROGRESSDB_USE_ENCRYPTION=true \
+  -e PROGRESSDB_KMS_MODE=external \
+  -e PROGRESSDB_KMS_ENDPOINT=host.docker.internal:6820 \
+  docker.io/progressdb/progressdb:v0.1.1
+```
+
 Environment & configuration
 
 You can configure ProgressDB via CLI flags, environment variables, or a config file. Common env vars:
@@ -79,4 +103,3 @@ Where to get the image
 - Releases (binaries & archives): https://github.com/ha-sante/ProgressDB/releases
 
 If you want, the CI can be adjusted to change image tags or push to another registry — open an issue or PR if you need that.
-

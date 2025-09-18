@@ -237,12 +237,12 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create remote client bound to same socket as server
-    socket := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
-    if socket == "" {
-        socket = "127.0.0.1:6820"
-    }
-	rc := kms.NewRemoteClient(socket)
+	// Create remote client bound to the configured endpoint
+	endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "127.0.0.1:6820"
+	}
+	rc := kms.NewRemoteClient(endpoint)
 
 	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)

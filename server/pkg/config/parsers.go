@@ -170,7 +170,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	// KMS related env overrides
     if v := os.Getenv("PROGRESSDB_KMS_ENDPOINT"); v != "" {
         envUsed = true
-        envCfg.Security.KMS.Socket = v
+        envCfg.Security.KMS.Endpoint = v
     }
 	if v := os.Getenv("PROGRESSDB_KMS_DATA_DIR"); v != "" {
 		envUsed = true

@@ -89,13 +89,13 @@ type Config struct {
 			Frontend []string `yaml:"frontend"`
 			Admin    []string `yaml:"admin"`
 		} `yaml:"api_keys"`
-		KMS struct {
-			Socket        string `yaml:"socket"`
-			DataDir       string `yaml:"data_dir"`
-			Binary        string `yaml:"binary"`
-			MasterKeyFile string `yaml:"master_key_file"`
-			MasterKeyHex  string `yaml:"master_key_hex"`
-		} `yaml:"kms"`
+        KMS struct {
+            Endpoint      string `yaml:"endpoint"`
+            DataDir       string `yaml:"data_dir"`
+            Binary        string `yaml:"binary"`
+            MasterKeyFile string `yaml:"master_key_file"`
+            MasterKeyHex  string `yaml:"master_key_hex"`
+        } `yaml:"kms"`
 		Encryption struct {
 			Use    bool         `yaml:"use"`
 			Fields []FieldEntry `yaml:"fields"`

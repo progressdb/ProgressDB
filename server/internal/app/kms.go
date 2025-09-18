@@ -14,7 +14,7 @@ import (
 
 // setupKMS starts and registers KMS when encryption is enabled.
 func (a *App) setupKMS(ctx context.Context) error {
-    socket := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
+    kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
 	// dataDir is unused in embedded/external modes; kept for legacy configs.
 	useEnc := a.eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
@@ -56,7 +56,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 	// Decide KMS mode: embedded (default) or external. Embedded mode uses a
 	// local master key (provided in server config) and keeps key material in
 	// process memory. External mode assumes an already-running `progressdb-kms` and
-	// communicates over the configured socket.
+	// communicates over the configured endpoint.
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MODE")))
 	if mode == "" {
 		mode = "embedded"
@@ -75,19 +75,19 @@ func (a *App) setupKMS(ctx context.Context) error {
 		log.Printf("encryption enabled: true (embedded mode, hashicorp AEAD)")
 		return nil
 	case "external":
-		if socket == "" {
+		if kms_endpoint == "" {
 			// default to localhost TCP HTTP for external KMS
-			socket = "127.0.0.1:6820"
+			kms_endpoint = "127.0.0.1:6820"
 		}
-		a.rc = kms.NewRemoteClient(socket)
+		a.rc = kms.NewRemoteClient(kms_endpoint)
 		security.RegisterKMSProvider(a.rc)
 		if err := a.rc.Health(); err != nil {
-			return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", socket, err)
+			return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", kms_endpoint, err)
 		}
 		kctx, cancel := context.WithCancel(ctx)
 		a.cancel = cancel
 		go func() { <-kctx.Done() }()
-		log.Printf("encryption enabled: true (external KMS socket=%s)", socket)
+		log.Printf("encryption enabled: true (external KMS endpoint=%s)", kms_endpoint)
 		return nil
 	default:
 		return fmt.Errorf("unknown PROGRESSDB_KMS_MODE=%q; must be embedded or external", mode)

@@ -21,7 +21,7 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 ## Runtime flow (normal)
 
 1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `progressdb-kms` process. Communication with an external KMS uses HTTP over TCP.
-2. In external mode the server constructs a `RemoteClient` pointing at the configured socket and delegates KMS operations to it.
+2. In external mode the server constructs a `RemoteClient` pointing at the configured endpoint and delegates KMS operations to it.
 3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
 4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
 

@@ -24,7 +24,7 @@ security:
     use: true
     fields: []
   kms:
-    socket: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/progressdb-kms.sock"
+    endpoint: "127.0.0.1:6820"
     data_dir: "/Users/henryasante/Documents/Engineer/Products/ProgressDB/scripts/enc/kmsdb"
     binary: ""
     master_key_file: ""

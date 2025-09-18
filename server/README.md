@@ -80,10 +80,12 @@ Configuration
 Environment Variables
 - `.env` support: if a `.env` file is present in the working directory, it is loaded at startup.
 - Variables:
-  - `PROGRESSDB_ADDR`: full listen addr `host:port` (e.g., `0.0.0.0:8080`).
+- `PROGRESSDB_ADDR`: full listen addr `host:port` (e.g., `0.0.0.0:8080`).
   - `PROGRESSDB_ADDRESS`: host/interface (used with `PROGRESSDB_PORT`).
   - `PROGRESSDB_PORT`: port number (string accepted, e.g., `8080`).
   - `PROGRESSDB_DB_PATH`: Pebble database path.
+- `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `server/docs/kms.md`.
+  - `PROGRESSDB_KMS_ENDPOINT`: address of external KMS (host:port or full URL). Default: `127.0.0.1:6820`.
   - `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `server/docs/kms.md`.
   - `PROGRESSDB_CONFIG`: path to `config.yaml` (optional; you can also pass `--config`).
   - `PROGRESSDB_LOG_LEVEL`: `debug|info|warn|error` (optional hint; stdout only).

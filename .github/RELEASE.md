@@ -12,6 +12,12 @@ This repository uses [GoReleaser](https://goreleaser.com/) (see `.goreleaser.yml
   - Uploads all artifacts to a new GitHub Release.
   - Optionally pushes Docker images to Docker Hub and GitHub Container Registry (GHCR).
   - Can also publish to Homebrew, npm, PyPI, S3, etc. (if configured).
+ - **Builds**: Cross-compiles binaries for all configured OS/ARCH targets. This includes the main `progressdb` binary and the KMS binary `progressdb-kms` produced from `./cmd/progressdb-kms`.
+ - **Archives**: Packages binaries as `.tar.gz` (Unix) or `.zip` (Windows), and generates checksums.
+ - **Publishes**:
+   - Uploads all artifacts to a new GitHub Release.
+   - Optionally pushes Docker images to Docker Hub and GitHub Container Registry (GHCR), including `progressdb` and `progressdb-kms` images if enabled.
+   - Can also publish to Homebrew, npm, PyPI, S3, etc. (if configured).
 
 ---
 

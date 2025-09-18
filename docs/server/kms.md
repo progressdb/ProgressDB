@@ -12,8 +12,8 @@ ProgressDB supports two KMS modes when `PROGRESSDB_USE_ENCRYPTION=true`:
   # or set in config: security.kms.master_key_file=... \
   ./server/cmd/progressdb
 
-- external: the server talks to an already-running `progressdb-kms` process over the
-  configured socket (Unix domain socket or HTTP endpoint). The server will NOT
+ - external: the server talks to an already-running `progressdb-kms` process over the
+  configured endpoint (HTTP host:port). The server will NOT
   provide the master key to the external KMS; the KMS daemon must hold and
   manage master key material.
 
