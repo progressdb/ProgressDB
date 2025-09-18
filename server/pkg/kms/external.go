@@ -20,9 +20,9 @@ type RemoteClient struct {
 
 // NewRemoteClient returns a client bound to addr (host:port or full URL).
 func NewRemoteClient(addr string) *RemoteClient {
-    // Determine transport based on addr format. Support:
-    // - plain host:port (e.g. "127.0.0.1:8080")
-    // - full URL (http://host:port)
+	// Determine transport based on addr format. Support:
+	// - plain host:port (e.g. "127.0.0.1:8080")
+	// - full URL (http://host:port)
 	var client *http.Client
 	base := ""
 	// Accept either a full URL (`http://host:port`) or a host:port string.

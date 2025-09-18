@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"go.uber.org/zap"
+	"progressdb/pkg/logger"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -26,13 +27,13 @@ var seq uint64
 // a global handle for simple usage in this package.
 func Open(path string) error {
 	var err error
-	slog.Info("opening_pebble_db", "path", path)
+	logger.Log.Info("opening_pebble_db", zap.String("path", path))
 	db, err = pebble.Open(path, &pebble.Options{})
 	if err != nil {
-		slog.Error("pebble_open_failed", "path", path, "error", err)
+		logger.Log.Error("pebble_open_failed", zap.String("path", path), zap.Error(err))
 		return err
 	}
-	slog.Info("pebble_opened", "path", path)
+	logger.Log.Info("pebble_opened", zap.String("path", path))
 	return nil
 }
 
@@ -45,7 +46,7 @@ func Close() error {
 		return err
 	}
 	db = nil
-	slog.Info("pebble_closed")
+	logger.Log.Info("pebble_closed")
 	return nil
 }
 
@@ -92,16 +93,16 @@ func SaveMessage(threadID, msgID, msg string) error {
 		data = enc
 	}
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
-		slog.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
+		logger.Log.Error("save_message_failed", zap.String("thread", threadID), zap.String("key", key), zap.Error(err))
 		return err
 	}
-	slog.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
+	logger.Log.Info("message_saved", zap.String("thread", threadID), zap.String("key", key), zap.String("msg_id", msgID))
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
 		// store version under explicit version namespace
 		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
 		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
-			slog.Error("save_message_index_failed", "idxKey", idxKey, "error", err)
+			logger.Log.Error("save_message_index_failed", zap.String("idxKey", idxKey), zap.Error(err))
 			return err
 		}
 	}
@@ -217,7 +218,7 @@ func GetLatestMessage(msgID string) (string, error) {
 		// to find any stored message with this id. This is expensive and
 		// intended only as a compatibility fallback for older records that
 		// were stored without a msgid index.
-		slog.Info("get_latest_message_fallback", "msgid", msgID)
+		logger.Log.Info("get_latest_message_fallback", zap.String("msgid", msgID))
 		threads, terr := ListThreads()
 		if terr != nil {
 			return "", fmt.Errorf("message not found")
@@ -252,7 +253,7 @@ func GetLatestMessage(msgID string) (string, error) {
 		if len(found) == 0 {
 			return "", fmt.Errorf("message not found")
 		}
-		slog.Info("get_latest_message_found_via_scan", "msgid", msgID)
+		logger.Log.Info("get_latest_message_found_via_scan", zap.String("msgid", msgID))
 		return found[len(found)-1], nil
 	}
 	return vers[len(vers)-1], nil
@@ -265,10 +266,10 @@ func SaveThread(threadID, data string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
-		slog.Error("save_thread_failed", "thread", threadID, "error", err)
+		logger.Log.Error("save_thread_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
-	slog.Info("thread_saved", "thread", threadID)
+	logger.Log.Info("thread_saved", zap.String("thread", threadID))
 	return nil
 }
 
@@ -295,10 +296,10 @@ func DeleteThread(threadID string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Delete(key, pebble.Sync); err != nil {
-		slog.Error("delete_thread_failed", "thread", threadID, "error", err)
+		logger.Log.Error("delete_thread_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
-	slog.Info("thread_deleted", "thread", threadID)
+	logger.Log.Info("thread_deleted", zap.String("thread", threadID))
 	return nil
 }
 
@@ -310,7 +311,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	key := []byte("thread:" + threadID + ":meta")
 	v, closer, err := db.Get(key)
 	if err != nil {
-		slog.Error("soft_delete_load_failed", "thread", threadID, "error", err)
+		logger.Log.Error("soft_delete_load_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
 	if closer != nil {
@@ -318,14 +319,14 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	var th models.Thread
 	if err := json.Unmarshal(v, &th); err != nil {
-		slog.Error("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
+		logger.Log.Error("soft_delete_unmarshal_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
 	th.Deleted = true
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
 	if err := db.Set(key, nb, pebble.Sync); err != nil {
-		slog.Error("soft_delete_save_failed", "thread", threadID, "error", err)
+		logger.Log.Error("soft_delete_save_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
 
@@ -340,11 +341,11 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	tb, _ := json.Marshal(tomb)
 	if err := SaveMessage(threadID, tomb.ID, string(tb)); err != nil {
-		slog.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
+		logger.Log.Error("soft_delete_append_tombstone_failed", zap.String("thread", threadID), zap.Error(err))
 		return err
 	}
 
-	slog.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
+	logger.Log.Info("thread_soft_deleted", zap.String("thread", threadID), zap.String("actor", actor))
 	return nil
 }
 
@@ -417,13 +418,13 @@ func GetKey(key string) (string, error) {
 	}
 	v, closer, err := db.Get([]byte(key))
 	if err != nil {
-		slog.Error("get_key_failed", "key", key, "error", err)
+		logger.Log.Error("get_key_failed", zap.String("key", key), zap.Error(err))
 		return "", err
 	}
 	if closer != nil {
 		defer closer.Close()
 	}
-	slog.Debug("get_key_ok", "key", key, "len", len(v))
+	logger.Log.Debug("get_key_ok", zap.String("key", key), zap.Int("len", len(v)))
 	return string(v), nil
 }
 
@@ -434,10 +435,10 @@ func SaveKey(key string, value []byte) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	if err := db.Set([]byte(key), value, pebble.Sync); err != nil {
-		slog.Error("save_key_failed", "key", key, "error", err)
+		logger.Log.Error("save_key_failed", zap.String("key", key), zap.Error(err))
 		return err
 	}
-	slog.Debug("save_key_ok", "key", key, "len", len(value))
+	logger.Log.Debug("save_key_ok", zap.String("key", key), zap.Int("len", len(value)))
 	return nil
 }
 

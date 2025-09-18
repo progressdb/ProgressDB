@@ -14,8 +14,9 @@ security:
   rate_limit:
     rps: 10
     burst: 20
-  ip_whitelist:
-    - "127.0.0.1"
+  # ip_whitelist:
+    # - "127.0.0.1"
+    # - "::1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]

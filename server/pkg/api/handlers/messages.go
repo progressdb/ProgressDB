@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"log/slog"
+	"go.uber.org/zap"
 	"progressdb/pkg/auth"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
@@ -102,7 +103,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 			_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
 		}
 	}
-	slog.Info("message_created", "thread", m.Thread, "id", m.ID)
+	logger.Log.Info("message_created", zap.String("thread", m.Thread), zap.String("id", m.ID))
 	_ = json.NewEncoder(w).Encode(m)
 }
 
@@ -151,7 +152,7 @@ func listMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// sort by TS
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	slog.Info("messages_list", "thread", threadID, "count", len(out))
+	logger.Log.Info("messages_list", zap.String("thread", threadID), zap.Int("count", len(out)))
 	_ = json.NewEncoder(w).Encode(struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`

@@ -1,8 +1,9 @@
 package auth
 
 import (
-	"log/slog"
+	"go.uber.org/zap"
 	"net/http"
+	"progressdb/pkg/logger"
 	"strings"
 )
 
@@ -25,57 +26,57 @@ func validateAuthor(a string) (bool, string) {
 func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, string) {
 	// Prefer signature-verified author from context
 	if id := AuthorIDFromContext(r.Context()); id != "" {
-		slog.Info("author_signature_verified", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Log.Info("author_signature_verified", zap.String("author", id), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 		// If other provided authors conflict with the signature, reject.
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" && q != id {
-			slog.Warn("author_mismatch_signature_query", "signature", id, "query", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Warn("author_mismatch_signature_query", zap.String("signature", id), zap.String("query", q), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and query param"}`
 		}
 		if h := strings.TrimSpace(r.Header.Get("X-User-ID")); h != "" && h != id {
-			slog.Warn("author_mismatch_signature_header", "signature", id, "header", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Warn("author_mismatch_signature_header", zap.String("signature", id), zap.String("header", h), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and header"}`
 		}
 		if bodyAuthor != "" && bodyAuthor != id {
-			slog.Warn("author_mismatch_signature_body", "signature", id, "body", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Warn("author_mismatch_signature_body", zap.String("signature", id), zap.String("body", bodyAuthor), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and body author"}`
 		}
-		slog.Info("author_resolved_signature", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Log.Info("author_resolved_signature", zap.String("author", id), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 		return id, 0, ""
 	}
 
 	// No signature; allow backend/admins to supply an author via body/header/query.
 	role := r.Header.Get("X-Role-Name")
-	slog.Info("no_signature_found", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
+	logger.Log.Info("no_signature_found", zap.String("role", role), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 	if role == "backend" || role == "admin" {
 		if bodyAuthor != "" {
 			if ok, msg := validateAuthor(bodyAuthor); !ok {
-				slog.Warn("invalid_backend_author", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Log.Warn("invalid_backend_author", zap.String("user", bodyAuthor), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 				return "", http.StatusBadRequest, msg
 			}
-			slog.Info("author_from_body_backend", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Info("author_from_body_backend", zap.String("user", bodyAuthor), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return bodyAuthor, 0, ""
 		}
 		if h := strings.TrimSpace(r.Header.Get("X-User-ID")); h != "" {
 			if ok, msg := validateAuthor(h); !ok {
-				slog.Warn("invalid_backend_author", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Log.Warn("invalid_backend_author", zap.String("user", h), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 				return "", http.StatusBadRequest, msg
 			}
-			slog.Info("author_from_header_backend", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Info("author_from_header_backend", zap.String("user", h), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return h, 0, ""
 		}
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" {
 			if ok, msg := validateAuthor(q); !ok {
-				slog.Warn("invalid_backend_author", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Log.Warn("invalid_backend_author", zap.String("user", q), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 				return "", http.StatusBadRequest, msg
 			}
-			slog.Info("author_from_query_backend", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Log.Info("author_from_query_backend", zap.String("user", q), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 			return q, 0, ""
 		}
-		slog.Warn("backend_missing_author", "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Log.Warn("backend_missing_author", zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 		return "", http.StatusBadRequest, `{"error":"author required for backend requests"}`
 	}
 
 	// Otherwise require signature
-	slog.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
+	logger.Log.Warn("missing_author_signature", zap.String("role", role), zap.String("remote", r.RemoteAddr), zap.String("path", r.URL.Path))
 	return "", http.StatusUnauthorized, `{"error":"missing or invalid author signature"}`
 }

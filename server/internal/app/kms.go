@@ -14,7 +14,7 @@ import (
 
 // setupKMS starts and registers KMS when encryption is enabled.
 func (a *App) setupKMS(ctx context.Context) error {
-    kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
+	kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
 	// dataDir is unused in embedded/external modes; kept for legacy configs.
 	useEnc := a.eff.Config.Security.Encryption.Use
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {

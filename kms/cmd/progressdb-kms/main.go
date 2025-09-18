@@ -20,11 +20,11 @@ import (
 )
 
 func main() {
-    var (
-        endpoint  = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
-        dataDir   = flag.String("data-dir", "./kms-data", "data directory")
-        cfgPath   = flag.String("config", "", "optional config yaml")
-    )
+	var (
+		endpoint = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
+		dataDir  = flag.String("data-dir", "./kms-data", "data directory")
+		cfgPath  = flag.String("config", "", "optional config yaml")
+	)
 	flag.Parse()
 
 	// load config if provided
@@ -69,12 +69,12 @@ func main() {
 	mux.HandleFunc("/rewrap", rewrapHandler(provider, st))
 
 	// choose listener
-    addr := *endpoint
-    ln, err := net.Listen("tcp", addr)
-    if err != nil {
-        log.Fatalf("listen tcp %s: %v", addr, err)
-    }
-    log.Printf("listening on %s", addr)
+	addr := *endpoint
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("listen tcp %s: %v", addr, err)
+	}
+	log.Printf("listening on %s", addr)
 
 	srv := &http.Server{Handler: mux}
 	if errServe := srv.Serve(ln); errServe != nil && errServe != http.ErrServerClosed {

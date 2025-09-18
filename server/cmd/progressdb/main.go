@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
-
 	"progressdb/internal/app"
 	"progressdb/pkg/config"
+	"progressdb/pkg/logger"
 )
 
 func main() {
@@ -23,6 +23,13 @@ func main() {
 
 	// load .env file if present
 	_ = godotenv.Load(".env")
+
+	// Initialize centralized Zap logger for the server package.
+	// logger.Init reads env vars such as PROGRESSDB_LOG_MODE, PROGRESSDB_LOG_SINK, PROGRESSDB_LOG_LEVEL
+	if err := logger.Init(); err != nil {
+		log.Fatalf("failed to initialize logger: %v", err)
+	}
+	defer logger.Sync()
 
 	// parse config flags
 	flags := config.ParseConfigFlags()

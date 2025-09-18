@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 	"strings"
+
+	"progressdb/pkg/logger"
 
 	"github.com/gorilla/mux"
 )
@@ -28,7 +29,7 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/rotate_thread_dek", adminRotateThreadDEK).Methods(http.MethodPost)
 	r.HandleFunc("/rewrap_batch", adminRewrapBatch).Methods(http.MethodPost)
 	r.HandleFunc("/generate_kek", adminGenerateKEK).Methods(http.MethodPost)
-	slog.Info("admin_routes_registered")
+	logger.Log.Info("admin_routes_registered")
 }
 
 func adminHealth(w http.ResponseWriter, r *http.Request) {

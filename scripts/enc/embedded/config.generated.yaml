@@ -14,8 +14,9 @@ security:
   rate_limit:
     rps: 10
     burst: 20
-  ip_whitelist:
-    - "127.0.0.1"
+  # ip_whitelist:
+    # - "127.0.0.1"
+    # - "::1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
@@ -28,7 +29,7 @@ security:
     data_dir: ""
     binary: ""
     master_key_file: ""
-    master_key_hex: "bcd68c14b0c3edfdba2e3d43163fd660fd0a752ba49aa58802c1fca17438a2d3"
+    master_key_hex: "64fbe498eb2a2cea151e4491941b4de9c5a309852660c4979cf32a199bb7baf7"
 
 logging:
   level: "info"
