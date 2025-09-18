@@ -1,11 +1,14 @@
 
 # Encryption (KMS-based)
 
-ProgressDB now requires an external KMS provider for encryption when `PROGRESSDB_USE_ENCRYPTION=true`.
+ProgressDB supports encryption when `PROGRESSDB_USE_ENCRYPTION=true` in two modes:
+
+ - Embedded: the server binary includes the embedded provider and performs KMS operations in-process via the HashiCorp AEAD provider when `PROGRESSDB_KMS_MODE=embedded`.
+ - External: the server communicates with a separate `progressdb-kms` process over UDS/HTTP and delegates KMS work to it when `PROGRESSDB_KMS_MODE=external`.
 
 Key points
-- The server no longer accepts a raw symmetric key via `PROGRESSDB_ENCRYPTION_KEY` or `security.encryption_key` in config. That in-process mode has been removed.
-- Use the KMS binary or an equivalent KMS provider; the server will spawn the KMS child when configured and `PROGRESSDB_USE_ENCRYPTION=true`.
+ - The server binary contains both embedded and external implementations; the runtime env `PROGRESSDB_KMS_MODE` selects which one is used.
+ - Do not provide a master key to the server in external mode; the external `progressdb-kms` must hold the KEK.
 - KMS responsibilities:
   - Hold the master KEK and perform audit-signed operations.
   - Provide endpoints for creating per-thread DEKs, rewrapping DEKs on rotation, and encrypt/decrypt operations over a unix-domain socket (UDS).
@@ -14,7 +17,7 @@ Configuration
 - Environment variables used by the server to talk to KMS:
   - `PROGRESSDB_KMS_SOCKET` — UDS path (default `/tmp/progressdb-kms.sock`).
   - `PROGRESSDB_KMS_DATA_DIR` — directory where KMS stores metadata and audit logs.
-  - The KMS master key should be provided via the server configuration; when the server spawns the KMS child it will embed the key into the child's `--config` YAML (self-contained). The environment variable `PROGRESSDB_KMS_MASTER_KEY_FILE` is removed.
+ - The KMS master key should be provided via the server configuration for embedded mode. For external mode, the `progressdb-kms` daemon holds the master key; do not supply a master key to the server in that case.
 
 API and behavior
 - The server delegates encryption operations to KMS via a RemoteClient over UDS.

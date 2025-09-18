@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  progressdb-kms:
+    image: docker.io/progressdb/progressdb-kms:latest
+    restart: unless-stopped
+    volumes:
+      - ./kms-data:/var/lib/progressdb/kms
+      - /var/run/progressdb:/var/run/progressdb
+    command: ["/usr/local/bin/progressdb-kms", "--socket", "/var/run/progressdb/kms.sock", "--data-dir", "/var/lib/progressdb/kms"]
+    networks:
+      - progressdb_net
+
+  progressdb:
+    image: docker.io/progressdb/progressdb:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PROGRESSDB_USE_ENCRYPTION: "true"
+      PROGRESSDB_KMS_MODE: "external"
+      PROGRESSDB_KMS_SOCKET: "unix:///var/run/progressdb/kms.sock"
+      # mount path where server can access the UDS created by progressdb-kms
+    volumes:
+      - /var/run/progressdb:/var/run/progressdb:ro
+    depends_on:
+      - progressdb-kms
+    networks:
+      - progressdb_net
+
+networks:
+  progressdb_net:
+    driver: bridge

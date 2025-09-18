@@ -28,7 +28,7 @@ security:
     mode: "embedded" # or external
     socket: "/tmp/progressdb-kms.sock"
     data_dir: "./kms-data"
-    binary: "/usr/local/bin/kms"
+    binary: "/usr/local/bin/progressdb-kms"
     master_key_file: ""
     master_key_hex: ""
 

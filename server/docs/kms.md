@@ -12,15 +12,15 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
 
 - `kms` — the KMS HTTP server (separate project/binary; HTTP over UDS). Exposes admin and crypto endpoints and persists wrapped DEKs and metadata in the configured data directory.
  - `server/pkg/kms/external.go` — client adapter used by the server to talk to KMS over the UDS.
-- The server no longer auto-spawns a KMS child by default; it can run in
-  embedded mode (in-process) or talk to an external `kmsd` process via the
+ - The server no longer auto-spawns a KMS child by default; it can run in
+  embedded mode (in-process) or talk to an external `progressdb-kms` process via the
   remote client.
 - `server/pkg/security` — pluggable security bridge. The server calls `security.CreateDEKForThread`, `security.EncryptWithKey`, `security.DecryptWithKey` to interact with the provider.
 - `server/pkg/store` — stores wrapped DEK metadata, thread->key mapping, and messages.
 
 ## Runtime flow (normal)
 
-1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `kmsd` process. Communication with an external KMS typically uses a Unix Domain Socket (UDS) or HTTP.
+1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `progressdb-kms` process. Communication with an external KMS typically uses a Unix Domain Socket (UDS) or HTTP.
 2. In external mode the server constructs a `RemoteClient` pointing at the configured socket and delegates KMS operations to it.
 3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
 4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
@@ -82,17 +82,19 @@ in production.
 
 ## Runbook (quick)
 
--- Start KMS (server will spawn by default): ensure a `kms` binary is present on `PATH` or placed alongside the server executable.
-- Recommended systemd unit for KMS (example for operations):
+-- Start KMS (external mode): ensure a `progressdb-kms` binary is present on `PATH` or installed on the host and start it separately when using `PROGRESSDB_KMS_MODE=external`.
+- Recommended systemd unit for the `progressdb-kms` service (example):
 
 ```
 [Unit]
 Description=ProgressDB KMS
+After=network.target
 
 [Service]
+Type=simple
 User=kms
 Group=kms
-ExecStart=/usr/local/bin/kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms
+ExecStart=/usr/local/bin/progressdb-kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
 LimitMEMLOCK=infinity
 NoNewPrivileges=yes
 PrivateTmp=yes

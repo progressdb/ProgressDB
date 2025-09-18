@@ -58,7 +58,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 
 	// Decide KMS mode: embedded (default) or external. Embedded mode uses a
 	// local master key (provided in server config) and keeps key material in
-	// process memory. External mode assumes an already-running `kmsd` and
+	// process memory. External mode assumes an already-running `progressdb-kms` and
 	// communicates over the configured socket.
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MODE")))
 	if mode == "" {

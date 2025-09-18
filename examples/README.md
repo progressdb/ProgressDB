@@ -12,12 +12,13 @@ This file documents the environment variables used by the ProgressDB server and 
 - `PROGRESSDB_API_FRONTEND_KEYS`: Comma-separated frontend API keys (limited scope for frontend SDKs).
 - `PROGRESSDB_API_ADMIN_KEYS`: Comma-separated admin API keys.
 
- - `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server requires a configured KMS and a master key provided in the server config. The server prefers a file-based master key (`security.kms.master_key_file`) when present (recommended for orchestrators); otherwise it will accept an embedded `security.kms.master_key_hex` (a 64-hex string). F
- - `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
+ 	- `PROGRESSDB_USE_ENCRYPTION`: When `true`, the server enables encryption and requires a master key provided in the server config. Provide the master key via `security.kms.master_key_file` (recommended) or `security.kms.master_key_hex` (development).
+ 	- `PROGRESSDB_ENCRYPTION_FIELDS`: Comma-separated field paths to encrypt.
 
--- `PROGRESSDB_KMS_BINARY`: deprecated — the server no longer supports this environment variable. Ensure `kms` is on your `PATH` or place it next to the server executable; the server will spawn the `kms` binary when encryption is enabled.
-- `PROGRESSDB_KMS_SOCKET`: Unix-domain socket path used to connect to the KMS (default `/tmp/progressdb-kms.sock`).
-- `PROGRESSDB_KMS_DATA_DIR`: Directory for KMS data, wrapped DEKs, audit logs and backups.
+ 	- `PROGRESSDB_KMS_SOCKET`: Unix-domain socket path used to connect to the KMS (default `/tmp/progressdb-kms.sock`).
+ 	- `PROGRESSDB_KMS_DATA_DIR`: Directory for KMS data, wrapped DEKs, audit logs and backups.
+
+		`PROGRESSDB_KMS_BINARY` is deprecated. The server binary includes both embedded and external KMS implementations; set `PROGRESSDB_KMS_MODE=embedded` or `PROGRESSDB_KMS_MODE=external` at runtime to choose which behavior is used.
 
 - `PROGRESSDB_RATE_RPS` / `PROGRESSDB_RATE_BURST`: Rate limiting parameters (requests per second and burst).
 - `PROGRESSDB_CORS_ORIGINS`: Comma-separated list of allowed CORS origins.
@@ -47,6 +48,6 @@ This file documents the environment variables used by the ProgressDB server and 
 - `security.kms.master_key_file`: Path to a file containing the 64-hex (32-byte) KEK that the server will embed into the KMS child's config when encryption is enabled. This must be set when `PROGRESSDB_USE_ENCRYPTION=true` if `master_key_hex` is not used.
 - `logging.level`: Logging level (`info`, `debug`, etc.).
 
-If you need the server to run with encryption enabled locally, create a `config.yaml` with either `security.kms.master_key_hex` set to a single 64-hex string (32 bytes) or `security.kms.master_key_file` pointing to a file containing the hex string, and set `PROGRESSDB_USE_ENCRYPTION=true` in your environment. The server will spawn or connect to the KMS and manage DEKs via the configured socket.
+		If you need the server to run with encryption enabled locally, create a `config.yaml` with either `security.kms.master_key_hex` set to a single 64-hex string (32 bytes) or `security.kms.master_key_file` pointing to a file containing the hex string, and set `PROGRESSDB_USE_ENCRYPTION=true` in your environment. For external mode start `progressdb-kms` separately and set `PROGRESSDB_KMS_MODE=external`.
 
 If you'd like, I can also generate a minimal `examples/dev.env` and a `examples/dev-config.yaml` that are ready-to-run for local development.

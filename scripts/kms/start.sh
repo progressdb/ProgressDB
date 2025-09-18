@@ -30,7 +30,7 @@ PIDFILE="$DATA_DIR/kms.pid"
 if [[ $BUILD -eq 1 || ! -x "$BIN" ]]; then
   echo "Building kms to $BIN..."
   # Build the kms binary; this assumes you have Go toolchain available.
-  if ! go build -o "$BIN" ./kms/cmd/kms; then
+  if ! go build -o "$BIN" ./kms/cmd/progressdb-kms; then
     echo "go build failed"
     exit 1
   fi
@@ -58,4 +58,3 @@ echo "kms started pid=$PID (logs -> $LOGFILE)"
 echo "To stop: kill \$(cat $PIDFILE) && rm -f $SOCKET"
 
 exit 0
-

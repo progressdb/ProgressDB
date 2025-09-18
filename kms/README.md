@@ -9,17 +9,17 @@ The KMS binary provides wrap/unwrap, DEK management, encrypt/decrypt, and KEK ro
 
 ## Build
 
-From the repository root (builds the `kms` binary into `./bin`):
+From the repository root (builds the `progressdb-kms` binary into `./bin`):
 
 ```
 cd kms
-go build -o ../bin/kms ./cmd/kms
+go build -o ../bin/progressdb-kms ./cmd/kms
 ```
 
-Or (alternative):
+Or using the module path directly:
 
 ```
-go build -o bin/kms ./kms/cmd/kms
+go build -o bin/progressdb-kms ./cmd/kms
 ```
 
 ## Run (production)
@@ -27,7 +27,7 @@ go build -o bin/kms ./kms/cmd/kms
 Basic invocation:
 
 ```
-bin/kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms
+bin/progressdb-kms --socket /var/run/progressdb-kms.sock --data-dir /var/lib/progressdb/kms
 ```
 
 

@@ -19,9 +19,9 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
   - id: kmsd
-    dir: ./kms/cmd/kmsd
-    main: ./main.go
-    binary: kmsd
+    dir: ./kms
+    main: ./cmd/progressdb-kms
+    binary: progressdb-kms
     goos:
       - linux
       - darwin
@@ -33,19 +33,7 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
 
-  - id: progressdb-with-kms
-    dir: ./server
-    main: ./cmd/progressdb
-    binary: progressdb-with-kms
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }} -X main.embedKMS=true
+  # single server build includes both embedded and external KMS implementations
 
 archives:
   - id: default
@@ -102,6 +90,18 @@ dockers:
     ids:
       - progressdb
 
+  - id: dockerhub_kmsd_amd64
+    image_templates:
+      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-amd64"
+    dockerfile: goreleaser.Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+    ids:
+      - kmsd
+
   - id: dockerhub_arm64
     image_templates:
       - "docker.io/progressdb/progressdb:{{ .Tag }}-arm64"
@@ -114,6 +114,18 @@ dockers:
     ids:
       - progressdb
 
+  - id: dockerhub_kmsd_arm64
+    image_templates:
+      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-arm64"
+      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-arm64"
+    dockerfile: goreleaser.Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+    ids:
+      - kmsd
+
 docker_manifests:
   - name_template: "docker.io/progressdb/progressdb:{{ .Tag }}"
     image_templates:
@@ -123,3 +135,12 @@ docker_manifests:
     image_templates:
       - "docker.io/progressdb/progressdb:{{ .Version }}-amd64"
       - "docker.io/progressdb/progressdb:{{ .Version }}-arm64"
+
+  - name_template: "docker.io/progressdb/kmsd:{{ .Tag }}"
+    image_templates:
+      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-arm64"
+  - name_template: "docker.io/progressdb/kmsd:{{ .Version }}"
+    image_templates:
+      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-amd64"
+      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-arm64"
