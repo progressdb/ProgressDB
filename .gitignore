@@ -97,3 +97,5 @@ bin/
 _devternal/
 .trunk/
 database/
+
+.gocache/

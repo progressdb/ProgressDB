@@ -150,18 +150,18 @@ func createDEKHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFu
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		kid, wrapped, err := provider.CreateDEKForThread(req.ThreadID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		meta := map[string]string{"wrapped": base64.StdEncoding.EncodeToString(wrapped), "thread_id": req.ThreadID}
-		mb, _ := json.Marshal(meta)
-		_ = st.SaveKeyMeta(kid, mb)
-		out := map[string]string{"key_id": kid, "wrapped": base64.StdEncoding.EncodeToString(wrapped), "kek_id": "", "kek_version": ""}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(out)
-	}
+            kid, wrapped, kekID, kekVer, err := provider.CreateDEKForThread(req.ThreadID)
+            if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+            }
+            meta := map[string]string{"wrapped": base64.StdEncoding.EncodeToString(wrapped), "thread_id": req.ThreadID}
+            mb, _ := json.Marshal(meta)
+            _ = st.SaveKeyMeta(kid, mb)
+            out := map[string]string{"key_id": kid, "wrapped": base64.StdEncoding.EncodeToString(wrapped), "kek_id": kekID, "kek_version": kekVer}
+            w.Header().Set("Content-Type", "application/json")
+            _ = json.NewEncoder(w).Encode(out)
+        }
 }
 
 func getWrappedHandler(st *store.Store) http.HandlerFunc {
@@ -201,19 +201,31 @@ func encryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc
 		}
 		var m map[string]string
 		_ = json.Unmarshal(mb, &m)
-		wrappedB, _ := base64.StdEncoding.DecodeString(m["wrapped"])
-		dek, err := provider.UnwrapDEK(wrappedB)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		ct, err := encryptWithRaw(dek, mustDecodeBase64(req.Plaintext))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"ciphertext": ct})
-	}
+            // Prefer provider-level operation by dekID. If provider cannot
+            // operate (e.g. provider has no mapping), fall back to reading
+            // the wrapped blob from store and unwrapping directly.
+            if ct, kv, err := provider.EncryptWithDEK(req.KeyID, mustDecodeBase64(req.Plaintext), nil); err == nil {
+                _ = json.NewEncoder(w).Encode(map[string]string{"ciphertext": base64.StdEncoding.EncodeToString(ct), "key_version": kv})
+                return
+            }
+            wrappedB, _ := base64.StdEncoding.DecodeString(m["wrapped"])
+            // try to call UnwrapDEK on provider if available
+            if u, ok := provider.(interface{ UnwrapDEK([]byte) ([]byte, error) }); ok {
+                dek, err := u.UnwrapDEK(wrappedB)
+                if err != nil {
+                    http.Error(w, err.Error(), http.StatusInternalServerError)
+                    return
+                }
+                ct, err := encryptWithRaw(dek, mustDecodeBase64(req.Plaintext))
+                if err != nil {
+                    http.Error(w, err.Error(), http.StatusInternalServerError)
+                    return
+                }
+                _ = json.NewEncoder(w).Encode(map[string]string{"ciphertext": ct})
+                return
+            }
+            http.Error(w, "encryption not supported", http.StatusInternalServerError)
+        }
 }
 
 func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
@@ -233,19 +245,28 @@ func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc
 		}
 		var m map[string]string
 		_ = json.Unmarshal(mb, &m)
-		wrappedB, _ := base64.StdEncoding.DecodeString(m["wrapped"])
-		dek, err := provider.UnwrapDEK(wrappedB)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		pt, err := decryptWithRaw(dek, req.Ciphertext)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"plaintext": base64.StdEncoding.EncodeToString(pt)})
-	}
+            // Prefer provider-level operation by dekID.
+            if pt, err := provider.DecryptWithDEK(req.KeyID, mustDecodeBase64(req.Ciphertext), nil); err == nil {
+                _ = json.NewEncoder(w).Encode(map[string]string{"plaintext": base64.StdEncoding.EncodeToString(pt)})
+                return
+            }
+            wrappedB, _ := base64.StdEncoding.DecodeString(m["wrapped"])
+            if u, ok := provider.(interface{ UnwrapDEK([]byte) ([]byte, error) }); ok {
+                dek, err := u.UnwrapDEK(wrappedB)
+                if err != nil {
+                    http.Error(w, err.Error(), http.StatusInternalServerError)
+                    return
+                }
+                pt, err := decryptWithRaw(dek, req.Ciphertext)
+                if err != nil {
+                    http.Error(w, err.Error(), http.StatusInternalServerError)
+                    return
+                }
+                _ = json.NewEncoder(w).Encode(map[string]string{"plaintext": base64.StdEncoding.EncodeToString(pt)})
+                return
+            }
+            http.Error(w, "decryption not supported", http.StatusInternalServerError)
+        }
 }
 
 func rewrapHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
@@ -265,25 +286,14 @@ func rewrapHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc 
 		}
 		var m map[string]string
 		_ = json.Unmarshal(mb, &m)
-		wrappedB, _ := base64.StdEncoding.DecodeString(m["wrapped"])
-		dek, err := provider.UnwrapDEK(wrappedB)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		newProv, err := kmss.NewHashicorpProviderFromHex(context.Background(), req.NewKEKHex)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		newWrapped, err := newProv.WrapDEK(dek)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		m["wrapped"] = base64.StdEncoding.EncodeToString(newWrapped)
-		nb, _ := json.Marshal(m)
-		_ = st.SaveKeyMeta(req.KeyID, nb)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "key_id": req.KeyID, "kek_id": "local"})
-	}
+            newWrapped, newKekID, newKekVer, err := provider.RewrapDEKForThread(req.KeyID, req.NewKEKHex)
+            if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+            }
+            m["wrapped"] = base64.StdEncoding.EncodeToString(newWrapped)
+            nb, _ := json.Marshal(m)
+            _ = st.SaveKeyMeta(req.KeyID, nb)
+            _ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "key_id": req.KeyID, "wrapped": base64.StdEncoding.EncodeToString(newWrapped), "kek_id": newKekID, "kek_version": newKekVer})
+        }
 }

@@ -15,15 +15,15 @@ This document describes the KMS implementation shipped with ProgressDB, how it i
  - The server no longer auto-spawns a KMS child by default; it can run in
   embedded mode (in-process) or talk to an external `progressdb-kms` process via the
   remote client.
-- `server/pkg/security` — pluggable security bridge. The server calls `security.CreateDEKForThread`, `security.EncryptWithKey`, `security.DecryptWithKey` to interact with the provider.
+ - `server/pkg/security` — pluggable security bridge. The server calls `security.CreateDEKForThread`, `security.EncryptWithDEK`, `security.DecryptWithDEK` to interact with the provider.
 - `server/pkg/store` — stores wrapped DEK metadata, thread->key mapping, and messages.
 
 ## Runtime flow (normal)
 
 1. On startup the server either initializes an embedded KMS provider (in-process) or connects to an external `progressdb-kms` process. Communication with an external KMS uses HTTP over TCP.
 2. In external mode the server constructs a `RemoteClient` pointing at the configured endpoint and delegates KMS operations to it.
-3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithKey(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
-4. When reading, the server calls `DecryptWithKey(keyID, ciphertext)` and receives plaintext from KMS.
+3. When storing a message, the server asks for the thread DEK (`CreateDEKForThread` if missing) and calls `EncryptWithDEK(keyID, plaintext)` which is executed inside KMS. The server never holds raw DEKs.
+4. When reading, the server calls `DecryptWithDEK(keyID, ciphertext)` and receives plaintext from KMS.
 
 ## Authentication & Authorization
 

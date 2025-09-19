@@ -260,7 +260,7 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 		sem <- struct{}{}
 		go func(k string) {
 			defer func() { <-sem }()
-			newKek, err := rc.RewrapKey(k, strings.TrimSpace(req.NewKEKHex))
+			_, newKek, _, err := rc.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
 			if err != nil {
 				resCh <- res{Key: k, Err: err.Error()}
 				return

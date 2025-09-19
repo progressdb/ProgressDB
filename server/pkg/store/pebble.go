@@ -93,7 +93,7 @@ func SaveMessage(threadID, msgID, msg string) error {
 		if keyID == "" {
 			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
 		}
-		enc, _, _, eerr := security.EncryptWithKey(keyID, data, nil)
+        enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
 		if eerr != nil {
 			return eerr
 		}
@@ -164,7 +164,7 @@ func ListMessages(threadID string) ([]string, error) {
 			} else {
 				// Prefer provider-backed per-thread DEK decryption when available.
 				if threadKeyID != "" {
-					if dec, derr := security.DecryptWithKey(threadKeyID, v, nil, nil); derr == nil {
+                if dec, derr := security.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
 						v = dec
 					} else {
 						// fall back to generic decrypt which may handle embedded master-key mode
@@ -511,12 +511,12 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt with old DEK
-		pt, derr := security.DecryptWithKey(oldKeyID, v, nil, nil)
+        pt, derr := security.DecryptWithDEK(oldKeyID, v, nil)
 		if derr != nil {
 			return fmt.Errorf("decrypt message failed: %w", derr)
 		}
 		// encrypt with new DEK
-		ct, _, _, eerr := security.EncryptWithKey(newKeyID, pt, nil)
+        ct, _, eerr := security.EncryptWithDEK(newKeyID, pt, nil)
 		// zeroize plaintext
 		for i := range pt {
 			pt[i] = 0

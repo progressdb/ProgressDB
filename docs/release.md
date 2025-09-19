@@ -36,7 +36,7 @@ CI flow (recommended):
 
 Notes & secrets:
 - The basic goreleaser workflow only needs `GITHUB_TOKEN` (automatically provided by Actions).
-- If you want to GPG-sign artifacts, add `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` to repository secrets and update `.goreleaser.yml` to enable signing.
+- To enable GPG signing of artifacts, add `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` to repository secrets and update `.goreleaser.yml` to enable signing.
 
 ---
 
@@ -138,14 +138,5 @@ Publishing docs:
 - [ ] Verify that the goreleaser workflow runs and a GitHub Release is created with assets.
 
 
-git tag -d v0.1.2 && \
-git push origin :refs/tags/v0.1.2 && \
-git tag -a v0.1.2 -m "Release v0.1.2 with new file" && \
-git push origin v0.1.2
 
 ---
-
-If you want, I can now:
-- add GPG signing and Docker publishing sections to `.goreleaser.yml`, or
-- add CI jobs to publish PyPI/npm directly after goreleaser completes. 
-Which would you like next?

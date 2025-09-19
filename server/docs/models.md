@@ -119,9 +119,7 @@ Notes and recommendations
 - Avoid storing large binary blobs inline in message values — if needed, store references and keep message JSON small.
 - Logs and admin endpoints can help inspect raw keys — use them with caution that encrypted values may not be human-readable.
 
-If you want, I can:
-- Move thread metadata under the thread prefix (``thread:<id>:meta``) for logical grouping (no functional difference).
-- Convert the viewer to automatically attempt JSON decryption when a field policy is present (requires access to encryption keys in runtime).
+NOTE: Thread metadata is stored at `thread:<id>:meta`. If automatic JSON decryption is desired in the viewer, that requires access to runtime encryption keys and is not enabled by default.
 
 Deep dive: duplicates, prefixes and why they matter
 --------------------------------------------------

@@ -39,11 +39,11 @@ func NewRemoteClient(addr string) *RemoteClient {
 func (r *RemoteClient) Enabled() bool { return true }
 
 func (r *RemoteClient) Encrypt(plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error) {
-	return nil, nil, "", fmt.Errorf("remote client Encrypt: not implemented")
+    return nil, nil, "", fmt.Errorf("remote client Encrypt: not implemented")
 }
 
 func (r *RemoteClient) Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error) {
-	return nil, fmt.Errorf("remote client Decrypt: not implemented")
+    return nil, fmt.Errorf("remote client Decrypt: not implemented")
 }
 
 func (r *RemoteClient) CreateDEK() (string, []byte, string, string, error) {
@@ -128,78 +128,96 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(out.Wrapped)
 }
 
-func (r *RemoteClient) EncryptWithKey(keyID string, plaintext, aad []byte) ([]byte, []byte, string, error) {
-	req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
-	b, _ := json.Marshal(req)
-	url := r.baseURL + "/encrypt"
-	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
-	reqq.Header.Set("Content-Type", "application/json")
-	resp, err := r.httpc.Do(reqq)
-	if err != nil {
-		return nil, nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, nil, "", fmt.Errorf("status %d", resp.StatusCode)
-	}
-	var out struct {
-		Ciphertext string `json:"ciphertext"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, nil, "", err
-	}
-	ct, err := base64.StdEncoding.DecodeString(out.Ciphertext)
-	if err != nil {
-		return nil, nil, "", err
-	}
-	return ct, nil, "v1", nil
+// EncryptWithDEK posts plaintext to the remote KMS and returns a single
+// ciphertext blob (nonce||ct) decoded from base64, plus an optional
+// keyVersion string.
+func (r *RemoteClient) EncryptWithDEK(keyID string, plaintext, aad []byte) ([]byte, string, error) {
+    req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
+    if aad != nil {
+        req["aad"] = base64.StdEncoding.EncodeToString(aad)
+    }
+    b, _ := json.Marshal(req)
+    url := r.baseURL + "/encrypt"
+    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+    reqq.Header.Set("Content-Type", "application/json")
+    resp, err := r.httpc.Do(reqq)
+    if err != nil {
+        return nil, "", err
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
+        return nil, "", fmt.Errorf("status %d", resp.StatusCode)
+    }
+    var out struct {
+        Ciphertext string `json:"ciphertext"`
+        KeyVersion string `json:"key_version"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+        return nil, "", err
+    }
+    ct, err := base64.StdEncoding.DecodeString(out.Ciphertext)
+    if err != nil {
+        return nil, "", err
+    }
+    return ct, out.KeyVersion, nil
 }
 
-func (r *RemoteClient) DecryptWithKey(keyID string, ciphertext, iv, aad []byte) ([]byte, error) {
-	req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
-	b, _ := json.Marshal(req)
-	url := r.baseURL + "/decrypt"
-	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
-	reqq.Header.Set("Content-Type", "application/json")
-	resp, err := r.httpc.Do(reqq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	var out struct {
-		Plaintext string `json:"plaintext"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return base64.StdEncoding.DecodeString(out.Plaintext)
+// DecryptWithDEK requests decryption of a ciphertext blob from the remote
+// KMS. The ciphertext is supplied as raw bytes and will be base64-encoded
+// at the wire boundary.
+func (r *RemoteClient) DecryptWithDEK(keyID string, ciphertext, aad []byte) ([]byte, error) {
+    req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
+    if aad != nil {
+        req["aad"] = base64.StdEncoding.EncodeToString(aad)
+    }
+    b, _ := json.Marshal(req)
+    url := r.baseURL + "/decrypt"
+    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+    reqq.Header.Set("Content-Type", "application/json")
+    resp, err := r.httpc.Do(reqq)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
+        return nil, fmt.Errorf("status %d", resp.StatusCode)
+    }
+    var out struct {
+        Plaintext string `json:"plaintext"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+        return nil, err
+    }
+    return base64.StdEncoding.DecodeString(out.Plaintext)
 }
 
-func (r *RemoteClient) RewrapKey(keyID, newKEKHex string) (newKekID string, err error) {
-	req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
-	b, _ := json.Marshal(req)
-	url := r.baseURL + "/rewrap"
-	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
-	reqq.Header.Set("Content-Type", "application/json")
-	resp, err := r.httpc.Do(reqq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out struct {
-		Status string `json:"status"`
-		KeyID  string `json:"key_id"`
-		KekID  string `json:"kek_id"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return "", err
-	}
-	return out.KekID, nil
+func (r *RemoteClient) RewrapDEKForThread(keyID, newKEKHex string) ([]byte, string, string, error) {
+    req := map[string]string{"key_id": keyID, "new_kek_hex": newKEKHex}
+    b, _ := json.Marshal(req)
+    url := r.baseURL + "/rewrap"
+    reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+    reqq.Header.Set("Content-Type", "application/json")
+    resp, err := r.httpc.Do(reqq)
+    if err != nil {
+        return nil, "", "", err
+    }
+    defer resp.Body.Close()
+    body, _ := io.ReadAll(resp.Body)
+    if resp.StatusCode != 200 {
+        return nil, "", "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+    }
+    var out struct {
+        KeyID      string `json:"key_id"`
+        Wrapped    string `json:"wrapped"`
+        KekID      string `json:"kek_id"`
+        KekVersion string `json:"kek_version"`
+    }
+    if err := json.Unmarshal(body, &out); err != nil {
+        return nil, "", "", err
+    }
+    wb, err := base64.StdEncoding.DecodeString(out.Wrapped)
+    if err != nil {
+        return nil, "", "", err
+    }
+    return wb, out.KekID, out.KekVersion, nil
 }
