@@ -25,17 +25,17 @@ var (
 )
 
 // KMSProvider mirrors the minimal interface expected by the security layer.
-    type KMSProvider interface {
-    Enabled() bool
+type KMSProvider interface {
+	Enabled() bool
 
-    // Core 4-method API
-    CreateDEKForThread(threadID string) (dekID string, wrappedDEK []byte, kekID string, kekVersion string, err error)
-    EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error)
-    DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error)
-    RewrapDEKForThread(dekID string, newKEKHex string) (newWrappedDEK []byte, newKekID string, newKekVersion string, err error)
+	// Core 4-method API
+	CreateDEKForThread(threadID string) (dekID string, wrappedDEK []byte, kekID string, kekVersion string, err error)
+	EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error)
+	DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error)
+	RewrapDEKForThread(dekID string, newKEKHex string) (newWrappedDEK []byte, newKekID string, newKekVersion string, err error)
 
-    Health() error
-    Close() error
+	Health() error
+	Close() error
 }
 
 func RegisterKMSProvider(p KMSProvider) {
@@ -122,24 +122,24 @@ func Enabled() bool {
 }
 
 func Encrypt(plaintext []byte) ([]byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p != nil && p.Enabled() {
-        type encIf interface {
-            Encrypt([]byte, []byte) ([]byte, []byte, string, error)
-        }
-        if e, ok := p.(encIf); ok {
-            ct, iv, _, err := e.Encrypt(plaintext, nil)
-            if err != nil {
-                return nil, err
-            }
-            if iv != nil && len(iv) > 0 {
-                return append(iv, ct...), nil
-            }
-            return ct, nil
-        }
-    }
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p != nil && p.Enabled() {
+		type encIf interface {
+			Encrypt([]byte, []byte) ([]byte, []byte, string, error)
+		}
+		if e, ok := p.(encIf); ok {
+			ct, iv, _, err := e.Encrypt(plaintext, nil)
+			if err != nil {
+				return nil, err
+			}
+			if iv != nil && len(iv) > 0 {
+				return append(iv, ct...), nil
+			}
+			return ct, nil
+		}
+	}
 	if !Enabled() {
 		out := append([]byte(nil), plaintext...)
 		return out, nil
@@ -162,17 +162,17 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 }
 
 func Decrypt(data []byte) ([]byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p != nil && p.Enabled() {
-        type decIf interface {
-            Decrypt([]byte, []byte, []byte) ([]byte, error)
-        }
-        if d, ok := p.(decIf); ok {
-            return d.Decrypt(data, nil, nil)
-        }
-    }
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p != nil && p.Enabled() {
+		type decIf interface {
+			Decrypt([]byte, []byte, []byte) ([]byte, error)
+		}
+		if d, ok := p.(decIf); ok {
+			return d.Decrypt(data, nil, nil)
+		}
+	}
 	if !Enabled() {
 		return append([]byte(nil), data...), nil
 	}
@@ -194,38 +194,38 @@ func Decrypt(data []byte) ([]byte, error) {
 }
 
 func CreateDEK() (string, []byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return "", nil, errors.New("no kms provider registered")
-    }
-    // Prefer provider's CreateDEKForThread behavior without thread scoping.
-    type cIf interface {
-        CreateDEKForThread(string) (string, []byte, string, string, error)
-    }
-    if c, ok := p.(cIf); ok {
-        kid, wrapped, _, _, err := c.CreateDEKForThread("")
-        return kid, wrapped, err
-    }
-    return "", nil, errors.New("provider does not support CreateDEK")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, errors.New("no kms provider registered")
+	}
+	// Prefer provider's CreateDEKForThread behavior without thread scoping.
+	type cIf interface {
+		CreateDEKForThread(string) (string, []byte, string, string, error)
+	}
+	if c, ok := p.(cIf); ok {
+		kid, wrapped, _, _, err := c.CreateDEKForThread("")
+		return kid, wrapped, err
+	}
+	return "", nil, errors.New("provider does not support CreateDEK")
 }
 
 func CreateDEKForThread(threadID string) (string, []byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return "", nil, errors.New("no kms provider registered")
-    }
-    type threadCreator interface {
-        CreateDEKForThread(string) (string, []byte, string, string, error)
-    }
-    if tc, ok := p.(threadCreator); ok {
-        kid, wrapped, _, _, err := tc.CreateDEKForThread(threadID)
-        return kid, wrapped, err
-    }
-    // Fallback to generic CreateDEK
-    kid, wrapped, err := CreateDEK()
-    return kid, wrapped, err
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return "", nil, errors.New("no kms provider registered")
+	}
+	type threadCreator interface {
+		CreateDEKForThread(string) (string, []byte, string, string, error)
+	}
+	if tc, ok := p.(threadCreator); ok {
+		kid, wrapped, _, _, err := tc.CreateDEKForThread(threadID)
+		return kid, wrapped, err
+	}
+	// Fallback to generic CreateDEK
+	kid, wrapped, err := CreateDEK()
+	return kid, wrapped, err
 }

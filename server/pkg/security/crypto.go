@@ -140,21 +140,21 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 	providerMu.RLock()
 	p := provider
 	providerMu.RUnlock()
-    if p != nil && p.Enabled() {
-        type encIf interface {
-            Encrypt([]byte, []byte) ([]byte, []byte, string, error)
-        }
-        if e, ok := p.(encIf); ok {
-            ct, iv, _, err := e.Encrypt(plaintext, nil)
-            if err != nil {
-                return nil, err
-            }
-            if iv != nil && len(iv) > 0 {
-                return append(iv, ct...), nil
-            }
-            return ct, nil
-        }
-    }
+	if p != nil && p.Enabled() {
+		type encIf interface {
+			Encrypt([]byte, []byte) ([]byte, []byte, string, error)
+		}
+		if e, ok := p.(encIf); ok {
+			ct, iv, _, err := e.Encrypt(plaintext, nil)
+			if err != nil {
+				return nil, err
+			}
+			if iv != nil && len(iv) > 0 {
+				return append(iv, ct...), nil
+			}
+			return ct, nil
+		}
+	}
 	if !Enabled() {
 		// No-op: return copy of plaintext
 		out := append([]byte(nil), plaintext...)
@@ -183,14 +183,14 @@ func Decrypt(data []byte) ([]byte, error) {
 	providerMu.RLock()
 	p := provider
 	providerMu.RUnlock()
-    if p != nil && p.Enabled() {
-        type decIf interface {
-            Decrypt([]byte, []byte, []byte) ([]byte, error)
-        }
-        if d, ok := p.(decIf); ok {
-            return d.Decrypt(data, nil, nil)
-        }
-    }
+	if p != nil && p.Enabled() {
+		type decIf interface {
+			Decrypt([]byte, []byte, []byte) ([]byte, error)
+		}
+		if d, ok := p.(decIf); ok {
+			return d.Decrypt(data, nil, nil)
+		}
+	}
 	if !Enabled() {
 		return append([]byte(nil), data...), nil
 	}
@@ -227,102 +227,103 @@ func CreateDEKForThread(threadID string) (string, []byte, string, string, error)
 	type threadCreator interface {
 		CreateDEKForThread(string) (string, []byte, string, string, error)
 	}
-    if tc, ok := p.(threadCreator); ok {
-        return tc.CreateDEKForThread(threadID)
-    }
-    return "", nil, "", "", errors.New("provider does not support CreateDEKForThread")
+	if tc, ok := p.(threadCreator); ok {
+		return tc.CreateDEKForThread(threadID)
+	}
+	return "", nil, "", "", errors.New("provider does not support CreateDEKForThread")
 }
+
 // EncryptWithDEK encrypts using a DEK referenced by dekID and returns a
 // single ciphertext blob containing nonce||ciphertext per the server
 // KMS interface. Providers are expected to implement `EncryptWithDEK` which
 // returns a single nonce||ciphertext blob and an optional key version.
 func EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return nil, "", errors.New("no kms provider registered")
-    }
-    // Provider must implement the modern EncryptWithDEK signature.
-    type encNewIf interface {
-        EncryptWithDEK(string, []byte, []byte) ([]byte, string, error)
-    }
-    if e, ok := p.(encNewIf); ok {
-        return e.EncryptWithDEK(dekID, plaintext, aad)
-    }
-    return nil, "", errors.New("provider does not support EncryptWithDEK")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, "", errors.New("no kms provider registered")
+	}
+	// Provider must implement the modern EncryptWithDEK signature.
+	type encNewIf interface {
+		EncryptWithDEK(string, []byte, []byte) ([]byte, string, error)
+	}
+	if e, ok := p.(encNewIf); ok {
+		return e.EncryptWithDEK(dekID, plaintext, aad)
+	}
+	return nil, "", errors.New("provider does not support EncryptWithDEK")
 }
 
 // DecryptWithDEK decrypts a single ciphertext blob produced by
 // EncryptWithDEK (nonce||ct) using the provider. It adapts to older
 // provider signatures if necessary.
 func DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return nil, errors.New("no kms provider registered")
-    }
-    type decNewIf interface {
-        DecryptWithDEK(string, []byte, []byte) ([]byte, error)
-    }
-    if d, ok := p.(decNewIf); ok {
-        return d.DecryptWithDEK(dekID, ciphertext, aad)
-    }
-    return nil, errors.New("provider does not support DecryptWithDEK")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	type decNewIf interface {
+		DecryptWithDEK(string, []byte, []byte) ([]byte, error)
+	}
+	if d, ok := p.(decNewIf); ok {
+		return d.DecryptWithDEK(dekID, ciphertext, aad)
+	}
+	return nil, errors.New("provider does not support DecryptWithDEK")
 }
 
 // GetWrappedDEK returns the wrapped DEK blob for a given key id.
 func GetWrappedDEK(keyID string) ([]byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return nil, errors.New("no kms provider registered")
-    }
-    type gwIf interface {
-        GetWrapped(string) ([]byte, error)
-    }
-    if g, ok := p.(gwIf); ok {
-        return g.GetWrapped(keyID)
-    }
-    return nil, errors.New("provider does not support GetWrapped")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	type gwIf interface {
+		GetWrapped(string) ([]byte, error)
+	}
+	if g, ok := p.(gwIf); ok {
+		return g.GetWrapped(keyID)
+	}
+	return nil, errors.New("provider does not support GetWrapped")
 }
 
 // UnwrapDEK delegates to provider to unwrap a wrapped DEK.
 func UnwrapDEK(wrapped []byte) ([]byte, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return nil, errors.New("no kms provider registered")
-    }
-    type uwIf interface {
-        UnwrapDEK([]byte) ([]byte, error)
-    }
-    if u, ok := p.(uwIf); ok {
-        return u.UnwrapDEK(wrapped)
-    }
-    return nil, errors.New("provider does not support UnwrapDEK")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, errors.New("no kms provider registered")
+	}
+	type uwIf interface {
+		UnwrapDEK([]byte) ([]byte, error)
+	}
+	if u, ok := p.(uwIf); ok {
+		return u.UnwrapDEK(wrapped)
+	}
+	return nil, errors.New("provider does not support UnwrapDEK")
 }
 
 // RewrapDEKForThread asks the registered provider to rewrap an existing DEK
 // under a new KEK supplied as hex. Returns new wrapped blob, new kek id,
 // new kek version and error.
 func RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error) {
-    providerMu.RLock()
-    p := provider
-    providerMu.RUnlock()
-    if p == nil {
-        return nil, "", "", errors.New("no kms provider registered")
-    }
-    type rwIf interface {
-        RewrapDEKForThread(string, string) ([]byte, string, string, error)
-    }
-    if rw, ok := p.(rwIf); ok {
-        return rw.RewrapDEKForThread(dekID, newKEKHex)
-    }
-    return nil, "", "", errors.New("provider does not support RewrapDEKForThread")
+	providerMu.RLock()
+	p := provider
+	providerMu.RUnlock()
+	if p == nil {
+		return nil, "", "", errors.New("no kms provider registered")
+	}
+	type rwIf interface {
+		RewrapDEKForThread(string, string) ([]byte, string, string, error)
+	}
+	if rw, ok := p.(rwIf); ok {
+		return rw.RewrapDEKForThread(dekID, newKEKHex)
+	}
+	return nil, "", "", errors.New("provider does not support RewrapDEKForThread")
 }
 
 // EncryptWithRawKey performs AES-256-GCM encryption using the provided raw key (DEK).
@@ -372,23 +373,23 @@ func DecryptWithRawKey(dek, data []byte) ([]byte, error) {
 // WrapDEKWithKeyBytes wraps provided DEK/plaintext bytes using the supplied KEK
 // bytes via AES-GCM and returns nonce||ciphertext.
 func WrapDEKWithKeyBytes(kek, plaintext []byte) ([]byte, error) {
-    if len(kek) != 32 {
-        return nil, errors.New("kek must be 32 bytes")
-    }
-    block, err := aes.NewCipher(kek)
-    if err != nil {
-        return nil, err
-    }
-    gcm, err := cipher.NewGCM(block)
-    if err != nil {
-        return nil, err
-    }
-    nonce := make([]byte, gcm.NonceSize())
-    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-        return nil, err
-    }
-    out := gcm.Seal(nil, nonce, plaintext, nil)
-    return append(nonce, out...), nil
+	if len(kek) != 32 {
+		return nil, errors.New("kek must be 32 bytes")
+	}
+	block, err := aes.NewCipher(kek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	out := gcm.Seal(nil, nonce, plaintext, nil)
+	return append(nonce, out...), nil
 }
 
 // AuditSign returns a base64 HMAC-SHA256 signature of the provided message

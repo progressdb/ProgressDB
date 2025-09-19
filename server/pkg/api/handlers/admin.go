@@ -152,26 +152,29 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// create new DEK for thread
-	newKeyID, _, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
+	newKeyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-	// persist metadata into thread record (canonical location)
+	// perform migration first (use the existing thread metadata/old key)
+	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// persist wrapped DEK and KEK metadata into thread record (canonical location)
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
-			th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: "", KEKID: kekID, KEKVersion: kekVer}
+			th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
+			// If we have a wrapped value, persist it; otherwise the field will be empty.
 			if nb, merr := json.Marshal(th); merr == nil {
 				_ = store.SaveThread(th.ID, string(nb))
 			}
 		}
 	}
-	// perform migration
-	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 }
 
@@ -246,7 +249,7 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create remote client bound to the configured endpoint
-    // Use registered provider via security bridge; avoid creating per-request remote clients.
+	// Use registered provider via security bridge; avoid creating per-request remote clients.
 	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)
 	type res struct {
@@ -257,15 +260,15 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	resCh := make(chan res, len(keyIDs))
 	for kid := range keyIDs {
 		sem <- struct{}{}
-            go func(k string) {
-                defer func() { <-sem }()
-                _, newKek, _, err := security.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
-                if err != nil {
-                    resCh <- res{Key: k, Err: err.Error()}
-                    return
-                }
-                resCh <- res{Key: k, Kek: newKek}
-            }(kid)
+		go func(k string) {
+			defer func() { <-sem }()
+			_, newKek, _, err := security.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
+			if err != nil {
+				resCh <- res{Key: k, Err: err.Error()}
+				return
+			}
+			resCh <- res{Key: k, Kek: newKek}
+		}(kid)
 	}
 	// wait for all
 	for i := 0; i < cap(sem); i++ {
@@ -337,7 +340,7 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create remote client bound to the configured endpoint
-    // Concurrency
+	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)
 	type res struct {
 		Thread string

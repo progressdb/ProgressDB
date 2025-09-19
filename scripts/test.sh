@@ -14,7 +14,7 @@ cd server
 # Prefer gotestsum for nicer output when available, otherwise fall back to go test
 if command -v gotestsum >/dev/null 2>&1; then
   echo "Using gotestsum for formatted test output"
-  gotestsum --format=pkgname --junitfile tests/junit.xml -- ./... -- -v
+  gotestsum --format=testdox -- ./... -- -v
 else
   echo "gotestsum not found; using go test"
   go test ./... -v

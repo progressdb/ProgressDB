@@ -20,13 +20,13 @@ type Thread struct {
 }
 
 type KMSMeta struct {
-    KeyID      string `json:"key_id,omitempty"`
-    WrappedDEK string `json:"wrapped_dek,omitempty"`
-    KEKID      string `json:"kek_id,omitempty"`
-    KEKVersion string `json:"kek_version,omitempty"`
+	KeyID      string `json:"key_id,omitempty"`
+	WrappedDEK string `json:"wrapped_dek,omitempty"`
+	KEKID      string `json:"kek_id,omitempty"`
+	KEKVersion string `json:"kek_version,omitempty"`
 }
 
 // Extend Thread with optional KMS metadata
 func (t *Thread) WithKMS(meta KMSMeta) {
-    // note: we add the field dynamically via JSON when marshaling; keep simple accessor
+	// note: we add the field dynamically via JSON when marshaling; keep simple accessor
 }

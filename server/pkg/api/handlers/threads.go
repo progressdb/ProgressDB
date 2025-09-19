@@ -1,23 +1,23 @@
 package handlers
 
 import (
-    "encoding/base64"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "sort"
-    "strconv"
-    "strings"
-    "time"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
 
-    "progressdb/pkg/auth"
-    "progressdb/pkg/models"
-    "progressdb/pkg/security"
-    "progressdb/pkg/store"
-    "progressdb/pkg/utils"
-    "progressdb/pkg/validation"
+	"progressdb/pkg/auth"
+	"progressdb/pkg/models"
+	"progressdb/pkg/security"
+	"progressdb/pkg/store"
+	"progressdb/pkg/utils"
+	"progressdb/pkg/validation"
 
-    "github.com/gorilla/mux"
+	"github.com/gorilla/mux"
 )
 
 // RegisterThreads registers all thread-related HTTP routes to the provided router.
@@ -59,8 +59,8 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	} else {
 		t.Author = author
 	}
-    // Always generate server-side thread IDs to avoid client-supplied IDs
-    t.ID = utils.GenThreadID()
+	// Always generate server-side thread IDs to avoid client-supplied IDs
+	t.ID = utils.GenThreadID()
 	if t.CreatedTS == 0 {
 		t.CreatedTS = time.Now().UTC().UnixNano()
 	}
@@ -70,31 +70,31 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	if t.Slug == "" {
 		t.Slug = utils.MakeSlug(t.Title, t.ID)
 	}
-    if t.UpdatedTS == 0 {
-        t.UpdatedTS = t.CreatedTS
-    }
+	if t.UpdatedTS == 0 {
+		t.UpdatedTS = t.CreatedTS
+	}
 
-    // If encryption enabled, provision a per-thread DEK now and embed metadata
-    if security.Enabled() {
-        keyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(t.ID)
-        if err != nil {
-            http.Error(w, `{"error":"failed to provision thread DEK"}`, http.StatusInternalServerError)
-            return
-        }
-        t.KMS = models.KMSMeta{
-            KeyID:      keyID,
-            WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
-            KEKID:      kekID,
-            KEKVersion: kekVer,
-        }
-    }
+	// If encryption enabled, provision a per-thread DEK now and embed metadata
+	if security.Enabled() {
+		keyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(t.ID)
+		if err != nil {
+			http.Error(w, `{"error":"failed to provision thread DEK"}`, http.StatusInternalServerError)
+			return
+		}
+		t.KMS = models.KMSMeta{
+			KeyID:      keyID,
+			WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
+			KEKID:      kekID,
+			KEKVersion: kekVer,
+		}
+	}
 
-    b, _ := json.Marshal(t)
-    if err := store.SaveThread(t.ID, string(b)); err != nil {
-        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-        return
-    }
-    _ = json.NewEncoder(w).Encode(t)
+	b, _ := json.Marshal(t)
+	if err := store.SaveThread(t.ID, string(b)); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(t)
 }
 
 // listThreads handles GET /threads to retrieve a list of threads.
