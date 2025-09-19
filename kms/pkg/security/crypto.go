@@ -62,7 +62,7 @@ type fieldRule struct {
 
 var fieldRules []fieldRule
 
-func SetFieldPolicy(fields []EncField) error {
+func SetEncryptionFieldPolicy(fields []EncField) error {
 	fieldRules = fieldRules[:0]
 	for _, f := range fields {
 		alg := strings.ToLower(strings.TrimSpace(f.Algorithm))
@@ -82,9 +82,9 @@ func SetFieldPolicy(fields []EncField) error {
 	return nil
 }
 
-func HasFieldPolicy() bool { return len(fieldRules) > 0 }
+func EncryptionHasFieldPolicy() bool { return len(fieldRules) > 0 }
 
-func SetKeyHex(hexKey string) error {
+func setKeyHex(hexKey string) error {
 	if hexKey == "" {
 		if key != nil && keyLocked {
 			_ = conn.UnlockMemory(key)

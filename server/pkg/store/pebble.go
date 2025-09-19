@@ -82,7 +82,7 @@ func SaveMessage(threadID, msgID, msg string) error {
 
 	// Encryption logic: check if encryption is enabled, then check if field policy is enabled, then proceed accordingly.
 	if security.EncryptionEnabled() {
-		if security.HasFieldPolicy() {
+		if security.EncryptionHasFieldPolicy() {
 			// Field-policy encryption is enabled and encryption is on.
 			out, err := security.EncryptJSONFields(data)
 			if err != nil {
@@ -111,7 +111,7 @@ func SaveMessage(threadID, msgID, msg string) error {
 		}
 	} else {
 		// If encryption is not enabled but a field policy is configured, this is a configuration error.
-		if security.HasFieldPolicy() {
+		if security.EncryptionHasFieldPolicy() {
 			logger.Log.Error("field encryption policy configured but encryption not enabled")
 		}
 		// Otherwise, store plaintext.
@@ -137,11 +137,16 @@ func SaveMessage(threadID, msgID, msg string) error {
 }
 
 // ListMessages returns all messages for a thread in insertion order.
-func ListMessages(threadID string) ([]string, error) {
+func ListMessages(threadID string, limit ...int) ([]string, error) {
+	// Check if the Pebble database is open
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
+
+	// Construct the prefix for message keys in the thread
 	prefix := []byte("thread:" + threadID + ":msg:")
+
+	// Create a new iterator for the database
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -149,7 +154,8 @@ func ListMessages(threadID string) ([]string, error) {
 	defer iter.Close()
 
 	var out []string
-	// preload thread's KeyID once for efficient per-message decrypt
+
+	// Preload the thread's KeyID for efficient per-message decryption if encryption is enabled
 	var threadKeyID string
 	if security.EncryptionEnabled() {
 		if sthr, terr := GetThread(threadID); terr == nil {
@@ -160,53 +166,79 @@ func ListMessages(threadID string) ([]string, error) {
 		}
 	}
 
+	// Determine the maximum number of messages to return (limit), default to -1 (no limit)
+	max := -1
+	if len(limit) > 0 {
+		max = limit[0]
+	}
+
+	// Iterate over all messages in the thread
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+		// Stop if the key is no longer in the thread's message namespace
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-		// Capture the value before advancing.
+
+		// Copy the value to avoid issues with iterator reuse
 		v := append([]byte(nil), iter.Value()...)
+
+		// If encryption is enabled, attempt to decrypt the message
 		if security.EncryptionEnabled() {
-			if security.HasFieldPolicy() {
-				// Try full-message decrypt first; if it fails, attempt field-level decrypt.
+			if security.EncryptionHasFieldPolicy() {
+				// If a field policy is configured, try full-message decrypt first
 				if dec, err := security.Decrypt(v); err == nil {
 					v = dec
 				} else {
+					// If full-message decrypt fails, try field-level decrypt
 					if outJSON, err := security.DecryptJSONFields(v); err == nil {
 						v = outJSON
 					} else if likelyJSON(v) {
-						// tolerate legacy plaintext JSON
+						// If the value looks like JSON, tolerate legacy plaintext JSON
 					} else {
+						// If not JSON, return the error
 						return nil, err
 					}
 				}
 			} else {
-				// Prefer provider-backed per-thread DEK decryption when available.
+				// No field policy: prefer provider-backed per-thread DEK decryption
 				if threadKeyID != "" {
+					// Try to decrypt with the thread's DEK
 					if dec, derr := security.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
 						v = dec
 					} else {
-						// fall back to generic decrypt which may handle embedded master-key mode
+						// If that fails, fall back to generic decrypt (may handle master-key mode)
 						if dec2, err := security.Decrypt(v); err == nil {
 							v = dec2
 						} else if !likelyJSON(v) {
+							// If not JSON, return the error from DEK decrypt
 							return nil, derr
 						}
 					}
 				} else {
+					// If no threadKeyID, try generic decrypt
 					if dec, err := security.Decrypt(v); err != nil {
-						// tolerate legacy plaintext JSON values
+						// If decrypt fails and value is not JSON, return error
 						if !likelyJSON(v) {
 							return nil, err
 						}
+						// Otherwise, tolerate legacy plaintext JSON values
 					} else {
 						v = dec
 					}
 				}
 			}
 		}
+
+		// Append the (possibly decrypted) message to the output slice
 		out = append(out, string(v))
+
+		// If a limit is set and reached, stop iterating
+		if max > 0 && len(out) >= max {
+			break
+		}
 	}
+
+	// Return the collected messages and any iterator error
 	return out, iter.Error()
 }
 
@@ -231,7 +263,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 		v := append([]byte(nil), iter.Value()...)
 		if security.EncryptionEnabled() {
 			// Reuse the same decrypt logic as ListMessages
-			if security.HasFieldPolicy() {
+			if security.EncryptionHasFieldPolicy() {
 				if dec, err := security.Decrypt(v); err == nil {
 					v = dec
 				} else if outJSON, err := security.DecryptJSONFields(v); err == nil {

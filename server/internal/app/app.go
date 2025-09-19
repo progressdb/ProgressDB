@@ -103,7 +103,7 @@ func initFieldPolicy(eff config.EffectiveConfigResult) error {
 	for _, f := range fieldSrc {
 		fields = append(fields, security.EncField{Path: f.Path, Algorithm: f.Algorithm})
 	}
-	return security.SetFieldPolicy(fields)
+	return security.SetEncryptionFieldPolicy(fields)
 }
 
 // initValidation builds validation rules from config and sets them globally.
