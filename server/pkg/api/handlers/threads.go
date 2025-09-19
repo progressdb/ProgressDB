@@ -59,42 +59,42 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	} else {
 		t.Author = author
 	}
-	// Always generate server-side thread IDs to avoid client-supplied IDs
-	t.ID = utils.GenThreadID()
-	if t.CreatedTS == 0 {
-		t.CreatedTS = time.Now().UTC().UnixNano()
+	created, err := createThreadInternal(t.Author, t.Title)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
 	}
-	if t.Title == "" {
-		t.Title = defaultThreadTitle()
-	}
-	if t.Slug == "" {
-		t.Slug = utils.MakeSlug(t.Title, t.ID)
-	}
-	if t.UpdatedTS == 0 {
-		t.UpdatedTS = t.CreatedTS
-	}
+	_ = json.NewEncoder(w).Encode(created)
+}
 
-	// If encryption enabled, provision a per-thread DEK now and embed metadata
-	if security.Enabled() {
+// createThreadInternal performs the core thread creation logic without dealing
+// with HTTP concerns. It provisions per-thread KMS metadata when encryption is
+// enabled, saves the thread metadata, and returns the created Thread.
+func createThreadInternal(author, title string) (models.Thread, error) {
+	var t models.Thread
+	if title == "" {
+		title = defaultThreadTitle()
+	}
+	t.ID = utils.GenThreadID()
+	t.Author = author
+	t.Title = title
+	t.Slug = utils.MakeSlug(t.Title, t.ID)
+	t.CreatedTS = time.Now().UTC().UnixNano()
+	t.UpdatedTS = t.CreatedTS
+
+	if security.EncryptionEnabled() {
 		keyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(t.ID)
 		if err != nil {
-			http.Error(w, `{"error":"failed to provision thread DEK"}`, http.StatusInternalServerError)
-			return
+			return models.Thread{}, err
 		}
-		t.KMS = models.KMSMeta{
-			KeyID:      keyID,
-			WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
-			KEKID:      kekID,
-			KEKVersion: kekVer,
-		}
+		t.KMS = models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 	}
 
 	b, _ := json.Marshal(t)
 	if err := store.SaveThread(t.ID, string(b)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
+		return models.Thread{}, err
 	}
-	_ = json.NewEncoder(w).Encode(t)
+	return t, nil
 }
 
 // listThreads handles GET /threads to retrieve a list of threads.

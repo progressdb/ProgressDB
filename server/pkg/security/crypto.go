@@ -115,7 +115,7 @@ func SetKeyHex(hexKey string) error {
 }
 
 // Enabled returns true if encryption key is configured.
-func Enabled() bool {
+func EncryptionEnabled() bool {
 	providerMu.RLock()
 	p := provider
 	providerMu.RUnlock()
@@ -155,7 +155,7 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 			return ct, nil
 		}
 	}
-	if !Enabled() {
+	if !EncryptionEnabled() {
 		// No-op: return copy of plaintext
 		out := append([]byte(nil), plaintext...)
 		return out, nil
@@ -191,7 +191,7 @@ func Decrypt(data []byte) ([]byte, error) {
 			return d.Decrypt(data, nil, nil)
 		}
 	}
-	if !Enabled() {
+	if !EncryptionEnabled() {
 		return append([]byte(nil), data...), nil
 	}
 	block, err := aes.NewCipher(key)
@@ -395,7 +395,7 @@ func WrapDEKWithKeyBytes(kek, plaintext []byte) ([]byte, error) {
 // AuditSign returns a base64 HMAC-SHA256 signature of the provided message
 // using the master KEK when available. Returns error if master key not set.
 func AuditSign(msg []byte) (string, error) {
-	if !Enabled() || key == nil {
+	if !EncryptionEnabled() || key == nil {
 		return "", errors.New("master key not configured")
 	}
 	mac := hmac.New(sha256.New, key)
@@ -412,7 +412,7 @@ type envelope struct {
 // EncryptJSONFields encrypts configured JSON paths within the provided JSON bytes.
 // Returns the modified JSON if parsing/encryption succeeds.
 func EncryptJSONFields(jsonBytes []byte) ([]byte, error) {
-	if !Enabled() || !HasFieldPolicy() {
+	if !EncryptionEnabled() || !HasFieldPolicy() {
 		return append([]byte(nil), jsonBytes...), nil
 	}
 	// Quick sanity: must look like JSON object or array
@@ -435,7 +435,7 @@ func EncryptJSONFields(jsonBytes []byte) ([]byte, error) {
 
 // DecryptJSONFields decrypts any envelope objects found in JSON.
 func DecryptJSONFields(jsonBytes []byte) ([]byte, error) {
-	if !Enabled() || !HasFieldPolicy() {
+	if !EncryptionEnabled() || !HasFieldPolicy() {
 		return append([]byte(nil), jsonBytes...), nil
 	}
 	if !looksLikeJSON(jsonBytes) {

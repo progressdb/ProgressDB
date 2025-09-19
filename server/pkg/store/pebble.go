@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"progressdb/pkg/logger"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.uber.org/zap"
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
@@ -78,33 +79,51 @@ func SaveMessage(threadID, msgID, msg string) error {
 	s := atomic.AddUint64(&seq, 1)
 	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 	data := []byte(msg)
-	// Encryption: use thread metadata's DEK (provisioned at thread creation time)
-	if security.Enabled() {
-		// read thread metadata
-		sthr, terr := GetThread(threadID)
-		if terr != nil {
-			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
+
+	// Encryption logic: check if encryption is enabled, then check if field policy is enabled, then proceed accordingly.
+	if security.EncryptionEnabled() {
+		if security.HasFieldPolicy() {
+			// Field-policy encryption is enabled and encryption is on.
+			out, err := security.EncryptJSONFields(data)
+			if err != nil {
+				return fmt.Errorf("field encryption failed: %w", err)
+			}
+			data = out
+		} else {
+			// No field policy: perform full-message DEK encryption using the thread's configured DEK.
+			sthr, terr := GetThread(threadID)
+			if terr != nil {
+				return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
+			}
+			var th models.Thread
+			if err := json.Unmarshal([]byte(sthr), &th); err != nil {
+				return fmt.Errorf("invalid thread metadata: %w", err)
+			}
+			keyID := th.KMS.KeyID
+			if keyID == "" {
+				return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
+			}
+			enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
+			if eerr != nil {
+				return eerr
+			}
+			data = enc
 		}
-		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
-			return fmt.Errorf("invalid thread metadata: %w", err)
+	} else {
+		// If encryption is not enabled but a field policy is configured, this is a configuration error.
+		if security.HasFieldPolicy() {
+			logger.Log.Error("field encryption policy configured but encryption not enabled")
 		}
-		keyID := th.KMS.KeyID
-		if keyID == "" {
-			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
-		}
-		enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
-		if eerr != nil {
-			return eerr
-		}
-		data = enc
+		// Otherwise, store plaintext.
 	}
 
+	// save to database
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
 		logger.Log.Error("save_message_failed", zap.String("thread", threadID), zap.String("key", key), zap.Error(err))
 		return err
 	}
 	logger.Log.Info("message_saved", zap.String("thread", threadID), zap.String("key", key), zap.String("msg_id", msgID))
+
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
 		// store version under explicit version namespace
@@ -132,7 +151,7 @@ func ListMessages(threadID string) ([]string, error) {
 	var out []string
 	// preload thread's KeyID once for efficient per-message decrypt
 	var threadKeyID string
-	if security.Enabled() {
+	if security.EncryptionEnabled() {
 		if sthr, terr := GetThread(threadID); terr == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(sthr), &th); err == nil {
@@ -147,7 +166,7 @@ func ListMessages(threadID string) ([]string, error) {
 		}
 		// Capture the value before advancing.
 		v := append([]byte(nil), iter.Value()...)
-		if security.Enabled() {
+		if security.EncryptionEnabled() {
 			if security.HasFieldPolicy() {
 				// Try full-message decrypt first; if it fails, attempt field-level decrypt.
 				if dec, err := security.Decrypt(v); err == nil {
@@ -210,7 +229,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 			break
 		}
 		v := append([]byte(nil), iter.Value()...)
-		if security.Enabled() {
+		if security.EncryptionEnabled() {
 			// Reuse the same decrypt logic as ListMessages
 			if security.HasFieldPolicy() {
 				if dec, err := security.Decrypt(v); err == nil {

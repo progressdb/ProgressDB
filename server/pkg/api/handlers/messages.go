@@ -6,13 +6,14 @@ import (
 	"strconv"
 	"time"
 
-	"go.uber.org/zap"
 	"progressdb/pkg/auth"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
+
+	"go.uber.org/zap"
 
 	"sort"
 
@@ -63,14 +64,41 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	if m.Role == "" {
 		m.Role = "user"
 	}
-	// Always generate server-side IDs for messages to avoid client-side impersonation
+	// If no thread provided, create one explicitly via createThreadInternal
 	if m.Thread == "" {
-		m.Thread = utils.GenThreadID()
+		th, err := createThreadInternal(m.Author, defaultThreadTitle())
+		if err != nil {
+			http.Error(w, `{"error":"failed to create thread"}`, http.StatusInternalServerError)
+			return
+		}
+		// sync thread to message
+		m.Thread = th.ID
+	} else {
+		// ensure provided thread exists and user is the author
+		s, err := store.GetThread(m.Thread)
+		if err != nil {
+			http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
+			return
+		}
+		var th models.Thread
+		if err := json.Unmarshal([]byte(s), &th); err != nil {
+			http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+			return
+		}
+		// Only allow creating if the user is the author, unless admin
+		role := r.Header.Get("X-Role-Name")
+		if role != "admin" && th.Author != m.Author {
+			http.Error(w, `{"error":"author does not match thread"}`, http.StatusForbidden)
+			return
+		}
 	}
+
+	// generate a message id
 	m.ID = utils.GenID()
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
 	}
+
 	// prevent posting to deleted thread
 	if sthr, err := store.GetThread(m.Thread); err == nil {
 		var th models.Thread
@@ -81,27 +109,19 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// validate the message format
 	if err := validation.ValidateMessage(m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
+
+	// At this point the thread exists (we either created it above & validated the provided thread id & message).
+	// lets store the message
 	b, _ := json.Marshal(m)
 	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
-	}
-	// ensure thread meta
-	if sthr, err := store.GetThread(m.Thread); err != nil {
-		// create a minimal thread metadata record and set the author from the verified message author
-		th := models.Thread{ID: m.Thread, Title: defaultThreadTitle(), Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
-		th.Slug = utils.MakeSlug(th.Title, th.ID)
-		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
-	} else {
-		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
-			th.UpdatedTS = m.TS
-			_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
-		}
 	}
 	logger.Log.Info("message_created", zap.String("thread", m.Thread), zap.String("id", m.ID))
 	_ = json.NewEncoder(w).Encode(m)
@@ -188,19 +208,21 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.ID = id
-	// determine caller role and canonical author
-	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
-		http.Error(w, msg, code)
-		return
-	} else {
-		m.Author = author
-	}
 	// Ensure role is present; default to "user" if omitted
 	if m.Role == "" {
 		m.Role = "user"
 	}
+
+	// If thread omitted in update payload, inherit from existing message.
 	if m.Thread == "" {
-		m.Thread = utils.GenThreadID()
+		sOld, err := store.GetLatestMessage(id)
+		if err != nil {
+			http.Error(w, `{"error":"message not found"}`, http.StatusNotFound)
+			return
+		}
+		var old models.Message
+		_ = json.Unmarshal([]byte(sOld), &old)
+		m.Thread = old.Thread
 	}
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
@@ -209,23 +231,16 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
+	// Ensure thread exists
+	if _, err := store.GetThread(m.Thread); err != nil {
+		http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
+		return
+	}
+
 	b, _ := json.Marshal(m)
 	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
-	}
-	// Ensure thread meta exists or update UpdatedTS
-	if sthr, err := store.GetThread(m.Thread); err != nil {
-		// create a minimal thread metadata record and set the author from the verified message author
-		th := models.Thread{ID: m.Thread, Title: defaultThreadTitle(), Author: m.Author, Slug: "", CreatedTS: m.TS, UpdatedTS: m.TS}
-		th.Slug = utils.MakeSlug(th.Title, th.ID)
-		_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
-	} else {
-		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
-			th.UpdatedTS = m.TS
-			_ = store.SaveThread(th.ID, func() string { b, _ := json.Marshal(th); return string(b) }())
-		}
 	}
 	_ = json.NewEncoder(w).Encode(m)
 }
