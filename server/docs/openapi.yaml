@@ -573,7 +573,7 @@ paths:
         "404":
           description: Not found
 
-  /admin/rotate_thread_dek:
+  /admin/encryption/rotate-thread-dek:
     post:
       summary: Rotate a thread's DEK (admin/backend keys only)
       description: Generates a new DEK for the specified thread and performs an in-place rotation. Returns the new key id on success.
@@ -602,7 +602,7 @@ paths:
                     status: "ok"
                     new_key: "key-1234"
 
-  /admin/rewrap_batch:
+  /admin/encryption/rewrap-deks:
     post:
       summary: Rewrap DEKs for multiple threads (admin/backend keys only)
       description: Rewrap existing DEKs under a new KEK by invoking the remote KMS rewrap operation. Supply either thread_ids or set all to "true" to operate across all threads.
@@ -635,7 +635,7 @@ paths:
                     "key-1234": { status: "ok", kek_id: "kek-1" }
                     "key-5678": { status: "error", error: "wrap failed" }
 
-  /admin/generate_kek:
+  /admin/encryption/generate-kek:
     post:
       summary: Generate a new random KEK (admin/backend keys only)
       description: Produces a new 32-byte KEK returned as a 64-hex string. Use this for rewrap operations in admin flows.
@@ -649,9 +649,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/GenerateKEKResponse'
               examples:
-                example:
-                  value:
-                    kek_hex: "60324e8965b4ee7188d2cc0dfcb7928d53851aa8fcd1044884e30c9af28413c1"
+              example:
+                value:
+                  kek_hex: "60324e8965b4ee7188d2cc0dfcb7928d53851aa8fcd1044884e30c9af28413c1"
+  /admin/encryption/encrypt-existing:
+    post:
+      summary: Encrypt existing plaintext messages (admin/backend keys only)
+      description: Encrypts legacy plaintext messages for threads that already have a DEK configured. Supply either thread_ids or set all to true.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RewrapBatchRequest'
+            examples:
+              example:
+                value:
+                  thread_ids: ["t1","t2"]
+                  all: false
+                  parallelism: 4
+      responses:
+        "200":
+          description: Results map keyed by thread id
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/RewrapResultEntry'
 components:
   schemas:
     Message:

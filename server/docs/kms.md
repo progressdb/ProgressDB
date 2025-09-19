@@ -57,12 +57,12 @@ master_key_hex: "<64-hex-bytes>"
 ```
 
 Convenience: the server exposes an admin endpoint to generate a compatible
-master KEK for local use. POST `/admin/generate_kek` (admin role required)
+master KEK for local use. POST `/admin/encryption/generate-kek` (admin role required)
 returns JSON `{ "kek_hex": "<64-hex-bytes>" }`. This is intended for
 operators who need a quick way to produce a properly-sized KEK; prefer
 provisioning secrets via orchestrator mechanisms or a secure secret store
 in production.
-- DEK rotation (per-thread): the server exposes an admin endpoint `/admin/rotate_thread_dek` which:
+- DEK rotation (per-thread): the server exposes an admin endpoint `/admin/encryption/rotate-thread-dek` which:
   - creates a new DEK for the thread and calls a migration routine that decrypts each message with the old DEK and encrypts it with the new DEK, backing up old ciphertexts before overwrite. This is a blocking migration; for production you should run it as a resumable background job (see next steps).
 
 ## Persistence & backups

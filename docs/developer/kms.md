@@ -16,7 +16,7 @@ The server expects a provider implementing a small interface in `server/pkg/kms`
 - `CreateDEKForThread(threadID) (keyID string, wrapped []byte, kekID string, kekVersion string, err error)`
 - `EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error)`
 - `DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error)`
-- Generic variants: `CreateDEK()`, `Encrypt`, `Decrypt`, `WrapDEK`, `UnwrapDEK` for embedded/local usage.
+ - Generic variants: `Encrypt`, `Decrypt`, `WrapDEK`, `UnwrapDEK` for embedded/local usage.
 
 3. Remote client (HTTP) protocol
 --------------------------------

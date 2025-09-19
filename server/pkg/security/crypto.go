@@ -212,22 +212,9 @@ func Decrypt(data []byte) ([]byte, error) {
 }
 
 // CreateDEK delegates to the registered provider to create a new DEK.
-func CreateDEK() (string, []byte, string, string, error) {
-	providerMu.RLock()
-	p := provider
-	providerMu.RUnlock()
-	if p == nil {
-		return "", nil, "", "", errors.New("no kms provider registered")
-	}
-	// provider.CreateDEK now returns kek metadata
-	type createIf interface {
-		CreateDEK() (string, []byte, string, string, error)
-	}
-	if c, ok := p.(createIf); ok {
-		return c.CreateDEK()
-	}
-	return "", nil, "", "", errors.New("provider does not support CreateDEK with kek metadata")
-}
+// NOTE: the older `CreateDEK()` helper has been removed. Providers must
+// implement `CreateDEKForThread(threadID)`; this function is intentionally
+// not provided to avoid hidden compatibility layers.
 
 // CreateDEKForThread requests a DEK scoped to the provided threadID.
 func CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
@@ -240,11 +227,10 @@ func CreateDEKForThread(threadID string) (string, []byte, string, string, error)
 	type threadCreator interface {
 		CreateDEKForThread(string) (string, []byte, string, string, error)
 	}
-	if tc, ok := p.(threadCreator); ok {
-		return tc.CreateDEKForThread(threadID)
-	}
-	// fallback to generic CreateDEK
-	return CreateDEK()
+    if tc, ok := p.(threadCreator); ok {
+        return tc.CreateDEKForThread(threadID)
+    }
+    return "", nil, "", "", errors.New("provider does not support CreateDEKForThread")
 }
 // EncryptWithDEK encrypts using a DEK referenced by dekID and returns a
 // single ciphertext blob containing nonce||ciphertext per the server
@@ -364,26 +350,26 @@ func DecryptWithRawKey(dek, data []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, ct, nil)
 }
 
-// EncryptWithKeyBytes wraps provided plaintext bytes using the supplied KEK
-// bytes using AES-GCM. Returns nonce|ciphertext blob.
-func EncryptWithKeyBytes(kek, plaintext []byte) ([]byte, error) {
-	if len(kek) != 32 {
-		return nil, errors.New("kek must be 32 bytes")
-	}
-	block, err := aes.NewCipher(kek)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-	out := gcm.Seal(nil, nonce, plaintext, nil)
-	return append(nonce, out...), nil
+// WrapDEKWithKeyBytes wraps provided DEK/plaintext bytes using the supplied KEK
+// bytes via AES-GCM and returns nonce||ciphertext.
+func WrapDEKWithKeyBytes(kek, plaintext []byte) ([]byte, error) {
+    if len(kek) != 32 {
+        return nil, errors.New("kek must be 32 bytes")
+    }
+    block, err := aes.NewCipher(kek)
+    if err != nil {
+        return nil, err
+    }
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return nil, err
+    }
+    out := gcm.Seal(nil, nonce, plaintext, nil)
+    return append(nonce, out...), nil
 }
 
 // AuditSign returns a base64 HMAC-SHA256 signature of the provided message

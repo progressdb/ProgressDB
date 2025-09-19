@@ -93,7 +93,7 @@ func SaveMessage(threadID, msgID, msg string) error {
 		if keyID == "" {
 			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
 		}
-        enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
+		enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
 		if eerr != nil {
 			return eerr
 		}
@@ -164,7 +164,7 @@ func ListMessages(threadID string) ([]string, error) {
 			} else {
 				// Prefer provider-backed per-thread DEK decryption when available.
 				if threadKeyID != "" {
-                if dec, derr := security.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
+					if dec, derr := security.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
 						v = dec
 					} else {
 						// fall back to generic decrypt which may handle embedded master-key mode
@@ -474,6 +474,24 @@ func SaveKey(key string, value []byte) error {
 	return nil
 }
 
+// DBIter returns a raw Pebble iterator for low-level operations. Caller must
+// close the iterator when done.
+func DBIter() (*pebble.Iter, error) {
+	if db == nil {
+		return nil, fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	return db.NewIter(&pebble.IterOptions{})
+}
+
+// DBSet writes a raw key (bytes) into the DB. This is a low-level helper used
+// by admin utilities.
+func DBSet(key, value []byte) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	return db.Set(key, value, pebble.Sync)
+}
+
 // SaveThreadKey maps a threadID to a keyID for its DEK.
 // Deprecated: per-thread DEK mapping is now stored in thread metadata (thread:<id>:meta).
 // Use GetThread to read the canonical KMS metadata at thread.KMS.KeyID.
@@ -511,12 +529,12 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt with old DEK
-        pt, derr := security.DecryptWithDEK(oldKeyID, v, nil)
+		pt, derr := security.DecryptWithDEK(oldKeyID, v, nil)
 		if derr != nil {
 			return fmt.Errorf("decrypt message failed: %w", derr)
 		}
 		// encrypt with new DEK
-        ct, _, eerr := security.EncryptWithDEK(newKeyID, pt, nil)
+		ct, _, eerr := security.EncryptWithDEK(newKeyID, pt, nil)
 		// zeroize plaintext
 		for i := range pt {
 			pt[i] = 0
@@ -559,3 +577,6 @@ func likelyJSON(b []byte) bool {
 	}
 	return false
 }
+
+// LikelyJSON is an exported wrapper for internal likelyJSON helper.
+func LikelyJSON(b []byte) bool { return likelyJSON(b) }

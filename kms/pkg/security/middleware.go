@@ -26,25 +26,25 @@ func AuditSign(b []byte) (string, error) {
 // Exported helper used by callers outside this package.
 func SecurityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
 
-// EncryptWithKeyBytes provides a helper to wrap dek with new raw key bytes.
-func EncryptWithKeyBytes(kb, dek []byte) ([]byte, error) {
-	if len(kb) != 32 {
-		return nil, errors.New("invalid key length")
-	}
-	block, err := aes.NewCipher(kb)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-	ct := gcm.Seal(nil, nonce, dek, nil)
-	return append(nonce, ct...), nil
+// WrapDEKWithKeyBytes provides a helper to wrap dek with raw key bytes.
+func WrapDEKWithKeyBytes(kb, dek []byte) ([]byte, error) {
+    if len(kb) != 32 {
+        return nil, errors.New("invalid key length")
+    }
+    block, err := aes.NewCipher(kb)
+    if err != nil {
+        return nil, err
+    }
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return nil, err
+    }
+    ct := gcm.Seal(nil, nonce, dek, nil)
+    return append(nonce, ct...), nil
 }
 
 // EncryptWithRawKey encrypts plaintext using the provided raw key (DEK)

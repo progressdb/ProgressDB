@@ -44,7 +44,7 @@ Admin & rotation policies
 - Admin endpoints (rotate, rewrap) require admin role. These operations may be long-running and should be executed only during maintenance windows.
 - Rotation workflow:
   1. Generate or provide a new KEK.
-  2. Rewrap DEKs in the KMS (admin/rewrap_batch) or via admin rewrap tooling.
+  2. Rewrap DEKs in the KMS (admin/encryption/rewrap-deks) or via admin rewrap tooling.
   3. Validate sample decrypts after rewrap.
 
 Least-privilege guidance
@@ -55,7 +55,7 @@ Least-privilege guidance
 Auditing and observability
 ---------------------------
 - Log authorization decisions (role resolved, authorized/forbidden) at info/warn levels as appropriate — redact sensitive headers.
-- Capture admin actions (generate_kek, rotate_thread_dek, rewrap_batch) in audit logs.
+- Capture admin actions (encryption/generate-kek, encryption/rotate-thread-dek, encryption/rewrap-deks) in audit logs.
 
 Developer checklist for adding routes
 ------------------------------------
@@ -63,4 +63,3 @@ Developer checklist for adding routes
 2. Ensure middleware ordering is correct (security → signature verification → handler).
 3. Use `auth.ResolveAuthorFromRequest(r, bodyAuthor)` in handlers to compute canonical author.
 4. Perform ownership checks: compare verified author to resource owner.
-

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -26,9 +27,12 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/threads", adminListThreads).Methods(http.MethodGet)
 	r.HandleFunc("/keys", adminListKeys).Methods(http.MethodGet)
 	r.HandleFunc("/keys/{key}", adminGetKey).Methods(http.MethodGet)
-	r.HandleFunc("/rotate_thread_dek", adminRotateThreadDEK).Methods(http.MethodPost)
-	r.HandleFunc("/rewrap_batch", adminRewrapBatch).Methods(http.MethodPost)
-	r.HandleFunc("/generate_kek", adminGenerateKEK).Methods(http.MethodPost)
+	// Encryption admin routes
+	r.HandleFunc("/encryption/rotate-thread-dek", adminEncryptionRotateThreadDEK).Methods(http.MethodPost)
+	r.HandleFunc("/encryption/rewrap-deks", adminEncryptionRewrapDEKs).Methods(http.MethodPost)
+	r.HandleFunc("/encryption/generate-kek", adminEncryptionGenerateKEK).Methods(http.MethodPost)
+	// Encrypt legacy (pre-encryption) messages: { all: bool, thread_ids: [], parallelism: 4 }
+	r.HandleFunc("/encryption/encrypt-existing", adminEncryptionEncryptExisting).Methods(http.MethodPost)
 	logger.Log.Info("admin_routes_registered")
 }
 
@@ -131,7 +135,7 @@ func adminGetKey(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(v))
 }
 
-func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
+func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(r) {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
@@ -153,16 +157,16 @@ func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-    // persist metadata into thread record (canonical location)
-    if s, err := store.GetThread(req.ThreadID); err == nil {
-        var th models.Thread
-        if err := json.Unmarshal([]byte(s), &th); err == nil {
-            th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: "", KEKID: kekID, KEKVersion: kekVer}
-            if nb, merr := json.Marshal(th); merr == nil {
-                _ = store.SaveThread(th.ID, string(nb))
-            }
-        }
-    }
+	// persist metadata into thread record (canonical location)
+	if s, err := store.GetThread(req.ThreadID); err == nil {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(s), &th); err == nil {
+			th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: "", KEKID: kekID, KEKVersion: kekVer}
+			if nb, merr := json.Marshal(th); merr == nil {
+				_ = store.SaveThread(th.ID, string(nb))
+			}
+		}
+	}
 	// perform migration
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
@@ -171,10 +175,10 @@ func adminRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 }
 
-// adminRewrapBatch triggers rewrap operations for DEKs related to threads.
+// adminEncryptionRewrapDEKs triggers rewrap operations for DEKs related to threads.
 // Request JSON:
 // { "thread_ids": ["t1","t2"], "all": false, "new_kek_hex": "<hex>", "parallelism": 4 }
-func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
+func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(r) {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
@@ -225,15 +229,15 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 	keyIDs := make(map[string]struct{})
 	for _, tid := range threads {
 		// lookup thread meta
-        // read canonical thread metadata to get key id
-        if s, err := store.GetThread(tid); err == nil {
-            var th models.Thread
-            if err := json.Unmarshal([]byte(s), &th); err == nil {
-                if th.KMS.KeyID != "" {
-                    keyIDs[th.KMS.KeyID] = struct{}{}
-                }
-            }
-        }
+		// read canonical thread metadata to get key id
+		if s, err := store.GetThread(tid); err == nil {
+			var th models.Thread
+			if err := json.Unmarshal([]byte(s), &th); err == nil {
+				if th.KMS.KeyID != "" {
+					keyIDs[th.KMS.KeyID] = struct{}{}
+				}
+			}
+		}
 	}
 
 	if len(keyIDs) == 0 {
@@ -292,9 +296,149 @@ func adminRewrapBatch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// adminGenerateKEK generates a new random 32-byte KEK and returns it as a
+// adminEncryptionEncryptExisting encrypts legacy plaintext messages for threads that
+// already have a DEK configured. Request JSON:
+// { "thread_ids": ["t1","t2"], "all": false, "parallelism": 4 }
+func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	var req struct {
+		ThreadIDs   []string `json:"thread_ids"`
+		All         bool     `json:"all"`
+		Parallelism int      `json:"parallelism"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Parallelism <= 0 {
+		req.Parallelism = 4
+	}
+
+	// Determine thread IDs
+	var threads []string
+	if req.All {
+		tvals, err := store.ListThreads()
+		if err != nil {
+			http.Error(w, `{"error":"failed list threads"}`, http.StatusInternalServerError)
+			return
+		}
+		for _, t := range tvals {
+			var th models.Thread
+			if err := json.Unmarshal([]byte(t), &th); err != nil {
+				continue
+			}
+			threads = append(threads, th.ID)
+		}
+	} else {
+		threads = req.ThreadIDs
+	}
+
+	if len(threads) == 0 {
+		http.Error(w, `{"error":"no threads specified"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Create remote client bound to the configured endpoint
+	endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "127.0.0.1:6820"
+	}
+	rc := kms.NewRemoteClient(endpoint)
+
+	// Concurrency
+	sem := make(chan struct{}, req.Parallelism)
+	type res struct {
+		Thread string
+		Key    string
+		Err    string
+	}
+	resCh := make(chan res, len(threads))
+	for _, tid := range threads {
+		sem <- struct{}{}
+		go func(tid string) {
+			defer func() { <-sem }()
+			// lookup thread meta
+			s, err := store.GetThread(tid)
+			if err != nil {
+				resCh <- res{Thread: tid, Err: "thread not found"}
+				return
+			}
+			var th models.Thread
+			if err := json.Unmarshal([]byte(s), &th); err != nil {
+				resCh <- res{Thread: tid, Err: "invalid thread metadata"}
+				return
+			}
+			if th.KMS.KeyID == "" {
+				resCh <- res{Thread: tid, Err: "no DEK configured for thread"}
+				return
+			}
+			// iterate messages and encrypt plaintext ones
+			prefix := []byte("thread:" + tid + ":msg:")
+			iter, err := store.DBIter()
+			if err != nil {
+				resCh <- res{Thread: tid, Err: err.Error()}
+				return
+			}
+			defer iter.Close()
+			for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+				if !bytes.HasPrefix(iter.Key(), prefix) {
+					break
+				}
+				k := append([]byte(nil), iter.Key()...)
+				v := append([]byte(nil), iter.Value()...)
+				// If value looks like JSON, assume plaintext and encrypt it.
+				if store.LikelyJSON(v) {
+					ct, kv, err := rc.EncryptWithDEK(th.KMS.KeyID, v, nil)
+					if err != nil {
+						resCh <- res{Thread: tid, Err: err.Error()}
+						return
+					}
+					// backup original
+					backupKey := append([]byte("backup:encrypt:"), k...)
+					if err := store.SaveKey(string(backupKey), v); err != nil {
+						resCh <- res{Thread: tid, Err: err.Error()}
+						return
+					}
+					// write new ciphertext
+					if err := store.DBSet(k, ct); err != nil {
+						resCh <- res{Thread: tid, Err: err.Error()}
+						return
+					}
+					_ = kv // ignore key version here
+				}
+			}
+			resCh <- res{Thread: tid, Key: th.KMS.KeyID}
+		}(tid)
+	}
+	// wait for all
+	for i := 0; i < cap(sem); i++ {
+		sem <- struct{}{}
+	}
+	close(resCh)
+
+	out := map[string]map[string]string{}
+	for rres := range resCh {
+		if _, ok := out[rres.Thread]; !ok {
+			out[rres.Thread] = map[string]string{}
+		}
+		if rres.Err != "" {
+			out[rres.Thread]["status"] = "error"
+			out[rres.Thread]["error"] = rres.Err
+		} else {
+			out[rres.Thread]["status"] = "ok"
+			out[rres.Thread]["key_id"] = rres.Key
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// adminEncryptionGenerateKEK generates a new random 32-byte KEK and returns it as a
 // 64-hex string in JSON: { "kek_hex": "..." }
-func adminGenerateKEK(w http.ResponseWriter, r *http.Request) {
+func adminEncryptionGenerateKEK(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(r) {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return

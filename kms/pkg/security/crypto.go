@@ -25,7 +25,7 @@ var (
 )
 
 // KMSProvider mirrors the minimal interface expected by the security layer.
-type KMSProvider interface {
+    type KMSProvider interface {
     Enabled() bool
 
     // Core 4-method API
