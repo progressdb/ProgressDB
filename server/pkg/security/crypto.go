@@ -306,6 +306,25 @@ func UnwrapDEK(wrapped []byte) ([]byte, error) {
     return nil, errors.New("provider does not support UnwrapDEK")
 }
 
+// RewrapDEKForThread asks the registered provider to rewrap an existing DEK
+// under a new KEK supplied as hex. Returns new wrapped blob, new kek id,
+// new kek version and error.
+func RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error) {
+    providerMu.RLock()
+    p := provider
+    providerMu.RUnlock()
+    if p == nil {
+        return nil, "", "", errors.New("no kms provider registered")
+    }
+    type rwIf interface {
+        RewrapDEKForThread(string, string) ([]byte, string, string, error)
+    }
+    if rw, ok := p.(rwIf); ok {
+        return rw.RewrapDEKForThread(dekID, newKEKHex)
+    }
+    return nil, "", "", errors.New("provider does not support RewrapDEKForThread")
+}
+
 // EncryptWithRawKey performs AES-256-GCM encryption using the provided raw key (DEK).
 // It returns nonce|ciphertext (nonce prepended) similar to Encrypt.
 func EncryptWithRawKey(dek, plaintext []byte) ([]byte, error) {

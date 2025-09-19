@@ -3,12 +3,12 @@ package handlers
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"os"
-	"progressdb/pkg/kms"
+
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
@@ -246,12 +246,7 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create remote client bound to the configured endpoint
-	endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "127.0.0.1:6820"
-	}
-	rc := kms.NewRemoteClient(endpoint)
-
+    // Use registered provider via security bridge; avoid creating per-request remote clients.
 	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)
 	type res struct {
@@ -262,15 +257,15 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	resCh := make(chan res, len(keyIDs))
 	for kid := range keyIDs {
 		sem <- struct{}{}
-		go func(k string) {
-			defer func() { <-sem }()
-			_, newKek, _, err := rc.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
-			if err != nil {
-				resCh <- res{Key: k, Err: err.Error()}
-				return
-			}
-			resCh <- res{Key: k, Kek: newKek}
-		}(kid)
+            go func(k string) {
+                defer func() { <-sem }()
+                _, newKek, _, err := security.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
+                if err != nil {
+                    resCh <- res{Key: k, Err: err.Error()}
+                    return
+                }
+                resCh <- res{Key: k, Kek: newKek}
+            }(kid)
 	}
 	// wait for all
 	for i := 0; i < cap(sem); i++ {
@@ -342,13 +337,7 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create remote client bound to the configured endpoint
-	endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "127.0.0.1:6820"
-	}
-	rc := kms.NewRemoteClient(endpoint)
-
-	// Concurrency
+    // Concurrency
 	sem := make(chan struct{}, req.Parallelism)
 	type res struct {
 		Thread string
@@ -372,8 +361,23 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if th.KMS.KeyID == "" {
-				resCh <- res{Thread: tid, Err: "no DEK configured for thread"}
-				return
+				// provision a DEK for this thread
+				newKeyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(tid)
+				if err != nil {
+					resCh <- res{Thread: tid, Err: "create DEK failed: " + err.Error()}
+					return
+				}
+				th.KMS.KeyID = newKeyID
+				if len(wrapped) > 0 {
+					th.KMS.WrappedDEK = base64.StdEncoding.EncodeToString(wrapped)
+				}
+				th.KMS.KEKID = kekID
+				th.KMS.KEKVersion = kekVer
+				if nb, merr := json.Marshal(th); merr == nil {
+					_ = store.SaveThread(th.ID, string(nb))
+				}
+			} else {
+				// already has DEK: skip provisioning and only report later
 			}
 			// iterate messages and encrypt plaintext ones
 			prefix := []byte("thread:" + tid + ":msg:")
@@ -391,7 +395,7 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				v := append([]byte(nil), iter.Value()...)
 				// If value looks like JSON, assume plaintext and encrypt it.
 				if store.LikelyJSON(v) {
-					ct, kv, err := rc.EncryptWithDEK(th.KMS.KeyID, v, nil)
+					ct, kv, err := security.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
 						resCh <- res{Thread: tid, Err: err.Error()}
 						return

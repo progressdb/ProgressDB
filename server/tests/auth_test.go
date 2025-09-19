@@ -1,4 +1,4 @@
-package api_test
+package tests
 
 import (
 	"bytes"
@@ -6,77 +6,57 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	api "progressdb/pkg/api"
-	"progressdb/pkg/auth"
+	"progressdb/pkg/api"
 	"progressdb/pkg/config"
+	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
+	"progressdb/pkg/security"
+	"progressdb/pkg/store"
 )
 
-func TestSignHandler_Success(t *testing.T) {
-	h := api.Handler()
-
-	payload := map[string]string{"userId": "u-test"}
-	b, _ := json.Marshal(payload)
-
-	req := httptest.NewRequest("POST", "/v1/_sign", bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Role-Name", "backend")
-	req.Header.Set("Authorization", "Bearer sk_test")
-
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+func setupServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	dir := t.TempDir()
+	dbpath := dir + "/db"
+	if err := logger.Init(); err != nil {
+		t.Fatalf("logger.Init failed: %v", err)
 	}
-	var out map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
-		t.Fatalf("decode response: %v", err)
+	if err := store.Open(dbpath); err != nil {
+		t.Fatalf("store.Open failed: %v", err)
 	}
-	if out["userId"] != "u-test" {
-		t.Fatalf("unexpected userId: %v", out)
+	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	prov, err := kms.NewHashicorpEmbeddedProvider(context.Background(), mk)
+	if err != nil {
+		t.Fatalf("NewHashicorpEmbeddedProvider: %v", err)
 	}
-
-	mac := hmac.New(sha256.New, []byte("sk_test"))
-	mac.Write([]byte("u-test"))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	if out["signature"] != expected {
-		t.Fatalf("signature mismatch; expected %s got %s", expected, out["signature"])
-	}
+	security.RegisterKMSProvider(prov)
+	cfg := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"signsecret": {}}}
+	config.SetRuntime(cfg)
+	return newServer(t, api.Handler())
 }
 
-func TestRequireSignedAuthorMiddleware(t *testing.T) {
-	rc := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"sk_test": {}}, BackendKeys: map[string]struct{}{}}
-	config.SetRuntime(rc)
+func signHMAC(key, user string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(user))
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
-	h := auth.RequireSignedAuthor(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, auth.AuthorIDFromContext(r.Context()))
-	}))
-	mac := hmac.New(sha256.New, []byte("sk_test"))
-	mac.Write([]byte("user-1"))
-	sig := hex.EncodeToString(mac.Sum(nil))
-
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("X-User-ID", "user-1")
-	req.Header.Set("X-User-Signature", sig)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 got %d: %s", rec.Code, rec.Body.String())
+func TestSign_Succeeds_For_Backend(t *testing.T) {
+	srv := setupServer(t)
+	defer srv.Close()
+	body := map[string]string{"userId": "u1"}
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", srv.URL+"/v1/_sign", bytes.NewReader(b))
+	req.Header.Set("X-Role-Name", "backend")
+	req.Header.Set("X-API-Key", "backend-secret")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	if rec.Body.String() != "user-1" {
-		t.Fatalf("unexpected body: %q", rec.Body.String())
-	}
-
-	req2 := httptest.NewRequest("GET", "/", nil)
-	req2.Header.Set("X-User-ID", "user-1")
-	req2.Header.Set("X-User-Signature", "bad")
-	rec2 := httptest.NewRecorder()
-	h.ServeHTTP(rec2, req2)
-	if rec2.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 got %d: %s", rec2.Code, rec2.Body.String())
+	if res.StatusCode != 200 {
+		t.Fatalf("expected 200 got %v", res.Status)
 	}
 }

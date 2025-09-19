@@ -476,7 +476,7 @@ func SaveKey(key string, value []byte) error {
 
 // DBIter returns a raw Pebble iterator for low-level operations. Caller must
 // close the iterator when done.
-func DBIter() (*pebble.Iter, error) {
+func DBIter() (*pebble.Iterator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}

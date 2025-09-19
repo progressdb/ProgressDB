@@ -4,7 +4,6 @@
 
 - [x]  Logging
 - [x]  Metrics
-- [ ]  Performance - *(measure & alert for low speeds & public banners)*
 - [x]  Documentation - *(api & general docs)*
 - [x]  Testing Suite & Tests - *(api & utils)*
 - [x]  Config Flags - *(inline flags etc)*
@@ -13,13 +12,15 @@
 - [x]  Messages - *(edits ~ versioning, deletes, replies, reacts)*
 - [x]  Threads - *(crud a thread, relationship with messages & effects - base at most, id and names for threads)*
 - [x]  Auth - *(authenticated authors & accessible datas)*
-- [ ]  Updates - *(api versioning & image or instance upgrades)*
-- [ ]  Sockets - *(realtime subscriptions, webhooks)*
 - [x]  Encryption - *(local kms encryption)*
 - [x]  State Changes - *(shutdowns, health, restarts - integrity checks etc)*
-- [ ]  Backups - *(cloud backups)*
-- [ ]  Retention - *(data retention policy)*
+- [x]  Backups - *(cloud backups)*
+- [x]  Retention - *(data retention policy)*
+- [ ]  Performance - *(measure & alert for low speeds & public banners)*
+- [ ]  Updates - *(api versioning & image or instance upgrades)*
+- [ ]  Sockets - *(realtime subscriptions, webhooks)*
 - [ ]  Encryption - *(cloud backed kms~hsm encryption)*
+
 
 **Backend SDKs**
 
@@ -44,6 +45,13 @@
 - [ ]  Search - *(per author messages or threads search)*
 - [ ]  Sounds - *(sent, received message sounds)*
 
+**Developer Tools**
+
+- [x]  Data Viewer - *(easy data viewer using admin keys)*
+- [ ]  Debug Mode - *(logs everything)*
+- [ ]  CLI - *(easy analytics & status inspection)*
+- [ ]  ProgressCloud - *(managed hosting service)*
+
 **Experience Upgrades**
 
 - [ ]  Third Integrations - *(vercelai, chromadb, langchain etc)*
@@ -52,10 +60,5 @@
 - [ ]  React - *(add sdk helpers)*
 - [ ]  Summaries - *(add sdk helpers)*
 - [ ]  Events - *(add sdk helpers)*
-
-**Developer Tools**
-
-- [x]  Data Viewer - *(easy data viewer using admin keys)*
-- [ ]  Debug Mode - *(logs everything)*
-- [ ]  CLI - *(easy analytics & status inspection)*
-- [ ]  ProgressCloud - *(managed hosting service)*
+- [ ]  Plugins - *(plugin support for moderation etc)*
+- [ ]  Imports & Exports - *(helpers for current systems etc)*
