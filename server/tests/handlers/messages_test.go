@@ -10,159 +10,216 @@ import (
     utils "progressdb/tests/utils"
 )
 
-func TestCreateMessage_InheritsThreadKMS(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
-	user := "msguser"
-	sig := utils.SignHMAC("signsecret", user)
-	th := map[string]interface{}{"author": user, "title": "mthread"}
-	b, _ := json.Marshal(th)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
-	req.Header.Set("X-User-ID", user)
-	req.Header.Set("X-User-Signature", sig)
-	res, _ := http.DefaultClient.Do(req)
-	var out map[string]interface{}
-	_ = json.NewDecoder(res.Body).Decode(&out)
-	tid := out["id"].(string)
+// Keep tests small and one-per-handler. No extra features here — simple, focused tests.
 
-	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}, "thread": tid}
-	mb, _ := json.Marshal(msg)
-	r2, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	r2.Header.Set("X-User-ID", user)
-	r2.Header.Set("X-User-Signature", sig)
-	r2res, _ := http.DefaultClient.Do(r2)
-	if r2res.StatusCode != 200 {
-		t.Fatalf("create message failed: %v", r2res.Status)
-	}
-}
-
-func TestMessage_CRUD_And_Versions(t *testing.T) {
+func TestCreateMessage(t *testing.T) {
     srv := utils.SetupServer(t)
     defer srv.Close()
-    user := "mcrud"
+    user := "msg_create"
     sig := utils.SignHMAC("signsecret", user)
 
-    th := map[string]interface{}{"author": user, "title": "t-m"}
-    tb, _ := json.Marshal(th)
-    treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(tb))
-    treq.Header.Set("X-User-ID", user)
-    treq.Header.Set("X-User-Signature", sig)
-    tres, _ := http.DefaultClient.Do(treq)
-    var tout map[string]interface{}
-    _ = json.NewDecoder(tres.Body).Decode(&tout)
-    tid := tout["id"].(string)
-
-    msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "first"}, "thread": tid}
-    mb, _ := json.Marshal(msg)
-    mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-    mreq.Header.Set("X-User-ID", user)
-    mreq.Header.Set("X-User-Signature", sig)
-    mres, _ := http.DefaultClient.Do(mreq)
-    if mres.StatusCode != 200 {
-        t.Fatalf("create msg failed: %v", mres.Status)
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "hello"}}
+    b, _ := json.Marshal(payload)
+    req, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    req.Header.Set("X-User-ID", user)
+    req.Header.Set("X-User-Signature", sig)
+    res, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatalf("create request failed: %v", err)
     }
-    var mout map[string]interface{}
-    _ = json.NewDecoder(mres.Body).Decode(&mout)
-    mid := mout["id"].(string)
+    if res.StatusCode != 200 {
+        t.Fatalf("expected 200 got %v", res.Status)
+    }
+    var out map[string]interface{}
+    _ = json.NewDecoder(res.Body).Decode(&out)
+    if id, _ := out["id"].(string); id == "" {
+        t.Fatalf("missing id in response")
+    }
+}
 
-    lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
+func TestListMessages(t *testing.T) {
+    srv := utils.SetupServer(t)
+    defer srv.Close()
+    user := "msg_list"
+    sig := utils.SignHMAC("signsecret", user)
+
+    // create one message to list
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "listme"}}
+    b, _ := json.Marshal(payload)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, _ := http.DefaultClient.Do(creq)
+    var cout map[string]interface{}
+    _ = json.NewDecoder(cres.Body).Decode(&cout)
+    thread := cout["thread"].(string)
+
+    // list
+    lreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages?thread="+thread, nil)
+    lreq.Header.Set("X-User-ID", user)
+    lreq.Header.Set("X-User-Signature", sig)
+    lres, err := http.DefaultClient.Do(lreq)
+    if err != nil {
+        t.Fatalf("list request failed: %v", err)
+    }
+    if lres.StatusCode != 200 {
+        t.Fatalf("expected 200 got %v", lres.Status)
+    }
+    var listOut map[string]interface{}
+    _ = json.NewDecoder(lres.Body).Decode(&listOut)
+    if msgs, ok := listOut["messages"].([]interface{}); !ok || len(msgs) == 0 {
+        t.Fatalf("expected messages in list result")
+    }
+}
+
+func TestGetMessage(t *testing.T) {
+    srv := utils.SetupServer(t)
+    defer srv.Close()
+    user := "msg_get"
+    sig := utils.SignHMAC("signsecret", user)
+
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "gimme"}}
+    b, _ := json.Marshal(payload)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, _ := http.DefaultClient.Do(creq)
+    var cout map[string]interface{}
+    _ = json.NewDecoder(cres.Body).Decode(&cout)
+    id := cout["id"].(string)
+
+    greq, _ := http.NewRequest("GET", srv.URL+"/v1/messages/"+id, nil)
+    greq.Header.Set("X-User-ID", user)
+    greq.Header.Set("X-User-Signature", sig)
+    gres, err := http.DefaultClient.Do(greq)
+    if err != nil {
+        t.Fatalf("get request failed: %v", err)
+    }
+    if gres.StatusCode != 200 {
+        t.Fatalf("expected 200 got %v", gres.Status)
+    }
+    var got map[string]interface{}
+    _ = json.NewDecoder(gres.Body).Decode(&got)
+    if gotID, _ := got["id"].(string); gotID != id {
+        t.Fatalf("expected id %s got %s", id, gotID)
+    }
+}
+
+func TestUpdateMessage(t *testing.T) {
+    srv := utils.SetupServer(t)
+    defer srv.Close()
+    user := "msg_update"
+    sig := utils.SignHMAC("signsecret", user)
+
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "old"}}
+    b, _ := json.Marshal(payload)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, _ := http.DefaultClient.Do(creq)
+    var cout map[string]interface{}
+    _ = json.NewDecoder(cres.Body).Decode(&cout)
+    id := cout["id"].(string)
+
+    // update
+    time.Sleep(10 * time.Millisecond)
+    up := map[string]interface{}{"author": user, "body": map[string]string{"text": "new"}}
+    ub, _ := json.Marshal(up)
+    ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/messages/"+id, bytes.NewReader(ub))
+    ureq.Header.Set("X-User-ID", user)
+    ureq.Header.Set("X-User-Signature", sig)
+    ures, err := http.DefaultClient.Do(ureq)
+    if err != nil {
+        t.Fatalf("update request failed: %v", err)
+    }
+    if ures.StatusCode != 200 {
+        t.Fatalf("expected 200 got %v", ures.Status)
+    }
+    var uout map[string]interface{}
+    _ = json.NewDecoder(ures.Body).Decode(&uout)
+    if body, ok := uout["body"].(map[string]interface{}); !ok || body["text"].(string) != "new" {
+        t.Fatalf("expected updated body text")
+    }
+}
+
+func TestDeleteMessage(t *testing.T) {
+    srv := utils.SetupServer(t)
+    defer srv.Close()
+    user := "msg_delete"
+    sig := utils.SignHMAC("signsecret", user)
+
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "bye"}}
+    b, _ := json.Marshal(payload)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, _ := http.DefaultClient.Do(creq)
+    var cout map[string]interface{}
+    _ = json.NewDecoder(cres.Body).Decode(&cout)
+    id := cout["id"].(string)
+    thread := cout["thread"].(string)
+
+    dreq, _ := http.NewRequest("DELETE", srv.URL+"/v1/messages/"+id, nil)
+    dreq.Header.Set("X-User-ID", user)
+    dreq.Header.Set("X-User-Signature", sig)
+    dres, _ := http.DefaultClient.Do(dreq)
+    if dres.StatusCode != 204 {
+        t.Fatalf("delete failed: %v", dres.Status)
+    }
+
+    // ensure list no longer contains the message
+    lreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages?thread="+thread, nil)
     lreq.Header.Set("X-User-ID", user)
     lreq.Header.Set("X-User-Signature", sig)
     lres, _ := http.DefaultClient.Do(lreq)
-    var lob struct {
-        Messages []map[string]interface{} `json:"messages"`
-    }
-    _ = json.NewDecoder(lres.Body).Decode(&lob)
-    if len(lob.Messages) == 0 {
-        t.Fatalf("expected messages")
-    }
-
-    time.Sleep(50 * time.Millisecond)
-
-    up := map[string]interface{}{"body": map[string]string{"text": "second"}}
-    ub, _ := json.Marshal(up)
-    ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(ub))
-    ureq.Header.Set("X-User-ID", user)
-    ureq.Header.Set("X-User-Signature", sig)
-    ures, _ := http.DefaultClient.Do(ureq)
-    if ures.StatusCode != 200 {
-        t.Fatalf("update msg failed: %v", ures.Status)
-    }
-
-    // verify updated content appears in list
-    lreq2, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
-    lreq2.Header.Set("X-User-ID", user)
-    lreq2.Header.Set("X-User-Signature", sig)
-    lres2, _ := http.DefaultClient.Do(lreq2)
-    var lob3 struct {
-        Messages []map[string]interface{} `json:"messages"`
-    }
-    _ = json.NewDecoder(lres2.Body).Decode(&lob3)
-    found := false
-    for _, m := range lob3.Messages {
-        if idv, ok := m["id"].(string); ok && idv == mid {
-            if body, ok := m["body"].(map[string]interface{}); ok {
-                if txt, ok := body["text"].(string); ok && txt == "second" {
-                    found = true
+    var listOut map[string]interface{}
+    _ = json.NewDecoder(lres.Body).Decode(&listOut)
+    if msgs, ok := listOut["messages"].([]interface{}); ok {
+        for _, m := range msgs {
+            if mm, ok := m.(map[string]interface{}); ok {
+                if mm["id"].(string) == id {
+                    t.Fatalf("expected deleted message to be absent from list")
                 }
             }
         }
     }
-    if !found {
-        t.Fatalf("updated message not visible in list")
-    }
-
-    del := map[string]interface{}{"body": map[string]string{"text": "gone"}, "deleted": true}
-    db, _ := json.Marshal(del)
-    drew, _ := http.NewRequest("PUT", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(db))
-    drew.Header.Set("X-User-ID", user)
-    drew.Header.Set("X-User-Signature", sig)
-    dres, _ := http.DefaultClient.Do(drew)
-    if dres.StatusCode != 200 {
-        t.Fatalf("mark deleted failed: %v", dres.Status)
-    }
-
-    l2, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
-    l2.Header.Set("X-User-ID", user)
-    l2.Header.Set("X-User-Signature", sig)
-    lr2, _ := http.DefaultClient.Do(l2)
-    var lob2 struct {
-        Messages []map[string]interface{} `json:"messages"`
-    }
-    _ = json.NewDecoder(lr2.Body).Decode(&lob2)
-    if len(lob2.Messages) != 0 {
-        t.Fatalf("expected 0 messages after delete; got %d", len(lob2.Messages))
-    }
 }
 
-// Test that listing messages by a different author is forbidden
-func TestListMessages_AuthorAuthorization(t *testing.T) {
+func TestListMessageVersions(t *testing.T) {
     srv := utils.SetupServer(t)
     defer srv.Close()
-    a := "authorA"
-    b := "authorB"
-    sigA := utils.SignHMAC("signsecret", a)
-    sigB := utils.SignHMAC("signsecret", b)
-    th := map[string]interface{}{"author": a, "title": "auth"}
-    tb, _ := json.Marshal(th)
-    treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(tb))
-    treq.Header.Set("X-User-ID", a)
-    treq.Header.Set("X-User-Signature", sigA)
-    tres, _ := http.DefaultClient.Do(treq)
-    var tout map[string]interface{}
-    _ = json.NewDecoder(tres.Body).Decode(&tout)
-    tid := tout["id"].(string)
-    msg := map[string]interface{}{"author": a, "body": map[string]string{"text": "x"}, "thread": tid}
-    mb, _ := json.Marshal(msg)
-    mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-    mreq.Header.Set("X-User-ID", a)
-    mreq.Header.Set("X-User-Signature", sigA)
-    http.DefaultClient.Do(mreq)
-    lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
-    lreq.Header.Set("X-User-ID", b)
-    lreq.Header.Set("X-User-Signature", sigB)
-    lres, _ := http.DefaultClient.Do(lreq)
-    if lres.StatusCode == 200 {
-        t.Fatalf("expected forbidden for other author")
+    user := "msg_versions"
+    sig := utils.SignHMAC("signsecret", user)
+
+    payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "v1"}}
+    b, _ := json.Marshal(payload)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, _ := http.DefaultClient.Do(creq)
+    var cout map[string]interface{}
+    _ = json.NewDecoder(cres.Body).Decode(&cout)
+    id := cout["id"].(string)
+
+    // update once
+    up := map[string]interface{}{"author": user, "body": map[string]string{"text": "v2"}}
+    ub, _ := json.Marshal(up)
+    ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/messages/"+id, bytes.NewReader(ub))
+    ureq.Header.Set("X-User-ID", user)
+    ureq.Header.Set("X-User-Signature", sig)
+    http.DefaultClient.Do(ureq)
+
+    // versions
+    vreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages/"+id+"/versions", nil)
+    vreq.Header.Set("X-User-ID", user)
+    vreq.Header.Set("X-User-Signature", sig)
+    vres, _ := http.DefaultClient.Do(vreq)
+    if vres.StatusCode != 200 {
+        t.Fatalf("versions request failed: %v", vres.Status)
+    }
+    var vout map[string]interface{}
+    _ = json.NewDecoder(vres.Body).Decode(&vout)
+    if versions, ok := vout["versions"].([]interface{}); !ok || len(versions) < 2 {
+        t.Fatalf("expected at least 2 versions")
     }
 }

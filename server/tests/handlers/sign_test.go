@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-func signHMAC(key, user string) string { return utils.SignHMAC(key, user) }
-
 func TestSign_Succeeds_For_Backend(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
