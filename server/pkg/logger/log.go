@@ -1,10 +1,8 @@
 package logger
 
 import (
-	"net/http"
-	"strings"
-
-	"go.uber.org/zap"
+    "net/http"
+    "strings"
 )
 
 var sensitive = map[string]struct{}{
@@ -38,13 +36,13 @@ func SafeHeaders(r *http.Request) string {
 
 // LogRequest logs a concise, safe summary of an incoming request.
 func LogRequest(r *http.Request) {
-	if Log == nil {
-		return
-	}
-	Log.Info("incoming_request",
-		zap.String("method", r.Method),
-		zap.String("path", r.URL.Path),
-		zap.String("remote", r.RemoteAddr),
-		zap.String("headers", SafeHeaders(r)),
-	)
+    if Log == nil {
+        return
+    }
+    Info("incoming_request", map[string]interface{}{
+        "method":  r.Method,
+        "path":    r.URL.Path,
+        "remote":  r.RemoteAddr,
+        "headers": SafeHeaders(r),
+    })
 }

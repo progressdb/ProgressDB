@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"go.uber.org/zap"
+    
 	"golang.org/x/time/rate"
 
 	"progressdb/pkg/logger"
@@ -37,7 +37,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Centralized safe request logging (redacts sensitive headers)
-			logger.LogRequest(r)
+            logger.LogRequest(r)
 			// CORS preflight
 			origin := r.Header.Get("Origin")
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
@@ -62,10 +62,10 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// IP whitelist
 			if len(cfg.IPWhitelist) > 0 {
 				ip := clientIP(r)
-				logger.Log.Debug("ip_check", zap.String("ip", ip))
+                logger.DebugKV("ip_check", "ip", ip)
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
 					http.Error(w, "forbidden", http.StatusForbidden)
-					logger.Log.Warn("request_blocked", zap.String("reason", "ip_not_whitelisted"), zap.String("ip", ip), zap.String("path", r.URL.Path))
+                logger.WarnKV("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
 
 					return
 				}
@@ -75,7 +75,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			role, key, hasAPIKey := authenticate(r, cfg)
 
 			// Log authentication outcome (do not log full key content)
-			logger.Log.Debug("auth_check", zap.Any("role", role), zap.Bool("has_api_key", hasAPIKey))
+                logger.DebugKV("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			// Allow unauthenticated health checks for deployment probes.
 			// Probes often cannot send API keys; accept GET /healthz without
@@ -92,7 +92,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			if role == RoleUnauth {
 				if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					logger.Log.Warn("request_unauthorized", zap.String("path", r.URL.Path), zap.String("remote", r.RemoteAddr))
+                logger.WarnKV("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
 					return
 				}
 				// otherwise, allow through so signature middleware can verify
@@ -115,19 +115,19 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// Scope enforcement for frontend keys
 			if role == RoleFrontend && !frontendAllowed(r) {
 				http.Error(w, "forbidden", http.StatusForbidden)
-				logger.Log.Warn("request_forbidden", zap.String("reason", "frontend_not_allowed"), zap.String("path", r.URL.Path))
+                logger.WarnKV("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
 				return
 			}
 
 			// Rate limiting
 			if !limiters.Allow(key) {
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-				logger.Log.Warn("rate_limited", zap.Bool("has_api_key", hasAPIKey), zap.String("path", r.URL.Path))
+                logger.WarnKV("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
 				return
 			}
 
 			// Log that request passed middleware checks
-			logger.Log.Info("request_allowed", zap.String("method", r.Method), zap.String("path", r.URL.Path), zap.String("role", r.Header.Get("X-Role-Name")))
+                logger.InfoKV("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
 
 			next.ServeHTTP(w, r)
 		})

@@ -5,7 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"go.uber.org/zap"
+    
 	"net/http"
 	"progressdb/pkg/logger"
 	"strings"
@@ -40,13 +40,13 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 		// If we reach here and there's no signature, the caller is not a
 		// trusted backend/admin and we must require signature headers.
 		if sig == "" {
-			logger.Log.Warn("missing_signature_headers", zap.String("path", r.URL.Path), zap.String("remote", r.RemoteAddr))
+                logger.WarnKV("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
 			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
 			return
 		}
 		// signature is present; require userID as well
 		if userID == "" {
-			logger.Log.Warn("missing_signature_headers", zap.String("path", r.URL.Path), zap.String("remote", r.RemoteAddr))
+                logger.WarnKV("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
 			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
 			return
 		}
@@ -54,7 +54,7 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 		// Retrieve signing keys from the canonical config package.
 		keys := config.GetSigningKeys()
 		if len(keys) == 0 {
-			logger.Log.Error("no_signing_keys_configured")
+            logger.ErrorKV("no_signing_keys_configured")
 			http.Error(w, `{"error":"server misconfigured: no signing secrets available"}`, http.StatusInternalServerError)
 			return
 		}
@@ -71,11 +71,11 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 			}
 		}
 		if !ok {
-			logger.Log.Warn("invalid_signature", zap.String("user", userID))
+                logger.WarnKV("invalid_signature", "user", userID)
 			http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
 			return
 		}
-		logger.Log.Info("signature_verified", zap.String("user", userID))
+                logger.InfoKV("signature_verified", "user", userID)
 		ctx := context.WithValue(r.Context(), ctxAuthorKey{}, userID)
 		r = r.WithContext(ctx)
 		// do not set headers; handlers should use context via AuthorIDFromContext

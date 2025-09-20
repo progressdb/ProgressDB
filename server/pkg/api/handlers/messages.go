@@ -13,8 +13,6 @@ import (
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
-	"go.uber.org/zap"
-
 	"sort"
 
 	"github.com/gorilla/mux"
@@ -122,7 +120,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-	logger.Log.Info("message_created", zap.String("thread", m.Thread), zap.String("id", m.ID))
+	logger.InfoKV("message_created", "thread", m.Thread, "id", m.ID)
 	_ = json.NewEncoder(w).Encode(m)
 }
 
@@ -171,7 +169,7 @@ func listMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// sort by TS
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	logger.Log.Info("messages_list", zap.String("thread", threadID), zap.Int("count", len(out)))
+	logger.InfoKV("messages_list", "thread", threadID, "count", len(out))
 	_ = json.NewEncoder(w).Encode(struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`

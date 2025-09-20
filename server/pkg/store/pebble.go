@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/utils"
@@ -29,13 +27,13 @@ var seq uint64
 // a global handle for simple usage in this package.
 func Open(path string) error {
 	var err error
-	logger.Log.Info("opening_pebble_db", zap.String("path", path))
+	logger.InfoKV("opening_pebble_db", "path", path)
 	db, err = pebble.Open(path, &pebble.Options{})
 	if err != nil {
-		logger.Log.Error("pebble_open_failed", zap.String("path", path), zap.Error(err))
+		logger.ErrorKV("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
-	logger.Log.Info("pebble_opened", zap.String("path", path))
+	logger.InfoKV("pebble_opened", "path", path)
 	return nil
 }
 
@@ -48,7 +46,7 @@ func Close() error {
 		return err
 	}
 	db = nil
-	logger.Log.Info("pebble_closed")
+	logger.InfoKV("pebble_closed")
 	return nil
 }
 
@@ -109,17 +107,17 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 
 	// save to database
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
-		logger.Log.Error("save_message_failed", zap.String("thread", threadID), zap.String("key", key), zap.Error(err))
+		logger.ErrorKV("save_message_failed", "thread", threadID, "key", key, "error", err)
 		return err
 	}
-	logger.Log.Info("message_saved", zap.String("thread", threadID), zap.String("key", key), zap.String("msg_id", msgID))
+	logger.InfoKV("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
 		// store version under explicit version namespace
 		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
 		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
-			logger.Log.Error("save_message_index_failed", zap.String("idxKey", idxKey), zap.Error(err))
+			logger.ErrorKV("save_message_index_failed", "idxKey", idxKey, "error", err)
 			return err
 		}
 	}
@@ -163,43 +161,43 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt if needed
 		if security.EncryptionEnabled() {
-			logger.Log.Debug("encryption_enabled_listmessages", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID))
+			logger.DebugKV("encryption_enabled_listmessages", "threadID", threadID, "threadKeyID", threadKeyID)
 			if security.EncryptionHasFieldPolicy() {
 				if threadKeyID == "" {
-					logger.Log.Error("encryption_no_thread_key", zap.String("threadID", threadID))
+					logger.ErrorKV("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
 				var m models.Message
 				if err := json.Unmarshal(v, &m); err != nil {
-					logger.Log.Error("listmessages_invalid_message_json", zap.ByteString("value", v), zap.Error(err))
+					logger.ErrorKV("listmessages_invalid_message_json", "value", v, "error", err)
 					return nil, fmt.Errorf("invalid message JSON: %w", err)
 				}
-				logger.Log.Debug("listmessages_decrypting_field_policy", zap.String("msgID", m.ID), zap.String("threadKeyID", threadKeyID))
+				logger.DebugKV("listmessages_decrypting_field_policy", "msgID", m.ID, "threadKeyID", threadKeyID)
 				b, err := security.DecryptMessageBody(&m, threadKeyID)
 				if err != nil {
-					logger.Log.Error("listmessages_field_decryption_failed", zap.String("msgID", m.ID), zap.String("threadKeyID", threadKeyID), zap.Error(err))
+					logger.ErrorKV("listmessages_field_decryption_failed", "msgID", m.ID, "threadKeyID", threadKeyID, "error", err)
 					return nil, fmt.Errorf("field decryption failed: %w", err)
 				}
 				m.Body = b
 				nb, err := json.Marshal(m)
 				if err != nil {
-					logger.Log.Error("listmessages_marshal_decrypted_failed", zap.String("msgID", m.ID), zap.Error(err))
+					logger.ErrorKV("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", err)
 					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
 				}
-				logger.Log.Debug("listmessages_decrypted_message", zap.String("msgID", m.ID), zap.ByteString("decrypted", nb))
+				logger.DebugKV("listmessages_decrypted_message", "msgID", m.ID, "decrypted", nb)
 				v = nb
 			} else {
 				if threadKeyID == "" {
-					logger.Log.Error("encryption_no_thread_key", zap.String("threadID", threadID))
+					logger.ErrorKV("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
-				logger.Log.Debug("listmessages_decrypting_full_message", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID), zap.ByteString("encrypted", v))
+				logger.DebugKV("listmessages_decrypting_full_message", "threadID", threadID, "threadKeyID", threadKeyID, "encrypted", v)
 				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
 				if err != nil {
-					logger.Log.Error("listmessages_full_decrypt_failed", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID), zap.Error(err), zap.ByteString("encrypted", v))
+					logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", err, "encrypted", v)
 					return nil, fmt.Errorf("decrypt failed: %w", err)
 				}
-				logger.Log.Debug("listmessages_decrypted_full_message", zap.String("threadID", threadID), zap.ByteString("decrypted", dec))
+				logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted", dec)
 				v = dec
 			}
 		}
@@ -290,7 +288,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 					return nil, fmt.Errorf("decrypt failed: %w", err)
 				}
 				// Log out the decrypted value for debugging
-				logger.Log.Debug("decrypted_message_version", zap.String("threadKeyID", threadKeyID), zap.ByteString("decrypted_value", dec))
+				logger.DebugKV("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_value", dec)
 				v = dec
 			}
 		}
@@ -318,10 +316,10 @@ func SaveThread(threadID, data string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
-		logger.Log.Error("save_thread_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("save_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
-	logger.Log.Info("thread_saved", zap.String("thread", threadID))
+	logger.InfoKV("thread_saved", "thread", threadID)
 	return nil
 }
 
@@ -348,10 +346,10 @@ func DeleteThread(threadID string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Delete(key, pebble.Sync); err != nil {
-		logger.Log.Error("delete_thread_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
-	logger.Log.Info("thread_deleted", zap.String("thread", threadID))
+	logger.InfoKV("thread_deleted", "thread", threadID)
 	return nil
 }
 
@@ -363,7 +361,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	key := []byte("thread:" + threadID + ":meta")
 	v, closer, err := db.Get(key)
 	if err != nil {
-		logger.Log.Error("soft_delete_load_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("soft_delete_load_failed", "thread", threadID, "error", err)
 		return err
 	}
 	if closer != nil {
@@ -371,14 +369,14 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	var th models.Thread
 	if err := json.Unmarshal(v, &th); err != nil {
-		logger.Log.Error("soft_delete_unmarshal_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
 		return err
 	}
 	th.Deleted = true
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
 	if err := db.Set(key, nb, pebble.Sync); err != nil {
-		logger.Log.Error("soft_delete_save_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}
 
@@ -393,11 +391,11 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	// SaveMessage expects a models.Message, not a string
 	if err := SaveMessage(threadID, tomb.ID, tomb); err != nil {
-		logger.Log.Error("soft_delete_append_tombstone_failed", zap.String("thread", threadID), zap.Error(err))
+		logger.ErrorKV("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
 		return err
 	}
 
-	logger.Log.Info("thread_soft_deleted", zap.String("thread", threadID), zap.String("actor", actor))
+	logger.InfoKV("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil
 }
 
@@ -468,13 +466,13 @@ func GetKey(key string) (string, error) {
 	}
 	v, closer, err := db.Get([]byte(key))
 	if err != nil {
-		logger.Log.Error("get_key_failed", zap.String("key", key), zap.Error(err))
+		logger.ErrorKV("get_key_failed", "key", key, "error", err)
 		return "", err
 	}
 	if closer != nil {
 		defer closer.Close()
 	}
-	logger.Log.Debug("get_key_ok", zap.String("key", key), zap.Int("len", len(v)))
+	logger.DebugKV("get_key_ok", "key", key, "len", len(v))
 	return string(v), nil
 }
 
@@ -485,10 +483,10 @@ func SaveKey(key string, value []byte) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	if err := db.Set([]byte(key), value, pebble.Sync); err != nil {
-		logger.Log.Error("save_key_failed", zap.String("key", key), zap.Error(err))
+		logger.ErrorKV("save_key_failed", "key", key, "error", err)
 		return err
 	}
-	logger.Log.Debug("save_key_ok", zap.String("key", key), zap.Int("len", len(value)))
+	logger.DebugKV("save_key_ok", "key", key, "len", len(value))
 	return nil
 }
 
