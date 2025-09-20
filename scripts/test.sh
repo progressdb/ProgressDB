@@ -11,11 +11,14 @@ mkdir -p "$GOCACHE"
 # Run from the server directory so the module resolves correctly
 cd server
 
-# Prefer gotestsum for nicer output when available, otherwise fall back to go test
+# Log file for JSON output
+JSON_LOG="../test-results.json"
+
+# Prefer gotestsum for nicer output and JSON log when available, otherwise fall back to go test with tee to file
 if command -v gotestsum >/dev/null 2>&1; then
-  echo "Using gotestsum for formatted test output"
-  gotestsum --format=testdox -- ./... -- -v
+  echo "Using gotestsum for formatted test output and JSON log"
+  gotestsum --format=testdox --jsonfile "$JSON_LOG" -- ./... -- -v
 else
-  echo "gotestsum not found; using go test"
-  go test ./... -v
+  echo "gotestsum not found; using go test and logging output to $JSON_LOG"
+  go test ./... -v | tee "$JSON_LOG"
 fi

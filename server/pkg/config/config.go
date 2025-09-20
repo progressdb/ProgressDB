@@ -19,12 +19,6 @@ var (
 	runtimeCfg *RuntimeConfig
 )
 
-// FieldEntry describes a field to be selectively encrypted.
-type FieldEntry struct {
-	Path      string `yaml:"path"`
-	Algorithm string `yaml:"algorithm"`
-}
-
 // SetRuntime sets the global runtime config.
 func SetRuntime(rc *RuntimeConfig) {
 	runtimeMu.Lock()
@@ -71,12 +65,8 @@ type Config struct {
 			KeyFile  string `yaml:"key_file"`
 		} `yaml:"tls"`
 	} `yaml:"server"`
-	Storage struct {
-		DBPath string `yaml:"db_path"`
-	} `yaml:"storage"`
 	Security struct {
-		Fields []FieldEntry `yaml:"fields"`
-		CORS   struct {
+		CORS struct {
 			AllowedOrigins []string `yaml:"allowed_origins"`
 		} `yaml:"cors"`
 		RateLimit struct {
@@ -84,11 +74,15 @@ type Config struct {
 			Burst int     `yaml:"burst"`
 		} `yaml:"rate_limit"`
 		IPWhitelist []string `yaml:"ip_whitelist"`
-		APIKeys     struct {
+		APIKeys struct {
 			Backend  []string `yaml:"backend"`
 			Frontend []string `yaml:"frontend"`
 			Admin    []string `yaml:"admin"`
 		} `yaml:"api_keys"`
+		Encryption struct {
+			Use    bool     `yaml:"use"`
+			Fields []string `yaml:"fields"`
+		} `yaml:"encryption"`
 		KMS struct {
 			Endpoint      string `yaml:"endpoint"`
 			DataDir       string `yaml:"data_dir"`
@@ -96,44 +90,10 @@ type Config struct {
 			MasterKeyFile string `yaml:"master_key_file"`
 			MasterKeyHex  string `yaml:"master_key_hex"`
 		} `yaml:"kms"`
-		Encryption struct {
-			Use    bool         `yaml:"use"`
-			Fields []FieldEntry `yaml:"fields"`
-		} `yaml:"encryption"`
 	} `yaml:"security"`
 	Logging struct {
-		Level  string `yaml:"level"`
-		Format string `yaml:"format"`
-		HTTP   struct {
-			Enabled bool   `yaml:"enabled"`
-			URL     string `yaml:"url"`
-			Bearer  string `yaml:"bearer"`
-		} `yaml:"http"`
+		Level string `yaml:"level"`
 	} `yaml:"logging"`
-	Validation struct {
-		Required []string `yaml:"required"`
-		Types    []struct {
-			Path string `yaml:"path"`
-			Type string `yaml:"type"`
-		} `yaml:"types"`
-		MaxLen []struct {
-			Path string `yaml:"path"`
-			Max  int    `yaml:"max"`
-		} `yaml:"max_len"`
-		Enums []struct {
-			Path   string   `yaml:"path"`
-			Values []string `yaml:"values"`
-		} `yaml:"enums"`
-		WhenThen []struct {
-			When struct {
-				Path   string      `yaml:"path"`
-				Equals interface{} `yaml:"equals"`
-			} `yaml:"when"`
-			Then struct {
-				Required []string `yaml:"required"`
-			} `yaml:"then"`
-		} `yaml:"when_then"`
-	} `yaml:"validation"`
 }
 
 // Addr returns the HTTP server address as host:port.

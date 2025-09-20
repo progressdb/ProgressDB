@@ -24,8 +24,7 @@ type EnvResult struct {
 	EnvUsed     bool
 }
 
-// LoadEffectiveConfig decides which single source to use (flags, config
-// file, or env) and returns an EffectiveConfigResult plus error.
+// EffectiveConfigResult holds the result of LoadEffectiveConfig.
 type EffectiveConfigResult struct {
 	Config *Config
 	Addr   string
@@ -121,17 +120,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Server.DBPath = v
 	}
 
-	// Encryption fields
+	// Encryption fields (now just []string, not []FieldEntry)
 	if v := os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"); v != "" {
 		envUsed = true
 		parts := parseList(v)
-		envCfg.Security.Fields = nil
-		envCfg.Security.Encryption.Fields = nil
-		for _, p := range parts {
-			entry := FieldEntry{Path: p, Algorithm: "aes-gcm"}
-			envCfg.Security.Fields = append(envCfg.Security.Fields, entry)
-			envCfg.Security.Encryption.Fields = append(envCfg.Security.Encryption.Fields, entry)
-		}
+		envCfg.Security.Encryption.Fields = parts
 	}
 
 	if v := os.Getenv("PROGRESSDB_CORS_ORIGINS"); v != "" {
@@ -176,10 +169,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envUsed = true
 		envCfg.Security.KMS.DataDir = v
 	}
-	// PROGRESSDB_KMS_BINARY is intentionally not supported; the server
-	// discovers and spawns the KMS binary from PATH or alongside the
-	// server executable. Operators who wish to run a custom binary should
-	// run it themselves or modify the server launcher.
 	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
 		envUsed = true
 		envCfg.Security.KMS.MasterKeyFile = v
@@ -226,7 +215,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 // dbPath. It honors an explicit flags.Config (user provided --config)
 // by using the config file only; otherwise it uses flags if any flags
 // are set; else if a config file exists it uses that; otherwise env.
-// EffectiveConfigResult holds the result of LoadEffectiveConfig.
 func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *Config, envRes EnvResult) (EffectiveConfigResult, error) {
 	var res EffectiveConfigResult
 

@@ -19,8 +19,8 @@ This document explains the current ProgressDB server architecture, runtime compo
 - `server/pkg/api` — HTTP router and handler registration. Subpackages:
   - `handlers` — implement endpoints for messages, threads, admin, signing.
 - `server/pkg/store` — Pebble-backed storage helpers (messages, threads, keys, indexes).
-- `server/pkg/security` — encryption abstraction and KMS provider bridge.
-- `server/pkg/kms` — provider adapters (remote client and embedded adapters).
+- `server/pkg/security` — encryption policy and local master-key helpers (field policy, master-key management).
+ - `server/pkg/kms` — KMS provider bridge and provider adapters (remote client and embedded adapters).
 - `server/pkg/auth` — signature verification and author resolution.
 - `server/pkg/logger` — centralized Zap logger and request logging helpers.
 
@@ -55,9 +55,9 @@ This document explains the current ProgressDB server architecture, runtime compo
 
 6) Encryption & KMS integration
 --------------------------------
-- Thread-first DEK provisioning: createThread provisions a per-thread DEK via provider and embeds `kms.key_id` into thread meta.
- - Message writes read thread meta `kms.key_id` and call `security.EncryptWithDEK(keyID, plaintext)`.
- - Message reads use `security.DecryptWithDEK(keyID, ciphertext)`.
+ - Thread-first DEK provisioning: createThread provisions a per-thread DEK via provider and embeds `kms.key_id` into thread meta.
+ - Message writes read thread meta `kms.key_id` and call `kms.EncryptWithDEK(keyID, plaintext)`.
+ - Message reads use `kms.DecryptWithDEK(keyID, ciphertext)`.
 - Provider abstraction supports both remote KMS and embedded provider.
 
 7) Authentication & authorization (summary)

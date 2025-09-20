@@ -118,8 +118,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 
 	// At this point the thread exists (we either created it above & validated the provided thread id & message).
 	// lets store the message
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -183,13 +182,21 @@ func listMessages(w http.ResponseWriter, r *http.Request) {
 // Path parameter: "id" (string, required): message ID.
 // Response: 200 with message JSON, or 404 if not found.
 func getMessage(w http.ResponseWriter, r *http.Request) {
+	// set response content type to json
 	w.Header().Set("Content-Type", "application/json")
+
+	// extract message id from url path variables
 	id := mux.Vars(r)["id"]
+
+	// retrieve the latest version of the message from the store
 	s, err := store.GetLatestMessage(id)
 	if err != nil {
+		// if not found, return 404 with error message
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
 		return
 	}
+
+	// write the message json to the response
 	_, _ = w.Write([]byte(s))
 }
 
@@ -249,18 +256,24 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 // Path parameter: "id" (string, required): message ID.
 // Response: 204 No Content on success, 404 if not found, or 500 on error.
 func deleteMessage(w http.ResponseWriter, r *http.Request) {
+	// extract message ID from path
 	w.Header().Set("Content-Type", "application/json")
 	id := mux.Vars(r)["id"]
+
+	// fetch the latest message from the store
 	s, err := store.GetLatestMessage(id)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
 		return
 	}
+
+	// unmarshal the stored message JSON
 	var m models.Message
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
 		return
 	}
+
 	// verify author owns the message (or is admin)
 	author, code, msg := auth.ResolveAuthorFromRequest(r, "")
 	if code != 0 {
@@ -272,14 +285,22 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
 		return
 	}
+
+	// mark as deleted and update timestamp
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
 	b, _ := json.Marshal(m)
+
+	// save the updated message
 	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// respond with 200 and deleted id
+	_ = json.NewEncoder(w).Encode(struct {
+		ID string `json:"id"`
+	}{ID: m.ID})
 }
 
 // listMessageVersions handles GET /messages/{id}/versions to list all versions of a message.

@@ -2,12 +2,12 @@ package store
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,14 +25,6 @@ var db *pebble.DB
 // seq provides a small counter to reduce key collisions when multiple
 // messages share the same nanosecond timestamp.
 var seq uint64
-var threadLocks sync.Map // map[string]*sync.Mutex
-
-func lockForThread(threadID string) func() {
-	v, _ := threadLocks.LoadOrStore(threadID, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
-	mu.Lock()
-	return func() { mu.Unlock() }
-}
 
 // Open opens (or creates) a Pebble database at the given path and keeps
 // a global handle for simple usage in this package.
@@ -71,7 +63,7 @@ func Ready() bool {
 // SaveMessage appends a message to a thread and indexes it by message ID
 // so messages can be looked up and versioned by ID. If msgID is empty,
 // only the thread entry is written.
-func SaveMessage(threadID, msgID, msg string) error {
+func SaveMessage(threadID, msgID string, msg models.Message) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -79,9 +71,20 @@ func SaveMessage(threadID, msgID, msg string) error {
 	ts := time.Now().UTC().UnixNano()
 	s := atomic.AddUint64(&seq, 1)
 	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
-	data := []byte(msg)
 
-	// Encryption logic: if encryption enabled, use per-thread DEK to encrypt
+	// ensure msgID reflects the message's id when caller omitted it
+	if msgID == "" && msg.ID != "" {
+		msgID = msg.ID
+	}
+
+	// Prepare data for storage (possibly encrypted)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// if encryption is enabled
+	// check if encryption field policy
 	if security.EncryptionEnabled() {
 		sthr, terr := GetThread(threadID)
 		if terr != nil {
@@ -95,11 +98,35 @@ func SaveMessage(threadID, msgID, msg string) error {
 		if keyID == "" {
 			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
 		}
-		enc, _, eerr := kms.EncryptWithDEK(keyID, data, nil)
-		if eerr != nil {
-			return eerr
+		// If a field policy is configured encrypt the configured fields.
+		if security.EncryptionHasFieldPolicy() {
+			if err := security.EncryptMessageBody(&msg, keyID); err != nil {
+				return fmt.Errorf("field encryption failed: %w", err)
+			}
+			nb, err := json.Marshal(m)
+			if err != nil {
+				return fmt.Errorf("failed to marshal message after field encryption: %w", err)
+			}
+			data = nb
+		} else {
+			// Only encrypt the Message.Body if present. Replace with envelope.
+			if msg.Body != nil {
+				bodyBytes, err := json.Marshal(msg.Body)
+				if err != nil {
+					return fmt.Errorf("failed to marshal message body: %w", err)
+				}
+				ct, _, err := kms.EncryptWithDEK(keyID, bodyBytes, nil)
+				if err != nil {
+					return err
+				}
+				msg.Body = map[string]interface{}{"_enc": "gcm", "v": base64.StdEncoding.EncodeToString(ct)}
+				nb, err := json.Marshal(msg)
+				if err != nil {
+					return fmt.Errorf("failed to marshal envelope message: %w", err)
+				}
+				data = nb
+			}
 		}
-		data = enc
 	}
 
 	// save to database
@@ -167,22 +194,35 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		// Copy the value to avoid issues with iterator reuse
 		v := append([]byte(nil), iter.Value()...)
 
-		// If encryption is enabled, attempt to decrypt using the thread DEK.
+		// If encryption is enabled, require proper decryption without fallbacks.
 		if security.EncryptionEnabled() {
-			if threadKeyID != "" {
-				if dec, derr := kms.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
-					v = dec
-				} else {
-					if !likelyJSON(v) {
-						return nil, derr
-					}
-					// tolerate legacy plaintext JSON
-				}
-			} else {
-				// Encryption enabled but no per-thread key: tolerate plaintext JSON
-				if !likelyJSON(v) {
+			if security.EncryptionHasFieldPolicy() {
+				// Field-policy: stored value must be JSON with encrypted envelopes
+				if threadKeyID == "" {
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
+				var mm models.Message
+				if err := json.Unmarshal(v, &mm); err != nil {
+					return nil, fmt.Errorf("invalid message JSON: %w", err)
+				}
+				if err := security.DecryptMessageBody(&mm, threadKeyID); err != nil {
+					return nil, fmt.Errorf("field decryption failed: %w", err)
+				}
+				nb, err := json.Marshal(mm)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
+				}
+				v = nb
+			} else {
+				// Full-message DEK encryption: require thread key and provider decryption
+				if threadKeyID == "" {
+					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
+				}
+				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
+				if err != nil {
+					return nil, fmt.Errorf("decrypt failed: %w", err)
+				}
+				v = dec
 			}
 		}
 
@@ -202,10 +242,15 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 // ListMessageVersions returns all stored versions for a given message ID in
 // chronological order.
 func ListMessageVersions(msgID string) ([]string, error) {
+	// check if the database is open
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
+
+	// build the prefix for all versions of the given message id
 	prefix := []byte("version:msg:" + msgID + ":")
+
+	// create a new iterator for the database
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -213,74 +258,86 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	defer iter.Close()
 
 	var out []string
+	var threadKeyID string
+	var threadChecked bool
+
+	// iterate over all keys with the given prefix
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
+
 		v := append([]byte(nil), iter.Value()...)
-		if security.EncryptionEnabled() {
-			// We cannot determine per-thread DEK here; encrypted values
-			// should be associated with their thread. If the value does not
-			// look like JSON plaintext, fail as we cannot decrypt without
-			// a key.
-			if !likelyJSON(v) {
-				return nil, fmt.Errorf("encrypted value encountered but no DEK available")
+
+		// On first match, extract thread and get thread DEK if encryption enabled
+		if security.EncryptionEnabled() && !threadChecked {
+			threadChecked = true
+			var msg struct {
+				Thread string `json:"thread"`
+			}
+			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
+				sthr, terr := GetThread(msg.Thread)
+				if terr == nil {
+					var th struct {
+						KMS struct {
+							KeyID string `json:"key_id"`
+						} `json:"kms"`
+					}
+					if json.Unmarshal([]byte(sthr), &th) == nil {
+						threadKeyID = th.KMS.KeyID
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("cannot determine thread for message version")
 			}
 		}
+
+		// if encryption is enabled, try to decrypt with thread DEK. Support
+		// field-policy envelopes and full-message ciphertext for legacy data.
+		if security.EncryptionEnabled() {
+			if security.EncryptionHasFieldPolicy() {
+				// Field-policy: require thread key and decrypt envelopes only.
+				if threadKeyID == "" {
+					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
+				}
+				var mm models.Message
+				if err := json.Unmarshal(v, &mm); err != nil {
+					return nil, fmt.Errorf("invalid message JSON: %w", err)
+				}
+				if err := security.DecryptMessageBody(&mm, threadKeyID); err != nil {
+					return nil, fmt.Errorf("field decryption failed: %w", err)
+				}
+				nb, err := json.Marshal(mm)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
+				}
+				v = nb
+			} else {
+				// Full-message DEK: require thread key and decrypt the whole value.
+				if threadKeyID == "" {
+					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
+				}
+				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
+				if err != nil {
+					return nil, fmt.Errorf("decrypt failed: %w", err)
+				}
+				v = dec
+			}
+		}
+
 		out = append(out, string(v))
 	}
+
 	return out, iter.Error()
 }
 
 // GetLatestMessage returns the latest version for a message ID or an error
 // if none found.
 func GetLatestMessage(msgID string) (string, error) {
+	// get all message versions
 	vers, err := ListMessageVersions(msgID)
 	if err != nil {
 		return "", err
-	}
-	if len(vers) == 0 {
-		// Fallback for legacy records: scan all threads and their messages
-		// to find any stored message with this id. This is expensive and
-		// intended only as a compatibility fallback for older records that
-		// were stored without a msgid index.
-		logger.Log.Info("get_latest_message_fallback", zap.String("msgid", msgID))
-		threads, terr := ListThreads()
-		if terr != nil {
-			return "", fmt.Errorf("message not found")
-		}
-		var found []string
-		for _, t := range threads {
-			// t is JSON bytes of thread metadata (string). Try to extract id
-			// without depending on models package.
-			var m map[string]interface{}
-			if err := json.Unmarshal([]byte(t), &m); err != nil {
-				continue
-			}
-			tid, _ := m["id"].(string)
-			if tid == "" {
-				continue
-			}
-			msgs, merr := ListMessages(tid)
-			if merr != nil {
-				continue
-			}
-			for _, s := range msgs {
-				// try to unmarshal message and check id
-				var mm map[string]interface{}
-				if err := json.Unmarshal([]byte(s), &mm); err != nil {
-					continue
-				}
-				if idv, ok := mm["id"].(string); ok && idv == msgID {
-					found = append(found, s)
-				}
-			}
-		}
-		if len(found) == 0 {
-			return "", fmt.Errorf("message not found")
-		}
-		logger.Log.Info("get_latest_message_found_via_scan", zap.String("msgid", msgID))
-		return found[len(found)-1], nil
 	}
 	return vers[len(vers)-1], nil
 }
@@ -486,10 +543,6 @@ func DBSet(key, value []byte) error {
 	return db.Set(key, value, pebble.Sync)
 }
 
-// SaveThreadKey maps a threadID to a keyID for its DEK.
-// Deprecated: per-thread DEK mapping is now stored in thread metadata (thread:<id>:meta).
-// Use GetThread to read the canonical KMS metadata at thread.KMS.KeyID.
-
 // RotateThreadDEK migrates all messages in a thread from the old DEK to a
 // new DEK identified by newKeyID. It backs up original values under keys
 // prefixed with `backup:migrate:` before overwriting. On success it updates
@@ -561,8 +614,12 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	return iter.Error()
 }
 
+// likelyJSON is a helper function that heuristically determines if a byte slice
+// probably contains a JSON object or array. It does this by skipping any leading
+// whitespace and checking if the first non-whitespace character is '{' (indicating
+// a JSON object) or '[' (indicating a JSON array). This is useful for quickly
+// guessing whether a value is JSON-encoded without fully parsing it.
 func likelyJSON(b []byte) bool {
-	// Trim leading spaces and check first byte
 	for _, c := range b {
 		if c == ' ' || c == '\n' || c == '\r' || c == '\t' {
 			continue
@@ -572,5 +629,6 @@ func likelyJSON(b []byte) bool {
 	return false
 }
 
-// LikelyJSON is an exported wrapper for internal likelyJSON helper.
+// LikelyJSON is an exported version of likelyJSON, allowing other packages to
+// check if a byte slice likely contains JSON data.
 func LikelyJSON(b []byte) bool { return likelyJSON(b) }

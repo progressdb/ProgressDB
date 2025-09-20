@@ -21,20 +21,20 @@ This document explains the current server KMS/encryption design, runtime flows, 
 -------------------------
 - Thread creation (recommended workflow):
   1. Server creates thread metadata (POST /v1/threads).
-  2. If encryption is enabled, server calls `security.CreateDEKForThread(threadID)` and writes `kms.key_id` into the thread metadata before returning.
+  2. If encryption is enabled, server calls `kms.CreateDEKForThread(threadID)` and writes `kms.key_id` into the thread metadata before returning.
 - Writing a message:
   1. Server reads `thread.<id>.meta.kms.key_id`.
   3. Stores the ciphertext under `thread:<threadID>:msg:<ts>-<seq>`.
 - Reading messages:
   1. Server reads the thread metadata to obtain `kms.key_id`.
-  3. If provider unavailable and embedded master key present, server may fall back to `security.Decrypt(...)`.
+  2. If the provider is unavailable, and an embedded master key is configured, the server may fall back to local master-key decryption (server-side encryption helpers).
 
 4) Provider interface the server expects
 ----------------------------------------
-- CreateDEKForThread(threadID) -> (keyID, wrappedDEK, kekID, kekVersion, error)
-  2. Calls `security.EncryptWithDEK(keyID, plaintext)` which delegates to provider/KMS.
+ - CreateDEKForThread(threadID) -> (keyID, wrappedDEK, kekID, kekVersion, error)
+ - Calls `kms.EncryptWithDEK(keyID, plaintext)` which delegates to provider/KMS.
 
-  2. For each ciphertext, server calls `security.DecryptWithDEK(keyID, ciphertext)` to get plaintext.
+ - For each ciphertext, server calls `kms.DecryptWithDEK(keyID, ciphertext)` to get plaintext.
 
 - EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error)
 - DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error)
