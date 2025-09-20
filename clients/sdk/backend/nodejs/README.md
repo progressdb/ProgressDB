@@ -83,6 +83,31 @@ const thr = await db.getThread('thread-123', 'service-account')
 - Calls `POST /v1/messages`. Backend callers must provide `author` sent as `X-User-ID`.
   Server generates the message `id` and sets `author` from the provided header or signature.
 
+Thread-scoped message APIs
+
+- `listThreadMessages(threadID: string, opts?: { limit?: number }, author?: string): Promise<{ thread?: string; messages: Message[] }>`
+  - GET `/v1/threads/{threadID}/messages`
+
+- `getThreadMessage(threadID: string, id: string, author?: string): Promise<Message>`
+  - GET `/v1/threads/{threadID}/messages/{id}`
+
+- `updateThreadMessage(threadID: string, id: string, msg: Partial<Message>, author?: string): Promise<Message>`
+  - PUT `/v1/threads/{threadID}/messages/{id}`
+
+- `deleteThreadMessage(threadID: string, id: string, author?: string): Promise<void>`
+  - DELETE `/v1/threads/{threadID}/messages/{id}`
+
+Version & reactions (thread-scoped)
+
+- `listMessageVersions(threadID: string, id: string, author?: string)` -> GET `/v1/threads/{threadID}/messages/{id}/versions`
+- `listReactions(threadID: string, id: string, author?: string)` -> GET `/v1/threads/{threadID}/messages/{id}/reactions`
+- `addOrUpdateReaction(threadID: string, id: string, input: { id: string; reaction: string }, author?: string)` -> POST `/v1/threads/{threadID}/messages/{id}/reactions`
+- `removeReaction(threadID: string, id: string, identity: string, author?: string)` -> DELETE `/v1/threads/{threadID}/messages/{id}/reactions/{identity}`
+
+Deprecated / removed
+
+- The previous message-level endpoints (`GET|PUT|DELETE /v1/messages/{id}`, `GET /v1/messages/{id}/versions`, and message-level reactions) have been removed in favor of the thread-scoped APIs above. Use the thread-scoped methods to operate on message versions and reactions.
+
 Types
 
 - `Message`: { id, thread, author, ts, body?, reply_to?, deleted?, reactions? }

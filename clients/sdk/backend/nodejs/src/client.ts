@@ -41,17 +41,30 @@ export class BackendClient {
     }
   }
 
-  // signing helper
+  /**
+   * Create an HMAC signature for a user id using the server-side signing endpoint.
+   * Backend callers must have appropriate permissions to call this endpoint.
+   * @param userId user id to sign
+   * @returns object { userId, signature }
+   */
   async signUser(userId: string): Promise<{ userId: string; signature: string }> {
     const res = await this.request<{ userId: string; signature: string }>('POST', '/v1/_sign', { userId });
     return res;
   }
 
   // admin endpoints
+  /**
+   * Admin health check.
+   * @returns health object, e.g. { status: 'ok' }
+   */
   async adminHealth(): Promise<{ status: string; service?: string }> {
     return await this.request('GET', '/admin/health');
   }
 
+  /**
+   * Admin stats endpoint.
+   * @returns counts such as { threads, messages }
+   */
   async adminStats(): Promise<{ threads: number; messages: number }> {
     return await this.request('GET', '/admin/stats');
   }
@@ -65,6 +78,10 @@ export class BackendClient {
    * Backend callers MUST supply `author`. The author is sent as `X-User-ID`.
    * Optional filters: `title` (substring) and `slug` (exact match).
    * Throws immediately if `author` is missing.
+   */
+  /**
+   * List threads for a given author with optional filters.
+   * @param opts options object { author, title?, slug? }
    */
   async listThreads(opts: { author: string; title?: string; slug?: string }): Promise<Thread[]> {
     if (!opts || !opts.author) throw new Error('author is required for backend listThreads calls');
@@ -84,6 +101,11 @@ export class BackendClient {
    * Backend callers MUST supply `author` which is sent as `X-User-ID`.
    * The server will resolve and validate the author; mismatches will be rejected.
    */
+  /**
+   * Get thread metadata by id. Backend callers must provide an author (X-User-ID).
+   * @param id thread id
+   * @param author backend author id
+   */
   async getThread(id: string, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend getThread calls');
     const path = `/v1/threads/${encodeURIComponent(id)}`;
@@ -94,6 +116,11 @@ export class BackendClient {
    * Soft-delete a thread by id.
    *
    * Backend callers MUST supply `author` (sent as `X-User-ID`).
+   */
+  /**
+   * Soft-delete a thread by id.
+   * @param id thread id
+   * @param author backend author id
    */
   async deleteThread(id: string, author: string): Promise<void> {
     if (!author) throw new Error('author is required for backend deleteThread calls');
@@ -107,6 +134,11 @@ export class BackendClient {
    * Backend callers MUST supply `author` which is sent as `X-User-ID`.
    * The server will generate the thread id/slug and assign timestamps.
    */
+  /**
+   * Create a new thread. Backend callers must provide an author (X-User-ID).
+   * @param t partial thread payload
+   * @param author backend author id
+   */
   async createThread(t: Partial<Thread>, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend createThread calls');
     return await this.request<Thread>('POST', '/v1/threads', t, { 'X-User-ID': author });
@@ -117,6 +149,12 @@ export class BackendClient {
    *
    * Backend callers MUST supply `author` (sent as `X-User-ID`).
    */
+  /**
+   * Update thread metadata.
+   * @param id thread id
+   * @param t partial thread payload
+   * @param author backend author id
+   */
   async updateThread(id: string, t: Partial<Thread>, author: string): Promise<Thread> {
     if (!author) throw new Error('author is required for backend updateThread calls');
     return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t, { 'X-User-ID': author });
@@ -126,9 +164,107 @@ export class BackendClient {
    * Create a message. Backend callers MUST supply `author` (sent as `X-User-ID`).
    * The server will generate the message id and timestamps.
    */
+  /**
+   * Create a message (server generates id and ts).
+   * @param m message payload
+   * @param author backend author id
+   */
   async createMessage(m: Partial<Message>, author: string): Promise<Message> {
     if (!author) throw new Error('author is required for backend createMessage calls');
     return await this.request<Message>('POST', '/v1/messages', m, { 'X-User-ID': author });
+  }
+
+  /**
+   * List messages in a thread.
+   * Optional query: { limit }
+   */
+  async listThreadMessages(threadID: string, opts: { limit?: number } = {}, author?: string): Promise<{ thread?: string; messages: Message[] }> {
+    const qs = new URLSearchParams();
+    if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+    const path = `/v1/threads/${encodeURIComponent(threadID)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`;
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<{ thread?: string; messages: Message[] }>('GET', path, undefined, headers);
+  }
+
+  /**
+   * Get a single message by id within a thread.
+   * @param threadID thread id to scope the message
+   * @param id message id
+   * @param author optional backend author id to send as X-User-ID
+   */
+  async getThreadMessage(threadID: string, id: string, author?: string): Promise<Message> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<Message>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
+  }
+
+  /**
+   * Update (append new version) a message within a thread.
+   * @param threadID thread id
+   * @param id message id
+   * @param msg partial message payload
+   * @param author optional backend author id to send as X-User-ID
+   */
+  async updateThreadMessage(threadID: string, id: string, msg: Partial<Message>, author?: string): Promise<Message> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<Message>('PUT', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, msg, headers);
+  }
+
+  /**
+   * Soft-delete a message within a thread (append tombstone).
+   * @param threadID thread id
+   * @param id message id
+   * @param author optional backend author id to send as X-User-ID
+   */
+  async deleteThreadMessage(threadID: string, id: string, author?: string): Promise<void> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
+  }
+
+  // Message versions + reactions (thread-scoped)
+  /**
+   * List all stored versions for a message id under a thread.
+   * @param threadID thread id
+   * @param id message id
+   * @param author optional backend author id
+   */
+  async listMessageVersions(threadID: string, id: string, author?: string): Promise<{ id: string; versions: Message[] }> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<{ id: string; versions: Message[] }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/versions`, undefined, headers);
+  }
+
+  /**
+   * List reactions on a message within a thread.
+   * @param threadID thread id
+   * @param id message id
+   * @param author optional backend author id
+   */
+  async listReactions(threadID: string, id: string, author?: string): Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<{ id: string; reactions: Array<{ id: string; reaction: string }> }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, undefined, headers);
+  }
+
+  /**
+   * Add or update a reaction for a message within a thread.
+   * @param threadID thread id
+   * @param id message id
+   * @param input reaction record: { id, reaction }
+   * @param author optional backend author id
+   */
+  async addOrUpdateReaction(threadID: string, id: string, input: { id: string; reaction: string }, author?: string): Promise<Message> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    return await this.request<Message>('POST', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, input, headers);
+  }
+
+  /**
+   * Remove a reaction for a message within a thread.
+   * @param threadID thread id
+   * @param id message id
+   * @param identity reactor identity
+   * @param author optional backend author id
+   */
+  async removeReaction(threadID: string, id: string, identity: string, author?: string): Promise<void> {
+    const headers = author ? { 'X-User-ID': author } : {};
+    await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(identity)}`, undefined, headers);
   }
 }
 
