@@ -293,10 +293,8 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// respond with 200 and deleted id
-	_ = json.NewEncoder(w).Encode(struct {
-		ID string `json:"id"`
-	}{ID: m.ID})
+    // respond with 204 No Content on success
+    w.WriteHeader(http.StatusNoContent)
 }
 
 // listMessageVersions handles GET /messages/{id}/versions to list all versions of a message.

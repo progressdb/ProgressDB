@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"progressdb/pkg/kms"
@@ -597,7 +598,51 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		}
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
-		// decrypt with old DEK
+		// decrypt with old DEK. The stored value may be either raw
+		// ciphertext (legacy) or a JSON-encoded message with an embedded
+		// encrypted body. Handle both cases.
+		if likelyJSON(v) {
+			// try to unmarshal into a message and decrypt the embedded body
+			var mm models.Message
+			if err := json.Unmarshal(v, &mm); err == nil {
+				// decrypt the message body using the canonical helper
+				decBody, derr := security.DecryptMessageBody(&mm, oldKeyID)
+				if derr != nil {
+					return fmt.Errorf("decrypt message failed: %w", derr)
+				}
+				// marshal the decrypted body to obtain plaintext bytes
+				pt, merr := json.Marshal(decBody)
+				if merr != nil {
+					return fmt.Errorf("marshal plaintext failed: %w", merr)
+				}
+				// encrypt plaintext with new DEK
+				ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
+				// zeroize plaintext
+				for i := range pt {
+					pt[i] = 0
+				}
+				if eerr != nil {
+					return fmt.Errorf("encrypt with new key failed: %w", eerr)
+				}
+				// replace embedded body with new ciphertext (base64)
+				mm.Body = map[string]interface{}{"_enc": "gcm", "v": base64.StdEncoding.EncodeToString(ct)}
+				nb, merr := json.Marshal(mm)
+				if merr != nil {
+					return fmt.Errorf("failed to marshal migrated message: %w", merr)
+				}
+				backupKey := append([]byte("backup:migrate:"), k...)
+				if err := db.Set(backupKey, v, pebble.Sync); err != nil {
+					return fmt.Errorf("backup failed: %w", err)
+				}
+				if err := db.Set(k, nb, pebble.Sync); err != nil {
+					return fmt.Errorf("write new ciphertext failed: %w", err)
+				}
+				continue
+			}
+			// fallthrough to raw-case if unmarshal failed
+		}
+
+		// raw ciphertext path (legacy)
 		pt, derr := kms.DecryptWithDEK(oldKeyID, v, nil)
 		if derr != nil {
 			return fmt.Errorf("decrypt message failed: %w", derr)
