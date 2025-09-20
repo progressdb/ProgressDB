@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"strings"
 	"sync"
@@ -80,41 +81,25 @@ func SaveMessage(threadID, msgID, msg string) error {
 	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 	data := []byte(msg)
 
-	// Encryption logic: check if encryption is enabled, then check if field policy is enabled, then proceed accordingly.
+	// Encryption logic: if encryption enabled, use per-thread DEK to encrypt
 	if security.EncryptionEnabled() {
-		if security.EncryptionHasFieldPolicy() {
-			// Field-policy encryption is enabled and encryption is on.
-			out, err := security.EncryptJSONFields(data)
-			if err != nil {
-				return fmt.Errorf("field encryption failed: %w", err)
-			}
-			data = out
-		} else {
-			// No field policy: perform full-message DEK encryption using the thread's configured DEK.
-			sthr, terr := GetThread(threadID)
-			if terr != nil {
-				return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
-			}
-			var th models.Thread
-			if err := json.Unmarshal([]byte(sthr), &th); err != nil {
-				return fmt.Errorf("invalid thread metadata: %w", err)
-			}
-			keyID := th.KMS.KeyID
-			if keyID == "" {
-				return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
-			}
-			enc, _, eerr := security.EncryptWithDEK(keyID, data, nil)
-			if eerr != nil {
-				return eerr
-			}
-			data = enc
+		sthr, terr := GetThread(threadID)
+		if terr != nil {
+			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
 		}
-	} else {
-		// If encryption is not enabled but a field policy is configured, this is a configuration error.
-		if security.EncryptionHasFieldPolicy() {
-			logger.Log.Error("field encryption policy configured but encryption not enabled")
+		var th models.Thread
+		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
+			return fmt.Errorf("invalid thread metadata: %w", err)
 		}
-		// Otherwise, store plaintext.
+		keyID := th.KMS.KeyID
+		if keyID == "" {
+			return fmt.Errorf("encryption enabled but no DEK configured for thread %s", threadID)
+		}
+		enc, _, eerr := kms.EncryptWithDEK(keyID, data, nil)
+		if eerr != nil {
+			return eerr
+		}
+		data = enc
 	}
 
 	// save to database
@@ -182,49 +167,21 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		// Copy the value to avoid issues with iterator reuse
 		v := append([]byte(nil), iter.Value()...)
 
-		// If encryption is enabled, attempt to decrypt the message
+		// If encryption is enabled, attempt to decrypt using the thread DEK.
 		if security.EncryptionEnabled() {
-			if security.EncryptionHasFieldPolicy() {
-				// If a field policy is configured, try full-message decrypt first
-				if dec, err := security.Decrypt(v); err == nil {
+			if threadKeyID != "" {
+				if dec, derr := kms.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
 					v = dec
 				} else {
-					// If full-message decrypt fails, try field-level decrypt
-					if outJSON, err := security.DecryptJSONFields(v); err == nil {
-						v = outJSON
-					} else if likelyJSON(v) {
-						// If the value looks like JSON, tolerate legacy plaintext JSON
-					} else {
-						// If not JSON, return the error
-						return nil, err
+					if !likelyJSON(v) {
+						return nil, derr
 					}
+					// tolerate legacy plaintext JSON
 				}
 			} else {
-				// No field policy: prefer provider-backed per-thread DEK decryption
-				if threadKeyID != "" {
-					// Try to decrypt with the thread's DEK
-					if dec, derr := security.DecryptWithDEK(threadKeyID, v, nil); derr == nil {
-						v = dec
-					} else {
-						// If that fails, fall back to generic decrypt (may handle master-key mode)
-						if dec2, err := security.Decrypt(v); err == nil {
-							v = dec2
-						} else if !likelyJSON(v) {
-							// If not JSON, return the error from DEK decrypt
-							return nil, derr
-						}
-					}
-				} else {
-					// If no threadKeyID, try generic decrypt
-					if dec, err := security.Decrypt(v); err != nil {
-						// If decrypt fails and value is not JSON, return error
-						if !likelyJSON(v) {
-							return nil, err
-						}
-						// Otherwise, tolerate legacy plaintext JSON values
-					} else {
-						v = dec
-					}
+				// Encryption enabled but no per-thread key: tolerate plaintext JSON
+				if !likelyJSON(v) {
+					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
 			}
 		}
@@ -262,26 +219,12 @@ func ListMessageVersions(msgID string) ([]string, error) {
 		}
 		v := append([]byte(nil), iter.Value()...)
 		if security.EncryptionEnabled() {
-			// Reuse the same decrypt logic as ListMessages
-			if security.EncryptionHasFieldPolicy() {
-				if dec, err := security.Decrypt(v); err == nil {
-					v = dec
-				} else if outJSON, err := security.DecryptJSONFields(v); err == nil {
-					v = outJSON
-				} else if likelyJSON(v) {
-					// tolerate legacy plaintext JSON
-				} else {
-					return nil, err
-				}
-			} else {
-				// Prefer provider-backed per-thread DEK decryption when available.
-				if dec, err := security.Decrypt(v); err != nil {
-					if !likelyJSON(v) {
-						return nil, err
-					}
-				} else {
-					v = dec
-				}
+			// We cannot determine per-thread DEK here; encrypted values
+			// should be associated with their thread. If the value does not
+			// look like JSON plaintext, fail as we cannot decrypt without
+			// a key.
+			if !likelyJSON(v) {
+				return nil, fmt.Errorf("encrypted value encountered but no DEK available")
 			}
 		}
 		out = append(out, string(v))
@@ -580,12 +523,12 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt with old DEK
-		pt, derr := security.DecryptWithDEK(oldKeyID, v, nil)
+		pt, derr := kms.DecryptWithDEK(oldKeyID, v, nil)
 		if derr != nil {
 			return fmt.Errorf("decrypt message failed: %w", derr)
 		}
 		// encrypt with new DEK
-		ct, _, eerr := security.EncryptWithDEK(newKeyID, pt, nil)
+		ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
 		// zeroize plaintext
 		for i := range pt {
 			pt[i] = 0

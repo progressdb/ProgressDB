@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"progressdb/pkg/auth"
+	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
@@ -83,7 +84,7 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 	t.UpdatedTS = t.CreatedTS
 
 	if security.EncryptionEnabled() {
-		keyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(t.ID)
+		keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(t.ID)
 		if err != nil {
 			return models.Thread{}, err
 		}

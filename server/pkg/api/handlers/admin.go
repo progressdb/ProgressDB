@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 	"strings"
@@ -152,7 +152,7 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// create new DEK for thread
-	newKeyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(req.ThreadID)
+	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -262,7 +262,7 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 		sem <- struct{}{}
 		go func(k string) {
 			defer func() { <-sem }()
-			_, newKek, _, err := security.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
+			_, newKek, _, err := kms.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
 			if err != nil {
 				resCh <- res{Key: k, Err: err.Error()}
 				return
@@ -365,7 +365,7 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 			}
 			if th.KMS.KeyID == "" {
 				// provision a DEK for this thread
-				newKeyID, wrapped, kekID, kekVer, err := security.CreateDEKForThread(tid)
+				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
 				if err != nil {
 					resCh <- res{Thread: tid, Err: "create DEK failed: " + err.Error()}
 					return
@@ -398,7 +398,7 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				v := append([]byte(nil), iter.Value()...)
 				// If value looks like JSON, assume plaintext and encrypt it.
 				if store.LikelyJSON(v) {
-					ct, kv, err := security.EncryptWithDEK(th.KMS.KeyID, v, nil)
+					ct, kv, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
 						resCh <- res{Thread: tid, Err: err.Error()}
 						return

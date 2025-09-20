@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"progressdb/pkg/kms"
-	"progressdb/pkg/security"
 )
 
 // setupKMS starts and registers KMS when encryption is enabled.
@@ -67,11 +66,9 @@ func (a *App) setupKMS(ctx context.Context) error {
 		// Construct an embedded HashiCorp AEAD provider and register it with
 		// the server's security layer so the rest of the code uses the
 		// KMS abstraction rather than direct key material handling.
-		prov, err := kms.NewHashicorpEmbeddedProvider(ctx, mk)
-		if err != nil {
+		if err := kms.RegisterHashicorpEmbeddedProvider(ctx, mk); err != nil {
 			return fmt.Errorf("failed to initialize embedded KMS provider: %w", err)
 		}
-		security.RegisterKMSProvider(prov)
 		log.Printf("encryption enabled: true (embedded mode, hashicorp AEAD)")
 		return nil
 	case "external":
@@ -80,7 +77,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 			kms_endpoint = "127.0.0.1:6820"
 		}
 		a.rc = kms.NewRemoteClient(kms_endpoint)
-		security.RegisterKMSProvider(a.rc)
+		kms.RegisterKMSProvider(a.rc)
 		if err := a.rc.Health(); err != nil {
 			return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", kms_endpoint, err)
 		}

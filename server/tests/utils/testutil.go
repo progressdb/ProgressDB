@@ -58,7 +58,7 @@ func SetupServer(t *testing.T) *LocalServer {
 	if err != nil {
 		t.Fatalf("NewHashicorpEmbeddedProvider: %v", err)
 	}
-	security.RegisterKMSProvider(prov)
+	kms.RegisterKMSProvider(prov)
 	cfg := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"signsecret": {}}}
 	config.SetRuntime(cfg)
 	prev := http.DefaultClient
