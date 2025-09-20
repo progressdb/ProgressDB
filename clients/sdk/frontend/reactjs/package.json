@@ -8,7 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test": "vitest",
+    "test:unit": "vitest --dir tests/unit",
+    "test:integration": "vitest --dir tests/integration"
   },
   "peerDependencies": {
     "react": "^16.8 || ^17 || ^18 || ^19"
@@ -18,8 +21,13 @@
   },
   "devDependencies": {
     "typescript": "^4.9.5",
-    "@types/react": "^18.0.0"
+    "@types/react": "^18.0.0",
+    "vitest": "^1.0.0",
+    "msw": "^1.2.1",
+    "@testing-library/react": "^13.0.0",
+    "@testing-library/jest-dom": "^5.16.5"
   },
+  
   "files": ["dist"],
   "keywords": ["progressdb","react","sdk","hooks"],
   "license": "MIT"

@@ -61,3 +61,7 @@ Examples:
 
   # Run all frontend tests in watch mode
   ./scripts/sdk/test-frontend.sh --all --watch
+
+Python SDK tests
+
+- `./scripts/sdk/test-python.sh` — run Python backend SDK tests (pytest + responses). Installs pytest and responses into the active Python environment and executes tests under `clients/sdk/backend/python/tests`.
