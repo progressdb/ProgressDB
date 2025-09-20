@@ -205,7 +205,7 @@ export class BackendClient {
     const qs = new URLSearchParams();
     if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
     const path = `/v1/threads/${encodeURIComponent(threadID)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`;
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<{ thread?: string; messages: Message[] }>('GET', path, undefined, headers);
   }
 
@@ -216,7 +216,7 @@ export class BackendClient {
    * @param author optional backend author id to send as X-User-ID
    */
   async getThreadMessage(threadID: string, id: string, author?: string): Promise<Message> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<Message>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
   }
 
@@ -228,7 +228,7 @@ export class BackendClient {
    * @param author optional backend author id to send as X-User-ID
    */
   async updateThreadMessage(threadID: string, id: string, msg: Partial<Message>, author?: string): Promise<Message> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<Message>('PUT', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, msg, headers);
   }
 
@@ -239,7 +239,7 @@ export class BackendClient {
    * @param author optional backend author id to send as X-User-ID
    */
   async deleteThreadMessage(threadID: string, id: string, author?: string): Promise<void> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
   }
 
@@ -251,7 +251,7 @@ export class BackendClient {
    * @param author optional backend author id
    */
   async listMessageVersions(threadID: string, id: string, author?: string): Promise<{ id: string; versions: Message[] }> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<{ id: string; versions: Message[] }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/versions`, undefined, headers);
   }
 
@@ -262,7 +262,7 @@ export class BackendClient {
    * @param author optional backend author id
    */
   async listReactions(threadID: string, id: string, author?: string): Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<{ id: string; reactions: Array<{ id: string; reaction: string }> }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, undefined, headers);
   }
 
@@ -274,7 +274,7 @@ export class BackendClient {
    * @param author optional backend author id
    */
   async addOrUpdateReaction(threadID: string, id: string, input: { id: string; reaction: string }, author?: string): Promise<Message> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     return await this.request<Message>('POST', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, input, headers);
   }
 
@@ -286,7 +286,7 @@ export class BackendClient {
    * @param author optional backend author id
    */
   async removeReaction(threadID: string, id: string, identity: string, author?: string): Promise<void> {
-    const headers = author ? { 'X-User-ID': author } : {};
+    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
     await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(identity)}`, undefined, headers);
   }
 }

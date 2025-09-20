@@ -47,3 +47,17 @@ Examples:
 
   # Non-interactive publish to both registries
   ./.scripts/sdk/publish-node.sh --yes
+
+Test helpers
+
+- `./scripts/sdk/test-node.sh` — run Node SDK tests (backend). Usage: `./scripts/sdk/test-node.sh [--unit|--integration|--all] [--watch]`.
+- `./scripts/sdk/test-frontend.sh` — run frontend SDK tests (typescript + react). Usage: `./scripts/sdk/test-frontend.sh [--unit|--integration|--all] [--watch]`.
+- `./scripts/sdk/test-all-sdks.sh` — run all SDK tests sequentially (or `--watch` to run both in watch mode).
+
+Examples:
+
+  # Run backend unit tests
+  ./scripts/sdk/test-node.sh --unit
+
+  # Run all frontend tests in watch mode
+  ./scripts/sdk/test-frontend.sh --all --watch
