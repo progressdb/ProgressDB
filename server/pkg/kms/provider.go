@@ -2,6 +2,7 @@ package kms
 
 import (
 	"errors"
+	"progressdb/pkg/logger"
 	"sync"
 )
 
@@ -75,14 +76,22 @@ func DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error) {
 	p := provider
 	providerMu.RUnlock()
 	if p == nil {
+		logger.ErrorKV("DecryptWithDEK failed: no kms provider registered", "dekID", dekID)
 		return nil, errors.New("no kms provider registered")
 	}
 	type decNewIf interface {
 		DecryptWithDEK(string, []byte, []byte) ([]byte, error)
 	}
 	if d, ok := p.(decNewIf); ok {
-		return d.DecryptWithDEK(dekID, ciphertext, aad)
+		plaintext, err := d.DecryptWithDEK(dekID, ciphertext, aad)
+		if err != nil {
+			logger.ErrorKV("DecryptWithDEK error", "dekID", dekID, "err", err)
+		} else {
+			logger.InfoKV("DecryptWithDEK success", "dekID", dekID, "plaintext_len", len(plaintext))
+		}
+		return plaintext, err
 	}
+	logger.ErrorKV("DecryptWithDEK failed: provider does not support DecryptWithDEK", "dekID", dekID)
 	return nil, errors.New("provider does not support DecryptWithDEK")
 }
 

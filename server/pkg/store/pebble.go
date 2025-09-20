@@ -191,14 +191,35 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 					logger.ErrorKV("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
-				logger.DebugKV("listmessages_decrypting_full_message", "threadID", threadID, "threadKeyID", threadKeyID, "encrypted", v)
-				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
-				if err != nil {
-					logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", err, "encrypted", v)
-					return nil, fmt.Errorf("decrypt failed: %w", err)
+				// The stored value may be a JSON message where only the body is
+				// encrypted (body -> {"_enc":"gcm","v":"<base64>"}). Try to
+				// unmarshal and delegate to the canonical decrypt helper. If that
+				// fails (legacy/raw ciphertext), fall back to direct KMS decrypt.
+				var m models.Message
+				if err := json.Unmarshal(v, &m); err == nil {
+					b, derr := security.DecryptMessageBody(&m, threadKeyID)
+					if derr != nil {
+						logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", derr)
+						return nil, fmt.Errorf("decrypt failed: %w", derr)
+					}
+					m.Body = b
+					nb, merr := json.Marshal(m)
+					if merr != nil {
+						logger.ErrorKV("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", merr)
+						return nil, fmt.Errorf("failed to marshal decrypted message: %w", merr)
+					}
+					logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted", nb)
+					v = nb
+				} else {
+					logger.DebugKV("listmessages_decrypting_full_message", "threadID", threadID, "threadKeyID", threadKeyID, "encrypted_len", len(v))
+					dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
+					if err != nil {
+						logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", err)
+						return nil, fmt.Errorf("decrypt failed: %w", err)
+					}
+					logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted_len", len(dec))
+					v = dec
 				}
-				logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted", dec)
-				v = dec
 			}
 		}
 		// append to output
@@ -215,12 +236,15 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 // ListMessageVersions returns all stored versions for a given message ID in
 // chronological order.
 func ListMessageVersions(msgID string) ([]string, error) {
+	// check if db is open
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
 
+	// build prefix for message versions
 	prefix := []byte("version:msg:" + msgID + ":")
 
+	// create iterator for pebble
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -231,21 +255,28 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	var threadKeyID string
 	var threadChecked bool
 
+	// iterate over all keys with the prefix
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+		// stop if key does not match prefix
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
 
+		// copy value bytes
 		v := append([]byte(nil), iter.Value()...)
 
+		// if encryption is enabled and we haven't checked thread key yet
 		if security.EncryptionEnabled() && !threadChecked {
 			threadChecked = true
+			// try to get thread id from message json
 			var msg struct {
 				Thread string `json:"thread"`
 			}
 			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
+				// get thread metadata
 				sthr, terr := GetThread(msg.Thread)
 				if terr == nil {
+					// extract key id from thread metadata
 					var th struct {
 						KMS struct {
 							KeyID string `json:"key_id"`
@@ -256,15 +287,20 @@ func ListMessageVersions(msgID string) ([]string, error) {
 					}
 				}
 			} else {
+				// cannot determine thread for this message version
 				return nil, fmt.Errorf("cannot determine thread for message version")
 			}
 		}
 
+		// if encryption is enabled, decrypt the value
 		if security.EncryptionEnabled() {
+			// field-level encryption policy
 			if security.EncryptionHasFieldPolicy() {
+				// must have thread key id
 				if threadKeyID == "" {
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
 				}
+				// unmarshal message and decrypt body
 				var mm models.Message
 				if err := json.Unmarshal(v, &mm); err != nil {
 					return nil, fmt.Errorf("invalid message JSON: %w", err)
@@ -280,22 +316,43 @@ func ListMessageVersions(msgID string) ([]string, error) {
 				}
 				v = nb
 			} else {
+				// full-value encryption
 				if threadKeyID == "" {
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
 				}
-				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
-				if err != nil {
-					return nil, fmt.Errorf("decrypt failed: %w", err)
+				// Attempt to unmarshal the stored value into a Message and
+				// delegate to the canonical decrypt helper; this handles the
+				// common case where only the body is embedded as
+				// {"_enc":"gcm","v":"<base64>"}.
+				var mm models.Message
+				if err := json.Unmarshal(v, &mm); err == nil {
+					b, derr := security.DecryptMessageBody(&mm, threadKeyID)
+					if derr != nil {
+						return nil, fmt.Errorf("decrypt failed: %w", derr)
+					}
+					mm.Body = b
+					nb, merr := json.Marshal(mm)
+					if merr != nil {
+						return nil, fmt.Errorf("failed to marshal decrypted message: %w", merr)
+					}
+					v = nb
+				} else {
+					dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
+					if err != nil {
+						return nil, fmt.Errorf("decrypt failed: %w", err)
+					}
+					// log decrypted length for debugging
+					logger.DebugKV("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_len", len(dec))
+					v = dec
 				}
-				// Log out the decrypted value for debugging
-				logger.DebugKV("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_value", dec)
-				v = dec
 			}
 		}
 
+		// append the (possibly decrypted) value to output
 		out = append(out, string(v))
 	}
 
+	// return all versions or error from iterator
 	return out, iter.Error()
 }
 

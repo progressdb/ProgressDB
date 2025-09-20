@@ -1,12 +1,12 @@
 package logger
 
 import (
-    "fmt"
-    "os"
-    "strings"
+	"fmt"
+	"os"
+	"strings"
 
-    "go.uber.org/zap"
-    "go.uber.org/zap/zapcore"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var Log *zap.Logger
@@ -83,175 +83,210 @@ func Init() error {
 
 // Sync flushes buffered logs.
 func Sync() {
-    if Log != nil {
-        _ = Log.Sync()
-    }
+	if Log != nil {
+		_ = Log.Sync()
+	}
 }
 
 // convertMapToFields converts a generic map into zap fields.
 func convertMapToFields(m map[string]interface{}) []zap.Field {
-    if len(m) == 0 {
-        return nil
-    }
-    out := make([]zap.Field, 0, len(m))
-    for k, v := range m {
-        switch val := v.(type) {
-        case string:
-            out = append(out, zap.String(k, val))
-        case bool:
-            out = append(out, zap.Bool(k, val))
-        case int:
-            out = append(out, zap.Int(k, val))
-        case int8:
-            out = append(out, zap.Int8(k, val))
-        case int16:
-            out = append(out, zap.Int16(k, val))
-        case int32:
-            out = append(out, zap.Int32(k, val))
-        case int64:
-            out = append(out, zap.Int64(k, val))
-        case uint:
-            out = append(out, zap.Uint(k, val))
-        case uint8:
-            out = append(out, zap.Uint8(k, val))
-        case uint16:
-            out = append(out, zap.Uint16(k, val))
-        case uint32:
-            out = append(out, zap.Uint32(k, val))
-        case uint64:
-            out = append(out, zap.Uint64(k, val))
-        case float32:
-            out = append(out, zap.Float32(k, val))
-        case float64:
-            out = append(out, zap.Float64(k, val))
-        case error:
-            out = append(out, zap.Error(val))
-        case []byte:
-            out = append(out, zap.ByteString(k, val))
-        default:
-            out = append(out, zap.Any(k, val))
-        }
-    }
-    return out
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]zap.Field, 0, len(m))
+	for k, v := range m {
+		switch val := v.(type) {
+		case string:
+			out = append(out, zap.String(k, val))
+		case bool:
+			out = append(out, zap.Bool(k, val))
+		case int:
+			out = append(out, zap.Int(k, val))
+		case int8:
+			out = append(out, zap.Int8(k, val))
+		case int16:
+			out = append(out, zap.Int16(k, val))
+		case int32:
+			out = append(out, zap.Int32(k, val))
+		case int64:
+			out = append(out, zap.Int64(k, val))
+		case uint:
+			out = append(out, zap.Uint(k, val))
+		case uint8:
+			out = append(out, zap.Uint8(k, val))
+		case uint16:
+			out = append(out, zap.Uint16(k, val))
+		case uint32:
+			out = append(out, zap.Uint32(k, val))
+		case uint64:
+			out = append(out, zap.Uint64(k, val))
+		case float32:
+			out = append(out, zap.Float32(k, val))
+		case float64:
+			out = append(out, zap.Float64(k, val))
+		case error:
+			out = append(out, zap.Error(val))
+		case []byte:
+			out = append(out, zap.ByteString(k, val))
+		default:
+			out = append(out, zap.Any(k, val))
+		}
+	}
+	return out
 }
 
 // High-level logging helpers that accept a message name and a map of key->value.
 // Callers can pass nil or an empty map when no structured fields are needed.
 func Debug(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Debug(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Debug(msg, convertMapToFields(fields)...)
 }
 
 func Info(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Info(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Info(msg, convertMapToFields(fields)...)
 }
 
 func Warn(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Warn(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Warn(msg, convertMapToFields(fields)...)
 }
 
 func Error(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Error(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Error(msg, convertMapToFields(fields)...)
 }
 
 func DPanic(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.DPanic(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.DPanic(msg, convertMapToFields(fields)...)
 }
 
 func Panic(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Panic(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Panic(msg, convertMapToFields(fields)...)
 }
 
 func Fatal(msg string, fields map[string]interface{}) {
-    if Log == nil {
-        return
-    }
-    Log.Fatal(msg, convertMapToFields(fields)...)
+	if Log == nil {
+		return
+	}
+	Log.Fatal(msg, convertMapToFields(fields)...)
 }
 
 // kvToFields converts variadic key/value pairs into zap fields. Keys are
 // coerced to strings using fmt.Sprint when not a string. If an odd number of
 // elements is provided, the last key will have a nil value.
 func kvToFields(kv []interface{}) []zap.Field {
-    if len(kv) == 0 {
-        return nil
-    }
-    out := make([]zap.Field, 0, len(kv)/2)
-    for i := 0; i < len(kv); i += 2 {
-        var key string
-        if s, ok := kv[i].(string); ok {
-            key = s
-        } else {
-            key = fmt.Sprint(kv[i])
-        }
-        var v interface{}
-        if i+1 < len(kv) {
-            v = kv[i+1]
-        } else {
-            v = nil
-        }
-        switch val := v.(type) {
-        case string:
-            out = append(out, zap.String(key, val))
-        case bool:
-            out = append(out, zap.Bool(key, val))
-        case int:
-            out = append(out, zap.Int(key, val))
-        case int8:
-            out = append(out, zap.Int8(key, val))
-        case int16:
-            out = append(out, zap.Int16(key, val))
-        case int32:
-            out = append(out, zap.Int32(key, val))
-        case int64:
-            out = append(out, zap.Int64(key, val))
-        case uint:
-            out = append(out, zap.Uint(key, val))
-        case uint8:
-            out = append(out, zap.Uint8(key, val))
-        case uint16:
-            out = append(out, zap.Uint16(key, val))
-        case uint32:
-            out = append(out, zap.Uint32(key, val))
-        case uint64:
-            out = append(out, zap.Uint64(key, val))
-        case float32:
-            out = append(out, zap.Float32(key, val))
-        case float64:
-            out = append(out, zap.Float64(key, val))
-        case error:
-            out = append(out, zap.NamedError(key, val))
-        case []byte:
-            out = append(out, zap.ByteString(key, val))
-        default:
-            out = append(out, zap.Any(key, val))
-        }
-    }
-    return out
+	if len(kv) == 0 {
+		return nil
+	}
+	out := make([]zap.Field, 0, len(kv)/2)
+	for i := 0; i < len(kv); i += 2 {
+		var key string
+		if s, ok := kv[i].(string); ok {
+			key = s
+		} else {
+			key = fmt.Sprint(kv[i])
+		}
+		var v interface{}
+		if i+1 < len(kv) {
+			v = kv[i+1]
+		} else {
+			v = nil
+		}
+		switch val := v.(type) {
+		case string:
+			out = append(out, zap.String(key, val))
+		case bool:
+			out = append(out, zap.Bool(key, val))
+		case int:
+			out = append(out, zap.Int(key, val))
+		case int8:
+			out = append(out, zap.Int8(key, val))
+		case int16:
+			out = append(out, zap.Int16(key, val))
+		case int32:
+			out = append(out, zap.Int32(key, val))
+		case int64:
+			out = append(out, zap.Int64(key, val))
+		case uint:
+			out = append(out, zap.Uint(key, val))
+		case uint8:
+			out = append(out, zap.Uint8(key, val))
+		case uint16:
+			out = append(out, zap.Uint16(key, val))
+		case uint32:
+			out = append(out, zap.Uint32(key, val))
+		case uint64:
+			out = append(out, zap.Uint64(key, val))
+		case float32:
+			out = append(out, zap.Float32(key, val))
+		case float64:
+			out = append(out, zap.Float64(key, val))
+		case error:
+			out = append(out, zap.NamedError(key, val))
+		case []byte:
+			out = append(out, zap.ByteString(key, val))
+		default:
+			out = append(out, zap.Any(key, val))
+		}
+	}
+	return out
 }
 
 // Variadic KV helpers
-func DebugKV(msg string, kv ...interface{}) { if Log == nil { return }; Log.Debug(msg, kvToFields(kv...)...) }
-func InfoKV(msg string, kv ...interface{})  { if Log == nil { return }; Log.Info(msg, kvToFields(kv...)...) }
-func WarnKV(msg string, kv ...interface{})  { if Log == nil { return }; Log.Warn(msg, kvToFields(kv...)...) }
-func ErrorKV(msg string, kv ...interface{}) { if Log == nil { return }; Log.Error(msg, kvToFields(kv...)...) }
-func DPanicKV(msg string, kv ...interface{}) { if Log == nil { return }; Log.DPanic(msg, kvToFields(kv...)...) }
-func PanicKV(msg string, kv ...interface{}) { if Log == nil { return }; Log.Panic(msg, kvToFields(kv...)...) }
-func FatalKV(msg string, kv ...interface{})  { if Log == nil { return }; Log.Fatal(msg, kvToFields(kv...)...) }
+func DebugKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Debug(msg, kvToFields(kv)...)
+}
+func InfoKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Info(msg, kvToFields(kv)...)
+}
+func WarnKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Warn(msg, kvToFields(kv)...)
+}
+func ErrorKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Error(msg, kvToFields(kv)...)
+}
+func DPanicKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.DPanic(msg, kvToFields(kv)...)
+}
+func PanicKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Panic(msg, kvToFields(kv)...)
+}
+func FatalKV(msg string, kv ...interface{}) {
+	if Log == nil {
+		return
+	}
+	Log.Fatal(msg, kvToFields(kv)...)
+}

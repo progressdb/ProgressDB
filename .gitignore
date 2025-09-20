@@ -99,3 +99,5 @@ _devternal/
 database/
 
 .gocache/
+test-results.json
+logs/
