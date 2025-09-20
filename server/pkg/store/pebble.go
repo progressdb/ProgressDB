@@ -364,6 +364,9 @@ func GetLatestMessage(msgID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if len(vers) == 0 {
+		return "", fmt.Errorf("no versions found for message %s", msgID)
+	}
 	return vers[len(vers)-1], nil
 }
 
