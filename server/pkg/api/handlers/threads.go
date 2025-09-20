@@ -36,6 +36,14 @@ func RegisterThreads(r *mux.Router) {
 	r.HandleFunc("/threads/{threadID}/messages", createThreadMessage).Methods(http.MethodPost)
 	r.HandleFunc("/threads/{threadID}/messages", listThreadMessages).Methods(http.MethodGet)
 
+	// Thread-scoped message versions + reactions (migrated from message-level API)
+	r.HandleFunc("/threads/{threadID}/messages/{id}/versions", listMessageVersions).Methods(http.MethodGet)
+
+	// reactions moved under thread scope
+	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions", getReactions).Methods(http.MethodGet)
+	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions", addReaction).Methods(http.MethodPost)
+	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions/{identity}", deleteReaction).Methods(http.MethodDelete)
+
 	// Thread-message-scoped endpoints
 	r.HandleFunc("/threads/{threadID}/messages/{id}", getThreadMessage).Methods(http.MethodGet)
 	r.HandleFunc("/threads/{threadID}/messages/{id}", updateThreadMessage).Methods(http.MethodPut)

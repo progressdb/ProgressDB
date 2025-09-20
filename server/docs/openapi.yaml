@@ -79,65 +79,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
-  /v1/messages/{id}:
-    parameters:
-      - $ref: '#/components/parameters/XUserID'
-      - $ref: '#/components/parameters/XUserSignature'
-    get:
-      summary: Get latest message version by ID
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Latest message
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Message'
-    put:
-      summary: Edit (append new version) a message by ID
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Message'
-      responses:
-        "200":
-          description: Updated message
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Message'
-    delete:
-      summary: Soft-delete a message by ID (append tombstone)
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: No content
 
-  /v1/messages/{id}/versions:
+  /v1/threads/{threadID}/messages/{id}/versions:
     parameters:
       - $ref: '#/components/parameters/XUserID'
       - $ref: '#/components/parameters/XUserSignature'
     get:
-      summary: List all stored versions for a message ID
+      summary: List all stored versions for a message ID (thread-scoped)
       parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true
@@ -158,13 +112,18 @@ paths:
                     items:
                       $ref: '#/components/schemas/Message'
 
-  /v1/messages/{id}/reactions:
+  /v1/threads/{threadID}/messages/{id}/reactions:
     parameters:
       - $ref: '#/components/parameters/XUserID'
       - $ref: '#/components/parameters/XUserSignature'
     get:
-      summary: List reactions on a message
+      summary: List reactions on a message (thread-scoped)
       parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true
@@ -190,8 +149,13 @@ paths:
                         reaction:
                           type: string
     post:
-      summary: Add or update a reaction on a message
+      summary: Add or update a reaction on a message (thread-scoped)
       parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true
@@ -218,13 +182,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/Message'
 
-  /v1/messages/{id}/reactions/{identity}:
+  /v1/threads/{threadID}/messages/{id}/reactions/{identity}:
     parameters:
       - $ref: '#/components/parameters/XUserID'
       - $ref: '#/components/parameters/XUserSignature'
     delete:
-      summary: Remove a reaction for an identity
+      summary: Remove a reaction for an identity (thread-scoped)
       parameters:
+        - in: path
+          name: threadID
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true

@@ -74,6 +74,12 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 	if msgID == "" && msg.ID != "" {
 		msgID = msg.ID
 	}
+	// If neither caller-provided msgID nor message.ID is present, generate
+	// a server-side ID so we always index message versions consistently.
+	if msgID == "" && msg.ID == "" {
+		msg.ID = utils.GenID()
+		msgID = msg.ID
+	}
 
 	// Prepare data for storage (possibly encrypted)
 	data, err := json.Marshal(msg)

@@ -14,14 +14,14 @@ API (summary)
   - {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello"}}
   - `id` and `ts` are optional; server fills them if missing.
 - GET `/v1/messages?thread=<id>&limit=<n>`: List messages for a thread (newest last). `limit` optional.
-- GET `/v1/messages/{id}`: Get the latest stored version of a message
-- PUT `/v1/messages/{id}`: Append a new edited version of a message (ID enforced)
-- DELETE `/v1/messages/{id}`: Soft-delete (append tombstone version with `deleted=true`)
-- GET `/v1/messages/{id}/versions`: List all stored versions for a message ID
+- GET `/v1/threads/{threadID}/messages/{id}/versions`: List all stored versions for a message ID (thread-scoped)
 - POST `/v1/threads`: Create a thread (returns thread metadata)
 - GET `/v1/threads`: List saved threads
 - GET `/v1/threads/{id}`: Get thread metadata
 - DELETE `/v1/threads/{id}`: Delete thread metadata (non-destructive; returns 204)
+ - GET `/v1/threads/{threadID}/messages/{id}/reactions`: List reactions on a message
+ - POST `/v1/threads/{threadID}/messages/{id}/reactions`: Add/update a reaction on a message
+ - DELETE `/v1/threads/{threadID}/messages/{id}/reactions/{identity}`: Remove a reaction for an identity
 - GET `/healthz`: Health check (`{"status":"ok"}`).
 
 API Docs
