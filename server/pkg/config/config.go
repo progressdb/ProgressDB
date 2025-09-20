@@ -74,7 +74,7 @@ type Config struct {
 			Burst int     `yaml:"burst"`
 		} `yaml:"rate_limit"`
 		IPWhitelist []string `yaml:"ip_whitelist"`
-		APIKeys struct {
+		APIKeys     struct {
 			Backend  []string `yaml:"backend"`
 			Frontend []string `yaml:"frontend"`
 			Admin    []string `yaml:"admin"`
