@@ -16,6 +16,36 @@ Auth flow (recommended)
 2. Client calls the app backend (e.g., `POST /api/sign`) which uses the Backend SDK to call `/v1/_sign` and returns `{ signature }`.
 3. Client calls ProgressDB endpoints via the Frontend SDK and sets headers `X-User-ID` and `X-User-Signature`.
 
+Distribution & types
+
+- The frontend SDK package (`@progressdb/js`) is published with compiled JS and TypeScript declaration files (`.d.ts`). Consumers should import both runtime and types from the published package, e.g.:
+
+```ts
+import ProgressDBClient, { SDKOptions, Message, Thread, ReactionInput } from '@progressdb/js';
+```
+
+- Ensure you build the SDK (`npm run build`) before packing/publishing so `dist/index.d.ts` is present.
+
+React integration
+
+- The React package (`@progressdb/react`) depends on `@progressdb/js` as a runtime + types peer/dependency. Use the `ProgressDBProvider` and hooks to access the SDK from React apps. Example:
+
+```tsx
+import React from 'react';
+import ProgressDBProvider, { useMessages } from '@progressdb/react';
+import ProgressDBClient from '@progressdb/js';
+
+const client = new ProgressDBClient({ baseUrl: 'https://api.example.com', apiKey: 'KEY' });
+
+export default function App(){
+  return (
+    <ProgressDBProvider options={{ baseUrl: 'https://api.example.com', apiKey: 'KEY' }} getUserSignature={async ()=>({ userId: 'u', signature: 's' })}>
+      {/* your app */}
+    </ProgressDBProvider>
+  );
+}
+```
+
 Notes on listing threads
 
 - The server supports filtering threads by `author`, `title`, and `slug` via

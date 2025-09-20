@@ -1,85 +1,38 @@
-# @progressdb/react — React bindings for ProgressDB SDK
+# @progressdb/react — React Provider & Hooks
 
-This package provides a small set of React utilities (Provider + hooks) that wrap the underlying `@progressdb/js` SDK.
+This package provides a React-friendly wrapper around the ProgressDB frontend SDK (`@progressdb/js`). It exposes a `ProgressDBProvider` that initialises a `ProgressDBClient` and a set of hooks (`useMessages`, `useThreads`, `useReactions`, `useMessage`, etc.) to interact with ProgressDB from React components.
 
-Install (after publishing):
+Installation (after published):
+
 ```bash
-npm install @progressdb/react
+npm install @progressdb/react @progressdb/js
 ```
 
-Usage
-
-Wrap your app with the provider and use hooks to access messages, threads, and reactions:
+Quick usage
 
 ```tsx
-import React from 'react'
-import { ProgressDBProvider, useMessages } from '@progressdb/react'
+import React from 'react';
+import ProgressDBProvider, { useMessages } from '@progressdb/react';
 
-function ThreadView({ threadId }: { threadId: string }) {
-  const { messages, loading, refresh, create } = useMessages(threadId)
-  if (loading) return <div>Loading...</div>
-  return (
-    <div>
-      {messages?.map(m => <div key={m.id}>{JSON.stringify(m)}</div>)}
-    </div>
-  )
+function MessagesView({ threadId }: { threadId: string }){
+  const { messages, loading, refresh, create } = useMessages(threadId);
+  // ... render messages
 }
 
-export default function App() {
+export default function App(){
   return (
-<ProgressDBProvider options={{ baseUrl: 'https://api.example.com', apiKey: 'FRONTEND_KEY' }}>
-  <ThreadView threadId="t1" />
-</ProgressDBProvider>
-  )
+    <ProgressDBProvider
+      options={{ baseUrl: 'https://api.example.com', apiKey: 'FRONTEND_API_KEY' }}
+      getUserSignature={async () => ({ userId: 'user123', signature: 'signature' })}
+    >
+      <MessagesView threadId="t1" />
+    </ProgressDBProvider>
+  );
 }
 ```
-
-Provided hooks
-
-- `useProgressClient()` — returns the raw `ProgressDBClient` instance (you may call `client.updateThread(...)` directly)
-- `useMessages(threadId)` — list messages in a thread; provides `messages`, `loading`, `error`, `refresh`, `create`
-- `useMessage(id)` — get a single message; provides `message`, `loading`, `error`, `refresh`, `update`, `remove`
-- `useThreads()` — list/create threads (you can call `const client = useProgressClient(); await client.updateThread(id, { title: 'new' })` to update)
-- `useReactions(messageId)` — list/add/remove reactions
 
 Notes
 
-- This package is a lightweight convenience layer; it intentionally keeps logic simple and performs naive refreshes after mutating operations. For production apps you may want to integrate caching strategies (SWR/React-Query) or more granular state updates.
-- The package is TypeScript-first and requires React as a peer dependency.
+- The provider requires a `getUserSignature` callback that returns `{ userId, signature }` (can be async). This function should call your backend which in turn calls the admin signing endpoint (`/v1/_sign`).
+- The React package imports runtime and types from `@progressdb/js`; install the SDK package so TypeScript resolves the exported types (including `ReactionInput`).
 
-Automatic user signing
-
-The provider accepts an optional `getUserSignature` prop — a function that returns `{ userId, signature }` (can be async). The provider will call this function and attach the returned values to the underlying SDK as `defaultUserId` and `defaultUserSignature`. Example usage:
-
-```tsx
-<ProgressDBProvider
-  options={{ baseUrl: 'https://api.example.com', apiKey: 'FRONTEND_KEY' }}
-  getUserSignature={async () => {
-    // Call your backend endpoint which returns { userId, signature }
-    const res = await fetch('/auth/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: 'user123' })
-    });
-    return await res.json();
-  }}
->
-  <App />
-</ProgressDBProvider>
-```
-
-Important: `getUserSignature` is required and will be called once by the provider when the app loads (the provider caches the returned values in memory and — by default — in `sessionStorage` to avoid re-calling the backend for every operation). Do not call the server `/v1/_sign` endpoint directly from untrusted frontends. The `getUserSignature` callback should call a trusted backend endpoint that holds the admin/backend API key and returns only the signature for the frontend to use. Your backend should authenticate the requester before issuing signatures.
-
-Updating threads
-
-The React bindings do not add a separate helper for updating threads; you can use the underlying client returned by `useProgressClient()` to call `updateThread` added in the frontend SDK:
-
-```ts
-const client = useProgressClient();
-await client.updateThread(threadId, { title: 'New title' });
-// then refresh threads via your hook
-```
-
-Note: thread updates require canonical author (verified signature for frontend, or backend-provided `author` for backend callers) and only the author or admin may update a thread.
-
-The provider exposes a small helper hook `useUserSignature()` returning `{ userId, signature, loaded, loading, error, refresh, clear }` so you can refresh or clear the cached signature as needed.

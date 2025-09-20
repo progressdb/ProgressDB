@@ -40,7 +40,7 @@
 
 **System Upgrades**
 
-- [ ]  Scaling - *(clustering, performance tests etc)*
+- [ ]  Scaling - *(clustering, resource tests/alerts, perf tests etc)*
 - [ ]  Realtime - *(websockets & subscribers + client cache)*
 - [ ]  Search - *(per author messages or threads search)*
 - [ ]  Sounds - *(sent, received message sounds)*

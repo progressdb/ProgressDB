@@ -1,3 +1,6 @@
+/**
+ * Message represents a single message stored in ProgressDB.
+ */
 export interface Message {
   id: string;
   thread: string;
@@ -10,6 +13,9 @@ export interface Message {
   reactions?: Record<string,string>;
 }
 
+/**
+ * Thread metadata stored in ProgressDB.
+ */
 export interface Thread {
   id: string;
   title: string;

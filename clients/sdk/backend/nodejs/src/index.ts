@@ -2,7 +2,10 @@ import BackendClient, { BackendClientOptions } from './client';
 
 export type ProgressDBOptions = BackendClientOptions;
 
-// ProgressDB factory returns a ready-to-use client instance.
+/**
+ * ProgressDB factory — returns a ready-to-use `BackendClient` instance.
+ * @param opts backend client options
+ */
 export default function ProgressDB(opts: ProgressDBOptions): BackendClient {
   return new BackendClient(opts);
 }

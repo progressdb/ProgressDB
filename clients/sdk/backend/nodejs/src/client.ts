@@ -9,12 +9,21 @@ export type BackendClientOptions = {
   maxRetries?: number;
 };
 
+/**
+ * BackendClient provides server-side helpers to call ProgressDB admin
+ * and backend endpoints. It includes retry/timeout behavior and
+ * attaches server-side authorization headers.
+ */
 export class BackendClient {
   baseUrl: string;
   apiKey: string;
   timeoutMs?: number;
   maxRetries?: number;
 
+  /**
+   * Create a new BackendClient.
+   * @param opts configuration options including `baseUrl` and `apiKey`
+   */
   constructor(opts: BackendClientOptions) {
     this.baseUrl = opts.baseUrl;
     this.apiKey = opts.apiKey;
@@ -22,12 +31,26 @@ export class BackendClient {
     this.maxRetries = opts.maxRetries;
   }
 
+  /**
+   * Build default headers for backend requests (authorization, etc.).
+   * @returns headers object
+   */
   private headers() {
     return {
       Authorization: `Bearer ${this.apiKey}`,
     } as Record<string,string>;
   }
 
+  /**
+   * Perform an HTTP request against the ProgressDB server.
+   * @template T expected response type
+   * @param method HTTP method (GET, POST, PUT, DELETE)
+   * @param path URL path (should begin with `/`)
+   * @param body optional request body (will be JSON-stringified)
+   * @param extraHeaders optional additional headers to merge
+   * @returns parsed response body as T
+   * @throws ApiError on non-2xx responses or other network errors
+   */
   async request<T>(method: string, path: string, body?: any, extraHeaders: Record<string,string> = {}): Promise<T> {
     try {
       const headers = Object.assign({}, this.headers(), extraHeaders || {});

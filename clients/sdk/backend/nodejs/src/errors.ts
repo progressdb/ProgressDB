@@ -1,3 +1,7 @@
+/**
+ * ApiError represents an HTTP error returned by the ProgressDB API.
+ * It includes the HTTP `status` code and the parsed response `body`.
+ */
 export class ApiError extends Error {
   status: number;
   body: any;
@@ -8,4 +12,3 @@ export class ApiError extends Error {
     Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
-

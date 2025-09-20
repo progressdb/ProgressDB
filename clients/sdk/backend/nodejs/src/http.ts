@@ -5,10 +5,27 @@ export type HttpOptions = {
   maxRetries?: number;
 };
 
+/**
+ * Sleep for `ms` milliseconds.
+ * @param ms milliseconds to sleep
+ * @returns promise that resolves after the delay
+ */
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
+/**
+ * Perform an HTTP request with retries and timeout.
+ * @template T expected response type
+ * @param baseUrl base server URL
+ * @param method HTTP method
+ * @param path request path (prefixed with `/`)
+ * @param body optional request body
+ * @param headers request headers
+ * @param opts timeout and retry options
+ * @returns parsed response body as T
+ * @throws ApiError on non-2xx responses
+ */
 export async function httpRequest<T>(
   baseUrl: string,
   method: string,
