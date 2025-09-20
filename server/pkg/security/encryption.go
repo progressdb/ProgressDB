@@ -10,26 +10,25 @@ import (
 	"strings"
 
 	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+
+	"go.uber.org/zap"
 )
 
 var key []byte
 var keyLocked bool
 
-type EncField struct {
-	Path      string
-	Algorithm string
-}
-
+// fieldRule represents a path to encrypt, split into segments.
 type fieldRule struct {
-	segs      []string
-	algorithm string
+	segments []string
 }
 
 var fieldRules []fieldRule
 
 // SetKeyEncryptionHex sets the AES-256 master key (hex string). An empty string clears it.
 func SetKeyEncryptionHex(hexKey string) error {
+	// If the hexKey is empty, clear the key and unlock memory if needed.
 	if hexKey == "" {
 		if key != nil && keyLocked {
 			_ = UnlockMemory(key)
@@ -38,17 +37,21 @@ func SetKeyEncryptionHex(hexKey string) error {
 		key = nil
 		return nil
 	}
+	// Decode the hex string to bytes.
 	b, err := hex.DecodeString(hexKey)
 	if err != nil {
 		return err
 	}
+	// Check that the key is 32 bytes (AES-256).
 	if l := len(b); l != 32 {
 		return errors.New("encryption key must be 32 bytes (AES-256)")
 	}
+	// Unlock previous key if set and locked.
 	if key != nil && keyLocked {
 		_ = UnlockMemory(key)
 		keyLocked = false
 	}
+	// Set the new key and lock it in memory if possible.
 	key = b
 	if err := LockMemory(key); err == nil {
 		keyLocked = true
@@ -56,278 +59,358 @@ func SetKeyEncryptionHex(hexKey string) error {
 	return nil
 }
 
-// EncryptionEnabled reports whether encryption is available (provider or local key).
+// EncryptionEnabled returns true if encryption is enabled (KMS or local key).
 func EncryptionEnabled() bool {
+	// If a KMS provider is enabled, encryption is enabled.
 	if kms.IsProviderEnabled() {
 		return true
 	}
+	// Otherwise, check if a 32-byte key is set.
 	return key != nil && len(key) == 32
 }
 
-// SetEncryptionFieldPolicy configures selective field encryption paths.
-// Only algorithm "aes-gcm" is supported for now.
-func SetEncryptionFieldPolicy(fields []EncField) error {
-	// Clear any existing field rules before setting new ones
+// SetEncryptionFieldPolicy sets the list of field paths to encrypt.
+// All segments must start with "body" (e.g. "body.value", "body.content.foo").
+func SetEncryptionFieldPolicy(fields []string) error {
+	// Clear any existing field rules.
 	fieldRules = fieldRules[:0]
-
-	// Iterate over each provided encryption field configuration
-	for _, f := range fields {
-		// Normalize and validate the algorithm (default to "aes-gcm" if empty)
-		alg := strings.ToLower(strings.TrimSpace(f.Algorithm))
-		if alg == "" {
-			alg = "aes-gcm"
-		}
-		// Only "aes-gcm" is supported at this time
-		if alg != "aes-gcm" {
-			return fmt.Errorf("unsupported algorithm: %s", f.Algorithm)
-		}
-
-		// Trim and validate the field path
-		p := strings.TrimSpace(f.Path)
+	for _, p := range fields {
+		// Remove leading/trailing whitespace.
+		p = strings.TrimSpace(p)
 		if p == "" {
-			continue // Skip empty paths
+			continue
 		}
-
-		// Split the path into segments for nested field access
-		segs := strings.Split(p, ".")
-
-		// Add the rule to the global fieldRules slice
-		fieldRules = append(fieldRules, fieldRule{segs: segs, algorithm: alg})
+		// Split the path into segments by dot.
+		segments := strings.Split(p, ".")
+		// Always require "body" as the first segment for consistency.
+		// Example: "body.value" is valid, "value" is not.
+		if len(segments) == 0 || segments[0] != "body" {
+			return fmt.Errorf("encryption field path must start with 'body': %q", p)
+		}
+		// Add the rule to the list.
+		fieldRules = append(fieldRules, fieldRule{segments: segments})
 	}
-	// Return nil to indicate success
 	return nil
 }
 
-// EncryptionHasFieldPolicy reports whether any field policy was configured.
-func EncryptionHasFieldPolicy() bool { return len(fieldRules) > 0 }
-
-func DecryptJSONFields(jsonBytes []byte, keyID string) ([]byte, error) {
-	if !EncryptionEnabled() || !EncryptionHasFieldPolicy() {
-		return append([]byte(nil), jsonBytes...), nil
-	}
-	if !kms.IsProviderEnabled() {
-		return nil, errors.New("no kms provider registered")
-	}
-	if keyID == "" {
-		return nil, errors.New("no thread key ID provided")
-	}
-	var v interface{}
-	if err := json.Unmarshal(jsonBytes, &v); err != nil {
-		return nil, err
-	}
-	v = decryptAll(v, keyID)
-	out, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
+// EncryptionHasFieldPolicy returns true if any field rules are set.
+func EncryptionHasFieldPolicy() bool {
+	// Returns true if there is at least one field rule.
+	return len(fieldRules) > 0
 }
 
-func decryptAll(node interface{}, keyID string) interface{} {
-	switch cur := node.(type) {
-	case map[string]interface{}:
-		if encType, ok := cur["_enc"].(string); ok {
-			if encType == "gcm" {
-				if sv, ok := cur["v"].(string); ok {
-					if raw, err := base64.StdEncoding.DecodeString(sv); err == nil {
-						if pt, err := kms.DecryptWithDEK(keyID, raw, nil); err == nil {
-							var out interface{}
-							if err := json.Unmarshal(pt, &out); err == nil {
-								return decryptAll(out, keyID)
-							}
-						}
-					}
-				}
-			}
-		}
-		for k, v := range cur {
-			cur[k] = decryptAll(v, keyID)
-		}
-		return cur
-	case []interface{}:
-		for i, v := range cur {
-			cur[i] = decryptAll(v, keyID)
-		}
-		return cur
-	default:
-		return node
-	}
-}
-
-func EncryptJSONFields(jsonBytes []byte, keyID string) ([]byte, error) {
-	if !EncryptionEnabled() || !EncryptionHasFieldPolicy() {
-		return append([]byte(nil), jsonBytes...), nil
-	}
-	if !kms.IsProviderEnabled() {
-		return nil, errors.New("no kms provider registered")
-	}
-	if keyID == "" {
-		return nil, errors.New("no thread key ID provided")
-	}
-	var v interface{}
-	if err := json.Unmarshal(jsonBytes, &v); err != nil {
-		return nil, err
-	}
-	for _, rule := range fieldRules {
-		v = encryptBodyPath(v, rule.segs, keyID)
-	}
-	out, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func encryptBodyPath(node interface{}, segs []string, keyID string) interface{} {
-	// if there are no more segments, encrypt the current node
-	// Example: If segs is [] (empty), and node is {"ssn": "123-45-6789"}, this will encrypt the whole object or value at this path.
-	if len(segs) == 0 {
-		raw, err := json.Marshal(node)
+// encryptBodyPath recursively encrypts the value at the given path.
+func encryptBodyPath(bodyNode interface{}, segments []string, keyID string) interface{} {
+	// If there are no more segments, encrypt the value.
+	if len(segments) == 0 {
+		// Marshal the value to JSON.
+		raw, err := json.Marshal(bodyNode)
 		if err != nil {
-			return node
+			return bodyNode
 		}
+		// Encrypt using the KMS DEK.
 		ct, _, err := kms.EncryptWithDEK(keyID, raw, nil)
 		if err != nil {
-			return node
+			return bodyNode
 		}
+		// Return the encrypted object.
+		// Example: {"_enc": "gcm", "v": "<base64-ct>"}
 		return map[string]interface{}{"_enc": "gcm", "v": base64.StdEncoding.EncodeToString(ct)}
 	}
 
-	// handle the current node based on its type
-	switch cur := node.(type) {
+	// If there are more segments, traverse the structure.
+	switch cur := bodyNode.(type) {
 	case map[string]interface{}:
-		// if the current segment is "*", apply recursively to all keys
-		// Example: segs = ["*","password"], node = {"user1": {"password": "abc"}, "user2": {"password": "def"}}
-		// This will encrypt the "password" field for every user in the map.
-		seg := segs[0]
-		if seg == "*" {
+		segment := segments[0]
+		// If the segment is "*", apply to all keys at this level.
+		// Example: path ["body", "*", "foo"] will encrypt all body.<any>.foo fields.
+		if segment == "*" {
 			for k, child := range cur {
-				cur[k] = encryptBodyPath(child, segs[1:], keyID)
+				cur[k] = encryptBodyPath(child, segments[1:], keyID)
 			}
 			return cur
 		}
-		// otherwise, apply to the specific key if it exists
-		// Example: segs = ["profile","email"], node = {"profile": {"email": "a@b.com"}}
-		// This will encrypt the "email" field inside the "profile" object.
-		if child, ok := cur[seg]; ok {
-			cur[seg] = encryptBodyPath(child, segs[1:], keyID)
+		// Otherwise, descend into the named field if it exists.
+		if child, ok := cur[segment]; ok {
+			cur[segment] = encryptBodyPath(child, segments[1:], keyID)
 		}
 		return cur
 	case []interface{}:
-		// if the current segment is "*", apply recursively to all elements
-		// Example: segs = ["*","secret"], node = [{"secret": "a"}, {"secret": "b"}]
-		// This will encrypt the "secret" field in every element of the array.
-		seg := segs[0]
-		if seg == "*" {
+		segment := segments[0]
+		// If the segment is "*", apply to all elements in the array.
+		// Example: path ["body", "items", "*", "foo"] will encrypt all body.items[i].foo fields.
+		if segment == "*" {
 			for i, child := range cur {
-				cur[i] = encryptBodyPath(child, segs[1:], keyID)
+				cur[i] = encryptBodyPath(child, segments[1:], keyID)
 			}
 			return cur
 		}
-		// if the segment is an integer, apply to the specific index
-		// Example: segs = ["0","token"], node = [{"token": "abc"}, {"token": "def"}]
-		// This will encrypt the "token" field in the first element of the array.
-		if idx, err := strconv.Atoi(seg); err == nil {
+		// If the segment is a number, apply to that index.
+		// Example: path ["body", "items", "0", "foo"] will encrypt body.items[0].foo.
+		if idx, err := strconv.Atoi(segment); err == nil {
 			if idx >= 0 && idx < len(cur) {
-				cur[idx] = encryptBodyPath(cur[idx], segs[1:], keyID)
+				cur[idx] = encryptBodyPath(cur[idx], segments[1:], keyID)
 			}
 		}
 		return cur
 	default:
-		// if the node is not a map or slice, return as is
-		// Example: node is a string, number, or bool; nothing to encrypt at this path.
-		return node
+		// If not a map or array, return as is.
+		return bodyNode
 	}
 }
 
+// EncryptMessageBody encrypts the message body or fields according to the policy.
 func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, error) {
+	// If the message is nil, return an error.
 	if m == nil {
 		return nil, errors.New("nil message")
 	}
 
-	// If encryption is not enabled, do nothing.
+	// If encryption is not enabled, return the body as is.
 	if !EncryptionEnabled() {
 		return m.Body, nil
 	}
 
-	// Get the thread's dek ID for encryption.
+	// Get the key ID from the thread.
 	keyID := thread.KMS.KeyID
 	if keyID == "" {
 		return nil, fmt.Errorf("encryption enabled but no DEK configured for thread %s", thread.ID)
 	}
 
-	// If a field policy is configured, encrypt only the configured fields.
+	// If there is a field policy, encrypt only the specified fields.
 	if EncryptionHasFieldPolicy() {
-		// marshal the message to json so we can work with it as a generic structure
+		// Marshal the message to JSON.
 		b, err := json.Marshal(m)
 		if err != nil {
 			return nil, err
 		}
 
-		// ensure a kms provider is available for encryption
+		// Require a KMS provider.
 		if !kms.IsProviderEnabled() {
 			return nil, errors.New("no kms provider registered")
 		}
 
-		// unmarshal the json into an interface{} for manipulation
+		// Unmarshal the message to a generic interface.
 		var v interface{}
 		if err := json.Unmarshal(b, &v); err != nil {
 			return nil, err
 		}
 
-		// for each configured field rule, encrypt the specified field path in the structure
+		// For each field rule, encrypt the path.
 		for _, rule := range fieldRules {
-			v = encryptBodyPath(v, rule.segs, keyID)
+			v = encryptBodyPath(v, rule.segments, keyID)
 		}
 
-		// marshal the modified structure back to json
+		// Marshal the result back to JSON.
 		nb, err := json.Marshal(v)
 		if err != nil {
 			return nil, err
 		}
 
-		// unmarshal the json back into a Message struct to extract the encrypted body
+		// Unmarshal back to a Message struct to extract the body.
 		var out models.Message
 		if err := json.Unmarshal(nb, &out); err != nil {
 			return nil, fmt.Errorf("failed to marshal message after field encryption: %w", err)
 		}
 
-		// return the (possibly encrypted) body field
+		// Return the encrypted body.
 		return out.Body, nil
 	}
 
-	// Otherwise, encrypt the whole message.Body if present.
+	// If no field policy, encrypt the entire body.
 	if m.Body != nil {
+		// Marshal the body to JSON.
 		bodyBytes, err := json.Marshal(m.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal message body: %w", err)
 		}
+		// Encrypt the body using the KMS DEK.
 		ct, _, err := kms.EncryptWithDEK(keyID, bodyBytes, nil)
 		if err != nil {
 			return nil, err
 		}
+		// Return the encrypted object.
+		// Example: {"_enc": "gcm", "v": "<base64-ct>"}
 		encBody := map[string]interface{}{"_enc": "gcm", "v": base64.StdEncoding.EncodeToString(ct)}
 		return encBody, nil
 	}
+	// If body is nil, return as is.
 	return m.Body, nil
 }
-func DecryptMessageBody(m *models.Message, threadKeyID string) error {
+
+// decryptBodyPath recursively decrypts the value at the given path.
+func decryptBodyPath(value interface{}, segments []string, keyID string) (interface{}, error) {
+	// If there are no more segments, try to decrypt the value if it's an encrypted object.
+	if len(segments) == 0 {
+		// At the target field, attempt to decrypt if it's an encrypted object.
+		// Example: {"_enc": "gcm", "v": "<base64-ct>"}
+		if m, ok := value.(map[string]interface{}); ok {
+			if encType, ok := m["_enc"].(string); ok && encType == "gcm" {
+				if sv, ok := m["v"].(string); ok {
+					// Decode the base64 ciphertext.
+					raw, err := base64.StdEncoding.DecodeString(sv)
+					if err != nil {
+						return value, fmt.Errorf("base64 decode failed: %w", err)
+					}
+					// Decrypt using the KMS DEK.
+					pt, err := kms.DecryptWithDEK(keyID, raw, nil)
+					if err != nil {
+						return value, fmt.Errorf("kms decrypt failed: %w", err)
+					}
+					// Unmarshal the plaintext JSON.
+					var out interface{}
+					if err := json.Unmarshal(pt, &out); err != nil {
+						return value, fmt.Errorf("json unmarshal failed: %w", err)
+					}
+					return out, nil
+				}
+			}
+		}
+		// If not encrypted, or decryption fails, return the value as is.
+		return value, nil
+	}
+
+	// If there are more segments, traverse the structure.
+	switch cur := value.(type) {
+	case map[string]interface{}:
+		segment := segments[0]
+		// If the segment is "*", apply to all keys at this level.
+		// Example: path ["body", "*", "foo"] will decrypt all body.<any>.foo fields.
+		if segment == "*" {
+			var firstErr error
+			for k, child := range cur {
+				res, err := decryptBodyPath(child, segments[1:], keyID)
+				if err != nil && firstErr == nil {
+					firstErr = err
+				}
+				cur[k] = res
+			}
+			return cur, firstErr
+		}
+		// Otherwise, descend into the named field if it exists.
+		if child, ok := cur[segment]; ok {
+			res, err := decryptBodyPath(child, segments[1:], keyID)
+			cur[segment] = res
+			return cur, err
+		}
+		return cur, nil
+	case []interface{}:
+		segment := segments[0]
+		// If the segment is "*", apply to all elements in the array.
+		// Example: path ["body", "items", "*", "foo"] will decrypt all body.items[i].foo fields.
+		if segment == "*" {
+			var firstErr error
+			for i, child := range cur {
+				res, err := decryptBodyPath(child, segments[1:], keyID)
+				if err != nil && firstErr == nil {
+					firstErr = err
+				}
+				cur[i] = res
+			}
+			return cur, firstErr
+		}
+		// If the segment is a number, apply to that index.
+		// Example: path ["body", "items", "0", "foo"] will decrypt body.items[0].foo.
+		if idx, err := strconv.Atoi(segment); err == nil {
+			if idx >= 0 && idx < len(cur) {
+				res, err := decryptBodyPath(cur[idx], segments[1:], keyID)
+				cur[idx] = res
+				return cur, err
+			}
+		}
+		return cur, nil
+	default:
+		// If not a map or array, return as is.
+		return value, nil
+	}
+}
+
+// DecryptMessageBody decrypts the message body or fields according to the policy.
+// Returns the decrypted message body (or the original body if not encrypted or not enabled).
+func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, error) {
+	// If the message is nil, return an error.
 	if m == nil {
-		return errors.New("nil message")
+		return nil, errors.New("nil message")
 	}
-	if !EncryptionEnabled() || !EncryptionHasFieldPolicy() {
-		return nil
+
+	// If encryption is not enabled, return the body as is.
+	if !EncryptionEnabled() {
+		return m.Body, nil
 	}
+
+	// Require a thread key ID.
 	if threadKeyID == "" {
-		return errors.New("no thread key id provided")
+		return nil, errors.New("no thread key id provided")
 	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return err
+
+	// If there is a field policy, decrypt only the specified fields.
+	if EncryptionHasFieldPolicy() {
+		// Marshal the message to JSON.
+		b, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unmarshal the message to a generic interface.
+		var v interface{}
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+
+		var firstErr error
+		// For each field rule, decrypt the path.
+		for _, rule := range fieldRules {
+			res, err := decryptBodyPath(v, rule.segments, threadKeyID)
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			v = res
+		}
+
+		// Marshal the result back to JSON.
+		nb, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unmarshal back to a Message struct to extract the body.
+		var out models.Message
+		if err := json.Unmarshal(nb, &out); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal message after field decryption: %w", err)
+		}
+
+		// Return the decrypted body and any error encountered.
+		return out.Body, firstErr
 	}
-	nb, err := DecryptJSONFields(b, threadKeyID)
-	if err != nil {
-		return err
+
+	// If no field policy, decrypt the entire body if it is encrypted.
+	if m.Body != nil {
+		// If the body is an encrypted object, try to decrypt it.
+		if mMap, ok := m.Body.(map[string]interface{}); ok {
+			if encType, ok := mMap["_enc"].(string); ok && encType == "gcm" {
+				if sv, ok := mMap["v"].(string); ok {
+					raw, err := base64.StdEncoding.DecodeString(sv)
+					if err != nil {
+						logger.Log.Warn("decrypt_message_body_base64_decode_failed", zap.Error(err))
+						return m.Body, fmt.Errorf("base64 decode failed: %w", err)
+					}
+					pt, err := kms.DecryptWithDEK(threadKeyID, raw, nil)
+					if err != nil {
+						logger.Log.Warn("decrypt_message_body_decrypt_failed", zap.Error(err))
+						return m.Body, fmt.Errorf("kms decrypt failed: %w", err)
+					}
+					var out interface{}
+					if err := json.Unmarshal(pt, &out); err != nil {
+						logger.Log.Warn("decrypt_message_body_unmarshal_failed", zap.Error(err))
+						return m.Body, fmt.Errorf("json unmarshal failed: %w", err)
+					}
+					return out, nil
+				}
+			}
+		}
+		// If not encrypted or decryption fails, return as is.
+		return m.Body, nil
 	}
-	return json.Unmarshal(nb, m)
+	// If body is nil, return as is.
+	return m.Body, nil
 }

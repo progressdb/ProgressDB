@@ -12,7 +12,6 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
-	"progressdb/pkg/validation"
 )
 
 // App encapsulates the server components and lifecycle.
@@ -55,7 +54,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// validation rules
-	initValidation(eff)
+	// initValidation(eff)
 
 	// open store
 	if err := store.Open(eff.DBPath); err != nil {
@@ -86,41 +85,35 @@ func (a *App) Run(ctx context.Context) error {
 	}
 }
 
-// initFieldPolicy installs the encryption field policy from the effective
-// config.
+// initFieldPolicy installs the encryption field policy from the effective config
 func initFieldPolicy(eff config.EffectiveConfigResult) error {
-	var fieldSrc []config.FieldEntry
-	switch {
-	case len(eff.Config.Security.Encryption.Fields) > 0:
-		fieldSrc = eff.Config.Security.Encryption.Fields
-	case len(eff.Config.Security.Fields) > 0:
-		fieldSrc = eff.Config.Security.Fields
-	}
-	if len(fieldSrc) == 0 {
+	// The config.Security.Encryption.Fields is now []string (field paths)
+	fieldPaths := eff.Config.Security.Encryption.Fields
+	if len(fieldPaths) == 0 {
 		return nil
 	}
-	fields := make([]security.EncField, 0, len(fieldSrc))
-	for _, f := range fieldSrc {
-		fields = append(fields, security.EncField{Path: f.Path, Algorithm: f.Algorithm})
+	fields := make([]string, 0, len(fieldPaths))
+	for _, path := range fieldPaths {
+		fields = append(fields, path)
 	}
 	return security.SetEncryptionFieldPolicy(fields)
 }
 
 // initValidation builds validation rules from config and sets them globally.
-func initValidation(eff config.EffectiveConfigResult) {
-	vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
-	vr.Required = append(vr.Required, eff.Config.Validation.Required...)
-	for _, t := range eff.Config.Validation.Types {
-		vr.Types[t.Path] = t.Type
-	}
-	for _, ml := range eff.Config.Validation.MaxLen {
-		vr.MaxLen[ml.Path] = ml.Max
-	}
-	for _, e := range eff.Config.Validation.Enums {
-		vr.Enums[e.Path] = append([]string{}, e.Values...)
-	}
-	for _, wt := range eff.Config.Validation.WhenThen {
-		vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{WhenPath: wt.When.Path, Equals: wt.When.Equals, ThenReq: append([]string{}, wt.Then.Required...)})
-	}
-	validation.SetRules(vr)
-}
+// func initValidation(eff config.EffectiveConfigResult) {
+// 	vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
+// 	vr.Required = append(vr.Required, eff.Config.Validation.Required...)
+// 	for _, t := range eff.Config.Validation.Types {
+// 		vr.Types[t.Path] = t.Type
+// 	}
+// 	for _, ml := range eff.Config.Validation.MaxLen {
+// 		vr.MaxLen[ml.Path] = ml.Max
+// 	}
+// 	for _, e := range eff.Config.Validation.Enums {
+// 		vr.Enums[e.Path] = append([]string{}, e.Values...)
+// 	}
+// 	for _, wt := range eff.Config.Validation.WhenThen {
+// 		vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{WhenPath: wt.When.Path, Equals: wt.When.Equals, ThenReq: append([]string{}, wt.Then.Required...)})
+// 	}
+// 	validation.SetRules(vr)
+// }

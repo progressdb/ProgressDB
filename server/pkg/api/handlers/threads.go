@@ -320,8 +320,8 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -468,8 +468,8 @@ func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -505,8 +505,8 @@ func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}

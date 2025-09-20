@@ -244,8 +244,7 @@ func updateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -289,10 +288,9 @@ func deleteMessage(w http.ResponseWriter, r *http.Request) {
 	// mark as deleted and update timestamp
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
-	b, _ := json.Marshal(m)
 
 	// save the updated message
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -400,8 +398,8 @@ func addReaction(w http.ResponseWriter, r *http.Request) {
 	}
 	m.Reactions[identity] = payload.Reaction
 	m.TS = time.Now().UTC().UnixNano()
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -433,8 +431,8 @@ func deleteReaction(w http.ResponseWriter, r *http.Request) {
 		delete(m.Reactions, identity)
 	}
 	m.TS = time.Now().UTC().UnixNano()
-	b, _ := json.Marshal(m)
-	if err := store.SaveMessage(m.Thread, m.ID, string(b)); err != nil {
+
+	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
