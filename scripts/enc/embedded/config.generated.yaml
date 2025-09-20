@@ -29,7 +29,7 @@ security:
     data_dir: ""
     binary: ""
     master_key_file: ""
-    master_key_hex: "db9d1ad7e4b50a3185bd502ef0a35362ab4c8129e0f2c9491623c178be67fdd4"
+    master_key_hex: "f721ff8758c05e78b9361cff8d13e738d1e5069cf4ff03b7cbc9bf5fce0e3341"
 
 logging:
   level: "info"

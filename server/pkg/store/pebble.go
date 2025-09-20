@@ -131,78 +131,86 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-
+	// build prefix for thread messages
 	prefix := []byte("thread:" + threadID + ":msg:")
-
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Close()
-
 	var out []string
-
-	// Preload the thread's KeyID for efficient per-message decryption if encryption is enabled
+	// preload thread key id if encryption is enabled
 	var threadKeyID string
 	if security.EncryptionEnabled() {
-		if sthr, terr := GetThread(threadID); terr == nil {
+		if s, e := GetThread(threadID); e == nil {
 			var th models.Thread
-			if err := json.Unmarshal([]byte(sthr), &th); err == nil {
+			if json.Unmarshal([]byte(s), &th) == nil {
 				threadKeyID = th.KMS.KeyID
 			}
 		}
 	}
-
+	// set max limit if provided
 	max := -1
 	if len(limit) > 0 {
 		max = limit[0]
 	}
-
+	// iterate over all messages with the prefix
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-
+		// copy value
 		v := append([]byte(nil), iter.Value()...)
-
+		// decrypt if needed
 		if security.EncryptionEnabled() {
+			logger.Log.Debug("encryption_enabled_listmessages", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID))
 			if security.EncryptionHasFieldPolicy() {
 				if threadKeyID == "" {
+					logger.Log.Error("encryption_no_thread_key", zap.String("threadID", threadID))
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
-				var mm models.Message
-				if err := json.Unmarshal(v, &mm); err != nil {
+				var m models.Message
+				if err := json.Unmarshal(v, &m); err != nil {
+					logger.Log.Error("listmessages_invalid_message_json", zap.ByteString("value", v), zap.Error(err))
 					return nil, fmt.Errorf("invalid message JSON: %w", err)
 				}
-				decBody, decErr := security.DecryptMessageBody(&mm, threadKeyID)
-				if decErr != nil {
-					return nil, fmt.Errorf("field decryption failed: %w", decErr)
-				}
-				mm.Body = decBody
-				nb, err := json.Marshal(mm)
+				logger.Log.Debug("listmessages_decrypting_field_policy", zap.String("msgID", m.ID), zap.String("threadKeyID", threadKeyID))
+				b, err := security.DecryptMessageBody(&m, threadKeyID)
 				if err != nil {
+					logger.Log.Error("listmessages_field_decryption_failed", zap.String("msgID", m.ID), zap.String("threadKeyID", threadKeyID), zap.Error(err))
+					return nil, fmt.Errorf("field decryption failed: %w", err)
+				}
+				m.Body = b
+				nb, err := json.Marshal(m)
+				if err != nil {
+					logger.Log.Error("listmessages_marshal_decrypted_failed", zap.String("msgID", m.ID), zap.Error(err))
 					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
 				}
+				logger.Log.Debug("listmessages_decrypted_message", zap.String("msgID", m.ID), zap.ByteString("decrypted", nb))
 				v = nb
 			} else {
 				if threadKeyID == "" {
+					logger.Log.Error("encryption_no_thread_key", zap.String("threadID", threadID))
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
+				logger.Log.Debug("listmessages_decrypting_full_message", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID), zap.ByteString("encrypted", v))
 				dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
 				if err != nil {
+					logger.Log.Error("listmessages_full_decrypt_failed", zap.String("threadID", threadID), zap.String("threadKeyID", threadKeyID), zap.Error(err), zap.ByteString("encrypted", v))
 					return nil, fmt.Errorf("decrypt failed: %w", err)
 				}
+				logger.Log.Debug("listmessages_decrypted_full_message", zap.String("threadID", threadID), zap.ByteString("decrypted", dec))
 				v = dec
 			}
 		}
-
+		// append to output
 		out = append(out, string(v))
-
+		// check limit
 		if max > 0 && len(out) >= max {
 			break
 		}
 	}
-
+	// return all messages or error
 	return out, iter.Error()
 }
 
@@ -281,6 +289,8 @@ func ListMessageVersions(msgID string) ([]string, error) {
 				if err != nil {
 					return nil, fmt.Errorf("decrypt failed: %w", err)
 				}
+				// Log out the decrypted value for debugging
+				logger.Log.Debug("decrypted_message_version", zap.String("threadKeyID", threadKeyID), zap.ByteString("decrypted_value", dec))
 				v = dec
 			}
 		}

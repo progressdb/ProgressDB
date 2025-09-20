@@ -3,12 +3,31 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
 
 	utils "progressdb/tests/utils"
 )
+
+func logResponseBody(t *testing.T, body io.Reader, context string) {
+	var out map[string]interface{}
+	b, err := io.ReadAll(body)
+	if err != nil {
+		t.Logf("%s: failed to read body: %v", context, err)
+		return
+	}
+	if len(b) == 0 {
+		t.Logf("%s: response body is empty", context)
+		return
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Logf("%s: failed to unmarshal body: %v, raw: %s", context, err, string(b))
+		return
+	}
+	t.Logf("%s: response body=%v", context, out)
+}
 
 func TestCreateMessage(t *testing.T) {
 	// Set up test server and user credentials
@@ -44,9 +63,8 @@ func TestCreateMessage(t *testing.T) {
 	defer res.Body.Close()
 	t.Logf("TestCreateMessage: response status=%v", res.Status)
 	if res.StatusCode != 200 {
-		var errResp map[string]interface{}
-		_ = json.NewDecoder(res.Body).Decode(&errResp)
-		t.Logf("TestCreateMessage: error response body=%v", errResp)
+		t.Logf("TestCreateMessage: error response status=%v", res.Status)
+		logResponseBody(t, res.Body, "TestCreateMessage error")
 		t.Fatalf("expected 200 got %v", res.Status)
 	}
 
@@ -87,13 +105,17 @@ func TestListMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list request failed: %v", err)
 	}
+	defer lres.Body.Close()
+	t.Logf("TestListMessages: response status=%v", lres.Status)
 	if lres.StatusCode != 200 {
+		logResponseBody(t, lres.Body, "TestListMessages error")
 		t.Fatalf("expected 200 got %v", lres.Status)
 	}
 
 	// Decode and validate list response
 	var listOut map[string]interface{}
 	_ = json.NewDecoder(lres.Body).Decode(&listOut)
+	t.Logf("TestListMessages: response body=%v", listOut)
 	if msgs, ok := listOut["messages"].([]interface{}); !ok || len(msgs) == 0 {
 		t.Fatalf("expected messages in list result")
 	}
@@ -126,13 +148,17 @@ func TestGetMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get request failed: %v", err)
 	}
+	defer gres.Body.Close()
+	t.Logf("TestGetMessage: response status=%v", gres.Status)
 	if gres.StatusCode != 200 {
+		logResponseBody(t, gres.Body, "TestGetMessage error")
 		t.Fatalf("expected 200 got %v", gres.Status)
 	}
 
 	// Decode and validate retrieved message
 	var got map[string]interface{}
 	_ = json.NewDecoder(gres.Body).Decode(&got)
+	t.Logf("TestGetMessage: response body=%v", got)
 	if gotID, _ := got["id"].(string); gotID != id {
 		t.Fatalf("expected id %s got %s", id, gotID)
 	}
@@ -169,13 +195,17 @@ func TestUpdateMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update request failed: %v", err)
 	}
+	defer ures.Body.Close()
+	t.Logf("TestUpdateMessage: response status=%v", ures.Status)
 	if ures.StatusCode != 200 {
+		logResponseBody(t, ures.Body, "TestUpdateMessage error")
 		t.Fatalf("expected 200 got %v", ures.Status)
 	}
 
 	// Decode and validate updated message
 	var uout map[string]interface{}
 	_ = json.NewDecoder(ures.Body).Decode(&uout)
+	t.Logf("TestUpdateMessage: response body=%v", uout)
 	if body, ok := uout["body"].(map[string]interface{}); !ok || body["text"].(string) != "new" {
 		t.Fatalf("expected updated body text")
 	}
@@ -205,7 +235,10 @@ func TestDeleteMessage(t *testing.T) {
 	dreq.Header.Set("X-User-ID", user)
 	dreq.Header.Set("X-User-Signature", sig)
 	dres, _ := http.DefaultClient.Do(dreq)
+	defer dres.Body.Close()
+	t.Logf("TestDeleteMessage: response status=%v", dres.Status)
 	if dres.StatusCode != 204 {
+		logResponseBody(t, dres.Body, "TestDeleteMessage error")
 		t.Fatalf("delete failed: %v", dres.Status)
 	}
 
@@ -214,8 +247,10 @@ func TestDeleteMessage(t *testing.T) {
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lres, _ := http.DefaultClient.Do(lreq)
+	defer lres.Body.Close()
 	var listOut map[string]interface{}
 	_ = json.NewDecoder(lres.Body).Decode(&listOut)
+	t.Logf("TestDeleteMessage: list response body=%v", listOut)
 	if msgs, ok := listOut["messages"].([]interface{}); ok {
 		for _, m := range msgs {
 			if mm, ok := m.(map[string]interface{}); ok {
@@ -251,20 +286,31 @@ func TestListMessageVersions(t *testing.T) {
 	ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/messages/"+id, bytes.NewReader(ub))
 	ureq.Header.Set("X-User-ID", user)
 	ureq.Header.Set("X-User-Signature", sig)
-	http.DefaultClient.Do(ureq)
+	ures, _ := http.DefaultClient.Do(ureq)
+	if ures != nil {
+		defer ures.Body.Close()
+		t.Logf("TestListMessageVersions: update response status=%v", ures.Status)
+		if ures.StatusCode != 200 {
+			logResponseBody(t, ures.Body, "TestListMessageVersions update error")
+		}
+	}
 
 	// List all versions of the message
 	vreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages/"+id+"/versions", nil)
 	vreq.Header.Set("X-User-ID", user)
 	vreq.Header.Set("X-User-Signature", sig)
 	vres, _ := http.DefaultClient.Do(vreq)
+	defer vres.Body.Close()
+	t.Logf("TestListMessageVersions: versions response status=%v", vres.Status)
 	if vres.StatusCode != 200 {
+		logResponseBody(t, vres.Body, "TestListMessageVersions error")
 		t.Fatalf("versions request failed: %v", vres.Status)
 	}
 
 	// Decode and validate versions response
 	var vout map[string]interface{}
 	_ = json.NewDecoder(vres.Body).Decode(&vout)
+	t.Logf("TestListMessageVersions: response body=%v", vout)
 	if versions, ok := vout["versions"].([]interface{}); !ok || len(versions) < 2 {
 		t.Fatalf("expected at least 2 versions")
 	}
