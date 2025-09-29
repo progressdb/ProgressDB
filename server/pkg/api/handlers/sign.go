@@ -27,12 +27,12 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Log the request (no sensitive content)
-	logger.InfoKV("signHandler called", "remote", r.RemoteAddr, "path", r.URL.Path)
+	logger.Info("signHandler called", "remote", r.RemoteAddr, "path", r.URL.Path)
 
 	// only backend roles may request signatures
 	role := r.Header.Get("X-Role-Name")
 	if role != "backend" {
-		logger.WarnKV("forbidden: non-backend role attempted to sign", "role", role, "remote", r.RemoteAddr)
+		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", r.RemoteAddr)
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
 	}
@@ -47,7 +47,7 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 		key = r.Header.Get("X-API-Key")
 	}
 	if key == "" {
-		logger.WarnKV("missing api key in signHandler", "remote", r.RemoteAddr)
+		logger.Warn("missing api key in signHandler", "remote", r.RemoteAddr)
 		http.Error(w, `{"error":"missing api key"}`, http.StatusUnauthorized)
 		return
 	}
@@ -56,18 +56,18 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 		UserID string `json:"userId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.UserID == "" {
-		logger.WarnKV("invalid payload in signHandler", "error", err, "remote", r.RemoteAddr)
+		logger.Warn("invalid payload in signHandler", "error", err, "remote", r.RemoteAddr)
 		http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
 		return
 	}
 
 	// Log the signing attempt (do not log userId or key)
-	logger.InfoKV("signing userId", "remote", r.RemoteAddr, "role", role)
+	logger.Info("signing userId", "remote", r.RemoteAddr, "role", role)
 
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(payload.UserID))
 	sig := hex.EncodeToString(mac.Sum(nil))
 	if err := json.NewEncoder(w).Encode(map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
-		logger.ErrorKV("failed to encode signHandler response", "error", err, "remote", r.RemoteAddr)
+		logger.Error("failed to encode signHandler response", "error", err, "remote", r.RemoteAddr)
 	}
 }

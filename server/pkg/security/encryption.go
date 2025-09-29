@@ -389,17 +389,17 @@ func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, err
 				if sv, ok := mMap["v"].(string); ok {
 					raw, err := base64.StdEncoding.DecodeString(sv)
 					if err != nil {
-						logger.WarnKV("decrypt_message_body_base64_decode_failed", "error", err)
+						logger.Warn("decrypt_message_body_base64_decode_failed", "error", err)
 						return m.Body, fmt.Errorf("base64 decode failed: %w", err)
 					}
 					pt, err := kms.DecryptWithDEK(threadKeyID, raw, nil)
 					if err != nil {
-						logger.WarnKV("decrypt_message_body_decrypt_failed", "error", err)
+						logger.Warn("decrypt_message_body_decrypt_failed", "error", err)
 						return m.Body, fmt.Errorf("kms decrypt failed: %w", err)
 					}
 					var out interface{}
 					if err := json.Unmarshal(pt, &out); err != nil {
-						logger.WarnKV("decrypt_message_body_unmarshal_failed", "error", err)
+						logger.Warn("decrypt_message_body_unmarshal_failed", "error", err)
 						return m.Body, fmt.Errorf("json unmarshal failed: %w", err)
 					}
 					return out, nil

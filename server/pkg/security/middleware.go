@@ -61,10 +61,10 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// IP whitelist
 			if len(cfg.IPWhitelist) > 0 {
 				ip := clientIP(r)
-				logger.DebugKV("ip_check", "ip", ip)
+				logger.Debug("ip_check", "ip", ip)
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
 					http.Error(w, "forbidden", http.StatusForbidden)
-					logger.WarnKV("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
+					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
 
 					return
 				}
@@ -74,7 +74,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			role, key, hasAPIKey := authenticate(r, cfg)
 
 			// Log authentication outcome (do not log full key content)
-			logger.DebugKV("auth_check", "role", role, "has_api_key", hasAPIKey)
+			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			// Allow unauthenticated health checks for deployment probes.
 			// Probes often cannot send API keys; accept GET /healthz without
@@ -91,7 +91,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			if role == RoleUnauth {
 				if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					logger.WarnKV("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+					logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
 					return
 				}
 				// otherwise, allow through so signature middleware can verify
@@ -114,19 +114,19 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// Scope enforcement for frontend keys
 			if role == RoleFrontend && !frontendAllowed(r) {
 				http.Error(w, "forbidden", http.StatusForbidden)
-				logger.WarnKV("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
+				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
 				return
 			}
 
 			// Rate limiting
 			if !limiters.Allow(key) {
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-				logger.WarnKV("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
+				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
 				return
 			}
 
 			// Log that request passed middleware checks
-			logger.InfoKV("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
+			logger.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
 
 			next.ServeHTTP(w, r)
 		})

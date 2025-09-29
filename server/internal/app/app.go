@@ -8,6 +8,7 @@ import (
 
 	"net/http"
 
+	"progressdb/internal/retention"
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
@@ -16,10 +17,11 @@ import (
 
 // App encapsulates the server components and lifecycle.
 type App struct {
-	eff       config.EffectiveConfigResult
-	version   string
-	commit    string
-	buildDate string
+	retentionCancel context.CancelFunc
+	eff             config.EffectiveConfigResult
+	version         string
+	commit          string
+	buildDate       string
 
 	// KMS/runtime
 	rc     *kms.RemoteClient
@@ -68,13 +70,22 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 // Run starts KMS (if enabled) and the HTTP server, and blocks until ctx is
 // canceled or a fatal server error occurs.
 func (a *App) Run(ctx context.Context) error {
-	// Run orchestrates distinct startup steps.
+	// run the kms service - depending on config
 	if err := a.setupKMS(ctx); err != nil {
 		return err
 	}
 
+	// print banner
 	a.printBanner()
 
+	// start retention scheduler if enabled
+	if cancel, err := retention.Start(ctx, a.eff); err != nil {
+		return err
+	} else {
+		a.retentionCancel = cancel
+	}
+
+	// start the http server
 	errCh := a.startHTTP(ctx)
 
 	select {

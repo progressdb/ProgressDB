@@ -207,6 +207,56 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	for k := range backendKeys {
 		signingKeys[k] = struct{}{}
 	}
+
+	// Retention related env overrides
+	if v := os.Getenv("PROGRESSDB_RETENTION_ENABLED"); v != "" {
+		envUsed = true
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes":
+			envCfg.Retention.Enabled = true
+		default:
+			envCfg.Retention.Enabled = false
+		}
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_CRON"); v != "" {
+		envUsed = true
+		envCfg.Retention.Cron = v
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_PERIOD"); v != "" {
+		envUsed = true
+		envCfg.Retention.Period = v
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"); v != "" {
+		envUsed = true
+		if i, err := strconv.Atoi(v); err == nil {
+			envCfg.Retention.BatchSize = i
+		}
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"); v != "" {
+		envUsed = true
+		if i, err := strconv.Atoi(v); err == nil {
+			envCfg.Retention.BatchSleepMs = i
+		}
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"); v != "" {
+		envUsed = true
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes":
+			envCfg.Retention.DryRun = true
+		default:
+			envCfg.Retention.DryRun = false
+		}
+	}
+	if v := os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"); v != "" {
+		envUsed = true
+		envCfg.Retention.MinPeriod = v
+	}
+
+	if v := os.Getenv("PROGRESSDB_RETENTION_AUDIT_PATH"); v != "" {
+		envUsed = true
+		envCfg.Retention.AuditPath = v
+	}
+
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }
 

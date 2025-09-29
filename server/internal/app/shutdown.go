@@ -33,6 +33,12 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	// cancel retention scheduler if running
+	if a.retentionCancel != nil {
+		log.Printf("shutdown: stopping retention scheduler")
+		a.retentionCancel()
+	}
+
 	// 4) close store
 	log.Printf("shutdown: closing store")
 	if err := store.Close(); err != nil {

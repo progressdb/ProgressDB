@@ -39,10 +39,5 @@ func LogRequest(r *http.Request) {
 	if Log == nil {
 		return
 	}
-	Info("incoming_request", map[string]interface{}{
-		"method":  r.Method,
-		"path":    r.URL.Path,
-		"remote":  r.RemoteAddr,
-		"headers": SafeHeaders(r),
-	})
+	Info("incoming_request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr, "headers", SafeHeaders(r))
 }

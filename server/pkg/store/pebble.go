@@ -28,13 +28,13 @@ var seq uint64
 // a global handle for simple usage in this package.
 func Open(path string) error {
 	var err error
-	logger.InfoKV("opening_pebble_db", "path", path)
+	logger.Info("opening_pebble_db", "path", path)
 	db, err = pebble.Open(path, &pebble.Options{})
 	if err != nil {
-		logger.ErrorKV("pebble_open_failed", "path", path, "error", err)
+		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
-	logger.InfoKV("pebble_opened", "path", path)
+	logger.Info("pebble_opened", "path", path)
 	return nil
 }
 
@@ -47,7 +47,7 @@ func Close() error {
 		return err
 	}
 	db = nil
-	logger.InfoKV("pebble_closed")
+	logger.Info("pebble_closed")
 	return nil
 }
 
@@ -114,17 +114,17 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 
 	// save to database
 	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
-		logger.ErrorKV("save_message_failed", "thread", threadID, "key", key, "error", err)
+		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
 		return err
 	}
-	logger.InfoKV("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
+	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 
 	// Also index by message ID for quick lookup of versions.
 	if msgID != "" {
 		// store version under explicit version namespace
 		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
 		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
-			logger.ErrorKV("save_message_index_failed", "idxKey", idxKey, "error", err)
+			logger.Error("save_message_index_failed", "idxKey", idxKey, "error", err)
 			return err
 		}
 	}
@@ -168,34 +168,34 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt if needed
 		if security.EncryptionEnabled() {
-			logger.DebugKV("encryption_enabled_listmessages", "threadID", threadID, "threadKeyID", threadKeyID)
+			logger.Debug("encryption_enabled_listmessages", "threadID", threadID, "threadKeyID", threadKeyID)
 			if security.EncryptionHasFieldPolicy() {
 				if threadKeyID == "" {
-					logger.ErrorKV("encryption_no_thread_key", "threadID", threadID)
+					logger.Error("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
 				var m models.Message
 				if err := json.Unmarshal(v, &m); err != nil {
-					logger.ErrorKV("listmessages_invalid_message_json", "value", v, "error", err)
+					logger.Error("listmessages_invalid_message_json", "value", v, "error", err)
 					return nil, fmt.Errorf("invalid message JSON: %w", err)
 				}
-				logger.DebugKV("listmessages_decrypting_field_policy", "msgID", m.ID, "threadKeyID", threadKeyID)
+				logger.Debug("listmessages_decrypting_field_policy", "msgID", m.ID, "threadKeyID", threadKeyID)
 				b, err := security.DecryptMessageBody(&m, threadKeyID)
 				if err != nil {
-					logger.ErrorKV("listmessages_field_decryption_failed", "msgID", m.ID, "threadKeyID", threadKeyID, "error", err)
+					logger.Error("listmessages_field_decryption_failed", "msgID", m.ID, "threadKeyID", threadKeyID, "error", err)
 					return nil, fmt.Errorf("field decryption failed: %w", err)
 				}
 				m.Body = b
 				nb, err := json.Marshal(m)
 				if err != nil {
-					logger.ErrorKV("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", err)
+					logger.Error("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", err)
 					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
 				}
-				logger.DebugKV("listmessages_decrypted_message", "msgID", m.ID, "decrypted", nb)
+				logger.Debug("listmessages_decrypted_message", "msgID", m.ID, "decrypted", nb)
 				v = nb
 			} else {
 				if threadKeyID == "" {
-					logger.ErrorKV("encryption_no_thread_key", "threadID", threadID)
+					logger.Error("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
 				// The stored value may be a JSON message where only the body is
@@ -206,25 +206,25 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 				if err := json.Unmarshal(v, &m); err == nil {
 					b, derr := security.DecryptMessageBody(&m, threadKeyID)
 					if derr != nil {
-						logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", derr)
+						logger.Error("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", derr)
 						return nil, fmt.Errorf("decrypt failed: %w", derr)
 					}
 					m.Body = b
 					nb, merr := json.Marshal(m)
 					if merr != nil {
-						logger.ErrorKV("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", merr)
+						logger.Error("listmessages_marshal_decrypted_failed", "msgID", m.ID, "error", merr)
 						return nil, fmt.Errorf("failed to marshal decrypted message: %w", merr)
 					}
-					logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted", nb)
+					logger.Debug("listmessages_decrypted_full_message", "threadID", threadID, "decrypted", nb)
 					v = nb
 				} else {
-					logger.DebugKV("listmessages_decrypting_full_message", "threadID", threadID, "threadKeyID", threadKeyID, "encrypted_len", len(v))
+					logger.Debug("listmessages_decrypting_full_message", "threadID", threadID, "threadKeyID", threadKeyID, "encrypted_len", len(v))
 					dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
 					if err != nil {
-						logger.ErrorKV("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", err)
+						logger.Error("listmessages_full_decrypt_failed", "threadID", threadID, "threadKeyID", threadKeyID, "error", err)
 						return nil, fmt.Errorf("decrypt failed: %w", err)
 					}
-					logger.DebugKV("listmessages_decrypted_full_message", "threadID", threadID, "decrypted_len", len(dec))
+					logger.Debug("listmessages_decrypted_full_message", "threadID", threadID, "decrypted_len", len(dec))
 					v = dec
 				}
 			}
@@ -349,7 +349,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 						return nil, fmt.Errorf("decrypt failed: %w", err)
 					}
 					// log decrypted length for debugging
-					logger.DebugKV("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_len", len(dec))
+					logger.Debug("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_len", len(dec))
 					v = dec
 				}
 			}
@@ -383,10 +383,10 @@ func SaveThread(threadID, data string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
-		logger.ErrorKV("save_thread_failed", "thread", threadID, "error", err)
+		logger.Error("save_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
-	logger.InfoKV("thread_saved", "thread", threadID)
+	logger.Info("thread_saved", "thread", threadID)
 	return nil
 }
 
@@ -413,10 +413,10 @@ func DeleteThread(threadID string) error {
 	}
 	key := []byte("thread:" + threadID + ":meta")
 	if err := db.Delete(key, pebble.Sync); err != nil {
-		logger.ErrorKV("delete_thread_failed", "thread", threadID, "error", err)
+		logger.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
-	logger.InfoKV("thread_deleted", "thread", threadID)
+	logger.Info("thread_deleted", "thread", threadID)
 	return nil
 }
 
@@ -428,7 +428,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	key := []byte("thread:" + threadID + ":meta")
 	v, closer, err := db.Get(key)
 	if err != nil {
-		logger.ErrorKV("soft_delete_load_failed", "thread", threadID, "error", err)
+		logger.Error("soft_delete_load_failed", "thread", threadID, "error", err)
 		return err
 	}
 	if closer != nil {
@@ -436,14 +436,14 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	var th models.Thread
 	if err := json.Unmarshal(v, &th); err != nil {
-		logger.ErrorKV("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
+		logger.Error("soft_delete_unmarshal_failed", "thread", threadID, "error", err)
 		return err
 	}
 	th.Deleted = true
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
 	if err := db.Set(key, nb, pebble.Sync); err != nil {
-		logger.ErrorKV("soft_delete_save_failed", "thread", threadID, "error", err)
+		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}
 
@@ -458,11 +458,11 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	// SaveMessage expects a models.Message, not a string
 	if err := SaveMessage(threadID, tomb.ID, tomb); err != nil {
-		logger.ErrorKV("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
+		logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
 		return err
 	}
 
-	logger.InfoKV("thread_soft_deleted", "thread", threadID, "actor", actor)
+	logger.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil
 }
 
@@ -533,13 +533,13 @@ func GetKey(key string) (string, error) {
 	}
 	v, closer, err := db.Get([]byte(key))
 	if err != nil {
-		logger.ErrorKV("get_key_failed", "key", key, "error", err)
+		logger.Error("get_key_failed", "key", key, "error", err)
 		return "", err
 	}
 	if closer != nil {
 		defer closer.Close()
 	}
-	logger.DebugKV("get_key_ok", "key", key, "len", len(v))
+	logger.Debug("get_key_ok", "key", key, "len", len(v))
 	return string(v), nil
 }
 
@@ -550,10 +550,10 @@ func SaveKey(key string, value []byte) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	if err := db.Set([]byte(key), value, pebble.Sync); err != nil {
-		logger.ErrorKV("save_key_failed", "key", key, "error", err)
+		logger.Error("save_key_failed", "key", key, "error", err)
 		return err
 	}
-	logger.DebugKV("save_key_ok", "key", key, "len", len(value))
+	logger.Debug("save_key_ok", "key", key, "len", len(value))
 	return nil
 }
 
@@ -708,3 +708,97 @@ func likelyJSON(b []byte) bool {
 // LikelyJSON is an exported version of likelyJSON, allowing other packages to
 // check if a byte slice likely contains JSON data.
 func LikelyJSON(b []byte) bool { return likelyJSON(b) }
+
+// PurgeThreadPermanently deletes a thread and all messages/versions under it.
+func PurgeThreadPermanently(threadID string) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	// prefix for thread keys
+	prefix := []byte("thread:" + threadID + ":")
+	iter, err := db.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+	// Delete keys in batches while iterating to bound memory usage.
+	const deleteBatchSize = 1000
+	var batch [][]byte
+	deleteBatch := func(keys [][]byte) {
+		for _, k := range keys {
+			if err := db.Delete(k, pebble.Sync); err != nil {
+				logger.Error("purge_delete_failed", "key", string(k), "error", err)
+			}
+		}
+	}
+
+	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), prefix) {
+			break
+		}
+		k := append([]byte(nil), iter.Key()...)
+		batch = append(batch, k)
+		// try to unmarshal message to also delete versions index
+		v := append([]byte(nil), iter.Value()...)
+		var m models.Message
+		if err := json.Unmarshal(v, &m); err == nil && m.ID != "" {
+			// delete version index keys for this message id
+			vprefix := []byte("version:msg:" + m.ID + ":")
+			vi, _ := db.NewIter(&pebble.IterOptions{})
+			if vi != nil {
+				for vi.SeekGE(vprefix); vi.Valid(); vi.Next() {
+					if !bytes.HasPrefix(vi.Key(), vprefix) {
+						break
+					}
+					kk := append([]byte(nil), vi.Key()...)
+					batch = append(batch, kk)
+					if len(batch) >= deleteBatchSize {
+						deleteBatch(batch)
+						batch = batch[:0]
+					}
+				}
+				vi.Close()
+			}
+		}
+		if len(batch) >= deleteBatchSize {
+			deleteBatch(batch)
+			batch = batch[:0]
+		}
+	}
+	if len(batch) > 0 {
+		deleteBatch(batch)
+	}
+	// delete thread meta explicitly
+	_ = DeleteThread(threadID)
+	// deleted_keys unknown with streaming deletes
+	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", 0)
+	return nil
+}
+
+// PurgeMessagePermanently deletes a single message and its version indexes.
+func PurgeMessagePermanently(messageID string) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	// delete version keys
+	vprefix := []byte("version:msg:" + messageID + ":")
+	vi, err := db.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return err
+	}
+	defer vi.Close()
+	var keys [][]byte
+	for vi.SeekGE(vprefix); vi.Valid(); vi.Next() {
+		if !bytes.HasPrefix(vi.Key(), vprefix) {
+			break
+		}
+		keys = append(keys, append([]byte(nil), vi.Key()...))
+	}
+	for _, k := range keys {
+		if err := db.Delete(k, pebble.Sync); err != nil {
+			logger.Error("purge_message_delete_failed", "key", string(k), "error", err)
+		}
+	}
+	logger.Info("purge_message_completed", "msg", messageID, "deleted_keys", len(keys))
+	return nil
+}

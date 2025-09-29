@@ -25,57 +25,57 @@ func validateAuthor(a string) (bool, string) {
 func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, string) {
 	// Prefer signature-verified author from context
 	if id := AuthorIDFromContext(r.Context()); id != "" {
-		logger.InfoKV("author_signature_verified", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Info("author_signature_verified", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
 		// If other provided authors conflict with the signature, reject.
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" && q != id {
-			logger.WarnKV("author_mismatch_signature_query", "signature", id, "query", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Warn("author_mismatch_signature_query", "signature", id, "query", q, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and query param"}`
 		}
 		if h := strings.TrimSpace(r.Header.Get("X-User-ID")); h != "" && h != id {
-			logger.WarnKV("author_mismatch_signature_header", "signature", id, "header", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Warn("author_mismatch_signature_header", "signature", id, "header", h, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and header"}`
 		}
 		if bodyAuthor != "" && bodyAuthor != id {
-			logger.WarnKV("author_mismatch_signature_body", "signature", id, "body", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Warn("author_mismatch_signature_body", "signature", id, "body", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return "", http.StatusForbidden, `{"error":"author mismatch between signature and body author"}`
 		}
-		logger.InfoKV("author_resolved_signature", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Info("author_resolved_signature", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
 		return id, 0, ""
 	}
 
 	// No signature; allow backend/admins to supply an author via body/header/query.
 	role := r.Header.Get("X-Role-Name")
-	logger.InfoKV("no_signature_found", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
+	logger.Info("no_signature_found", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
 	if role == "backend" || role == "admin" {
 		if bodyAuthor != "" {
 			if ok, msg := validateAuthor(bodyAuthor); !ok {
-				logger.WarnKV("invalid_backend_author", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Warn("invalid_backend_author", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
 				return "", http.StatusBadRequest, msg
 			}
-			logger.InfoKV("author_from_body_backend", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Info("author_from_body_backend", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return bodyAuthor, 0, ""
 		}
 		if h := strings.TrimSpace(r.Header.Get("X-User-ID")); h != "" {
 			if ok, msg := validateAuthor(h); !ok {
-				logger.WarnKV("invalid_backend_author", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Warn("invalid_backend_author", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
 				return "", http.StatusBadRequest, msg
 			}
-			logger.InfoKV("author_from_header_backend", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Info("author_from_header_backend", "user", h, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return h, 0, ""
 		}
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" {
 			if ok, msg := validateAuthor(q); !ok {
-				logger.WarnKV("invalid_backend_author", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+				logger.Warn("invalid_backend_author", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
 				return "", http.StatusBadRequest, msg
 			}
-			logger.InfoKV("author_from_query_backend", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
+			logger.Info("author_from_query_backend", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return q, 0, ""
 		}
-		logger.WarnKV("backend_missing_author", "remote", r.RemoteAddr, "path", r.URL.Path)
+		logger.Warn("backend_missing_author", "remote", r.RemoteAddr, "path", r.URL.Path)
 		return "", http.StatusBadRequest, `{"error":"author required for backend requests"}`
 	}
 
 	// Otherwise require signature
-	logger.WarnKV("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
+	logger.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
 	return "", http.StatusUnauthorized, `{"error":"missing or invalid author signature"}`
 }

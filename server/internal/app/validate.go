@@ -4,6 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"progressdb/pkg/config"
 )
@@ -51,6 +54,54 @@ func validateConfig(eff config.EffectiveConfigResult) error {
 		if mkHex != "" {
 			if _, err := hex.DecodeString(mkHex); err != nil {
 				return fmt.Errorf("invalid master_key_hex: %w", err)
+			}
+		}
+	}
+
+	// Retention validation: if retention configured, validate durations and cron-ish syntax.
+	ret := eff.Config.Retention
+	// if retention isn't explicitly configured, nothing to validate
+	if ret != (config.RetentionConfig{}) {
+		// set sensible defaults if empty
+		if ret.MinPeriod == "" {
+			ret.MinPeriod = "1h"
+		}
+		// parse durations
+		parseDur := func(s string) (time.Duration, error) {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return 0, fmt.Errorf("empty duration")
+			}
+			// support days like "30d"
+			if strings.HasSuffix(s, "d") {
+				v := strings.TrimSuffix(s, "d")
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					return 0, err
+				}
+				return time.Duration(n) * 24 * time.Hour, nil
+			}
+			// fallback to time.ParseDuration
+			return time.ParseDuration(s)
+		}
+		minD, err := parseDur(ret.MinPeriod)
+		if err != nil {
+			return fmt.Errorf("invalid retention.min_period: %w", err)
+		}
+		if ret.Period != "" {
+			pd, err := parseDur(ret.Period)
+			if err != nil {
+				return fmt.Errorf("invalid retention.period: %w", err)
+			}
+			if pd < minD {
+				return fmt.Errorf("retention.period %s is less than minimum allowed %s", ret.Period, ret.MinPeriod)
+			}
+		}
+		// quick cron-ish validation: 5 or 6 space-separated fields
+		if ret.Cron != "" {
+			parts := strings.Fields(ret.Cron)
+			if len(parts) < 5 || len(parts) > 6 {
+				return fmt.Errorf("invalid retention.cron: must be 5-6 space-separated cron fields")
 			}
 		}
 	}

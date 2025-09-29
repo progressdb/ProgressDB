@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"progressdb/internal/app"
@@ -26,10 +27,10 @@ func main() {
 	_ = godotenv.Load(".env")
 
 	// initialize centralized logger
-	if err := logger.Init(); err != nil {
-		log.Fatalf("failed to initialize logger: %v", err)
-	}
+	logger.Init()
 	defer logger.Sync()
+
+	// after loading effective config below we will attach the audit file sink
 
 	// parse config flags
 	flags := config.ParseConfigFlags()
@@ -47,6 +48,20 @@ func main() {
 	eff, err := config.LoadEffectiveConfig(flags, fileCfg, fileExists, envCfg, envRes)
 	if err != nil {
 		log.Fatalf("failed to build effective config: %v", err)
+	}
+
+	// Attach audit file sink based on env or config (fall back to DB path).
+	{
+		auditPath := os.Getenv("PROGRESSDB_AUDITS_PATH")
+		if auditPath == "" {
+			auditPath = eff.Config.Retention.AuditPath
+		}
+		if auditPath == "" {
+			auditPath = filepath.Join(eff.DBPath, "purge_audit")
+		}
+		if err := logger.AttachAuditFileSink(auditPath); err != nil {
+			logger.Error("attach_audit_sink_failed", "error", err)
+		}
 	}
 
 	// initialize app

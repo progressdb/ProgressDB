@@ -33,7 +33,7 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/encryption/generate-kek", adminEncryptionGenerateKEK).Methods(http.MethodPost)
 	// Encrypt legacy (pre-encryption) messages: { all: bool, thread_ids: [], parallelism: 4 }
 	r.HandleFunc("/encryption/encrypt-existing", adminEncryptionEncryptExisting).Methods(http.MethodPost)
-	logger.InfoKV("admin_routes_registered")
+	logger.Info("admin_routes_registered", nil)
 }
 
 func adminHealth(w http.ResponseWriter, r *http.Request) {

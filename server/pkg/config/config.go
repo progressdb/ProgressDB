@@ -94,6 +94,7 @@ type Config struct {
 	Logging struct {
 		Level string `yaml:"level"`
 	} `yaml:"logging"`
+	Retention RetentionConfig `yaml:"retention"`
 }
 
 // Addr returns the HTTP server address as host:port.
@@ -137,4 +138,22 @@ func ResolveConfigPath(flagPath string, flagSet bool) string {
 		return p
 	}
 	return flagPath
+}
+
+// Retention configuration for the automatic purge runner.
+type RetentionConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	Cron         string `yaml:"cron"`
+	Period       string `yaml:"period"`
+	BatchSize    int    `yaml:"batch_size"`
+	BatchSleepMs int    `yaml:"batch_sleep_ms"`
+	DryRun       bool   `yaml:"dry_run"`
+	Paused       bool   `yaml:"paused"`
+	MinPeriod    string `yaml:"min_period"`
+	AuditPath    string `yaml:"audit_path"`
+}
+
+// Add Retention to main Config
+func (c *Config) SetDefaultRetention() {
+	// noop placeholder for backward compatibility
 }
