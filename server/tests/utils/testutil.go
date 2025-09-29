@@ -46,9 +46,8 @@ func SetupServer(t *testing.T) *LocalServer {
 	t.Helper()
 	dir := t.TempDir()
 	dbpath := dir + "/db"
-	if err := logger.Init(); err != nil {
-		t.Fatalf("logger.Init failed: %v", err)
-	}
+	logger.Init()
+	defer logger.Sync()
 	if err := store.Open(dbpath); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}

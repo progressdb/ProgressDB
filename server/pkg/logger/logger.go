@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 var Log *slog.Logger
@@ -27,12 +26,12 @@ func AttachAuditFileSink(auditDir string) error {
 	if auditDir == "" {
 		return fmt.Errorf("empty audit dir")
 	}
-	year := time.Now().UTC().Format("2006")
-	dir := filepath.Join(auditDir, year)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// write audit.log directly under the retention folder to keep a
+	// single default location: <DBPath>/retention/audit.log
+	if err := os.MkdirAll(auditDir, 0o700); err != nil {
 		return err
 	}
-	fname := filepath.Join(dir, "audit.log")
+	fname := filepath.Join(auditDir, "audit.log")
 	f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
 	if err != nil {
 		return err

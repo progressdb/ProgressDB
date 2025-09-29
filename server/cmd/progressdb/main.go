@@ -50,19 +50,11 @@ func main() {
 		log.Fatalf("failed to build effective config: %v", err)
 	}
 
-	// Attach audit file sink based on env or config (fall back to DB path).
-	{
-		auditPath := os.Getenv("PROGRESSDB_AUDITS_PATH")
-		if auditPath == "" {
-			auditPath = eff.Config.Retention.AuditPath
-		}
-		if auditPath == "" {
-			auditPath = filepath.Join(eff.DBPath, "purge_audit")
-		}
-		if err := logger.AttachAuditFileSink(auditPath); err != nil {
-			logger.Error("attach_audit_sink_failed", "error", err)
-		}
-	}
+    // Attach audit file sink to a fixed retention folder under DBPath.
+    auditPath := filepath.Join(eff.DBPath, "retention")
+    if err := logger.AttachAuditFileSink(auditPath); err != nil {
+        logger.Error("attach_audit_sink_failed", "error", err)
+    }
 
 	// initialize app
 	app, err := app.New(eff, version, commit, buildDate)

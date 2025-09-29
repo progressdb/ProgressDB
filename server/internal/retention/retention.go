@@ -23,15 +23,9 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 		return func() {}, nil
 	}
 
-    // Determine audit path: prefer env PROGRESSDB_AUDITS_PATH, then
-    // retention.audit_path from config, then fall back to <DBPath>/purge_audit.
-    auditPath := os.Getenv("PROGRESSDB_AUDITS_PATH")
-    if auditPath == "" {
-        auditPath = ret.AuditPath
-    }
-    if auditPath == "" {
-        auditPath = filepath.Join(eff.DBPath, "purge_audit")
-    }
+    // Use a stable retention folder under the DB path for lock and audit
+    // artifacts: <DBPath>/retention.
+    auditPath := filepath.Join(eff.DBPath, "retention")
 
 	// ensure audit path exists
 	if err := os.MkdirAll(auditPath, 0o700); err != nil {

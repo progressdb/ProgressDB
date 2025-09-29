@@ -23,7 +23,7 @@ Retention (automatic purge)
 - `PROGRESSDB_RETENTION_DRY_RUN` (bool) — default: `false`. Log/audit but do not delete.
 - `PROGRESSDB_RETENTION_PAUSED` (bool) — default: `false`. If true, runner will not start.
 - `PROGRESSDB_RETENTION_MIN_PERIOD` (duration) — default: `1h`. Minimum allowed retention period.
-- `PROGRESSDB_RETENTION_AUDIT_PATH` — path to write audit run files. Defaults to `<DBPath>/purge_audit`.
+- `PROGRESSDB_RETENTION_AUDIT_PATH` — (deprecated) previously used for audit run files. Audits now default to `<DBPath>/retention/audit.log` and the retention lock uses `<DBPath>/retention/retention.lock`.
 
 Logging / Observability
 -----------------------
