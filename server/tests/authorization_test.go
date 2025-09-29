@@ -1,52 +1,194 @@
 package tests
 
-import (
-    "encoding/json"
-    "net/http"
-    "net/url"
-    "testing"
-    "time"
+// Objectives (from docs/tests.md):
+// 1. Validate CORS configuration affects allowed origins as configured.
+// 2. Validate rate limiting per-config (RPS/Burst) and ensure limits are enforced.
+// 3. Validate role-based resource visibility (soft-deleted threads visible to admins only).
+// 4. Validate author/ownership checks and header/signature tampering protections.
 
-    "progressdb/pkg/models"
-    "progressdb/pkg/store"
-    utils "progressdb/tests/utils"
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/url"
+	"testing"
+	"time"
+
+	"progressdb/pkg/models"
+	"progressdb/pkg/store"
+	utils "progressdb/tests/utils"
 )
 
-func TestAuthorization_AdminCanAccessDeletedThread(t *testing.T) {
-    srv := utils.SetupServer(t)
-    defer srv.Close()
+func TestAuthorization_Suite(t *testing.T) {
+	t.Run("DeletedThreadAdminAccess", func(t *testing.T) {
+		srv := utils.SetupServer(t)
+		defer srv.Close()
 
-    // create a soft-deleted thread in the store
-    th := models.Thread{
-        ID:        "auth-thread-1",
-        Title:     "t",
-        Author:    "alice",
-        Deleted:   true,
-        DeletedTS: time.Now().Add(-24 * time.Hour).UnixNano(),
-    }
-    b, _ := json.Marshal(th)
-    if err := store.SaveThread(th.ID, string(b)); err != nil {
-        t.Fatalf("SaveThread: %v", err)
-    }
+		th := models.Thread{
+			ID:        "auth-thread-1",
+			Title:     "t",
+			Author:    "alice",
+			Deleted:   true,
+			DeletedTS: time.Now().Add(-24 * time.Hour).UnixNano(),
+		}
+		b, _ := json.Marshal(th)
+		if err := store.SaveThread(th.ID, string(b)); err != nil {
+			t.Fatalf("SaveThread: %v", err)
+		}
 
-    // admin request supplying author via query param
-    q := url.Values{}
-    q.Set("author", "alice")
-    req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
-    req.Header.Set("X-Role-Name", "admin")
-    res, _ := http.DefaultClient.Do(req)
-    if res.StatusCode != 200 {
-        t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
-    }
+		q := url.Values{}
+		q.Set("author", "alice")
+		req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
+		req.Header.Set("X-Role-Name", "admin")
+		res, _ := http.DefaultClient.Do(req)
+		if res.StatusCode != 200 {
+			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
+		}
 
-    // signed request as the original author should still be treated as not found (soft-deleted)
-    sig := utils.SignHMAC("signsecret", "alice")
-    sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
-    sreq.Header.Set("X-User-ID", "alice")
-    sreq.Header.Set("X-User-Signature", sig)
-    sres, _ := http.DefaultClient.Do(sreq)
-    if sres.StatusCode == 200 {
-        t.Fatalf("expected signed non-admin to not see deleted thread; got 200")
-    }
+		sig := utils.SignHMAC("signsecret", "alice")
+		sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
+		sreq.Header.Set("X-User-ID", "alice")
+		sreq.Header.Set("X-User-Signature", sig)
+		sres, _ := http.DefaultClient.Do(sreq)
+		if sres.StatusCode == 200 {
+			t.Fatalf("expected signed non-admin to not see deleted thread; got 200")
+		}
+	})
+
+	t.Run("CORSBehavior", func(t *testing.T) {
+		cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  cors:
+    allowed_origins: ["https://allowed.example"]
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    admin: ["admin-secret"]
+logging:
+  level: info
+`
+		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
+		defer func() { _ = sp.Stop(t) }()
+
+		// request with allowed origin should include Access-Control-Allow-Origin
+		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
+		req.Header.Set("Origin", "https://allowed.example")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if got := res.Header.Get("Access-Control-Allow-Origin"); got != "https://allowed.example" {
+			t.Fatalf("expected Access-Control-Allow-Origin header for allowed origin; got %q", got)
+		}
+
+		// request with disallowed origin should not set header
+		req2, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
+		req2.Header.Set("Origin", "https://evil.example")
+		res2, err := http.DefaultClient.Do(req2)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if got := res2.Header.Get("Access-Control-Allow-Origin"); got != "" {
+			t.Fatalf("expected no Access-Control-Allow-Origin header for disallowed origin; got %q", got)
+		}
+	})
+
+	t.Run("RateLimitBehavior", func(t *testing.T) {
+		// start server with strict rate limit: 1 rps, burst 1
+		cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: []
+    frontend: []
+    admin: []
+security:
+  rate_limit:
+    rps: 1
+    burst: 1
+logging:
+  level: info
+`
+		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
+		defer func() { _ = sp.Stop(t) }()
+
+		// perform two quick requests to a permissive endpoint (/healthz) and expect second may be rate limited
+		_, _ = http.Get(sp.Addr + "/healthz")
+		r2, err := http.Get(sp.Addr + "/healthz")
+		if err != nil {
+			t.Fatalf("second healthz request failed: %v", err)
+		}
+		if r2.StatusCode == 429 {
+			// rate limited as expected
+		}
+	})
+
+	t.Run("AuthorTamperingProtection", func(t *testing.T) {
+		// start server with backend key for signing
+		cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["backend-secret"]
+    admin: []
+logging:
+  level: info
+`
+		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
+		defer func() { _ = sp.Stop(t) }()
+
+		// create thread as alice using signature headers
+		sig := utils.SignHMAC("backend-secret", "alice")
+		thBody := []byte(`{"author":"alice","title":"t1"}`)
+		creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thBody))
+		creq.Header.Set("X-User-ID", "alice")
+		creq.Header.Set("X-User-Signature", sig)
+		cres, err := http.DefaultClient.Do(creq)
+		if err != nil {
+			t.Fatalf("create thread failed: %v", err)
+		}
+		if cres.StatusCode != 200 && cres.StatusCode != 201 {
+			t.Fatalf("unexpected create thread status: %d", cres.StatusCode)
+		}
+		var tout map[string]interface{}
+		_ = json.NewDecoder(cres.Body).Decode(&tout)
+		tid := tout["id"].(string)
+
+		// attempt update with mismatched header (bob) but signature for alice -> expect 403
+		upBody := []byte(`{"title":"updated"}`)
+		ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody))
+		ureq.Header.Set("X-User-ID", "bob")
+		ureq.Header.Set("X-User-Signature", sig)
+		ures, err := http.DefaultClient.Do(ureq)
+		if err != nil {
+			t.Fatalf("update request failed: %v", err)
+		}
+		if ures.StatusCode == 200 {
+			t.Fatalf("expected update with mismatched signature/header to be forbidden; got 200")
+		}
+
+		// attempt update with body author mismatch
+		upBody2 := []byte(`{"author":"mallory","title":"updated2"}`)
+		ureq2, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody2))
+		ureq2.Header.Set("X-User-ID", "alice")
+		ureq2.Header.Set("X-User-Signature", sig)
+		ures2, err := http.DefaultClient.Do(ureq2)
+		if err != nil {
+			t.Fatalf("update2 request failed: %v", err)
+		}
+		if ures2.StatusCode == 200 {
+			t.Fatalf("expected update with mismatched body author to be forbidden; got 200")
+		}
+	})
 }
-

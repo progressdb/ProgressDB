@@ -79,6 +79,8 @@ func (a *App) Run(ctx context.Context) error {
 	a.printBanner()
 
 	// start retention scheduler if enabled
+	// register effective config so tests may trigger runs
+	retention.SetEffectiveConfig(a.eff)
 	if cancel, err := retention.Start(ctx, a.eff); err != nil {
 		return err
 	} else {

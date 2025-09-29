@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 
+	"progressdb/internal/retention"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
@@ -34,6 +36,11 @@ func RegisterAdmin(r *mux.Router) {
 	// Encrypt legacy (pre-encryption) messages: { all: bool, thread_ids: [], parallelism: 4 }
 	r.HandleFunc("/encryption/encrypt-existing", adminEncryptionEncryptExisting).Methods(http.MethodPost)
 	logger.Info("admin_routes_registered", nil)
+
+	// test-only retention trigger. The handler checks TESTING env var before
+	// executing; registration is safe in production but the handler will refuse
+	// to run unless tests explicitly enable it.
+	r.HandleFunc("/test/retention-run", adminTestRetentionRun).Methods(http.MethodPost)
 }
 
 func adminHealth(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +183,24 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
+}
+
+func adminTestRetentionRun(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	// Only allow this in test environments
+	if v := os.Getenv("PROGRESSDB_TESTING"); v != "1" && strings.ToLower(v) != "true" {
+		http.Error(w, `{"error":"test endpoint disabled"}`, http.StatusForbidden)
+		return
+	}
+	if err := retention.RunImmediate(); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 // adminEncryptionRewrapDEKs triggers rewrap operations for DEKs related to threads.

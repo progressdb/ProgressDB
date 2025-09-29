@@ -13,6 +13,24 @@ import (
 	"progressdb/pkg/logger"
 )
 
+var storedEff *config.EffectiveConfigResult
+
+// SetEffectiveConfig stores the effective config so tests (or admin triggers)
+// can invoke retention runs on-demand. This is intended for testing only.
+func SetEffectiveConfig(eff config.EffectiveConfigResult) {
+	storedEff = &eff
+}
+
+// RunImmediate triggers a single retention run using the stored effective
+// config. Returns an error if no effective config was registered.
+func RunImmediate() error {
+	if storedEff == nil {
+		return fmt.Errorf("no effective config registered for retention run")
+	}
+	auditPath := filepath.Join(storedEff.DBPath, "retention")
+	return runOnce(context.Background(), *storedEff, auditPath)
+}
+
 // Start starts the retention scheduler if enabled. Returns a cancel func.
 func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.CancelFunc, error) {
 	ret := eff.Config.Retention
@@ -23,9 +41,9 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 		return func() {}, nil
 	}
 
-    // Use a stable retention folder under the DB path for lock and audit
-    // artifacts: <DBPath>/retention.
-    auditPath := filepath.Join(eff.DBPath, "retention")
+	// Use a stable retention folder under the DB path for lock and audit
+	// artifacts: <DBPath>/retention.
+	auditPath := filepath.Join(eff.DBPath, "retention")
 
 	// ensure audit path exists
 	if err := os.MkdirAll(auditPath, 0o700); err != nil {
