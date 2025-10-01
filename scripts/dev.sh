@@ -68,14 +68,41 @@ if [[ $USE_ENC -eq 0 ]]; then
 fi
 
 if [[ $USE_ENC -eq 1 ]]; then
+  # Prefer the dedicated encryption helpers under scripts/enc/. If they are
+  # missing (e.g. stripped from this checkout), provide a clear fallback or
+  # error message so the dev script doesn't fail with an obscure "file not
+  # found" exec error.
   if [[ "$MODE" == "embedded" ]]; then
-    exec "$ROOT_DIR/scripts/enc/embedded/dev_enc_embedded.sh" "$@"
-  else
-    # external mode: forward wait options if set
-    if [[ $WAIT_KMS -eq 1 ]]; then
-      exec "$ROOT_DIR/scripts/enc/external/dev_enc_external.sh" --wait-kms --wait-timeout "$WAIT_TIMEOUT" "$@"
+    EMBEDDED_HELPER="$ROOT_DIR/scripts/enc/embedded/dev_enc_embedded.sh"
+    if [[ -x "$EMBEDDED_HELPER" ]]; then
+      exec "$EMBEDDED_HELPER" "$@"
     else
-      exec "$ROOT_DIR/scripts/enc/external/dev_enc_external.sh" "$@"
+      # Fall back to the KMS dev helper which provides a development KMS
+      # instance. This is not a drop-in replacement for all encryption
+      # workflows but is a sensible default for local development when the
+      # original enc helpers are missing.
+      FALLBACK_KMS="$ROOT_DIR/scripts/kms/dev.sh"
+      if [[ -x "$FALLBACK_KMS" || -f "$FALLBACK_KMS" ]]; then
+        echo "Encryption embedded helper missing; falling back to KMS dev helper: $FALLBACK_KMS"
+        exec "$FALLBACK_KMS" "$@"
+      else
+        echo "Missing embedded encryption helper: $EMBEDDED_HELPER" >&2
+        echo "Please restore scripts/enc/embedded/dev_enc_embedded.sh or run without --enc." >&2
+        exit 1
+      fi
+    fi
+  else
+    # external mode: forward wait options if set, but first check helper exists
+    EXTERNAL_HELPER="$ROOT_DIR/scripts/enc/external/dev_enc_external.sh"
+    if [[ ! -x "$EXTERNAL_HELPER" ]]; then
+      echo "External encryption helper missing: $EXTERNAL_HELPER" >&2
+      echo "Please restore scripts/enc/external/dev_enc_external.sh or run without --enc." >&2
+      exit 1
+    fi
+    if [[ $WAIT_KMS -eq 1 ]]; then
+      exec "$EXTERNAL_HELPER" --wait-kms --wait-timeout "$WAIT_TIMEOUT" "$@"
+    else
+      exec "$EXTERNAL_HELPER" "$@"
     fi
   fi
 else
