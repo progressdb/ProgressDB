@@ -1,9 +1,9 @@
-name: Release via goreleaser
+name: release-db-service
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'service-v*.*.*'
 
 permissions:
   contents: write   # Required to upload release assets
@@ -47,6 +47,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Docker Hub credentials are used by goreleaser to push images
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}

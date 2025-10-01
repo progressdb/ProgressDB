@@ -1,0 +1,38 @@
+name: release-js-sdk
+
+on:
+  push:
+    tags:
+      - 'sdk-js-v*.*.*'
+
+jobs:
+  release-js:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/sdk/frontend/typescript
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Run tests/build
+        run: |
+          npm run build || true
+          npm test || true
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public

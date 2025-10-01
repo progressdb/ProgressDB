@@ -1,16 +1,17 @@
 package auth
 
 import (
-	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+    "context"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
 
-	"net/http"
-	"progressdb/pkg/logger"
-	"strings"
+    "net/http"
+    "progressdb/pkg/logger"
+    "strings"
 
-	"progressdb/pkg/config"
+    "progressdb/pkg/config"
+    "progressdb/pkg/utils"
 )
 
 type ctxAuthorKey struct{}
@@ -39,25 +40,25 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 
 		// If we reach here and there's no signature, the caller is not a
 		// trusted backend/admin and we must require signature headers.
-		if sig == "" {
-			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
-			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
-			return
-		}
+        if sig == "" {
+            logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+            utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
+            return
+        }
 		// signature is present; require userID as well
-		if userID == "" {
-			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
-			http.Error(w, `{"error":"missing signature headers"}`, http.StatusUnauthorized)
-			return
-		}
+        if userID == "" {
+            logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+            utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
+            return
+        }
 
 		// Retrieve signing keys from the canonical config package.
 		keys := config.GetSigningKeys()
-		if len(keys) == 0 {
-			logger.Error("no_signing_keys_configured")
-			http.Error(w, `{"error":"server misconfigured: no signing secrets available"}`, http.StatusInternalServerError)
-			return
-		}
+        if len(keys) == 0 {
+            logger.Error("no_signing_keys_configured")
+            utils.JSONError(w, http.StatusInternalServerError, "server misconfigured: no signing secrets available")
+            return
+        }
 
 		// Try all configured signing keys.
 		ok := false
@@ -70,11 +71,11 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 				break
 			}
 		}
-		if !ok {
-			logger.Warn("invalid_signature", "user", userID)
-			http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
-			return
-		}
+        if !ok {
+            logger.Warn("invalid_signature", "user", userID)
+            utils.JSONError(w, http.StatusUnauthorized, "invalid signature")
+            return
+        }
 		logger.Info("signature_verified", "user", userID)
 		ctx := context.WithValue(r.Context(), ctxAuthorKey{}, userID)
 		r = r.WithContext(ctx)

@@ -1,14 +1,15 @@
 package security
 
 import (
-	"net"
-	"net/http"
-	"strings"
-	"sync"
+    "net"
+    "net/http"
+    "strings"
+    "sync"
 
-	"golang.org/x/time/rate"
+    "golang.org/x/time/rate"
 
-	"progressdb/pkg/logger"
+    "progressdb/pkg/logger"
+    "progressdb/pkg/utils"
 )
 
 type Role int
@@ -62,12 +63,12 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			if len(cfg.IPWhitelist) > 0 {
 				ip := clientIP(r)
 				logger.Debug("ip_check", "ip", ip)
-				if !ipWhitelisted(ip, cfg.IPWhitelist) {
-					http.Error(w, "forbidden", http.StatusForbidden)
-					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
+                if !ipWhitelisted(ip, cfg.IPWhitelist) {
+                    utils.JSONError(w, http.StatusForbidden, "forbidden")
+                    logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
 
-					return
-				}
+                    return
+                }
 			}
 
 			// Auth
@@ -79,23 +80,23 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			// Allow unauthenticated health checks for deployment probes.
 			// Probes often cannot send API keys; accept GET /healthz without
 			// authentication so external systems can verify service liveness.
-			if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
-				r.Header.Set("X-Role-Name", "unauth")
-				next.ServeHTTP(w, r)
-				return
-			}
+                if r.URL.Path == "/healthz" && r.Method == http.MethodGet {
+                    r.Header.Set("X-Role-Name", "unauth")
+                    next.ServeHTTP(w, r)
+                    return
+                }
 
 			// Do not allow unauthenticated requests for other endpoints unless
 			// the request carries signature headers (X-User-ID + X-User-Signature),
 			// in which case signature verification middleware will handle auth.
-			if role == RoleUnauth {
-				if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
-					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
-					return
-				}
-				// otherwise, allow through so signature middleware can verify
-			}
+                if role == RoleUnauth {
+                    if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
+                        utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+                        logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+                        return
+                    }
+                    // otherwise, allow through so signature middleware can verify
+                }
 
 			// Expose role name for handlers
 			var roleName string
@@ -112,18 +113,18 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			r.Header.Set("X-Role-Name", roleName)
 
 			// Scope enforcement for frontend keys
-			if role == RoleFrontend && !frontendAllowed(r) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
-				return
-			}
+                if role == RoleFrontend && !frontendAllowed(r) {
+                    utils.JSONError(w, http.StatusForbidden, "forbidden")
+                    logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
+                    return
+                }
 
 			// Rate limiting
-			if !limiters.Allow(key) {
-				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
-				return
-			}
+                if !limiters.Allow(key) {
+                    utils.JSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
+                    logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
+                    return
+                }
 
 			// Log that request passed middleware checks
 			logger.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))

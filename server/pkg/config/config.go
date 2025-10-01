@@ -2,10 +2,9 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
-	"io/ioutil"
-	"os"
-	"sync"
+    "gopkg.in/yaml.v3"
+    "os"
+    "sync"
 )
 
 // RuntimeConfig holds runtime key sets for use by other packages.
@@ -112,10 +111,10 @@ func (c *Config) Addr() string {
 
 // Load reads and parses a config file.
 func Load(path string) (*Config, error) {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config file not found: %s", path)
+    b, err := os.ReadFile(path)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return nil, fmt.Errorf("config file not found: %s", path)
 		}
 		return nil, err
 	}

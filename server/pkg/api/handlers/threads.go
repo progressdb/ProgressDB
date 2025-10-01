@@ -57,22 +57,22 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var t models.Thread
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-		return
-	}
+    if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+        utils.JSONError(w, http.StatusBadRequest, "invalid json")
+        return
+    }
 	// resolve canonical author (signature or backend-provided)
-	if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
-		http.Error(w, msg, code)
-		return
-	} else {
-		t.Author = author
-	}
+    if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
+        utils.JSONError(w, code, msg)
+        return
+    } else {
+        t.Author = author
+    }
 	created, err := createThreadInternal(t.Author, t.Title)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+    if err != nil {
+        utils.JSONError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
 	_ = json.NewEncoder(w).Encode(created)
 }
 
@@ -116,11 +116,11 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 func listThreads(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
+    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+    if code != 0 {
+        utils.JSONError(w, code, msg)
+        return
+    }
 	titleQ := r.URL.Query().Get("title")
 	slugQ := r.URL.Query().Get("slug")
 
@@ -176,26 +176,26 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s, err := store.GetThread(id)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
-		return
-	}
+    s, err := store.GetThread(id)
+    if err != nil {
+        utils.JSONError(w, http.StatusNotFound, err.Error())
+        return
+    }
 
 	var th models.Thread
-	if err := json.Unmarshal([]byte(s), &th); err != nil {
-		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
-		return
-	}
-	role := r.Header.Get("X-Role-Name")
-	if th.Deleted && role != "admin" {
-		http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
-		return
-	}
-	if th.Author != authorQ {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-		return
-	}
+    if err := json.Unmarshal([]byte(s), &th); err != nil {
+        utils.JSONError(w, http.StatusInternalServerError, "failed to parse thread")
+        return
+    }
+    role := r.Header.Get("X-Role-Name")
+    if th.Deleted && role != "admin" {
+        utils.JSONError(w, http.StatusNotFound, "thread not found")
+        return
+    }
+    if th.Author != authorQ {
+        utils.JSONError(w, http.StatusForbidden, "author does not match")
+        return
+    }
 
 	_, _ = w.Write([]byte(s))
 }
@@ -234,10 +234,10 @@ func updateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var t models.Thread
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-		return
-	}
+    if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+        utils.JSONError(w, http.StatusBadRequest, "invalid json")
+        return
+    }
 	// resolve author (signature or backend-provided)
 	author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author)
 	if code != 0 {

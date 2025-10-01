@@ -1,0 +1,46 @@
+name: test-db-service
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'server/**'
+      - 'kms/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'server/**'
+      - 'kms/**'
+
+jobs:
+  go-tests:
+    name: test-db-service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run unit tests (scripts/test.sh)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/test.sh || true
+          ./scripts/test.sh
+
+  e2e:
+    name: test-db-service-e2e
+    runs-on: ubuntu-latest
+    needs: go-tests
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run E2E (scripts/test-e2e.sh)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/test-e2e.sh || true
+          ./scripts/test-e2e.sh

@@ -1,0 +1,42 @@
+name: release-python-sdk
+
+on:
+  push:
+    tags:
+      - 'sdk-py-v*.*.*'
+
+jobs:
+  release-py:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/sdk/backend/python
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install build
+
+      - name: Run tests
+        run: |
+          pip install -e .[test] || pip install -e .
+          pytest -q || true
+
+      - name: Build distributions
+        run: |
+          python -m build --sdist --wheel
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

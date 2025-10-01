@@ -1,14 +1,15 @@
 package handlers
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"net/http"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "encoding/json"
+    "net/http"
 
-	"github.com/gorilla/mux"
-	"progressdb/pkg/logger"
+    "github.com/gorilla/mux"
+    "progressdb/pkg/logger"
+    "progressdb/pkg/utils"
 )
 
 // RegisterSigning registers the signing endpoint onto the provided router.
@@ -31,11 +32,11 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 
 	// only backend roles may request signatures
 	role := r.Header.Get("X-Role-Name")
-	if role != "backend" {
-		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", r.RemoteAddr)
-		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-		return
-	}
+    if role != "backend" {
+        logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", r.RemoteAddr)
+        utils.JSONError(w, http.StatusForbidden, "forbidden")
+        return
+    }
 
 	// determine the API key used by reading Authorization or X-API-Key header
 	auth := r.Header.Get("Authorization")
@@ -46,20 +47,20 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 	if key == "" {
 		key = r.Header.Get("X-API-Key")
 	}
-	if key == "" {
-		logger.Warn("missing api key in signHandler", "remote", r.RemoteAddr)
-		http.Error(w, `{"error":"missing api key"}`, http.StatusUnauthorized)
-		return
-	}
+    if key == "" {
+        logger.Warn("missing api key in signHandler", "remote", r.RemoteAddr)
+        utils.JSONError(w, http.StatusUnauthorized, "missing api key")
+        return
+    }
 
 	var payload struct {
 		UserID string `json:"userId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.UserID == "" {
-		logger.Warn("invalid payload in signHandler", "error", err, "remote", r.RemoteAddr)
-		http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
-		return
-	}
+    if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.UserID == "" {
+        logger.Warn("invalid payload in signHandler", "error", err, "remote", r.RemoteAddr)
+        utils.JSONError(w, http.StatusBadRequest, "invalid payload")
+        return
+    }
 
 	// Log the signing attempt (do not log userId or key)
 	logger.Info("signing userId", "remote", r.RemoteAddr, "role", role)
