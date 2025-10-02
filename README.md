@@ -196,7 +196,7 @@ Planned / In progress:
 - [ ] Backups & tested restores
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - [ ] API versioning, scaling and search
-- [ ] Realibility systems - chat WAL etc
+- [ ] Realibility systems - WAL buffer etc
 
 
 ## Links

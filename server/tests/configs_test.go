@@ -88,11 +88,10 @@ security:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
     admin: ["admin-secret"]
-logging:
-  level: info
-security:
   encryption:
     use: false
+logging:
+  level: info
 `
 
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})

@@ -20,7 +20,7 @@ This document defines the **"tests per feature"** system and the objectives for 
 1. **Build or locate** the server binary to test.
 2. **Create a temporary workdir** and write a minimal YAML config tailored to the scenario (db path, api keys, retention settings, kms master key, etc.).
 3. **Start the server** as a child process, redirecting stdout/stderr to files in the tempdir.
-4. **Wait for readiness** (`/readyz` or `/healthz`) with a timeout; on failure dump logs and fail the test.
+4. **Wait for readiness** (`/healthz`) with a timeout; on failure dump logs and fail the test.
 5. **Exercise the feature** via HTTP calls, direct DB access (if needed), or admin trigger endpoints.
 6. **Use polling with timeouts** to assert eventual state changes (e.g. purge completed).
 7. **Stop the server, collect logs and artifacts, and remove temp files.**

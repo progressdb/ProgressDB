@@ -152,7 +152,7 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	}
 
 	// wait for readiness (give the server up to 1 minute to become healthy)
-	if err := waitForReady(sp.Addr, 4*time.Minute); err != nil {
+	if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
 		// capture logs
 		stdout, _ := os.ReadFile(sp.StdoutPath)
 		stderr, _ := os.ReadFile(sp.StderrPath)
@@ -200,7 +200,7 @@ func pickFreePort() (int, error) {
 
 func waitForReady(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	url := addr + "/readyz"
+	url := addr + "/healthz"
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

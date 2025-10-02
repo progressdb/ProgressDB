@@ -109,7 +109,6 @@ security:
     backend: []
     frontend: []
     admin: []
-security:
   rate_limit:
     rps: 1
     burst: 1

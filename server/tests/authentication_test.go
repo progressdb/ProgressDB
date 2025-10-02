@@ -96,7 +96,7 @@ logging:
 		}
 
 		// frontend key cannot call sign endpoint (requires backend role)
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
+	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
 		sreq.Header.Set("Authorization", "Bearer frontend-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {
@@ -126,7 +126,7 @@ logging:
 		defer func() { _ = sp.Stop(t) }()
 
 		// backend can call sign endpoint
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/_sign", bytes.NewReader([]byte(`{"userId":"bob"}`)))
+	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"bob"}`)))
 		sreq.Header.Set("Authorization", "Bearer backend-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {
@@ -189,7 +189,7 @@ logging:
 		}
 
 		// admin cannot call sign endpoint (requires backend role)
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
+	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
 		sreq.Header.Set("Authorization", "Bearer admin-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {

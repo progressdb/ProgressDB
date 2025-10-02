@@ -26,7 +26,7 @@ import (
 // removed to avoid duplication.
 
 func TestEncryption_E2E_EncryptRoundTrip(t *testing.T) {
-	cfg := `server:
+    cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -35,12 +35,11 @@ security:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
     admin: ["admin-secret"]
-logging:
-  level: info
-security:
   encryption:
     use: true
     fields: ["body"]
+logging:
+  level: info
 `
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
