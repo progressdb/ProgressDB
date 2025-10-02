@@ -38,7 +38,7 @@ func (a *App) printBanner() {
 
 // startHTTP builds the handler, starts the HTTP server in a goroutine and
 // returns a channel that will contain any server error.
-func (a *App) startHTTP(ctx context.Context) <-chan error {
+func (a *App) startHTTP(_ context.Context) <-chan error {
 	mux := http.NewServeMux()
 	// readiness probe
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {

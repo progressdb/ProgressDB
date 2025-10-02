@@ -36,7 +36,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 	limiters := &limiterPool{cfg: cfg}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Centralized safe request logging (redacts sensitive headers)
+			// request logging (redacts sensitive headers)
 			logger.LogRequest(r)
 			// CORS preflight
 			origin := r.Header.Get("Origin")
@@ -66,7 +66,6 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
 					utils.JSONError(w, http.StatusForbidden, "forbidden")
 					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
-
 					return
 				}
 			}
