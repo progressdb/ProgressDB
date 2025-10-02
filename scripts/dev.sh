@@ -2,7 +2,14 @@
 # Ensure we run under bash (arrays and ${BASH_SOURCE} required). If invoked with
 # sh, re-exec under bash so `set -u` and array usages work correctly.
 if [ -z "${BASH_VERSION:-}" ]; then
-  exec bash "$0" "$@"
+  # If invoked via `sh scripts/dev.sh` then $0 == "sh" and the script path is
+  # in $1. Shift so the script path becomes $0 when re-execing under bash.
+  if [ "$0" = "sh" ] && [ "$#" -ge 1 ]; then
+    shift
+    exec bash "$@"
+  else
+    exec bash "$0" "$@"
+  fi
 fi
 set -euo pipefail
 
@@ -17,11 +24,7 @@ MODE="embedded"
 WAIT_KMS=0
 WAIT_TIMEOUT=30
 
-# If the current shell does not support bash arrays (e.g. invoked via `sh`),
-# re-exec the script under `bash` so array usage later works.
-if ! ( eval 'tmp=()' ) 2>/dev/null; then
-  exec bash "$0" "$@"
-fi
+# At this point we are running under bash.
 
 while [ $# -gt 0 ]; do
   case "$1" in

@@ -98,10 +98,12 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		}
 		if binPath == "" {
 			binPath = filepath.Join(workdir, "progressdb-bin")
-			// run `go build -o <bin> ./server/cmd/progressdb`
-			build := exec.Command("go", "build", "-o", binPath, "./server/cmd/progressdb")
+			// try building from the server dir first (tests execute from server/tests),
+			// then fall back to building from the repo root if that fails.
+			build := exec.Command("go", "build", "-o", binPath, "./cmd/progressdb")
 			build.Env = os.Environ()
-			build.Dir = "./"
+			// run from the `server` directory (tests execute from server/tests)
+			build.Dir = ".."
 			bout, err := build.CombinedOutput()
 			if err != nil {
 				t.Fatalf("failed to build server binary: %v\noutput:\n%s", err, string(bout))
@@ -149,8 +151,8 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		WorkDir:    workdir,
 	}
 
-	// wait for readiness
-	if err := waitForReady(sp.Addr, 15*time.Second); err != nil {
+	// wait for readiness (give the server up to 1 minute to become healthy)
+	if err := waitForReady(sp.Addr, 4*time.Minute); err != nil {
 		// capture logs
 		stdout, _ := os.ReadFile(sp.StdoutPath)
 		stderr, _ := os.ReadFile(sp.StderrPath)

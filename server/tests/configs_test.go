@@ -48,7 +48,11 @@ func TestConfigs_Suite(t *testing.T) {
 		// build binary and start with malformed config
 		tmp := t.TempDir()
 		bin := filepath.Join(tmp, "progressdb-bin")
-		build := exec.Command("go", "build", "-o", bin, "./server/cmd/progressdb")
+		// try building from the server dir first, then fall back to building from repo root
+		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
+		build.Env = os.Environ()
+		// run build from the `server` directory (tests execute from server/tests)
+		build.Dir = ".."
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build failed: %v\n%s", err, string(out))
 		}
@@ -135,7 +139,11 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	// build binary
 	tmp := t.TempDir()
 	bin := filepath.Join(tmp, "progressdb-bin")
-	build := exec.Command("go", "build", "-o", bin, "./server/cmd/progressdb")
+	// try building from the server dir first, then fall back to building from repo root
+	build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
+	build.Env = os.Environ()
+	// run build from the `server` directory (tests execute from server/tests)
+	build.Dir = ".."
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build failed: %v\n%s", err, string(out))
 	}

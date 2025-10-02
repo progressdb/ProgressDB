@@ -182,19 +182,21 @@ export default function App() {
 Implemented (ready to use):
 
 - [x] Message storage (append-only), versions, soft-delete, replies, reactions
-- [x] Thread metadata (CRUD)
+- [x] Thread metadata operations
 - [x] Structured logging, Prometheus metrics, config & security middleware
 - [x] Backend SDKs (Node, Python)
 - [x] Frontend SDKs (TypeScript, React)
 - [x] Simple data viewer
 - [x] Encryption & key management
+- [x] Retention policies & management
 
 Planned / In progress:
 
 - [ ] Performance benchmarking & SLO/alerts
 - [ ] Backups & tested restores
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
-- [ ] API versioning, retention policies, scaling and search
+- [ ] API versioning, scaling and search
+- [ ] Realibility systems - chat WAL etc
 
 
 ## Links

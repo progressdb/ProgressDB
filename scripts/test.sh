@@ -12,7 +12,7 @@ mkdir -p "$GOCACHE"
 cd server
 
 # Log file for JSON output
-JSON_LOG="../logs/test-results.json"
+JSON_LOG="../logs/test-results.log"
 
 # Prefer gotestsum for nicer output and JSON log when available, otherwise fall back to go test with tee to file
 if command -v gotestsum >/dev/null 2>&1; then
