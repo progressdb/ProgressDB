@@ -21,7 +21,8 @@ import (
 )
 
 func TestLogging_Suite(t *testing.T) {
-	t.Run("InitAndAttachAuditSink", func(t *testing.T) {
+    // Subtest: Initialize logger and attach audit file sink; verify audit file created.
+    t.Run("InitAndAttachAuditSink", func(t *testing.T) {
 		logger.Init()
 		if logger.Log == nil {
 			t.Fatalf("expected logger.Log to be non-nil after Init")
@@ -38,7 +39,8 @@ func TestLogging_Suite(t *testing.T) {
 		}
 	})
 
-	t.Run("LogLevelBehavior", func(t *testing.T) {
+    // Subtest: Start server with debug log level and verify debug entries appear in log.
+    t.Run("LogLevelBehavior", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -57,8 +59,10 @@ logging:
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg, Env: map[string]string{"PROGRESSDB_LOG_SINK": "file:{{WORKDIR}}/app.log", "PROGRESSDB_LOG_LEVEL": "debug"}})
 		defer func() { _ = sp.Stop(t) }()
 
-		// make a request that will trigger auth_check debug log
-		_, _ = http.Get(sp.Addr + "/healthz")
+        // make a request that will trigger auth_check debug log
+        if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
+            t.Fatalf("healthz request failed: %v", err)
+        }
 
 		// check log file for debug entry
 		logPath := filepath.Join(sp.WorkDir, "app.log")
@@ -78,8 +82,9 @@ logging:
 		}
 	})
 
-	t.Run("AuditPathFailureModes", func(t *testing.T) {
-		// create a tmp dir and a file at <db>/retention to provoke MkdirAll failure
+    // Subtest: Start server with an invalid audit/retention path and verify failure is logged (attach_audit_sink_failed).
+    t.Run("AuditPathFailureModes", func(t *testing.T) {
+        // create a tmp dir and a file at <db>/retention to provoke MkdirAll failure
 		tmp := t.TempDir()
 		db := filepath.Join(tmp, "db")
 		_ = os.MkdirAll(db, 0o700)
@@ -125,7 +130,8 @@ logging:
 		}
 	})
 
-	t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {
+    // Subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
+    t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -145,10 +151,12 @@ logging:
 		n := 20
 		done := make(chan struct{}, n)
 		for i := 0; i < n; i++ {
-			go func() {
-				_, _ = http.Get(sp.Addr + "/healthz")
-				done <- struct{}{}
-			}()
+                go func() {
+                    if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
+                        t.Logf("healthz request error in concurrent logger test: %v", err)
+                    }
+                    done <- struct{}{}
+                }()
 		}
 		for i := 0; i < n; i++ {
 			<-done

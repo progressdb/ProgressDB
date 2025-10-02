@@ -151,20 +151,56 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		WorkDir:    workdir,
 	}
 
-	// wait for readiness (give the server up to 1 minute to become healthy)
-	if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
-		// capture logs
-		stdout, _ := os.ReadFile(sp.StdoutPath)
-		stderr, _ := os.ReadFile(sp.StderrPath)
-		t.Fatalf("server failed to become ready: %v\nstdout:\n%s\nstderr:\n%s", err, string(stdout), string(stderr))
-	}
+    // wait for readiness (give the server up to 1 minute to become healthy)
+    if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
+        // capture logs
+        stdout, _ := os.ReadFile(sp.StdoutPath)
+        stderr, _ := os.ReadFile(sp.StderrPath)
+        t.Fatalf("server failed to become ready: %v\nstdout:\n%s\nstderr:\n%s", err, string(stdout), string(stderr))
+    }
 
-	// close files (process has them open still)
-	_ = stdoutF.Close()
-	_ = stderrF.Close()
+    // perform an additional smoke check against /healthz to ensure handlers are responsive
+    healthOK := false
+    for i := 0; i < 10; i++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+        req, _ := http.NewRequestWithContext(ctx, http.MethodGet, sp.Addr+"/healthz", nil)
+        resp, err := http.DefaultClient.Do(req)
+        cancel()
+        if err == nil && resp != nil {
+            if resp.StatusCode == 200 {
+                healthOK = true
+            }
+            _ = resp.Body.Close()
+        }
+        if healthOK {
+            break
+        }
+        time.Sleep(200 * time.Millisecond)
+    }
+    if !healthOK {
+        stdout, _ := os.ReadFile(sp.StdoutPath)
+        stderr, _ := os.ReadFile(sp.StderrPath)
+        t.Fatalf("server readiness probe passed but /healthz did not respond OK\nstdout:\n%s\nstderr:\n%s", string(stdout), string(stderr))
+    }
 
-	t.Logf("started server at %s (workdir=%s)", sp.Addr, sp.WorkDir)
-	return sp
+    // close files (process has them open still)
+    _ = stdoutF.Close()
+    _ = stderrF.Close()
+
+    // register cleanup that prints server logs on test failure to aid debugging
+    t.Cleanup(func() {
+        if t.Failed() {
+            if out, err := os.ReadFile(sp.StdoutPath); err == nil {
+                t.Logf("---- server stdout (%s) ----\n%s", sp.StdoutPath, string(out))
+            }
+            if errb, err := os.ReadFile(sp.StderrPath); err == nil {
+                t.Logf("---- server stderr (%s) ----\n%s", sp.StderrPath, string(errb))
+            }
+        }
+    })
+
+    t.Logf("started server at %s (workdir=%s)", sp.Addr, sp.WorkDir)
+    return sp
 }
 
 // Stop stops the server process, returning its exit error if any. It will
@@ -200,7 +236,7 @@ func pickFreePort() (int, error) {
 
 func waitForReady(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	url := addr + "/healthz"
+	url := addr + "/readyz"
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

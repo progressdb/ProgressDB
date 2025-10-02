@@ -8,6 +8,7 @@ package tests
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"testing"
 
@@ -15,18 +16,24 @@ import (
 )
 
 func TestAuthentication_Suite(t *testing.T) {
+	// Subtest: Verify unsigned in-process request is rejected (no signature, no API key).
 	t.Run("UnsignedCallRejected_InProcess", func(t *testing.T) {
 		// existing lightweight in-process check retained for fast feedback
 		srv := utils.SetupServer(t)
 		defer srv.Close()
 
 		req, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader([]byte(`{"body":{}}`)))
-		res, _ := http.DefaultClient.Do(req)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer res.Body.Close()
 		if res.StatusCode == 200 {
-			t.Fatalf("expected error for unsigned request")
+			t.Fatalf("expected error for unsigned request; got 200")
 		}
 	})
 
+	// Subtest: E2E - start server with no API keys; check health and that unauthenticated POSTs are rejected.
 	t.Run("E2E_NoKeys_StartAndBehavior", func(t *testing.T) {
 		// config with no api keys
 		cfg := `server:
@@ -58,14 +65,19 @@ logging:
 		// unauthenticated POST to messages should be rejected (no signature, no api key)
 		req, _ := http.NewRequest("POST", sp.Addr+"/v1/messages", bytes.NewReader([]byte(`{"body":{}}`)))
 		cre, err := http.DefaultClient.Do(req)
+		t.Logf("POST /v1/messages response: %+v", cre)
 		if err != nil {
-			t.Fatalf("post messages failed: %v", err)
+			t.Fatalf("POST /v1/messages failed: %v", err)
 		}
+		defer cre.Body.Close()
+		body, _ := io.ReadAll(cre.Body)
+		t.Logf("response status=%d body=%s", cre.StatusCode, string(body))
 		if cre.StatusCode == 200 {
 			t.Fatalf("expected unauthenticated POST /v1/messages to be rejected; got 200")
 		}
 	})
 
+	// Subtest: E2E - frontend API key should be limited in scope (no admin, no sign endpoint).
 	t.Run("E2E_FrontendKey_Scopes", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
@@ -96,7 +108,7 @@ logging:
 		}
 
 		// frontend key cannot call sign endpoint (requires backend role)
-	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
+		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
 		sreq.Header.Set("Authorization", "Bearer frontend-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {
@@ -107,6 +119,7 @@ logging:
 		}
 	})
 
+	// Subtest: E2E - backend API key can call signing and create messages but not admin endpoints.
 	t.Run("E2E_BackendKey_Scopes", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
@@ -126,7 +139,7 @@ logging:
 		defer func() { _ = sp.Stop(t) }()
 
 		// backend can call sign endpoint
-	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"bob"}`)))
+		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"bob"}`)))
 		sreq.Header.Set("Authorization", "Bearer backend-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {
@@ -159,6 +172,7 @@ logging:
 		}
 	})
 
+	// Subtest: E2E - admin API key can access admin endpoints and create messages but cannot call sign endpoint.
 	t.Run("E2E_AdminKey_Scopes", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
@@ -189,7 +203,7 @@ logging:
 		}
 
 		// admin cannot call sign endpoint (requires backend role)
-	sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
+		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
 		sreq.Header.Set("Authorization", "Bearer admin-secret")
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {

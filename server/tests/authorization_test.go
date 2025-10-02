@@ -20,8 +20,9 @@ import (
 )
 
 func TestAuthorization_Suite(t *testing.T) {
-	t.Run("DeletedThreadAdminAccess", func(t *testing.T) {
-		srv := utils.SetupServer(t)
+    // Subtest: Ensure admins can access soft-deleted threads while non-admins (even signed users) cannot.
+    t.Run("DeletedThreadAdminAccess", func(t *testing.T) {
+        srv := utils.SetupServer(t)
 		defer srv.Close()
 
 		th := models.Thread{
@@ -38,24 +39,33 @@ func TestAuthorization_Suite(t *testing.T) {
 
 		q := url.Values{}
 		q.Set("author", "alice")
-		req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
-		req.Header.Set("X-Role-Name", "admin")
-		res, _ := http.DefaultClient.Do(req)
-		if res.StatusCode != 200 {
-			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
-		}
+        req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
+        req.Header.Set("X-Role-Name", "admin")
+        res, err := http.DefaultClient.Do(req)
+        if err != nil {
+            t.Fatalf("request failed: %v", err)
+        }
+        defer res.Body.Close()
+        if res.StatusCode != 200 {
+            t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
+        }
 
 		sig := utils.SignHMAC("signsecret", "alice")
-		sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
-		sreq.Header.Set("X-User-ID", "alice")
-		sreq.Header.Set("X-User-Signature", sig)
-		sres, _ := http.DefaultClient.Do(sreq)
-		if sres.StatusCode == 200 {
-			t.Fatalf("expected signed non-admin to not see deleted thread; got 200")
-		}
+        sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
+        sreq.Header.Set("X-User-ID", "alice")
+        sreq.Header.Set("X-User-Signature", sig)
+        sres, err := http.DefaultClient.Do(sreq)
+        if err != nil {
+            t.Fatalf("request failed: %v", err)
+        }
+        defer sres.Body.Close()
+        if sres.StatusCode == 200 {
+            t.Fatalf("expected signed non-admin to not see deleted thread; got 200")
+        }
 	})
 
-	t.Run("CORSBehavior", func(t *testing.T) {
+    // Subtest: Verify CORS response headers only allow configured origins.
+    t.Run("CORSBehavior", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -96,8 +106,9 @@ logging:
 		}
 	})
 
-	t.Run("RateLimitBehavior", func(t *testing.T) {
-		// start server with strict rate limit: 1 rps, burst 1
+    // Subtest: Start server with strict rate limit and validate throttling behavior on quick successive requests.
+    t.Run("RateLimitBehavior", func(t *testing.T) {
+        // start server with strict rate limit: 1 rps, burst 1
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -118,19 +129,22 @@ logging:
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
-		// perform two quick requests to a permissive endpoint (/healthz) and expect second may be rate limited
-		_, _ = http.Get(sp.Addr + "/healthz")
-		r2, err := http.Get(sp.Addr + "/healthz")
-		if err != nil {
-			t.Fatalf("second healthz request failed: %v", err)
-		}
+        // perform two quick requests to a permissive endpoint (/healthz) and expect second may be rate limited
+        if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
+            t.Fatalf("healthz request failed: %v", err)
+        }
+        r2, err := http.Get(sp.Addr + "/healthz")
+        if err != nil {
+            t.Fatalf("second healthz request failed: %v", err)
+        }
 		if r2.StatusCode == 429 {
 			// rate limited as expected
 		}
 	})
 
-	t.Run("AuthorTamperingProtection", func(t *testing.T) {
-		// start server with backend key for signing
+    // Subtest: Verify signature-based author protection prevents tampering with X-User-ID and author fields.
+    t.Run("AuthorTamperingProtection", func(t *testing.T) {
+        // start server with backend key for signing
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -157,12 +171,15 @@ logging:
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)
 		}
-		if cres.StatusCode != 200 && cres.StatusCode != 201 {
-			t.Fatalf("unexpected create thread status: %d", cres.StatusCode)
-		}
-		var tout map[string]interface{}
-		_ = json.NewDecoder(cres.Body).Decode(&tout)
-		tid := tout["id"].(string)
+        if cres.StatusCode != 200 && cres.StatusCode != 201 {
+            t.Fatalf("unexpected create thread status: %d", cres.StatusCode)
+        }
+        defer cres.Body.Close()
+        var tout map[string]interface{}
+        if err := json.NewDecoder(cres.Body).Decode(&tout); err != nil {
+            t.Fatalf("failed to decode create thread response: %v", err)
+        }
+        tid := tout["id"].(string)
 
 		// attempt update with mismatched header (bob) but signature for alice -> expect 403
 		upBody := []byte(`{"title":"updated"}`)

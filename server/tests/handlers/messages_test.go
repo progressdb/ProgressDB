@@ -87,13 +87,19 @@ func TestListMessages(t *testing.T) {
 	// Create a message to ensure there is something to list
 	payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "listme"}}
 	b, _ := json.Marshal(payload)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	cres, _ := http.DefaultClient.Do(creq)
-	var cout map[string]interface{}
-	_ = json.NewDecoder(cres.Body).Decode(&cout)
-	thread := cout["thread"].(string)
+    creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+    creq.Header.Set("X-User-ID", user)
+    creq.Header.Set("X-User-Signature", sig)
+    cres, err := http.DefaultClient.Do(creq)
+    if err != nil {
+        t.Fatalf("create message request failed: %v", err)
+    }
+    defer cres.Body.Close()
+    var cout map[string]interface{}
+    if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
+        t.Fatalf("failed to decode create message response: %v", err)
+    }
+    thread := cout["thread"].(string)
 
 	// List messages in the thread
 	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages?thread="+thread, nil)
@@ -110,11 +116,13 @@ func TestListMessages(t *testing.T) {
 		t.Fatalf("expected 200 got %v", lres.Status)
 	}
 
-	// Decode and validate list response
-	var listOut map[string]interface{}
-	_ = json.NewDecoder(lres.Body).Decode(&listOut)
-	t.Logf("TestListMessages: response body=%v", listOut)
-	if msgs, ok := listOut["messages"].([]interface{}); !ok || len(msgs) == 0 {
-		t.Fatalf("expected messages in list result")
-	}
+    // Decode and validate list response
+    var listOut map[string]interface{}
+    if err := json.NewDecoder(lres.Body).Decode(&listOut); err != nil {
+        t.Fatalf("failed to decode list messages response: %v", err)
+    }
+    t.Logf("TestListMessages: response body=%v", listOut)
+    if msgs, ok := listOut["messages"].([]interface{}); !ok || len(msgs) == 0 {
+        t.Fatalf("expected messages in list result")
+    }
 }
