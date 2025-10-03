@@ -84,12 +84,26 @@ if [[ $USE_ENC -eq 1 ]]; then
       # instance. This is not a drop-in replacement for all encryption
       # workflows but is a sensible default for local development when the
       # original enc helpers are missing.
-      FALLBACK_KMS="$ROOT_DIR/scripts/kms/dev.sh"
-      if [[ -x "$FALLBACK_KMS" || -f "$FALLBACK_KMS" ]]; then
-        echo "Encryption embedded helper missing; falling back to KMS dev helper: $FALLBACK_KMS"
-        exec "$FALLBACK_KMS" "$@"
-      else
+      # Try a few likely fallback locations for the KMS dev helper. Some
+      # users may invoke the script in ways that produce a doubled "scripts/"
+      # path (e.g. re-exec under bash) so check common variants before erroring.
+      CANDIDATES=(
+        "$ROOT_DIR/scripts/kms/dev.sh"
+        "$ROOT_DIR/scripts/scripts/kms/dev.sh"
+        "$ROOT_DIR/kms/dev.sh"
+      )
+      found=0
+      for cand in "${CANDIDATES[@]}"; do
+        if [[ -x "$cand" || -f "$cand" ]]; then
+          echo "Encryption embedded helper missing; falling back to KMS dev helper: $cand"
+          exec "$cand" "$@"
+          found=1
+          break
+        fi
+      done
+      if [[ $found -eq 0 ]]; then
         echo "Missing embedded encryption helper: $EMBEDDED_HELPER" >&2
+        echo "Checked candidates: ${CANDIDATES[*]}" >&2
         echo "Please restore scripts/enc/embedded/dev_enc_embedded.sh or run without --enc." >&2
         exit 1
       fi

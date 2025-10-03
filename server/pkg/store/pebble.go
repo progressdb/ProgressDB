@@ -150,7 +150,9 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		if s, e := GetThread(threadID); e == nil {
 			var th models.Thread
 			if json.Unmarshal([]byte(s), &th) == nil {
-				threadKeyID = th.KMS.KeyID
+				if th.KMS != nil {
+					threadKeyID = th.KMS.KeyID
+				}
 			}
 		}
 	}
@@ -587,9 +589,11 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	oldKeyID := ""
 	if s, err := GetThread(threadID); err == nil {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(s), &th); err == nil {
-			oldKeyID = th.KMS.KeyID
-		}
+			if err := json.Unmarshal([]byte(s), &th); err == nil {
+				if th.KMS != nil {
+					oldKeyID = th.KMS.KeyID
+				}
+			}
 	}
 	if oldKeyID == newKeyID {
 		return nil
@@ -678,14 +682,17 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	// update mapping: persist into thread metadata key so readers use canonical location
 	if s, terr := GetThread(threadID); terr == nil {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(s), &th); err == nil {
-			th.KMS.KeyID = newKeyID
-			if nb, merr := json.Marshal(th); merr == nil {
-				if err := SaveThread(th.ID, string(nb)); err != nil {
-					return fmt.Errorf("save thread key mapping failed: %w", err)
+			if err := json.Unmarshal([]byte(s), &th); err == nil {
+				if th.KMS == nil {
+					th.KMS = &models.KMSMeta{}
+				}
+				th.KMS.KeyID = newKeyID
+				if nb, merr := json.Marshal(th); merr == nil {
+					if err := SaveThread(th.ID, string(nb)); err != nil {
+						return fmt.Errorf("save thread key mapping failed: %w", err)
+					}
 				}
 			}
-		}
 	}
 	return iter.Error()
 }

@@ -169,11 +169,11 @@ func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, e
 		return m.Body, nil
 	}
 
-	// Get the key ID from the thread.
-	keyID := thread.KMS.KeyID
-	if keyID == "" {
-		return nil, fmt.Errorf("encryption enabled but no DEK configured for thread %s", thread.ID)
-	}
+    // Get the key ID from the thread. Guard against missing KMS metadata.
+    if thread.KMS == nil || thread.KMS.KeyID == "" {
+        return nil, fmt.Errorf("encryption enabled but no DEK configured for thread %s", thread.ID)
+    }
+    keyID := thread.KMS.KeyID
 
 	// If there is a field policy, encrypt only the specified fields.
 	if EncryptionHasFieldPolicy() {

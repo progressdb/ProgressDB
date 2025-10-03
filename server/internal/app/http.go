@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"progressdb/pkg/api"
 	"progressdb/pkg/banner"
@@ -33,7 +32,8 @@ func (a *App) printBanner() {
 	if a.buildDate != "unknown" {
 		verStr += " @ " + a.buildDate
 	}
-	banner.Print(a.eff.Addr, a.eff.DBPath, strings.Join(srcs, ", "), verStr)
+	// Use the effective config to print richer startup info (encryption, source)
+	banner.PrintWithEff(a.eff, verStr)
 }
 
 // startHTTP builds the handler, starts the HTTP server in a goroutine and

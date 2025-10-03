@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"progressdb/internal/app"
@@ -50,11 +51,11 @@ func main() {
 		log.Fatalf("failed to build effective config: %v", err)
 	}
 
-    // Attach audit file sink to a fixed retention folder under DBPath.
-    auditPath := filepath.Join(eff.DBPath, "retention")
-    if err := logger.AttachAuditFileSink(auditPath); err != nil {
-        logger.Error("attach_audit_sink_failed", "error", err)
-    }
+	// Attach audit file sink to a fixed retention folder under DBPath.
+	auditPath := filepath.Join(eff.DBPath, "retention")
+	if err := logger.AttachAuditFileSink(auditPath); err != nil {
+		logger.Error("attach_audit_sink_failed", "error", err)
+	}
 
 	// initialize app
 	app, err := app.New(eff, version, commit, buildDate)
@@ -69,6 +70,21 @@ func main() {
 	go func() {
 		s := <-sigc
 		log.Printf("signal received: %v, shutdown requested", s)
+		cancel()
+	}()
+
+	// Monitor SIGPIPE and print diagnostics if it occurs. Some test harness
+	// environments may deliver SIGPIPE when writing to closed pipes; catching
+	// it here and dumping goroutine stacks helps diagnose abrupt exits.
+	sigpipe := make(chan os.Signal, 1)
+	signal.Notify(sigpipe, syscall.SIGPIPE)
+	go func() {
+		s := <-sigpipe
+		log.Printf("signal received: %v (SIGPIPE) - dumping goroutine stacks", s)
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		log.Printf("=== goroutine stack dump ===\n%s\n=== end goroutine stack dump ===", string(buf[:n]))
+		// cancel context to trigger graceful shutdown
 		cancel()
 	}()
 

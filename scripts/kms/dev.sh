@@ -33,7 +33,8 @@ fi
 
 # Defaults (override via CLI args)
 BIN_DIR="$ROOT_DIR/bin"
-KMS_BIN="$BIN_DIR/kms"
+# Use the canonical binary name used elsewhere in docs/examples
+KMS_BIN="$BIN_DIR/progressdb-kms"
 ENDPOINT="127.0.0.1:6820"
 KEY_DIR="$ROOT_DIR/.kms"
 KEY_FILE_HEX=""

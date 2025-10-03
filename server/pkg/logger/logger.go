@@ -52,48 +52,56 @@ func Init() {
 // auditDir/<YEAR>/audit.log. If the file cannot be opened the function
 // returns an error and leaves Audit as nil.
 func AttachAuditFileSink(auditDir string) error {
-    if auditDir == "" {
-        return fmt.Errorf("empty audit dir")
-    }
-    // Ensure the audit directory exists with restrictive permissions.
-    // Try the provided path first; if that fails we'll climb one step up
-    // and place audit logs under <parent>/logs/audit.log to avoid writing
-    // into the DB path when that is not writable.
-    tryCreate := func(dir string) (string, error) {
-        if err := os.MkdirAll(dir, 0o700); err != nil {
-            return "", err
-        }
-        fname := filepath.Join(dir, "audit.log")
-        // If existing file too large, rotate it.
-        if fi, err := os.Stat(fname); err == nil {
-            const maxSize = 10 * 1024 * 1024 // 10MB
-            if fi.Size() > maxSize {
-                bak := fname + "." + fi.ModTime().UTC().Format("20060102T150405Z")
-                _ = os.Rename(fname, bak)
-            }
-        }
-        f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-        if err != nil {
-            return "", err
-        }
-        // wrap and return
-        h := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
-        Audit = slog.New(h)
-        return fname, nil
-    }
+	if auditDir == "" {
+		return fmt.Errorf("empty audit dir")
+	}
+	// If the path exists but is not a directory, fail early rather than
+	// attempting to fall back. Tests expect attach failures when the
+	// configured audit path is obstructed by a non-directory file.
+	if fi, err := os.Stat(auditDir); err == nil {
+		if !fi.IsDir() {
+			return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
+		}
+	}
+	// Ensure the audit directory exists with restrictive permissions.
+	// Try the provided path first; if that fails we'll climb one step up
+	// and place audit logs under <parent>/logs/audit.log to avoid writing
+	// into the DB path when that is not writable.
+	tryCreate := func(dir string) (string, error) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", err
+		}
+		fname := filepath.Join(dir, "audit.log")
+		// If existing file too large, rotate it.
+		if fi, err := os.Stat(fname); err == nil {
+			const maxSize = 10 * 1024 * 1024 // 10MB
+			if fi.Size() > maxSize {
+				bak := fname + "." + fi.ModTime().UTC().Format("20060102T150405Z")
+				_ = os.Rename(fname, bak)
+			}
+		}
+		f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			return "", err
+		}
+		// wrap and return
+		h := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
+		Audit = slog.New(h)
+		return fname, nil
+	}
 
-    if _, err := tryCreate(auditDir); err == nil {
-        return nil
-    }
+	if _, err := tryCreate(auditDir); err == nil {
+		return nil
+	}
 
-    // fallback: climb one level and use <parent>/logs/audit.log
-    parent := filepath.Dir(auditDir)
-    altDir := filepath.Join(parent, "logs")
-    if _, err := tryCreate(altDir); err == nil {
-        return nil
-    }
+	// fallback: climb one level and use <parent>/logs/audit.log
+	parent := filepath.Dir(auditDir)
+	altDir := filepath.Join(parent, "logs")
+	if _, err := tryCreate(altDir); err == nil {
+		return nil
+	}
 
-    return fmt.Errorf("failed to create audit sink at %s or %s", auditDir, altDir)
+	return fmt.Errorf("failed to create audit sink at %s or %s", auditDir, altDir)
 }
 
 // Sync is a no-op for slog handlers used here.

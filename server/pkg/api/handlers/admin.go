@@ -44,19 +44,19 @@ func RegisterAdmin(r *mux.Router) {
 }
 
 func adminHealth(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"status":"ok","service":"progressdb"}`))
 }
 
 func adminStats(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	threads, _ := store.ListThreads()
 	var msgCount int64
@@ -79,16 +79,16 @@ func adminStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminListThreads(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	vals, err := store.ListThreads()
-    if err != nil {
-        utils.JSONError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	if err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Threads []json.RawMessage `json:"threads"`
 	}{Threads: utils.ToRawMessages(vals)})
@@ -97,17 +97,17 @@ func adminListThreads(w http.ResponseWriter, r *http.Request) {
 // adminListKeys lists keys in the underlying store. Optional query param
 // `prefix` can be provided to limit keys by prefix.
 func adminListKeys(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	prefix := r.URL.Query().Get("prefix")
 	keys, err := store.ListKeys(prefix)
-    if err != nil {
-        utils.JSONError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	if err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Keys []string `json:"keys"`
 	}{Keys: keys})
@@ -116,10 +116,10 @@ func adminListKeys(w http.ResponseWriter, r *http.Request) {
 // adminGetKey returns the raw value for a given key. The key path variable
 // is URL-unescaped before lookup.
 func adminGetKey(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	vars := mux.Vars(r)
 	keyEnc, ok := vars["key"]
 	if !ok {
@@ -143,10 +143,10 @@ func adminGetKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	var req struct {
 		ThreadID string `json:"thread_id"`
 	}
@@ -174,7 +174,7 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
-			th.KMS = models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
+				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 			// If we have a wrapped value, persist it; otherwise the field will be empty.
 			if nb, merr := json.Marshal(th); merr == nil {
 				_ = store.SaveThread(th.ID, string(nb))
@@ -186,10 +186,10 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminTestRetentionRun(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	// Only allow this in test environments
 	if v := os.Getenv("PROGRESSDB_TESTING"); v != "1" && strings.ToLower(v) != "true" {
 		http.Error(w, `{"error":"test endpoint disabled"}`, http.StatusForbidden)
@@ -217,14 +217,14 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 		NewKEKHex   string   `json:"new_kek_hex"`
 		Parallelism int      `json:"parallelism"`
 	}
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        utils.JSONError(w, http.StatusBadRequest, "invalid request")
-        return
-    }
-    if strings.TrimSpace(req.NewKEKHex) == "" {
-        utils.JSONError(w, http.StatusBadRequest, "missing new_kek_hex")
-        return
-    }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if strings.TrimSpace(req.NewKEKHex) == "" {
+		utils.JSONError(w, http.StatusBadRequest, "missing new_kek_hex")
+		return
+	}
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
@@ -233,10 +233,10 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	var threads []string
 	if req.All {
 		tvals, err := store.ListThreads()
-            if err != nil {
-                utils.JSONError(w, http.StatusInternalServerError, "failed list threads")
-                return
-            }
+		if err != nil {
+			utils.JSONError(w, http.StatusInternalServerError, "failed list threads")
+			return
+		}
 		for _, t := range tvals {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(t), &th); err != nil {
@@ -248,10 +248,10 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 		threads = req.ThreadIDs
 	}
 
-    if len(threads) == 0 {
-        utils.JSONError(w, http.StatusBadRequest, "no threads specified")
-        return
-    }
+	if len(threads) == 0 {
+		utils.JSONError(w, http.StatusBadRequest, "no threads specified")
+		return
+	}
 
 	// Build unique list of key IDs from thread metadata
 	keyIDs := make(map[string]struct{})
@@ -261,17 +261,17 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 		if s, err := store.GetThread(tid); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
-				if th.KMS.KeyID != "" {
+				if th.KMS != nil && th.KMS.KeyID != "" {
 					keyIDs[th.KMS.KeyID] = struct{}{}
 				}
 			}
 		}
 	}
 
-    if len(keyIDs) == 0 {
-        utils.JSONError(w, http.StatusBadRequest, "no key mappings found for provided threads")
-        return
-    }
+	if len(keyIDs) == 0 {
+		utils.JSONError(w, http.StatusBadRequest, "no key mappings found for provided threads")
+		return
+	}
 
 	// Create remote client bound to the configured endpoint
 	// Use registered provider via security bridge; avoid creating per-request remote clients.
@@ -323,19 +323,19 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 // already have a DEK configured. Request JSON:
 // { "thread_ids": ["t1","t2"], "all": false, "parallelism": 4 }
 func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	var req struct {
 		ThreadIDs   []string `json:"thread_ids"`
 		All         bool     `json:"all"`
 		Parallelism int      `json:"parallelism"`
 	}
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        utils.JSONError(w, http.StatusBadRequest, "invalid request")
-        return
-    }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
@@ -359,10 +359,10 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 		threads = req.ThreadIDs
 	}
 
-    if len(threads) == 0 {
-        utils.JSONError(w, http.StatusBadRequest, "no threads specified")
-        return
-    }
+	if len(threads) == 0 {
+		utils.JSONError(w, http.StatusBadRequest, "no threads specified")
+		return
+	}
 
 	// Create remote client bound to the configured endpoint
 	// Concurrency
@@ -388,19 +388,14 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				resCh <- res{Thread: tid, Err: "invalid thread metadata"}
 				return
 			}
-			if th.KMS.KeyID == "" {
-				// provision a DEK for this thread
-				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
+				if th.KMS == nil || th.KMS.KeyID == "" {
+					// provision a DEK for this thread
+					newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
 				if err != nil {
 					resCh <- res{Thread: tid, Err: "create DEK failed: " + err.Error()}
 					return
 				}
-				th.KMS.KeyID = newKeyID
-				if len(wrapped) > 0 {
-					th.KMS.WrappedDEK = base64.StdEncoding.EncodeToString(wrapped)
-				}
-				th.KMS.KEKID = kekID
-				th.KMS.KEKVersion = kekVer
+					th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if nb, merr := json.Marshal(th); merr == nil {
 					_ = store.SaveThread(th.ID, string(nb))
 				}
@@ -471,23 +466,25 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 // adminEncryptionGenerateKEK generates a new random 32-byte KEK and returns it as a
 // 64-hex string in JSON: { "kek_hex": "..." }
 func adminEncryptionGenerateKEK(w http.ResponseWriter, r *http.Request) {
-    if !isAdmin(r) {
-        utils.JSONError(w, http.StatusForbidden, "forbidden")
-        return
-    }
+	if !isAdmin(r) {
+		utils.JSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	// generate 32 random bytes
 	b := make([]byte, 32)
-    if _, err := rand.Read(b); err != nil {
-        utils.JSONError(w, http.StatusInternalServerError, "failed to generate key")
-        return
-    }
+	if _, err := rand.Read(b); err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, "failed to generate key")
+		return
+	}
 	kek := hex.EncodeToString(b)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"kek_hex": kek})
 }
 
-// isAdmin checks if the request is from an admin or backend.
+// isAdmin checks if the request is from an admin.
+// Backend keys should not be treated as admin; admin endpoints require the
+// explicit admin role.
 func isAdmin(r *http.Request) bool {
 	role := r.Header.Get("X-Role-Name")
-	return role == "admin" || role == "backend"
+	return role == "admin"
 }

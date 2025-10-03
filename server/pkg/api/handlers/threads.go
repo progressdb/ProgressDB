@@ -12,6 +12,7 @@ import (
 
 	"progressdb/pkg/auth"
 	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
@@ -57,22 +58,22 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var t models.Thread
-    if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-        utils.JSONError(w, http.StatusBadRequest, "invalid json")
-        return
-    }
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
 	// resolve canonical author (signature or backend-provided)
-    if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
-        utils.JSONError(w, code, msg)
-        return
-    } else {
-        t.Author = author
-    }
+	if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
+		utils.JSONError(w, code, msg)
+		return
+	} else {
+		t.Author = author
+	}
 	created, err := createThreadInternal(t.Author, t.Title)
-    if err != nil {
-        utils.JSONError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
+	if err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	_ = json.NewEncoder(w).Encode(created)
 }
 
@@ -92,11 +93,21 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 	t.UpdatedTS = t.CreatedTS
 
 	if security.EncryptionEnabled() {
-		keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(t.ID)
-		if err != nil {
-			return models.Thread{}, err
+		// Only provision per-thread KMS metadata when a KMS provider is
+		// actually registered and enabled. This avoids creating KMS metadata
+		// when encryption is disabled in config or when no provider is
+		// available (tests expect no KMS metadata when encryption.use=false).
+		if kms.IsProviderEnabled() {
+			logger.Info("provisioning_thread_kms", "thread", t.ID)
+			keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(t.ID)
+			if err != nil {
+				return models.Thread{}, err
+			}
+			// set pointer so kms is omitted when nil
+			t.KMS = &models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
+		} else {
+			logger.Info("encryption_enabled_but_no_kms_provider", "thread", t.ID)
 		}
-		t.KMS = models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 	}
 
 	b, _ := json.Marshal(t)
@@ -116,11 +127,12 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 func listThreads(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-    authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
-    if code != 0 {
-        utils.JSONError(w, code, msg)
-        return
-    }
+	// role := r.Header.Get("X-Role-Name")
+	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	if code != 0 {
+		utils.JSONError(w, code, msg)
+		return
+	}
 	titleQ := r.URL.Query().Get("title")
 	slugQ := r.URL.Query().Get("slug")
 
@@ -170,32 +182,39 @@ func getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Prefer signature-verified author; for admin role allow listing without
+	// an explicit author (admin may inspect all messages).
+	role := r.Header.Get("X-Role-Name")
 	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
 	if code != 0 {
-		http.Error(w, msg, code)
+		if role == "admin" {
+			// allow admin to proceed without an author filter
+			authorQ = ""
+		} else {
+			http.Error(w, msg, code)
+			return
+		}
+	}
+
+	s, err := store.GetThread(id)
+	if err != nil {
+		utils.JSONError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-    s, err := store.GetThread(id)
-    if err != nil {
-        utils.JSONError(w, http.StatusNotFound, err.Error())
-        return
-    }
-
 	var th models.Thread
-    if err := json.Unmarshal([]byte(s), &th); err != nil {
-        utils.JSONError(w, http.StatusInternalServerError, "failed to parse thread")
-        return
-    }
-    role := r.Header.Get("X-Role-Name")
-    if th.Deleted && role != "admin" {
-        utils.JSONError(w, http.StatusNotFound, "thread not found")
-        return
-    }
-    if th.Author != authorQ {
-        utils.JSONError(w, http.StatusForbidden, "author does not match")
-        return
-    }
+	if err := json.Unmarshal([]byte(s), &th); err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, "failed to parse thread")
+		return
+	}
+	if th.Deleted && role != "admin" {
+		utils.JSONError(w, http.StatusNotFound, "thread not found")
+		return
+	}
+	if th.Author != authorQ {
+		utils.JSONError(w, http.StatusForbidden, "author does not match")
+		return
+	}
 
 	_, _ = w.Write([]byte(s))
 }
@@ -234,10 +253,10 @@ func updateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var t models.Thread
-    if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-        utils.JSONError(w, http.StatusBadRequest, "invalid json")
-        return
-    }
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
 	// resolve author (signature or backend-provided)
 	author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author)
 	if code != 0 {
@@ -341,10 +360,16 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 // The "author" query parameter is required.
 func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	role := r.Header.Get("X-Role-Name")
 	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
 	if code != 0 {
-		http.Error(w, msg, code)
-		return
+		if role == "admin" {
+			// allow admin to list without providing an author filter
+			authorQ = ""
+		} else {
+			http.Error(w, msg, code)
+			return
+		}
 	}
 	threadID := mux.Vars(r)["threadID"]
 	// If the thread is soft-deleted, hide it from non-admin callers
@@ -392,9 +417,9 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// sort by TS ascending
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	// If there are no messages to return, respond with an empty list rather
-	// than treating it as an authorization failure. If messages exist but
-	// none belong to the verified author, then forbid the request.
+	// If there are no messages to return, respond with an empty list.
+	// For admin role, do not enforce the authorFound check; admin may view
+	// all messages in the thread.
 	if len(out) == 0 {
 		_ = json.NewEncoder(w).Encode(struct {
 			Thread   string           `json:"thread"`
@@ -402,9 +427,11 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 		}{Thread: threadID, Messages: out})
 		return
 	}
-	if !authorFound {
-		http.Error(w, `{"error":"author not found in any message in this thread"}`, http.StatusForbidden)
-		return
+	if role != "admin" {
+		if !authorFound {
+			http.Error(w, `{"error":"author not found in any message in this thread"}`, http.StatusForbidden)
+			return
+		}
 	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Thread   string           `json:"thread"`

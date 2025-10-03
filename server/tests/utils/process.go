@@ -37,6 +37,7 @@ type ServerProcess struct {
 	StderrPath string
 	ConfigPath string
 	WorkDir    string
+	exitCh     chan error
 }
 
 // StartServerProcess builds (if needed) and starts the server process using opts.
@@ -149,58 +150,81 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		StderrPath: stderrPath,
 		ConfigPath: cfgPath,
 		WorkDir:    workdir,
+		exitCh:     make(chan error, 1),
 	}
 
-    // wait for readiness (give the server up to 1 minute to become healthy)
-    if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
-        // capture logs
-        stdout, _ := os.ReadFile(sp.StdoutPath)
-        stderr, _ := os.ReadFile(sp.StderrPath)
-        t.Fatalf("server failed to become ready: %v\nstdout:\n%s\nstderr:\n%s", err, string(stdout), string(stderr))
-    }
+	// monitor the child process and record its exit status to stderr log so
+	// EOFs and unexpected terminations are easier to diagnose from test output.
+	go func(c *exec.Cmd, sp *ServerProcess, outF, errF *os.File) {
+		err := c.Wait()
+		// try to append exit info to the stderr log file
+		if f, ferr := os.OpenFile(sp.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {
+			_, _ = fmt.Fprintf(f, "\n[%s] PROCESS EXIT: %v\n", time.Now().Format(time.RFC3339Nano), err)
+			_ = f.Close()
+		}
+		// close parent-held file descriptors now that process exited
+		if outF != nil {
+			_ = outF.Close()
+		}
+		if errF != nil {
+			_ = errF.Close()
+		}
+		// deliver exit to channel for Stop
+		select {
+		case sp.exitCh <- err:
+		default:
+		}
+	}(cmd, sp, stdoutF, stderrF)
 
-    // perform an additional smoke check against /healthz to ensure handlers are responsive
-    healthOK := false
-    for i := 0; i < 10; i++ {
-        ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-        req, _ := http.NewRequestWithContext(ctx, http.MethodGet, sp.Addr+"/healthz", nil)
-        resp, err := http.DefaultClient.Do(req)
-        cancel()
-        if err == nil && resp != nil {
-            if resp.StatusCode == 200 {
-                healthOK = true
-            }
-            _ = resp.Body.Close()
-        }
-        if healthOK {
-            break
-        }
-        time.Sleep(200 * time.Millisecond)
-    }
-    if !healthOK {
-        stdout, _ := os.ReadFile(sp.StdoutPath)
-        stderr, _ := os.ReadFile(sp.StderrPath)
-        t.Fatalf("server readiness probe passed but /healthz did not respond OK\nstdout:\n%s\nstderr:\n%s", string(stdout), string(stderr))
-    }
+	// wait for readiness (give the server up to 1 minute to become healthy)
+	if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
+		// capture logs
+		stdout, _ := os.ReadFile(sp.StdoutPath)
+		stderr, _ := os.ReadFile(sp.StderrPath)
+		t.Fatalf("server failed to become ready: %v\nstdout:\n%s\nstderr:\n%s", err, string(stdout), string(stderr))
+	}
 
-    // close files (process has them open still)
-    _ = stdoutF.Close()
-    _ = stderrF.Close()
+	// perform an additional smoke check against /healthz to ensure handlers are responsive
+	healthOK := false
+	for i := 0; i < 10; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, sp.Addr+"/healthz", nil)
+		resp, err := http.DefaultClient.Do(req)
+		cancel()
+		if err == nil && resp != nil {
+			if resp.StatusCode == 200 {
+				healthOK = true
+			}
+			_ = resp.Body.Close()
+		}
+		if healthOK {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !healthOK {
+		stdout, _ := os.ReadFile(sp.StdoutPath)
+		stderr, _ := os.ReadFile(sp.StderrPath)
+		t.Fatalf("server readiness probe passed but /healthz did not respond OK\nstdout:\n%s\nstderr:\n%s", string(stdout), string(stderr))
+	}
 
-    // register cleanup that prints server logs on test failure to aid debugging
-    t.Cleanup(func() {
-        if t.Failed() {
-            if out, err := os.ReadFile(sp.StdoutPath); err == nil {
-                t.Logf("---- server stdout (%s) ----\n%s", sp.StdoutPath, string(out))
-            }
-            if errb, err := os.ReadFile(sp.StderrPath); err == nil {
-                t.Logf("---- server stderr (%s) ----\n%s", sp.StderrPath, string(errb))
-            }
-        }
-    })
+	// do not close files here; monitor goroutine will close them when the
+	// child process exits to avoid races and "file already closed" errors.
 
-    t.Logf("started server at %s (workdir=%s)", sp.Addr, sp.WorkDir)
-    return sp
+	// register cleanup that prints server logs on test failure to aid debugging
+	t.Cleanup(func() {
+		if t.Failed() {
+			if out, err := os.ReadFile(sp.StdoutPath); err == nil {
+				t.Logf("---- server stdout (%s) ----\n%s", sp.StdoutPath, string(out))
+			}
+			if errb, err := os.ReadFile(sp.StderrPath); err == nil {
+				t.Logf("---- server stderr (%s) ----\n%s", sp.StderrPath, string(errb))
+			}
+		}
+	})
+
+	t.Logf("started server at %s (workdir=%s)", sp.Addr, sp.WorkDir)
+	return sp
 }
 
 // Stop stops the server process, returning its exit error if any. It will
@@ -212,14 +236,28 @@ func (s *ServerProcess) Stop(t *testing.T) error {
 	}
 	// send SIGINT
 	_ = s.Cmd.Process.Signal(syscall.SIGINT)
-	done := make(chan error)
-	go func() { done <- s.Cmd.Wait() }()
+	// Wait for the monitored exit result rather than calling Wait again to
+	// avoid double-Wait races. If the process doesn't exit within the
+	// timeout, attempt to kill it.
 	select {
-	case err := <-done:
+	case err := <-s.exitCh:
+		if s != nil && s.StderrPath != "" {
+			if f, ferr := os.OpenFile(s.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {
+				_, _ = fmt.Fprintf(f, "\n[%s] PROCESS WAIT RETURNED: %v\n", time.Now().Format(time.RFC3339Nano), err)
+				_ = f.Close()
+			}
+		}
 		return err
 	case <-time.After(5 * time.Second):
 		// force kill
 		_ = s.Cmd.Process.Kill()
+		// record forced kill
+		if s != nil && s.StderrPath != "" {
+			if f, ferr := os.OpenFile(s.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {
+				_, _ = fmt.Fprintf(f, "\n[%s] PROCESS KILLED AFTER TIMEOUT\n", time.Now().Format(time.RFC3339Nano))
+				_ = f.Close()
+			}
+		}
 		return fmt.Errorf("process killed after timeout")
 	}
 }
