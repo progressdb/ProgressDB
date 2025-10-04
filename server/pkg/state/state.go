@@ -109,8 +109,16 @@ var (
 
 // Init initializes the package-level Paths for the running process. Safe to
 // call multiple times; initialization happens only once.
-func Init(dbPath string) {
+var initErr error
+
+// Init initializes the package-level Paths for the running process. Safe to
+// call multiple times; initialization happens only once. It also ensures the
+// filesystem layout exists by calling EnsureStateDirs and returns any error
+// encountered.
+func Init(dbPath string) error {
 	initOnce.Do(func() {
 		PathsVar = PathsFor(dbPath)
+		initErr = EnsureStateDirs(dbPath)
 	})
+	return initErr
 }

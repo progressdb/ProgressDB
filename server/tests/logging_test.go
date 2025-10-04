@@ -115,99 +115,24 @@ logging:
 			t.Fatalf("write cfg: %v", err)
 		}
 
-		// start process and capture stdout
-		cmd := exec.Command(bin, "--config", cfg)
-		outf := filepath.Join(tmp, "out.log")
-		of, _ := os.Create(outf)
-		cmd.Stdout = of
-		cmd.Stderr = of
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("start server failed: %v", err)
-		}
-		// wait briefly for state dir setup failure to be emitted
-		time.Sleep(500 * time.Millisecond)
-		_ = cmd.Process.Kill()
-		of.Close()
-		data, _ := os.ReadFile(outf)
-		if !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
-			t.Fatalf("expected state_dirs_setup_failed in output; got:\n%s", string(data))
-		}
+        // run process (blocking) and capture stdout/stderr
+        cmd := exec.Command(bin, "--config", cfg)
+        outf := filepath.Join(tmp, "out.log")
+        of, _ := os.Create(outf)
+        cmd.Stdout = of
+        cmd.Stderr = of
+        err := cmd.Run()
+        of.Close()
+        data, _ := os.ReadFile(outf)
+        if err == nil {
+            t.Fatalf("expected server to exit non-zero when audit path is broken; output:\n%s", string(data))
+        }
+        if !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
+            t.Fatalf("expected state_dirs_setup_failed in output; got:\n%s", string(data))
+        }
 	})
 
-	// Subtest: preflight validation --validate should fail when state layout is broken and succeed when OK.
-	t.Run("StatePreflight", func(t *testing.T) {
-		tmp := t.TempDir()
-		db := filepath.Join(tmp, "db")
-		_ = os.MkdirAll(db, 0o700)
-
-		// Case: broken state (audit is a file) -> preflight should fail
-		stateDir := filepath.Join(db, "state")
-		_ = os.MkdirAll(stateDir, 0o700)
-		bad := filepath.Join(stateDir, "audit")
-		if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
-			t.Fatalf("write bad audit file: %v", err)
-		}
-		bin := filepath.Join(tmp, "progressdb-bin")
-		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
-		build.Env = os.Environ()
-		build.Dir = ".."
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build failed: %v\n%s", err, string(out))
-		}
-		cfg := filepath.Join(tmp, "cfg.yaml")
-		conf := []byte("server:\n  address: 127.0.0.1\n  port: 0\n  db_path: " + db + "\nlogging:\n  level: info\n")
-		if err := os.WriteFile(cfg, conf, 0o600); err != nil {
-			t.Fatalf("write cfg: %v", err)
-		}
-		// run preflight
-		cmd := exec.Command(bin, "--config", cfg, "--validate")
-		outf := filepath.Join(tmp, "out.log")
-		of, _ := os.Create(outf)
-		cmd.Stdout = of
-		cmd.Stderr = of
-		err := cmd.Run()
-		of.Close()
-		data, _ := os.ReadFile(outf)
-		if err == nil {
-			t.Fatalf("expected preflight to fail for broken state; output:\n%s", string(data))
-		}
-		if !bytes.Contains(data, []byte("preflight failed")) && !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
-			t.Fatalf("expected preflight failure message; got:\n%s", string(data))
-		}
-
-		// Case: valid state -> preflight should succeed
-		// create a fresh tmp with no broken files
-		tmp2 := t.TempDir()
-		db2 := filepath.Join(tmp2, "db")
-		_ = os.MkdirAll(db2, 0o700)
-		bin2 := filepath.Join(tmp2, "progressdb-bin")
-		build2 := exec.Command("go", "build", "-o", bin2, "./cmd/progressdb")
-		build2.Env = os.Environ()
-		build2.Dir = ".."
-		if out, err := build2.CombinedOutput(); err != nil {
-			t.Fatalf("build failed: %v\n%s", err, string(out))
-		}
-		cfg2 := filepath.Join(tmp2, "cfg.yaml")
-		conf2 := []byte("server:\n  address: 127.0.0.1\n  port: 0\n  db_path: " + db2 + "\nlogging:\n  level: info\n")
-		if err := os.WriteFile(cfg2, conf2, 0o600); err != nil {
-			t.Fatalf("write cfg: %v", err)
-		}
-		cmd2 := exec.Command(bin2, "--config", cfg2, "--validate")
-		outf2 := filepath.Join(tmp2, "out2.log")
-		of2, _ := os.Create(outf2)
-		cmd2.Stdout = of2
-		cmd2.Stderr = of2
-		if err := cmd2.Run(); err != nil {
-			of2.Close()
-			data2, _ := os.ReadFile(outf2)
-			t.Fatalf("expected preflight to succeed; got err %v output:\n%s", err, string(data2))
-		}
-		of2.Close()
-		data2, _ := os.ReadFile(outf2)
-		if !bytes.Contains(data2, []byte("preflight: OK")) {
-			t.Fatalf("expected preflight OK; got:\n%s", string(data2))
-		}
-	})
+	// (removed preflight subtest — filesystem checks are now run during Init at startup)
 
 	// subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
 	t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {

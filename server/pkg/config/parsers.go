@@ -38,11 +38,11 @@ func ParseConfigFlags() Flags {
 	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
 	dbPtr := flag.String("db", "./.database", "Pebble DB path")
 	cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
-	validatePtr := flag.Bool("validate", false, "validate filesystem and exit")
+	// no validate flag; startup will always ensure state dirs
 	flag.Parse()
 	setFlags := make(map[string]bool)
 	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-	return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags, Validate: *validatePtr}
+	return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags}
 }
 
 // ParseConfigFile resolves the config path and loads the YAML file. It

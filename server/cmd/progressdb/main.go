@@ -52,22 +52,11 @@ func main() {
 		log.Fatalf("failed to build effective config: %v", err)
 	}
 
-	// Initialize package-level state paths and optionally run preflight.
-	state.Init(eff.DBPath)
-	// If invoked with --validate, perform preflight filesystem checks and exit.
-	if flags.Validate {
-		if err := performPreflight(eff); err != nil {
-			log.Fatalf("preflight failed: %v", err)
-		}
-		fmt.Println("preflight: OK")
-		return
-	}
-
-	// Ensure canonical state/store layout exists (store, state/audit, state/retention, ...)
-	if err := state.EnsureStateDirs(state.PathsVar.DB); err != nil {
+	// Initialize package-level state paths and ensure the filesystem layout.
+	if err := state.Init(eff.DBPath); err != nil {
 		logger.Error("state_dirs_setup_failed", "error", err)
 		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
-		log.Fatalf("failed to ensure state directories under %s: %v", state.PathsVar.DB, err)
+		log.Fatalf("failed to ensure state directories under %s: %v", eff.DBPath, err)
 	}
 
 	// create audit file for audit logs if not present
@@ -119,5 +108,5 @@ func main() {
 
 // performPreflight ensures required filesystem layout is createable and writable.
 func performPreflight(eff config.EffectiveConfigResult) error {
-	return state.EnsureStateDirs(state.PathsVar.DB)
+    return state.EnsureStateDirs(state.PathsVar.DB)
 }
