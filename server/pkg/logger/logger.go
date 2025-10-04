@@ -49,59 +49,58 @@ func Init() {
 }
 
 // AttachAuditFileSink configures a simple JSON-file audit logger writing to
-// auditDir/<YEAR>/audit.log. If the file cannot be opened the function
+// <auditDir>/audit.log. If the file cannot be opened the function
 // returns an error and leaves Audit as nil.
 func AttachAuditFileSink(auditDir string) error {
-	if auditDir == "" {
-		return fmt.Errorf("empty audit dir")
-	}
-	// If the path exists but is not a directory, fail early rather than
-	// attempting to fall back. Tests expect attach failures when the
-	// configured audit path is obstructed by a non-directory file.
-	if fi, err := os.Stat(auditDir); err == nil {
-		if !fi.IsDir() {
-			return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
+    if auditDir == "" {
+        return fmt.Errorf("empty audit dir")
+    }
+    // If the path exists and is a symlink, fail early to avoid TOCTOU.
+    if fi, err := os.Lstat(auditDir); err == nil {
+        if fi.Mode()&os.ModeSymlink != 0 {
+            return fmt.Errorf("audit path is a symlink: %s", auditDir)
+        }
+        // If the path exists but is not a directory, fail early.
+        if !fi.IsDir() {
+            return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
+        }
+        // check perms: disallow group/other write to avoid insecure dirs
+        if fi.Mode().Perm()&0o022 != 0 {
+            return fmt.Errorf("audit directory has permissive mode (group/other write): %s", auditDir)
+        }
+    }
+    // Ensure the audit directory exists with restrictive permissions.
+    if err := os.MkdirAll(auditDir, 0o700); err != nil {
+        return fmt.Errorf("failed to create audit directory: %w", err)
+    }
+    // double-check for symlink after creation
+    if fi2, err := os.Lstat(auditDir); err == nil {
+        if fi2.Mode()&os.ModeSymlink != 0 {
+            return fmt.Errorf("audit path is a symlink after creation: %s", auditDir)
+        }
+        if fi2.Mode().Perm()&0o022 != 0 {
+            return fmt.Errorf("audit directory has permissive mode after creation: %s", auditDir)
+        }
+    }
+	fname := filepath.Join(auditDir, "audit.log")
+	// If existing file too large, rotate it.
+	if fi, err := os.Stat(fname); err == nil {
+		const maxSize = 10 * 1024 * 1024 // 10MB
+		if fi.Size() > maxSize {
+			bak := fname + "." + fi.ModTime().UTC().Format("20060102T150405Z")
+			_ = os.Rename(fname, bak)
 		}
 	}
-	// Ensure the audit directory exists with restrictive permissions.
-	// Try the provided path first; if that fails we'll climb one step up
-	// and place audit logs under <parent>/logs/audit.log to avoid writing
-	// into the DB path when that is not writable.
-	tryCreate := func(dir string) (string, error) {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return "", err
-		}
-		fname := filepath.Join(dir, "audit.log")
-		// If existing file too large, rotate it.
-		if fi, err := os.Stat(fname); err == nil {
-			const maxSize = 10 * 1024 * 1024 // 10MB
-			if fi.Size() > maxSize {
-				bak := fname + "." + fi.ModTime().UTC().Format("20060102T150405Z")
-				_ = os.Rename(fname, bak)
-			}
-		}
-		f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-		if err != nil {
-			return "", err
-		}
-		// wrap and return
-		h := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
-		Audit = slog.New(h)
-		return fname, nil
+	f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to open audit log file: %w", err)
 	}
-
-	if _, err := tryCreate(auditDir); err == nil {
-		return nil
-	}
-
-	// fallback: climb one level and use <parent>/logs/audit.log
-	parent := filepath.Dir(auditDir)
-	altDir := filepath.Join(parent, "logs")
-	if _, err := tryCreate(altDir); err == nil {
-		return nil
-	}
-
-	return fmt.Errorf("failed to create audit sink at %s or %s", auditDir, altDir)
+	h := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
+	Audit = slog.New(h)
+	// Emit an initial marker so consumers (and tests) can observe that
+	// the audit sink was successfully attached and the file is writable.
+	Audit.Info("audit_sink_attached", "path", fname)
+	return nil
 }
 
 // Sync is a no-op for slog handlers used here.

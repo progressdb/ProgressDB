@@ -152,21 +152,41 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		if logger.Audit != nil {
+			logger.Audit.Info("admin_rotate_thread_dek", "status", "error", "error", "invalid request")
+		} else {
+			logger.Info("admin_rotate_thread_dek", "status", "error", "error", "invalid request")
+		}
 		return
 	}
 	if req.ThreadID == "" {
 		http.Error(w, `{"error":"missing thread_id"}`, http.StatusBadRequest)
+		if logger.Audit != nil {
+			logger.Audit.Info("admin_rotate_thread_dek", "status", "error", "error", "missing thread_id")
+		} else {
+			logger.Info("admin_rotate_thread_dek", "status", "error", "error", "missing thread_id")
+		}
 		return
 	}
 	// create new DEK for thread
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		if logger.Audit != nil {
+			logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "status", "error", "error", err.Error())
+		} else {
+			logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "status", "error", "error", err.Error())
+		}
 		return
 	}
 	// perform migration first (use the existing thread metadata/old key)
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		if logger.Audit != nil {
+			logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "error", "error", err.Error())
+		} else {
+			logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "error", "error", err.Error())
+		}
 		return
 	}
 
@@ -174,7 +194,7 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
-				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
+			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 			// If we have a wrapped value, persist it; otherwise the field will be empty.
 			if nb, merr := json.Marshal(th); merr == nil {
 				_ = store.SaveThread(th.ID, string(nb))
@@ -183,6 +203,11 @@ func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
+	if logger.Audit != nil {
+		logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "ok")
+	} else {
+		logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "ok")
+	}
 }
 
 func adminTestRetentionRun(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +248,11 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.NewKEKHex) == "" {
 		utils.JSONError(w, http.StatusBadRequest, "missing new_kek_hex")
+		if logger.Audit != nil {
+			logger.Audit.Info("admin_rewrap_deks", "status", "error", "error", "missing new_kek_hex")
+		} else {
+			logger.Info("admin_rewrap_deks", "status", "error", "error", "missing new_kek_hex")
+		}
 		return
 	}
 	if req.Parallelism <= 0 {
@@ -317,6 +347,21 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+	// emit audit summary
+	if logger.Audit != nil {
+		okCount := 0
+		errCount := 0
+		for _, m := range out {
+			if s, ok := m["status"]; ok && s == "ok" {
+				okCount++
+			} else {
+				errCount++
+			}
+		}
+		logger.Audit.Info("admin_rewrap_deks", "threads", len(threads), "keys", len(keyIDs), "ok", okCount, "errors", errCount)
+	} else {
+		logger.Info("admin_rewrap_deks", "threads", len(threads), "keys", len(keyIDs))
+	}
 }
 
 // adminEncryptionEncryptExisting encrypts legacy plaintext messages for threads that
@@ -388,14 +433,14 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				resCh <- res{Thread: tid, Err: "invalid thread metadata"}
 				return
 			}
-				if th.KMS == nil || th.KMS.KeyID == "" {
-					// provision a DEK for this thread
-					newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
+			if th.KMS == nil || th.KMS.KeyID == "" {
+				// provision a DEK for this thread
+				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
 				if err != nil {
 					resCh <- res{Thread: tid, Err: "create DEK failed: " + err.Error()}
 					return
 				}
-					th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
+				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if nb, merr := json.Marshal(th); merr == nil {
 					_ = store.SaveThread(th.ID, string(nb))
 				}
@@ -461,6 +506,22 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+
+	// emit audit summary for encrypt-existing
+	if logger.Audit != nil {
+		okCount := 0
+		errCount := 0
+		for _, m := range out {
+			if s, ok := m["status"]; ok && s == "ok" {
+				okCount++
+			} else {
+				errCount++
+			}
+		}
+		logger.Audit.Info("admin_encrypt_existing", "threads", len(threads), "ok", okCount, "errors", errCount)
+	} else {
+		logger.Info("admin_encrypt_existing", "threads", len(threads))
+	}
 }
 
 // adminEncryptionGenerateKEK generates a new random 32-byte KEK and returns it as a
@@ -479,6 +540,12 @@ func adminEncryptionGenerateKEK(w http.ResponseWriter, r *http.Request) {
 	kek := hex.EncodeToString(b)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"kek_hex": kek})
+	// audit generation (do not log the kek value in audit to avoid leaking secret)
+	if logger.Audit != nil {
+		logger.Audit.Info("admin_generate_kek", "status", "ok")
+	} else {
+		logger.Info("admin_generate_kek", "status", "ok")
+	}
 }
 
 // isAdmin checks if the request is from an admin.

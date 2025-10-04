@@ -18,10 +18,9 @@ Key semantics
 - An item is eligible for permanent purge when `deleted_at + retention_period <= now()`.
 - Purges run in batches and use a coordinator lease to ensure only one
   instance performs a run at a time.
-- Audit events are emitted to the global logger. Configure `PROGRESSDB_LOG_SINK`
-  to a file sink pointing at `PROGRESSDB_RETENTION_AUDIT_PATH` (defaults to
-  `<DBPath>/purge_audit/YYYY-MM/`) so that audit output is written to disk
-  where backup tooling can pick it up.
+  - Audit events are emitted to the global logger. By default audit output
+    is persisted to `<DBPath>/state/audit/audit.log`. Configure the log
+    sink (`PROGRESSDB_LOG_SINK`) if you want logs mirrored elsewhere.
 - By default retention is disabled; enable deliberately and test with
   `dry_run=true` first.
 
@@ -45,10 +44,17 @@ Audit files
 Coordinator lease
 -----------------
 
-The system uses a file-based lease located at the audit path by default
-(`retention.lock`). The lease contains `owner` and `expires` fields; the
-runner acquires the lease before starting work and heartbeats to renew it
-periodically. If the lease cannot be acquired the runner skips the run.
+The system uses a file-based lease located under the retention state
+folder (`<DBPath>/state/retention/retention.lock`). The lease contains
+`owner` and `expires` fields; the runner acquires the lease before
+starting work and heartbeats to renew it periodically. If the lease cannot
+be acquired the runner skips the run.
+
+Startup behavior: audit persistence is required for compliance. The server
+will attempt to attach the audit sink at `<DBPath>/state/audit` during
+startup; if the path cannot be created or is an existing non-directory
+file the process will fail to start. Ensure the process user can create
+and write the `state` folder under the configured DB path.
 
 Purge behavior
 --------------
@@ -90,4 +96,3 @@ Files changed / where code lives
 - Retention code: `server/internal/retention/` (scheduler, lease, runner, audit writer).
 - Store purge hooks: `server/pkg/store/pebble.go` (`PurgeThreadPermanently`, `PurgeMessagePermanently`).
 - Config parsing & validation: `server/pkg/config/*`, startup validation in `server/internal/app/validate.go`.
-

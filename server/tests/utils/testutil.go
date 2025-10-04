@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"progressdb/pkg/api"
@@ -46,9 +48,11 @@ func SetupServer(t *testing.T) *LocalServer {
 	t.Helper()
 	dir := t.TempDir()
 	dbpath := dir + "/db"
+	storePath := filepath.Join(dbpath, "store")
+	_ = os.MkdirAll(storePath, 0o700)
 	logger.Init()
 	defer logger.Sync()
-	if err := store.Open(dbpath); err != nil {
+	if err := store.Open(storePath); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}
 	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

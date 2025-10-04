@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 
@@ -58,9 +59,10 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	// validation rules
 	// initValidation(eff)
 
-	// open store
-	if err := store.Open(eff.DBPath); err != nil {
-		return nil, fmt.Errorf("failed to open pebble at %s: %w", eff.DBPath, err)
+	// open store under <DBPath>/store (main ensures directories exist)
+	storePath := filepath.Join(eff.DBPath, "store")
+	if err := store.Open(storePath); err != nil {
+		return nil, fmt.Errorf("failed to open pebble at %s: %w", storePath, err)
 	}
 
 	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}

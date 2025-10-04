@@ -24,16 +24,16 @@ func SetEffectiveConfig(eff config.EffectiveConfigResult) {
 // RunImmediate triggers a single retention run using the stored effective
 // config. Returns an error if no effective config was registered.
 func RunImmediate() error {
-	if storedEff == nil {
-		return fmt.Errorf("no effective config registered for retention run")
-	}
-	auditPath := filepath.Join(storedEff.DBPath, "retention")
-	return runOnce(context.Background(), *storedEff, auditPath)
+    if storedEff == nil {
+        return fmt.Errorf("no effective config registered for retention run")
+    }
+    retentionPath := filepath.Join(storedEff.DBPath, "state", "retention")
+    return runOnce(context.Background(), *storedEff, retentionPath)
 }
 
 // Start starts the retention scheduler if enabled. Returns a cancel func.
 func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.CancelFunc, error) {
-	ret := eff.Config.Retention
+    ret := eff.Config.Retention
 
 	// if retention is not enabled, return no-op cancel
 	if !ret.Enabled {
@@ -41,15 +41,15 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 		return func() {}, nil
 	}
 
-	// Use a stable retention folder under the DB path for lock and audit
-	// artifacts: <DBPath>/retention.
-	auditPath := filepath.Join(eff.DBPath, "retention")
+    // Use a stable retention folder under the DB path for lock and retention
+    // artifacts: <DBPath>/state/retention.
+    retentionPath := filepath.Join(eff.DBPath, "state", "retention")
 
-	// ensure audit path exists
-	if err := os.MkdirAll(auditPath, 0o700); err != nil {
-		logger.Error("retention_audit_path_create_failed", "path", auditPath, "error", err)
-		return nil, err
-	}
+    // ensure retention path exists
+    if err := os.MkdirAll(retentionPath, 0o700); err != nil {
+        logger.Error("retention_path_create_failed", "path", retentionPath, "error", err)
+        return nil, err
+    }
 
 	// note: audit sinks are configured externally; retention simply emits
 	// audit events via the global logger.
@@ -65,14 +65,14 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 		return nil, fmt.Errorf("invalid retention cron expression: %s", ret.Cron)
 	}
 
-	logger.Info("retention_enabled", "cron", cronExpr, "period", ret.Period, "audit_path", auditPath)
-	ctx2, cancel := context.WithCancel(ctx)
+    logger.Info("retention_enabled", "cron", cronExpr, "period", ret.Period, "path", retentionPath)
+    ctx2, cancel := context.WithCancel(ctx)
 
-	// start scheduler goroutine (pass resolved cron expression)
-	go runScheduler(ctx2, eff, auditPath, cronExpr)
+    // start scheduler goroutine (pass resolved cron expression)
+    go runScheduler(ctx2, eff, retentionPath, cronExpr)
 
-	logger.Info("retention_scheduler_started", "path", auditPath)
-	return cancel, nil
+    logger.Info("retention_scheduler_started", "path", retentionPath)
+    return cancel, nil
 }
 
 // runScheduler wakes periodically and triggers retention runs according

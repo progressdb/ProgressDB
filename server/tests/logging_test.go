@@ -21,7 +21,7 @@ import (
 )
 
 func TestLogging_Suite(t *testing.T) {
-    // Subtest: Initialize logger and attach audit file sink; verify audit file created.
+    // subtest: Initialize logger and attach audit file sink; verify audit file created.
     t.Run("InitAndAttachAuditSink", func(t *testing.T) {
 		logger.Init()
 		if logger.Log == nil {
@@ -39,7 +39,7 @@ func TestLogging_Suite(t *testing.T) {
 		}
 	})
 
-    // Subtest: Start server with debug log level and verify debug entries appear in log.
+    // subtest: Start server with debug log level and verify debug entries appear in log.
     t.Run("LogLevelBehavior", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
@@ -82,17 +82,20 @@ logging:
 		}
 	})
 
-    // Subtest: Start server with an invalid audit/retention path and verify failure is logged (attach_audit_sink_failed).
+    // subtest: Start server with an invalid audit/audit path and verify failure is logged (attach_audit_sink_failed).
     t.Run("AuditPathFailureModes", func(t *testing.T) {
-        // create a tmp dir and a file at <db>/retention to provoke MkdirAll failure
-		tmp := t.TempDir()
-		db := filepath.Join(tmp, "db")
-		_ = os.MkdirAll(db, 0o700)
-		// create a file where the retention directory should be
-		bad := filepath.Join(db, "retention")
-		if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
-			t.Fatalf("write bad retention file: %v", err)
-		}
+        // create a tmp dir and a file at <db>/state/audit to provoke MkdirAll failure
+        tmp := t.TempDir()
+        db := filepath.Join(tmp, "db")
+        _ = os.MkdirAll(db, 0o700)
+        // ensure parent state dir exists, then create a file where the audit
+        // directory should be so AttachAuditFileSink sees an existing file.
+        stateDir := filepath.Join(db, "state")
+        _ = os.MkdirAll(stateDir, 0o700)
+        bad := filepath.Join(stateDir, "audit")
+        if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
+            t.Fatalf("write bad audit file: %v", err)
+        }
 
 		// build binary
 		bin := filepath.Join(tmp, "progressdb-bin")
@@ -105,6 +108,7 @@ logging:
 			t.Fatalf("build failed: %v\n%s", err, string(out))
 		}
 
+		// create minimal config
 		cfg := filepath.Join(tmp, "cfg.yaml")
 		conf := []byte("server:\n  address: 127.0.0.1\n  port: 0\n  db_path: " + db + "\nlogging:\n  level: info\n")
 		if err := os.WriteFile(cfg, conf, 0o600); err != nil {
@@ -130,7 +134,7 @@ logging:
 		}
 	})
 
-    // Subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
+    // subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
     t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
@@ -203,8 +207,8 @@ logging:
 	// allow 200 or error; we only care audit file created
 	_ = ares
 
-	// audit.log is under <DBPath>/retention/audit.log per main attaching behavior
-	auditPath := filepath.Join(sp.WorkDir, "db", "retention", "audit.log")
+    // audit.log is under <DBPath>/state/audit/audit.log per main attaching behavior
+    auditPath := filepath.Join(sp.WorkDir, "db", "state", "audit", "audit.log")
 	// wait for file to appear
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

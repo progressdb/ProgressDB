@@ -44,9 +44,13 @@ func TestRetention_Suite(t *testing.T) {
     // Subtest: Verify purge integration removes soft-deleted thread permanently.
     t.Run("PurgeThreadIntegration", func(t *testing.T) {
 		dbdir := t.TempDir()
-		if err := store.Open(dbdir); err != nil {
-			t.Fatalf("store.Open: %v", err)
-		}
+        storePath := filepath.Join(dbdir, "store")
+        if err := os.MkdirAll(storePath, 0o700); err != nil {
+            t.Fatalf("mkdir store path: %v", err)
+        }
+        if err := store.Open(storePath); err != nil {
+            t.Fatalf("store.Open: %v", err)
+        }
 		defer store.Close()
 
 		th := models.Thread{
@@ -88,7 +92,6 @@ retention:
   enabled: true
   period: 1s
   dry_run: true
-  audit_path: ""
 `
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg, Env: map[string]string{"PROGRESSDB_TESTING": "1"}})
 		defer func() { _ = sp.Stop(t) }()
@@ -117,8 +120,8 @@ retention:
 			t.Fatalf("expected retention run to return 200; got %d", ares.StatusCode)
 		}
 
-		// audit.log should exist under db/retention/audit.log
-		auditPath := filepath.Join(sp.WorkDir, "db", "retention", "audit.log")
+		// audit.log should exist under db/state/audit/audit.log
+		auditPath := filepath.Join(sp.WorkDir, "db", "state", "audit", "audit.log")
 		deadline := time.Now().Add(5 * time.Second)
 		found := false
 		for time.Now().Before(deadline) {
