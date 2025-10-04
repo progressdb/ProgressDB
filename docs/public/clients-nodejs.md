@@ -29,31 +29,42 @@ const thread = await db.createThread({ title: 'General' }, 'service-account')
 const msg = await db.createMessage({ thread: thread.id, body: { text: 'hello' } }, 'service-account')
 ```
 
-API Surface (selected)
+API surface (selected)
 
-- `new BackendClient({ baseUrl, apiKey })`
-- `signUser(userId)` — POST `/v1/_sign`
-- `adminHealth()`, `adminStats()` — admin endpoints
-- `listThreads(opts?)`, `getThread(id, author)`, `createThread(thread, author)`, `deleteThread(id, author)`
-- Message APIs: `createMessage`, `listThreadMessages`, `updateThreadMessage`, etc.
+- `new BackendClient({ baseUrl, apiKey })` — factory that returns the client.
+- `request<T>(method, path, body?)` — low-level HTTP helper that sets `Authorization: Bearer <apiKey>`.
+- `signUser(userId)` — POST `/v1/_sign` (backend keys only); returns `{ userId, signature }`.
+- Admin helpers: `adminHealth()`, `adminStats()` — call `/admin/health` and `/admin/stats`.
+- Thread APIs: `listThreads(opts?)`, `getThread(id, author)`, `createThread(thread, author)`, `deleteThread(id, author)`.
+- Message APIs (thread-scoped):
+  - `createMessage(m, author)` — POST `/v1/messages`.
+  - `listThreadMessages(threadID, opts?, author?)` — GET `/v1/threads/{threadID}/messages`.
+  - `getThreadMessage(threadID, id, author?)` — GET `/v1/threads/{threadID}/messages/{id}`.
+  - `updateThreadMessage(threadID, id, msg, author?)` — PUT `/v1/threads/{threadID}/messages/{id}`.
+  - `deleteThreadMessage(threadID, id, author?)` — DELETE `/v1/threads/{threadID}/messages/{id}`.
 
-Notes
+Versions & reactions
 
-- Backend SDKs hold admin keys and must run on trusted servers only.
-- Use `signUser` to obtain a signature for frontend clients (do not call `/v1/_sign` from the browser).
+- `listMessageVersions(threadID, id, author?)` — GET `/v1/threads/{threadID}/messages/{id}/versions`.
+- `listReactions(threadID, id, author?)`, `addOrUpdateReaction(threadID, id, input, author?)`, `removeReaction(threadID, id, identity, author?)`.
 
-Error handling & retries
+Errors & retries
 
-- The SDK throws `ApiError` for non-2xx responses exposing `.status` and `.body`.
-- Retry transient 5xx errors with exponential backoff (configurable via options).
+- The SDK throws `ApiError` for non-2xx responses with `.status` and `.body`.
+- Transient 5xx errors are retried with exponential backoff (configurable by `maxRetries`).
 
-Headers & auth
+Auth and signing flow
 
-- Backend clients should send `Authorization: Bearer <key>` or `X-API-Key: <key>`.
-- When using backend keys, supply an explicit `author` on admin operations or
-  set `X-User-ID` header. Frontend flows should obtain signatures via `signUser`.
+- Backend SDKs hold secret backend keys and must run on trusted servers only.
+- To authenticate a frontend user:
+  1. Call `signUser(userId)` on the backend using a backend key.
+  2. Return `{ userId, signature }` to the client via your authenticated endpoint.
+  3. Client attaches `X-User-ID` and `X-User-Signature` to requests.
 
-Files & contribution
+Development
 
-- The SDK source lives under `clients/sdk/backend/nodejs/` in the repo; see
-  `README.md` there for more details on API surface and development.
+- Source: `clients/sdk/backend/nodejs/src/` — build with `npm run build`.
+- Tests: `npm test` (see `clients/sdk/backend/nodejs/tests/`).
+
+See `clients/sdk/backend/nodejs/README.md` for complete details and examples.
+

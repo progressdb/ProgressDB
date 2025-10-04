@@ -9,16 +9,46 @@ visibility: public
 
 # Welcome to ProgressDB
 
-ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
+ProgressDB is a purpose-built, chat-native database for storing and
+retrieving chat threads and messages with first-class support for versioning,
+edits, replies, reactions, and optional encryption. The project includes a
+lightweight HTTP server, backend SDKs (Node, Python), and frontend SDKs
+(TypeScript/React).
 
-## Why ProgressDB?
+Key capabilities
 
-ProgressDB is built specifically for chat threads and makes common chat workflows simple and fast:
+- Thread-centric storage optimized for append and timeline reads.
+- Message versioning and soft-deletes so edits are traceable.
+- Optional field-level encryption backed by a KMS for sensitive data.
+- Simple API (REST + OpenAPI) and small footprint suitable for prototypes and production.
 
-- Start a thread by sending a message — the database will auto-create the thread for you.
-- Built-in message versioning, edits, replies, reactions, and soft-deletes.
-- Optimized for fast threaded message retrievals and common chat patterns.
-- Straightforward encryption and API-key based access controls.
-- Ship quickly: small service, simple APIs, and SDKs for Python, Node and frontend use.
+Quickstart (local)
 
-ProgressDB removes friction when building chat-first apps or features: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster.
+1. Run the server (Docker or `go run`):
+
+```sh
+# Docker example
+docker run -p 8080:8080 -v $PWD/data:/data docker.io/progressdb/progressdb --db /data/progressdb
+
+# or from source
+cd server
+go run ./cmd/progressdb --db ./data --addr ":8080"
+```
+
+2. Explore the API docs: `http://localhost:8080/docs/` and admin viewer at `http://localhost:8080/viewer/`.
+
+3. Use an SDK or curl to create threads and messages. Example message POST:
+
+```sh
+curl -X POST http://localhost:8080/v1/messages \
+  -H "Authorization: Bearer pk_example" \
+  -H "Content-Type: application/json" \
+  -d '{"thread":"general","author":"alice","body":{"text":"Hello"}}'
+```
+
+Where to go next
+
+- Installation and flags: `docs/public/guides-installation.md`.
+- Configuration and KMS: `docs/public/service-configuration.md` and `server/docs/kms.md`.
+- API design & concepts: `docs/public/concepts.md`.
+

@@ -7,7 +7,7 @@ visibility: public
 
 # Python Backend SDK
 
-Install the SDK (when published):
+Install (when published):
 
 ```bash
 pip install progressdb
@@ -30,21 +30,29 @@ thread = client.create_thread({'title': 'General'}, author='service-account')
 msg = client.create_message({'thread': thread['id'], 'body': {'text': 'hello'}}, author='service-account')
 ```
 
-Key features
+API highlights
 
-- `sign_user(user_id)` — obtain a signature for frontend usage
-- `admin_health()`, `admin_stats()` — admin endpoints
-- Thread & message helpers: `list_threads`, `create_thread`, `create_message`, `list_thread_messages`
+- `sign_user(user_id)` — POST `/v1/_sign` (backend keys only) returns `{ userId, signature }`.
+- Admin endpoints: `admin_health()`, `admin_stats()`.
+- Thread & message helpers: `list_threads(opts)`, `get_thread(id, author)`, `create_thread(thread, author)`, `delete_thread(id, author)`.
+- Thread-scoped message APIs: `list_thread_messages(thread_id, limit=None, author=None)`, `get_thread_message(thread_id, id, author=None)`, `update_thread_message(thread_id, id, msg, author=None)`, `delete_thread_message(thread_id, id, author=None)`.
 
-Error handling
+Versions & reactions
 
-- The Python SDK raises `ApiError` for non-2xx responses and surfaces the
-  status and response body for debugging.
-- Configure retries for transient failures; the SDK supports a retry option
-  or you can wrap calls with your own retry logic.
+- `list_message_versions(thread_id, id, author=None)` — GET `/v1/threads/{thread_id}/messages/{id}/versions`.
+- Reactions: `list_reactions`, `add_or_update_reaction`, `remove_reaction` (thread-scoped).
 
-Development notes
+Errors & retries
 
-- Python package layout lives under `clients/sdk/backend/python/` in the
-  repository; build artifacts are in `dist/` when published. See their
-  `README.md` for packaging and testing instructions.
+- Raises `ApiError` for non-2xx responses; the exception exposes response status and body.
+- Configure retries for transient errors or wrap calls with your own retry logic.
+
+Security
+
+- Backend SDKs hold admin keys and must not be embedded in browser code.
+- Use `sign_user` to produce `X-User-Signature` for frontend clients — backends should protect the signing endpoint.
+
+Development
+
+- Package layout is under `clients/sdk/backend/python/` in the repo. See the local `README.md` for tests and packaging notes.
+
