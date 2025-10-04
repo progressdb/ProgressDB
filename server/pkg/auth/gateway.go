@@ -1,35 +1,15 @@
-package security
+package auth
 
 import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
-
-	"golang.org/x/time/rate"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/utils"
 )
 
-type Role int
-
-const (
-	RoleUnauth Role = iota
-	RoleFrontend
-	RoleBackend
-	RoleAdmin
-)
-
-type SecConfig struct {
-	AllowedOrigins []string
-	RPS            float64
-	Burst          int
-	IPWhitelist    []string
-	BackendKeys    map[string]struct{}
-	FrontendKeys   map[string]struct{}
-	AdminKeys      map[string]struct{}
-}
+// Role and SecConfig types are defined in identity.go
 
 func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
 	// Rate limiters keyed by API key or remote IP
@@ -145,6 +125,8 @@ func originAllowed(origin string, allowed []string) bool {
 	return false
 }
 
+// authenticate and frontendAllowed are implemented further below in this file.
+
 func clientIP(r *http.Request) string {
 	// Expect direct connection for MVP; ignore X-Forwarded-For
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -204,37 +186,4 @@ func frontendAllowed(r *http.Request) bool {
 		return true
 	}
 	return false
-}
-
-type limiterPool struct {
-	mu  sync.Mutex
-	m   map[string]*rate.Limiter
-	cfg SecConfig
-}
-
-func (p *limiterPool) get(key string) *rate.Limiter {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.m == nil {
-		p.m = make(map[string]*rate.Limiter)
-	}
-	if l, ok := p.m[key]; ok {
-		return l
-	}
-	rps := p.cfg.RPS
-	if rps <= 0 {
-		rps = 5
-	}
-	burst := p.cfg.Burst
-	if burst <= 0 {
-		burst = 10
-	}
-	l := rate.NewLimiter(rate.Limit(rps), burst)
-	p.m[key] = l
-	return l
-}
-
-func (p *limiterPool) Allow(key string) bool {
-	// Use per-second rate; limiter handles clocks
-	return p.get(key).Allow()
 }

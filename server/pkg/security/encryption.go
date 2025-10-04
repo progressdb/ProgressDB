@@ -64,7 +64,7 @@ func EncryptionEnabled() bool {
 		return true
 	}
 	// Otherwise, check if a 32-byte key is set.
-	return key != nil && len(key) == 32
+	return len(key) == 32
 }
 
 // SetEncryptionFieldPolicy sets the list of field paths to encrypt.

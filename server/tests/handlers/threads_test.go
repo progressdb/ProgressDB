@@ -339,7 +339,28 @@ func TestUpdateThreadMessage(t *testing.T) {
 	}
 	mid := mout["id"].(string)
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for the created message to be visible before attempting the update.
+	// Polling is preferred over a fixed small sleep to reduce flakiness on loaded
+	// CI hosts.
+	visible := false
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		greq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, nil)
+		greq.Header.Set("X-User-ID", user)
+		greq.Header.Set("X-User-Signature", sig)
+		gres, err := http.DefaultClient.Do(greq)
+		if err == nil {
+			_ = gres.Body.Close()
+			if gres.StatusCode == 200 {
+				visible = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !visible {
+		t.Fatalf("created message not visible for update after timeout")
+	}
 	up := map[string]interface{}{"author": user, "body": map[string]string{"text": "updated"}}
 	ub, _ := json.Marshal(up)
 	ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(ub))

@@ -27,9 +27,11 @@ type LocalServer struct {
 }
 
 func (s *LocalServer) Close() {
-	if s.prev != nil {
-		http.DefaultClient = s.prev
-	}
+    if s.prev != nil {
+        http.DefaultClient = s.prev
+    }
+    // Flush any logger state at test teardown.
+    logger.Sync()
 }
 
 type handlerRoundTripper struct {
@@ -50,8 +52,7 @@ func SetupServer(t *testing.T) *LocalServer {
 	dbpath := dir + "/db"
 	storePath := filepath.Join(dbpath, "store")
 	_ = os.MkdirAll(storePath, 0o700)
-	logger.Init()
-	defer logger.Sync()
+    logger.Init()
 	if err := store.Open(storePath); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}
@@ -65,8 +66,9 @@ func SetupServer(t *testing.T) *LocalServer {
 	config.SetRuntime(cfg)
 	prev := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: &handlerRoundTripper{handler: api.Handler()}}
-	return &LocalServer{URL: "http://localtest", prev: prev}
+    return &LocalServer{URL: "http://localtest", prev: prev}
 }
+
 
 // SignHMAC returns hex HMAC-SHA256 of user using key
 func SignHMAC(key, user string) string {

@@ -1,10 +1,123 @@
 package auth
 
 import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
-	"progressdb/pkg/logger"
 	"strings"
+
+	"progressdb/pkg/config"
+	"progressdb/pkg/logger"
+	"progressdb/pkg/utils"
 )
+
+// Role represents the resolved caller role for a request.
+type Role int
+
+const (
+	RoleUnauth Role = iota
+	RoleFrontend
+	RoleBackend
+	RoleAdmin
+)
+
+// SecConfig mirrors the security-related configuration used to drive
+// authentication, CORS and rate limiting behavior. Put here so limiter.go
+// and gateway.go can reference the shared type.
+type SecConfig struct {
+	AllowedOrigins []string
+	RPS            float64
+	Burst          int
+	IPWhitelist    []string
+	BackendKeys    map[string]struct{}
+	FrontendKeys   map[string]struct{}
+	AdminKeys      map[string]struct{}
+}
+
+type ctxAuthorKey struct{}
+
+// RequireSignedAuthor verifies HMAC signature headers and injects the
+// verified author id into the request context.
+func RequireSignedAuthor(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Determine caller role set earlier by gateway middleware
+		role := r.Header.Get("X-Role-Name")
+		userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
+		sig := strings.TrimSpace(r.Header.Get("X-User-Signature"))
+
+		// Backend/admin callers: allow missing signature entirely, or accept
+		// a header-provided author without a signature. If a signature is
+		// present we will verify it below.
+		if role == "backend" || role == "admin" {
+			if sig == "" {
+				// No signature provided; allow the request through. Handlers may
+				// accept an author from body or X-User-ID header as appropriate.
+				next.ServeHTTP(w, r)
+				return
+			}
+			// signature present -> fallthrough to verification logic
+		}
+
+		// If we reach here and there's no signature, the caller is not a
+		// trusted backend/admin and we must require signature headers.
+		if sig == "" {
+			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+			utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
+			return
+		}
+		// signature is present; require userID as well
+		if userID == "" {
+			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
+			utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
+			return
+		}
+
+		// Retrieve signing keys from the canonical config package.
+		keys := config.GetSigningKeys()
+		if len(keys) == 0 {
+			logger.Error("no_signing_keys_configured")
+			utils.JSONError(w, http.StatusInternalServerError, "server misconfigured: no signing secrets available")
+			return
+		}
+
+		// Try all configured signing keys.
+		ok := false
+		for k := range config.GetSigningKeys() {
+			mac := hmac.New(sha256.New, []byte(k))
+			mac.Write([]byte(userID))
+			expected := hex.EncodeToString(mac.Sum(nil))
+			if hmac.Equal([]byte(expected), []byte(sig)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			logger.Warn("invalid_signature", "user", userID)
+			utils.JSONError(w, http.StatusUnauthorized, "invalid signature")
+			return
+		}
+		logger.Info("signature_verified", "user", userID)
+		ctx := context.WithValue(r.Context(), ctxAuthorKey{}, userID)
+		r = r.WithContext(ctx)
+		// do not set headers; handlers should use context via AuthorIDFromContext
+		next.ServeHTTP(w, r)
+	})
+}
+
+// AuthorIDFromContext returns the verified author id or empty string.
+func AuthorIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(ctxAuthorKey{}); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// Note: authenticate and frontendAllowed are implemented in gateway.go
+// to keep gateway responsibilities self-contained.
 
 func validateAuthor(a string) (bool, string) {
 	if a == "" {

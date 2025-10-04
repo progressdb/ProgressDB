@@ -9,8 +9,11 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -129,16 +132,38 @@ logging:
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
-		// perform two quick requests to a permissive endpoint (/healthz) and expect second may be rate limited
-		if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
-			t.Fatalf("healthz request failed: %v", err)
+		// perform multiple concurrent requests to a permissive endpoint (/healthz) and expect at least one to be rate limited (429)
+		const tries = 100
+		const concurrency = 10
+		got429 := int32(0)
+		var wg sync.WaitGroup
+
+		client := &http.Client{}
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func(worker int) {
+				defer wg.Done()
+				for j := 0; j < tries/concurrency; j++ {
+					res, err := client.Get(sp.Addr + "/healthz")
+					if err != nil {
+						t.Errorf("healthz request failed: %v", err)
+						continue
+					}
+					// Log the response for each request
+					bodyBytes, _ := io.ReadAll(res.Body)
+					t.Logf("[worker %d, req %d] status: %d, body: %q", worker, j, res.StatusCode, string(bodyBytes))
+					if res.StatusCode == 429 {
+						atomic.AddInt32(&got429, 1)
+					}
+					_ = res.Body.Close()
+					// small backoff to increase chance of hitting rate limit window
+					time.Sleep(10 * time.Millisecond)
+				}
+			}(i)
 		}
-		r2, err := http.Get(sp.Addr + "/healthz")
-		if err != nil {
-			t.Fatalf("second healthz request failed: %v", err)
-		}
-		if r2.StatusCode == 429 {
-			// rate limited as expected
+		wg.Wait()
+		if got429 == 0 {
+			t.Fatalf("expected at least one 429 rate-limited response across %d quick concurrent requests", tries)
 		}
 	})
 

@@ -7,7 +7,7 @@ import (
 	"progressdb/pkg/api"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
-	"progressdb/pkg/security"
+    "progressdb/pkg/auth"
 	"progressdb/pkg/store"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -80,15 +80,15 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	mux.Handle("/openapi.yaml", http.FileServer(http.Dir("./docs")))
 	mux.Handle("/metrics", promhttp.Handler())
 
-	secCfg := security.SecConfig{
-		AllowedOrigins: append([]string{}, a.eff.Config.Security.CORS.AllowedOrigins...),
-		RPS:            a.eff.Config.Security.RateLimit.RPS,
-		Burst:          a.eff.Config.Security.RateLimit.Burst,
-		IPWhitelist:    append([]string{}, a.eff.Config.Security.IPWhitelist...),
-		BackendKeys:    map[string]struct{}{},
-		FrontendKeys:   map[string]struct{}{},
-		AdminKeys:      map[string]struct{}{},
-	}
+    secCfg := auth.SecConfig{
+        AllowedOrigins: append([]string{}, a.eff.Config.Security.CORS.AllowedOrigins...),
+        RPS:            a.eff.Config.Security.RateLimit.RPS,
+        Burst:          a.eff.Config.Security.RateLimit.Burst,
+        IPWhitelist:    append([]string{}, a.eff.Config.Security.IPWhitelist...),
+        BackendKeys:    map[string]struct{}{},
+        FrontendKeys:   map[string]struct{}{},
+        AdminKeys:      map[string]struct{}{},
+    }
 	for _, k := range a.eff.Config.Security.APIKeys.Backend {
 		secCfg.BackendKeys[k] = struct{}{}
 	}
@@ -106,7 +106,7 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	}
 	config.SetRuntime(runtimeCfg)
 
-	wrapped := security.AuthenticateRequestMiddleware(secCfg)(mux)
+    wrapped := auth.AuthenticateRequestMiddleware(secCfg)(mux)
 
 	a.srv = &http.Server{Addr: a.eff.Addr, Handler: wrapped}
 
