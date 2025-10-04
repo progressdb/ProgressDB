@@ -120,7 +120,7 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: []
+    backend: ["backend-secret"]
     frontend: []
     admin: []
   rate_limit:
@@ -138,29 +138,34 @@ logging:
 		got429 := int32(0)
 		var wg sync.WaitGroup
 
-		client := &http.Client{}
-		for i := 0; i < concurrency; i++ {
-			wg.Add(1)
-			go func(worker int) {
-				defer wg.Done()
-				for j := 0; j < tries/concurrency; j++ {
-					res, err := client.Get(sp.Addr + "/healthz")
-					if err != nil {
-						t.Errorf("healthz request failed: %v", err)
-						continue
-					}
-					// Log the response for each request
-					bodyBytes, _ := io.ReadAll(res.Body)
-					t.Logf("[worker %d, req %d] status: %d, body: %q", worker, j, res.StatusCode, string(bodyBytes))
-					if res.StatusCode == 429 {
-						atomic.AddInt32(&got429, 1)
-					}
-					_ = res.Body.Close()
-					// small backoff to increase chance of hitting rate limit window
-					time.Sleep(10 * time.Millisecond)
-				}
-			}(i)
-		}
+    client := &http.Client{}
+    for i := 0; i < concurrency; i++ {
+        wg.Add(1)
+        go func(worker int) {
+            defer wg.Done()
+            for j := 0; j < tries/concurrency; j++ {
+                // call POST /v1/_sign which accepts backend API keys
+                reqBody := []byte(`{"userId":"u"}`)
+                req, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader(reqBody))
+                req.Header.Set("Authorization", "Bearer backend-secret")
+                req.Header.Set("Content-Type", "application/json")
+                res, err := client.Do(req)
+                if err != nil {
+                    t.Errorf("sign request failed: %v", err)
+                    continue
+                }
+                // Log the response for each request
+                bodyBytes, _ := io.ReadAll(res.Body)
+                t.Logf("[worker %d, req %d] status: %d, body: %q", worker, j, res.StatusCode, string(bodyBytes))
+                if res.StatusCode == 429 {
+                    atomic.AddInt32(&got429, 1)
+                }
+                _ = res.Body.Close()
+                // small backoff to increase chance of hitting rate limit window
+                time.Sleep(10 * time.Millisecond)
+            }
+        }(i)
+    }
 		wg.Wait()
 		if got429 == 0 {
 			t.Fatalf("expected at least one 429 rate-limited response across %d quick concurrent requests", tries)
