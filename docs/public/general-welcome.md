@@ -9,79 +9,40 @@ visibility: public
 
 # Welcome to ProgressDB
 
-ProgressDB is a chat-native database engineered for storing and
-serving conversational data (threads and messages) with high efficiency
-and predictable behavior. Unlike general-purpose document or relational
-databases, ProgressDB focuses on the common patterns of chat systems:
-append-only timelines, fast timeline reads, message versioning, and
-field-level encryption for sensitive data.
+ProgressDB is a chat-native database engineered for storing and serving conversational data — threads, messages, and related context — with high efficiency and predictable behavior.
 
-## Why ProgressDB — a short rationale
+Unlike general-purpose document or relational databases, ProgressDB is optimized for the patterns of chat systems: append-only timelines, fast ordered reads, message versioning, and field-level encryption for sensitive content.
 
-- Purpose-built indexing: keys are organized for append-ordered timeline
-  access (e.g. `thread:<id>:<timestamp>`). This makes listing a thread's
-  messages extremely efficient compared to full table scans or wide
-  secondary queries.
-- Small, predictable storage engine: uses PebbleDB as an embedded key/value
-  store which provides fast local IO, compaction, and low operational
-  overhead. No heavyweight cluster coordination is required for single-node
-  deployments.
-- First-class chat features: message versioning, edits, replies, reactions
-  and soft-deletes are built-in primitives — you get auditability without
-  complex application-level bookkeeping.
-- Security-first: optional field-level encryption backed by a KMS and a
-  signing flow for safe frontend usage (clients never hold backend keys).
+## Why ProgressDB
 
-## How ProgressDB is faster for chat workloads
+### Purpose-built indexing
 
-- Timeline-optimized keys: by storing timeline data in append-ordered keys
-  and scanning by prefix, the server avoids expensive secondary index
-  maintenance and returns timeline pages with a single sequential read.
-- Compact object model: messages are JSON with small fixed metadata; the
-  server avoids relational joins and large deserialization costs on reads.
-- Lightweight runtime: a small Go binary with tuned concurrency and
-  Pebble optimizations means lower CPU/memory overhead and quicker cold
-  starts compared to distributed solutions.
+Keys are organized for append-ordered timeline access (e.g. `thread:<id>:<timestamp>`), making message listing extremely efficient compared to full table scans or wide secondary queries.
 
-## Typical use-cases
+### Small, predictable storage engine
 
-- Chat applications (customer support, group chat, bot conversations)
-- AI conversation stores (chat history for LLM contexts)
-- Audit logs where message versioning and soft-deletes are required
-- Prototypes and single-region services where simple operational model is
-  preferred over distributed databases
+ProgressDB uses Pebble, an embedded key-value store that delivers fast local I/O, automatic compaction, and minimal operational overhead. No heavyweight cluster coordination is required for single-node deployments.
 
-## Trade-offs & when not to use ProgressDB
+### First-class chat features
 
-- Not a drop-in replacement for massive multi-region OLTP systems that
-  need cross-shard transactions or advanced analytical queries.
-- If you require global multi-master replication or sub-second cross-region
-  consistency, consider a distributed DB built for that purpose and use
-  ProgressDB as a local cache or shard for chat workloads.
+Message versioning, edits, replies, reactions, and soft deletes are built-in primitives — providing auditability and consistency without extra application-level bookkeeping.
 
-## Quickstart (local)
+### Security-first by design
 
-Run the server via Docker:
+Optional field-level encryption is backed by a Key Management Service (KMS) and a signing flow that keeps backend keys isolated from client environments.
 
-```sh
-docker run -p 8080:8080 -v $PWD/data:/data docker.io/progressdb/progressdb --db /data/progressdb
-```
+## How ProgressDB Achieves Performance
 
-Or run from source (developer):
+- **Timeline-optimized keys:** Data is stored in append-ordered keys, allowing efficient prefix scans and sequential reads instead of maintaining secondary indexes.
+- **Compact object model:** Messages are JSON documents with minimal fixed metadata, avoiding costly joins and large deserialization overhead.
+- **Lightweight runtime:** A single Go binary with tuned concurrency and Pebble optimizations minimizes CPU and memory usage — enabling fast cold starts and efficient single-node performance.
 
-```sh
-cd server
-go run ./cmd/progressdb --db ./data --addr ":8080"
-```
+## Typical Use Cases
 
-Explore the API docs: `http://localhost:8080/docs/` and admin viewer at
-`http://localhost:8080/viewer/`.
+- Persistent chat history for AI assistants or LLM-driven agents
+- Real-time chat for applications, communities, or support tools
+- Conversation storage for analytics, search, or replay systems
 
-Create a message (curl):
+## Trade-offs and Limitations
 
-```sh
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Authorization: Bearer pk_example" \
-  -H "Content-Type: application/json" \
-  -d '{"thread":"general","author":"alice","body":{"text":"Hello"}}'
-```
+ProgressDB is designed for chat-centric workloads and excels on single-node or moderate-scale deployments. It’s not yet optimized for massive, globally distributed systems. For large-scale, multi-region, or strongly consistent clusters, keep an eye on future updates as ProgressDB evolves.
