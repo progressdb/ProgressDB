@@ -115,21 +115,21 @@ logging:
 			t.Fatalf("write cfg: %v", err)
 		}
 
-        // run process (blocking) and capture stdout/stderr
-        cmd := exec.Command(bin, "--config", cfg)
-        outf := filepath.Join(tmp, "out.log")
-        of, _ := os.Create(outf)
-        cmd.Stdout = of
-        cmd.Stderr = of
-        err := cmd.Run()
-        of.Close()
-        data, _ := os.ReadFile(outf)
-        if err == nil {
-            t.Fatalf("expected server to exit non-zero when audit path is broken; output:\n%s", string(data))
-        }
-        if !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
-            t.Fatalf("expected state_dirs_setup_failed in output; got:\n%s", string(data))
-        }
+		// run process (blocking) and capture stdout/stderr
+		cmd := exec.Command(bin, "--config", cfg)
+		outf := filepath.Join(tmp, "out.log")
+		of, _ := os.Create(outf)
+		cmd.Stdout = of
+		cmd.Stderr = of
+		err := cmd.Run()
+		of.Close()
+		data, _ := os.ReadFile(outf)
+		if err == nil {
+			t.Fatalf("expected server to exit non-zero when audit path is broken; output:\n%s", string(data))
+		}
+		if !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
+			t.Fatalf("expected state_dirs_setup_failed in output; got:\n%s", string(data))
+		}
 	})
 
 	// (removed preflight subtest — filesystem checks are now run during Init at startup)
