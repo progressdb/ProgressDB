@@ -105,8 +105,3 @@ func main() {
 	// shutdown the app
 	_ = app.Shutdown(context.Background())
 }
-
-// performPreflight ensures required filesystem layout is createable and writable.
-func performPreflight(eff config.EffectiveConfigResult) error {
-    return state.EnsureStateDirs(state.PathsVar.DB)
-}

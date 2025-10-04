@@ -12,8 +12,20 @@ fi
 
 SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Resolve repo root robustly: prefer `git rev-parse --show-toplevel` when
+# available, otherwise fall back to the script-relative path.
+if command -v git >/dev/null 2>&1; then
+  if git_root=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+    ROOT_DIR="$git_root"
+  else
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  fi
+else
+  ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+# KMS helper under scripts/kms
 KMS_HELPER="$ROOT_DIR/scripts/kms/dev.sh"
 CFG="$ROOT_DIR/scripts/config.yaml"
 
@@ -23,6 +35,9 @@ if [[ ! -f "$KMS_HELPER" ]]; then
 fi
 
 echo "[enc:embedded] Starting development KMS (background)..."
+# Ensure log directory exists so redirection doesn't fail when the helper
+# writes logs.
+mkdir -p "$ROOT_DIR/.kms"
 # Start KMS helper in background. Use --no-build to speed iterations when
 # the binary already exists; if this fails, fall back to invoking without it.
 ("$KMS_HELPER" --no-build >> "$ROOT_DIR/.kms/dev.log" 2>&1) &
@@ -39,4 +54,3 @@ cd "$ROOT_DIR/server"
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 exec go run ./cmd/progressdb --config "$CFG" "$@"
-
