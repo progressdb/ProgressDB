@@ -1,5 +1,5 @@
 ---
-section: tutorials
+section: others
 title: "Integrating with Vercel AI SDK"
 order: 1
 visibility: public
