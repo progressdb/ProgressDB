@@ -7,56 +7,58 @@ visibility: public
 
 # Upgrades & Releases
 
-This page describes recommended procedures for upgrading ProgressDB in
-production and best practices for releases.
+This guide outlines safe upgrade procedures, rolling upgrade patterns,
+backup and rollback steps, and a release checklist.
 
-## Rolling upgrades
+## Pre-upgrade checklist
 
-- Use health checks (`GET /healthz`) and readiness probes to orchestrate
-  rollouts. Ensure each new instance reports healthy before routing traffic.
-- Drain connections on an instance before stopping it (graceful shutdown).
-- Keep previous released binaries/images available for rollback.
+- [ ] Backup Pebble DB (`--db`) and KMS metadata.
+- [ ] Restore backups to staging and run smoke tests.
+- [ ] Review release notes for breaking changes and data migrations.
+- [ ] Ensure previous binaries/images are available for rollback.
 
-## Backup before upgrade
+## Rolling upgrades (recommended)
 
-- Always snapshot the `--db` data directory (Pebble DB) before upgrading.
-- Verify backups by restoring into a staging environment and running smoke
-  tests against the restored instance.
+1. Deploy new version to a small canary subset of instances.
+2. Wait for `/healthz` to return `ok` on each new instance.
+3. Monitor metrics and logs for errors or latency regressions.
+4. Gradually roll out to remaining instances.
 
-## Compatibility & migrations
+Tips:
 
-- The server attempts to maintain API compatibility within a release line.
-- If an upgrade includes data migrations (schema changes, encryption rewrap),
-  run migrations in a maintenance window and validate sample data after the
-  migration completes.
+- Use readiness probes to avoid routing traffic to instances that are still warming up.
+- Drain connections and stop old instances only after new instances are healthy.
 
-## CI/CD & release artifacts
+## Upgrades that include data migrations
 
-- Use `goreleaser` (repo provides `.goreleaser.yml`) to build artifacts and
-  Docker images. Tag releases and keep release notes that document any
-  breaking changes.
-- Build artifacts should include a versioned binary and Docker image for each
-  release.
+- If the upgrade requires data migrations (schema changes, encryption rewrap), schedule a maintenance window.
+- Run migrations on a staging copy first and validate data integrity.
+- Prefer online migrations that are backwards-compatible when possible; otherwise, use downtime windows.
 
 ## Quick rollback
 
-- If you detect issues post-upgrade, rollback to the previous known-good
-  binary/image and restore from the backup snapshot if necessary.
+If you detect problems post-upgrade:
+
+1. Stop the new version and redeploy the previous known-good binary/image.
+2. If data migrations made incompatible changes, restore DB from the pre-upgrade backup and restart the previous version.
+3. Notify stakeholders and open an incident ticket with the timeline and logs.
+
+## CI/CD recommendations
+
+- Use `goreleaser` (configured in this repo) to build artifacts and Docker images.
+- Publish artifacts with clear semantic tags and include release notes describing migrations and breaking changes.
 
 ## Post-upgrade verification
 
-- Confirm `/healthz` is `ok` on all nodes.
-- Verify metrics (`/metrics`) show expected request rates and no error
-  spikes.
-- Exercise a few end-to-end scenarios: create thread, post message, list
-  messages, sign user.
+- Confirm `/healthz` is `ok` across all nodes.
+- Verify metrics (`/metrics`) for error spikes or latency regressions.
+- Run functional smoke tests: create thread, post message, list messages, sign user.
 
-## Release checklist
+## Release checklist (copyable)
 
-- [ ] Backup DB
-- [ ] Deploy new version to staging and run automated tests
+- [ ] Backup DB and KMS
+- [ ] Deploy to staging and run automated tests
 - [ ] Deploy to canary subset and monitor metrics/health
 - [ ] Rollout to remainder of fleet
-- [ ] Monitor for errors and latency regressions for at least one
-  retention/window period
+- [ ] Monitor for errors and latency regressions for at least one retention period
 

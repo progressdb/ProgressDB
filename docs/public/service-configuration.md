@@ -7,71 +7,147 @@ visibility: public
 
 # Configuration
 
-ProgressDB can be configured via a YAML config file (`config.yaml`),
-environment variables, or command-line flags. The server will also load a
-`.env` file if present in the working directory.
+ProgressDB supports three configuration sources (highest → lowest precedence):
 
-Source precedence (highest → lowest):
-- Command-line flags (`--db`, `--addr`, `--config`, etc.)
+- Command-line flags (e.g. `--db`, `--addr`, `--config`)
 - Environment variables (e.g. `PROGRESSDB_DB_PATH`, `PROGRESSDB_ADDR`)
-- YAML config file (`config.yaml`)
+- YAML config file (default `config.yaml`)
 
-Common flags and env vars
+Below is a comprehensive example `config.yaml` that shows the supported
+options. After the example there is a short explanation of each option and
+the equivalent environment variable (when available).
 
-- `--db` / `--db-path` / env `PROGRESSDB_DB_PATH` — Pebble DB path for storage (recommended: a persistent directory, e.g. `/var/lib/progressdb`).
-- `--addr` / env `PROGRESSDB_ADDR` or `PROGRESSDB_ADDRESS`+`PROGRESSDB_PORT` — listen address and port (default `0.0.0.0:8080`).
-- `--config` / env `PROGRESSDB_CONFIG` — path to YAML config file.
-- TLS vars: `--tls-cert` / env `PROGRESSDB_TLS_CERT`, `--tls-key` / env `PROGRESSDB_TLS_KEY` — if set the server will enable TLS.
+Example `config.yaml` (complete)
 
-Important YAML config fields (examples in `docs/configs/config.yaml`)
+```yaml
+server:
+  address: "0.0.0.0"
+  port: 8080
+  db_path: "./data"
+  tls:
+    cert_file: ""      # path to TLS cert file (enable TLS when set)
+    key_file: ""       # path to TLS key file
 
-- `server.address` / `server.port` — interface and port to listen on.
-- `storage.db_path` — database storage path used by Pebble.
-- `security`:
-  - `cors.allowed_origins` — CORS allowed origins for browser clients.
-  - `rate_limit.rps` and `rate_limit.burst` — request rate limiting.
-  - `ip_whitelist` — list of IP addresses permitted to connect if set.
-  - `api_keys`:
-    - `backend` — backend/secret keys (e.g. `sk_...`) used to sign user IDs and call admin endpoints.
-    - `frontend` — public keys (e.g. `pk_...`) for browser clients with limited scope.
-    - `admin` — admin-only API keys.
-- `security.kms` — KMS configuration. `mode` may be `embedded` or `external`. For production we recommend `external` and running the `progressdb-kms` daemon.
-- `logging.level` — `debug|info|warn|error`.
+storage:
+  db_path: "./data/store"   # Pebble DB directory
 
-Authentication & API keys
+security:
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "https://example.com"
+  rate_limit:
+    rps: 10
+    burst: 20
+  ip_whitelist: []
+  api_keys:
+    backend: ["sk_example"]
+    frontend: ["pk_example"]
+    admin: ["admin_example"]
+  encryption:
+    use: false
+    fields: []
+  kms:
+    mode: "external"     # embedded | external
+    endpoint: "127.0.0.1:6820"
+    data_dir: "./kms-data"
+    binary: "/usr/local/bin/progressdb-kms"
+    master_key_file: ""   # embedded mode only
+    master_key_hex: ""    # alternative to file (embedded only)
 
-- All API calls require an API key. Provide it via:
-  - `Authorization: Bearer <key>`
-  - or `X-API-Key: <key>`
-- Key scopes:
-  - Backend keys (`sk_...`): full scope, can call `/v1/_sign` to sign user IDs and access admin actions.
-  - Frontend keys (`pk_...`): limited scope (typically `GET|POST /v1/messages` and `/healthz`).
+logging:
+  level: "info"   # debug|info|warn|error
 
-User signing (frontend flow)
+validation:
+  required: []
+  types: []
+  max_len: []
+  enums: []
+  when_then: []
 
-- Backends call `POST /v1/_sign` with `{ "userId": "..." }` to obtain an HMAC-SHA256 signature bound to the provided backend key. Return the `signature` to the frontend.
-- Frontend requests then include `X-User-ID` and `X-User-Signature` headers to authenticate a user identity.
+retention:
+  enabled: false
+  days: 0
 
-KMS & encryption
+metrics:
+  enabled: true
+  path: "/metrics"
 
-- ProgressDB supports optional field-level encryption backed by a KMS.
-- KMS `mode`:
-  - `embedded`: in-process KMS (not recommended for production key isolation).
-  - `external`: ProgressDB talks over HTTP to an external `progressdb-kms` process; this is recommended for production.
-- Key & audit storage:
-  - Wrapped DEKs and audit entries are persisted under the KMS data directory (see `docs/kms.md`).
-  - Rotation and rewrap tooling exists in the KMS runbook.
+admin:
+  enable_viewer: true
+  viewer_path: "/viewer/"
+```
 
-Metrics & admin endpoints
+Configuration reference (option → explanation → env var)
 
-- Health: `GET /healthz` (returns `{ "status": "ok" }`).
-- Prometheus metrics: `GET /metrics`.
-- Swagger UI: `GET /docs/` and OpenAPI at `GET /openapi.yaml`.
-- Admin viewer (UI): available at `GET /viewer/` when the server is running locally.
+- `server.address`, `server.port`
+  - What it does: network interface and port for the HTTP server. Use `0.0.0.0` to listen on all interfaces.
+  - Env vars: `PROGRESSDB_ADDRESS` and `PROGRESSDB_PORT` (or `PROGRESSDB_ADDR` as a combined `host:port`).
 
-Operation tips
+- `server.db_path` / `storage.db_path`
+  - What it does: path to the Pebble DB files. Must be persistent and writable by the server process.
+  - Env var: `PROGRESSDB_DB_PATH`.
 
-- Always run a backup of the `storage.db_path` directory before upgrades or KMS rewraps.
-- Protect API keys and KMS secrets with your secrets manager; avoid storing them in plaintext in `config.yaml` on production hosts.
-- Use rate-limiting and IP whitelists for public endpoints when appropriate.
+- `server.tls.cert_file`, `server.tls.key_file`
+  - What it does: when both are set the server enables TLS. Provide full filesystem paths to the cert and key.
+  - Env vars: `PROGRESSDB_TLS_CERT`, `PROGRESSDB_TLS_KEY`.
+
+- `security.cors.allowed_origins`
+  - What it does: list of allowed origins for browser CORS. Wildcards are not recommended in production.
+  - Env var: `PROGRESSDB_CORS_ORIGINS` (comma-separated).
+
+- `security.rate_limit.rps`, `security.rate_limit.burst`
+  - What it does: enables per-key or per-IP rate limiting (requests per second and burst).
+  - Env vars: `PROGRESSDB_RATE_RPS`, `PROGRESSDB_RATE_BURST`.
+
+- `security.ip_whitelist`
+  - What it does: if non-empty, only requests from listed IPs are permitted.
+
+- `security.api_keys.backend`, `security.api_keys.frontend`, `security.api_keys.admin`
+  - What it does: lists of API keys by scope. Backend keys (`sk_...`) are privileged and may call `/v1/_sign` and admin routes. Frontend keys (`pk_...`) are limited (typically to message endpoints and health).
+  - Env vars: `PROGRESSDB_API_BACKEND_KEYS`, `PROGRESSDB_API_FRONTEND_KEYS`, `PROGRESSDB_API_ADMIN_KEYS` (comma-separated).
+
+- `security.encryption.use`, `security.encryption.fields`
+  - What it does: enable field-level encryption and list JSON paths to encrypt (e.g., `body.credit_card`). When `use: true` the server will attempt decryption on reads.
+  - Note: full-message encryption vs field-level: configuration defines behavior; see `server/docs/encryption.md`.
+
+- `security.kms.mode` (embedded|external)
+  - What it does: selects the KMS provider mode. `embedded` runs an in-process KMS (dev/test). `external` makes HTTP calls to a separate `progressdb-kms` service (recommended for production).
+  - Env var: `PROGRESSDB_KMS_MODE`.
+
+- `security.kms.endpoint`
+  - What it does: network address (host:port or URL) of the external KMS service.
+  - Env var: `PROGRESSDB_KMS_ENDPOINT`.
+
+- `security.kms.data_dir`, `security.kms.binary`, `master_key_file`, `master_key_hex`
+  - What they do: KMS runtime and storage options. `data_dir` is where KMS metadata and wrapped keys are stored. `binary` is the external KMS executable path used in some deployments. `master_key_file` / `master_key_hex` are for embedded KMS master key provisioning only.
+
+- `logging.level`
+  - What it does: logging verbosity. Use `info` for normal ops and `debug` for troubleshooting.
+  - Env var: `PROGRESSDB_LOG_LEVEL`.
+
+- `validation` (required, types, max_len, enums, when_then)
+  - What it does: optional JSON path validation rules applied at write time (server accepts flexible JSON body but can enforce constraints here).
+
+- `retention.enabled`, `retention.days`
+  - What it does: if retention is enabled the server may periodically garbage collect old messages per policy. See `server/docs/retention.md` for specifics.
+
+- `metrics.enabled`, `metrics.path`
+  - What it does: enables Prometheus metrics endpoint (default `/metrics`).
+
+- `admin.enable_viewer`, `admin.viewer_path`
+  - What it does: enables the local admin viewer UI and its URL path (useful for local debugging; restrict in production).
+
+Command-line flags (common)
+
+- `--db` or `--db-path` — shorthand for `storage.db_path` / `server.db_path`.
+- `--addr` — address to bind (host:port). Overrides `server.address`/`server.port`.
+- `--config` — path to a YAML config file.
+- `--tls-cert` / `--tls-key` — enable TLS using provided files.
+
+Notes & best practices
+
+- Do not store long-lived backend API keys in plaintext in `config.yaml` on production hosts — use a secrets manager and inject keys via environment variables or your orchestration secrets mechanism.
+- Prefer `security.kms.mode: external` in production and run `progressdb-kms` on a separate host with strict access controls.
+- Always snapshot the DB path before performing upgrades or KMS rewrap operations.
 

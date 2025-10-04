@@ -7,97 +7,81 @@ visibility: public
 
 # Maintenance Runbook
 
-This runbook covers backups & restores, KMS rotation/rewrap, upgrades, and
-common troubleshooting steps for ProgressDB.
+This runbook provides concrete steps for backups, restores, KMS rotation,
+monitoring, and common troubleshooting tasks.
 
-Backups
+## Backups
 
-- What to back up:
-  - Pebble DB directory (the path set by `--db` / `storage.db_path`).
-  - KMS data directory when using embedded KMS or the `progressdb-kms` data_dir when external.
-  - KMS audit logs (`kms-audit.log`) and any exported key backups.
+### What to back up
 
-- Backup procedure (file-system snapshot):
-  1. Stop the server or put it into maintenance mode (drain requests).
-  2. Create a filesystem snapshot of the `--db` directory (e.g. `rsync` or LVM/ZFS snapshot).
-  3. Copy the KMS data directory and audit logs to the backup location.
-  4. Verify the backup by mounting/restoring into a staging host and starting the server against the restored data.
+- Pebble DB directory (configured via `--db` / `storage.db_path`).
+- KMS data directory and audit logs (when using embedded or external KMS).
 
-Restore (quick)
+### Filesystem snapshot procedure
+
+1. Put the server into maintenance mode or stop it to ensure a consistent snapshot.
+2. Create a filesystem snapshot (LVM/ZFS) or use `rsync` to copy the DB directory to backup storage.
+3. Copy the KMS data directory and audit logs to the backup location.
+4. Record metadata: backup time, binary version, config file used, and KMS key IDs.
+
+### Verify backups
+
+- Restore the snapshot to a staging host and start the server against the restored data.
+- Run smoke tests: `/healthz`, create/list messages, check KMS decryption of encrypted fields.
+
+## Restore procedure
 
 1. Stop the target server.
-2. Replace the `--db` directory with the snapshot.
-3. Restore the KMS data directory if needed.
-4. Start the server and validate `/healthz` and core flows.
+2. Replace the `--db` directory with the backup snapshot.
+3. Restore the KMS data directory and audit logs if applicable.
+4. Start the server and validate `/healthz` and sample read/write flows.
 
-KMS rotation & rewrap
+## KMS rotation & rewrap (high level)
 
-- Recommended mode: run an external `progressdb-kms` process and restrict access to it via network controls.
-- Rotation steps (high level):
-  1. Add the new KEK in the KMS and mark it as the active key.
-  2. Run the KMS rewrap tooling (the KMS will iterate wrapped DEKs and rewrap them with the new KEK). Backups of wrapped-DEKs are written to `kms-deks-backup/`.
-  3. Verify that decryption works by exercising reads on a subset of threads/messages.
-  4. Remove the old KEK from rotation after verification and retention window.
+> Production recommendation: use `security.kms.mode: external` and run a
+separate `progressdb-kms` service with restricted access.
 
-- Operational notes:
-  - Always snapshot KMS wrapped-DEK metadata before large rewraps.
-  - Keep KMS audit logs; ensure the audit file is writable by the KMS process.
+### Rotation steps
 
-Upgrades
+1. Add the new KEK to the KMS and mark it active.
+2. Use the KMS rewrap command to iterate wrapped DEKs and rewrap them with the new KEK.
+3. KMS writes per-key backups into `kms-deks-backup/`; snapshot this directory.
+4. Validate reads on a sample of threads/messages.
+5. After a retention period and validation, retire old KEKs.
 
-- Pre-upgrade checklist:
-  - [ ] Backup DB and KMS data directories.
-  - [ ] Verify backups by restoring to staging.
-  - [ ] Review release notes for any breaking changes or migration steps.
+### Safety notes
 
-- Rolling upgrade guidance:
-  - Use health checks (`GET /healthz`) and readiness probes in your orchestrator.
-  - Deploy new instances, wait for `healthz` to return `ok`, and then drain and stop old instances.
-  - Keep the previous binary/image available for quick rollback.
+- Always snapshot DB and KMS metadata before running a large rewrap.
+- Keep KMS audit logs; they provide an auditable trail of rewrap operations.
 
-- If an upgrade requires a data migration or rewrap, schedule a maintenance window and follow the migration/rewrap runbook.
+## Monitoring & alerts
 
-Troubleshooting
-
-- Service not starting:
-  - Check logs for errors (`logs/` or stdout). Common issues: DB path not writable, invalid config, missing KMS endpoint.
-  - Verify file permissions for `--db` and KMS directories.
-
-- `/healthz` failing:
-  - Inspect server logs for initialization errors.
-  - If KMS is configured, ensure the KMS client can reach the endpoint and that credentials are valid.
-
-- Missing messages or read errors:
-  - Ensure the Pebble DB directory is intact and there are no partial writes (disk full, I/O errors).
-  - Check KMS decryption errors in logs if encrypted payloads are failing to decrypt.
-
-- KMS errors:
-  - Check KMS audit logs and the KMS service status.
-  - Ensure the KMS master key is present (for embedded) or the `progressdb-kms` service is running and accessible (for external).
-
-Operational tips
-
-- Monitoring: scrape `/metrics` with Prometheus and create alerts for:
+- Scrape `GET /metrics` with Prometheus.
+- Suggested alerts:
   - `progressdb_health_status != 1`
-  - Request error rate `5xx` spikes
-  - DB disk usage and open file descriptors
+  - High 5xx rate or error spikes
+  - Disk usage on the DB path > 80%
 
-- Logging: run the service under a process manager (systemd) and retain logs for at least one retention period.
+## Troubleshooting
 
-- Security: protect API keys, the KMS service, and backup snapshots using your secrets manager and network ACLs.
+- Service does not start:
+  - Check permissions on `--db` and KMS directories.
+  - Inspect logs for config parsing errors.
+- `/healthz` failing:
+  - Ensure the service can reach the KMS (if enabled).
+  - Check DB open errors in logs.
+- Missing or unreadable encrypted fields:
+  - Check KMS availability and KEK presence.
 
-Appendix: quick smoke test steps
+## Operational checklist
+
+- [ ] Snapshot DB and KMS before upgrades.
+- [ ] Verify backups by restoring to staging.
+- [ ] Schedule maintenance windows for rewrap/migrations.
+
+## Quick smoke test
 
 1. Start server: `./progressdb --db ./data --addr :8080`.
-2. Verify health: `curl -s http://localhost:8080/healthz` → `{ "status": "ok" }`.
-3. Post a message (public key or signed user):
-
-```sh
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Authorization: Bearer pk_example" \
-  -H "Content-Type: application/json" \
-  -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'
-```
-
-4. Confirm metrics: `curl http://localhost:8080/metrics` and ensure exporter responds.
+2. Health: `curl -s http://localhost:8080/healthz` → expect `{ "status": "ok" }`.
+3. Post message: `curl -X POST http://localhost:8080/v1/messages -H "Authorization: Bearer pk_example" -H "Content-Type: application/json" -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'`.
 

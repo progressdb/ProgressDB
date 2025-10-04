@@ -10,46 +10,90 @@ visibility: public
 This page explains ProgressDB's core concepts so you can design your
 application and operate the service effectively.
 
-Threads
+## Threads
 
 - A thread is a logical conversation or channel that contains messages.
 - Thread metadata includes `id`, `created_ts`, `last_ts`, and optional `attributes` (freeform JSON).
 - Threads are created implicitly when the first message in a thread is posted or explicitly via `POST /v1/threads`.
 
-Messages
+### Thread fields
 
-- Messages are the primary append-only items stored in a thread. Each message has:
-  - `id` — message id (server can generate when omitted).
-  - `thread` — thread id.
-  - `author` — author/user id (string).
-  - `ts` — timestamp (seconds or nanos; server will fill when omitted).
-  - `body` — freeform JSON payload owned by the application.
-- The server supports message edits and versions. Versions are stored and can be listed via `GET /v1/threads/{threadID}/messages/{id}/versions`.
-- Soft-deletes are supported: deletes mark a message as deleted while preserving history.
+- `id` — unique thread identifier (string).
+- `created_ts` — timestamp of first message.
+- `last_ts` — timestamp of most recent message.
+- `attributes` — optional freeform JSON (title, description, custom metadata).
 
-Indexing & storage model
+## Messages
 
-- Primary storage uses a Pebble DB with a time-ordered keyspace to make timeline reads efficient.
-- Thread listing is implemented by iterating keys with the prefix `thread:<threadID>:`.
-- Secondary indexes (message id lookup, author lookup) exist as compact keys that map to pointers or full JSON values.
+Messages are the primary append-only items stored in a thread.
 
-Authentication & signing
+### Message fields
 
-- API keys are required for all requests. Use `Authorization: Bearer <key>` or `X-API-Key: <key>`.
-- Backend keys (`sk_...`) have elevated privileges and may call `POST /v1/_sign` to generate an HMAC-SHA256 signature for a `userId`.
-- Frontend flows: backends sign a user id and return `{ userId, signature }` to the client. Clients include `X-User-ID` and `X-User-Signature` headers on requests to assert identity.
+- `id` — message id (server generates when omitted).
+- `thread` — associated thread id.
+- `author` — author/user id.
+- `ts` — timestamp (seconds or nanos); server fills when omitted.
+- `body` — freeform JSON payload owned by the application.
 
-Encryption & KMS
+### Message lifecycle
 
-- ProgressDB supports field-level encryption: configured JSON paths are encrypted on write and decrypted on read.
-- The server delegates encryption key management to a KMS. Two modes exist:
-  - `embedded`: in-process KMS (suitable for dev/test only).
-  - `external`: recommended for production; the server calls an external `progressdb-kms` over HTTP/TCP.
-- Wrapped DEKs, metadata, and KMS audit logs are persisted under the KMS data directory and are used during rotation/rewrap.
+- Edits: messages support versioning; each edit creates a new stored version.
+- Versions: listable via `GET /v1/threads/{threadID}/messages/{id}/versions`.
+- Soft-deletes: messages can be deleted while preserving history for audit.
 
-Operational considerations
+## Indexing & storage model
 
-- Back up the Pebble DB directory (`--db`) before upgrades or rewrap operations.
-- Monitor `/metrics` with Prometheus and use `/healthz` for readiness checks.
-- Protect API keys and the KMS master key (or KMS service) with a secrets manager and network controls.
+- Storage engine: Pebble DB with time-ordered keys for efficient timeline reads.
+- Primary key layout: `thread:<threadID>:<unix_nano>-<seq>` (append-ordered timeline keys).
+- Thread listing: iterate keys with prefix `thread:<threadID>:`.
+- Secondary indexes: compact keys for message id lookup and author-based indexes.
 
+## Authentication & signing
+
+- API key authentication: provide keys via `Authorization: Bearer <key>` or `X-API-Key: <key>`.
+- Key scopes:
+  - Backend keys (`sk_...`) — full privileges, may call `POST /v1/_sign` and admin routes.
+  - Frontend keys (`pk_...`) — limited scope (message endpoints, health).
+
+### Signing flow (frontend)
+
+1. Backend calls `POST /v1/_sign` with `{ "userId": "..." }` using a backend key.
+2. Server returns `{ "userId": "...", "signature": "..." }` (HMAC‑SHA256).
+3. Client includes `X-User-ID` and `X-User-Signature` headers on requests to assert identity.
+
+## Encryption & KMS
+
+- ProgressDB supports optional field-level encryption (encrypt specific JSON paths) and full-message encryption modes.
+- KMS modes:
+  - `embedded`: in-process KMS (development/testing).
+  - `external`: production recommended; calls an external `progressdb-kms` daemon over HTTP/TCP.
+- Wrapped DEKs, metadata, and KMS audit logs are persisted under the KMS data directory and are used for rotation and rewrap operations.
+
+### Field-level encryption
+
+- Configure JSON paths to encrypt (e.g., `body.credit_card`). The server replaces encrypted fields with an envelope object like `{ "_enc": "gcm", "v": "<base64>" }`.
+- On reads the server decrypts envelopes and returns original JSON values (when the KMS is available and keys are valid).
+
+## Operational considerations
+
+- Backups: snapshot the Pebble DB path (`--db`) and KMS data directory before upgrades or rewraps.
+- Monitoring: scrape `/metrics` with Prometheus and use `/healthz` for readiness probes.
+- Security: protect API keys and KMS access using a secrets manager and network controls.
+
+## Examples
+
+Create a message (curl):
+
+```sh
+curl -X POST http://localhost:8080/v1/messages \
+  -H "Authorization: Bearer pk_example" \
+  -H "Content-Type: application/json" \
+  -d '{"thread":"general","author":"alice","body":{"text":"Hello"}}'
+```
+
+List message versions (curl):
+
+```sh
+curl http://localhost:8080/v1/threads/general/messages/msg-123/versions \
+  -H "Authorization: Bearer sk_example"
+```
