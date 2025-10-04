@@ -11,8 +11,8 @@ import (
 )
 
 func TestUtils_Suite(t *testing.T) {
-    // Subtest: Validate ID/slug/path helpers produce expected non-empty outputs and correct splitting.
-    t.Run("GenID_Slug_Split", func(t *testing.T) {
+	// Subtest: Validate ID/slug/path helpers produce expected non-empty outputs and correct splitting.
+	t.Run("GenID_Slug_Split", func(t *testing.T) {
 		id := utils.GenID()
 		if id == "" {
 			t.Fatalf("expected GenID to produce a value")
@@ -35,8 +35,8 @@ func TestUtils_Suite(t *testing.T) {
 		_ = parts
 	})
 
-    // Subtest: Ensure JSON helper converts strings to RawMessage correctly.
-    t.Run("JSONHelpers", func(t *testing.T) {
+	// Subtest: Ensure JSON helper converts strings to RawMessage correctly.
+	t.Run("JSONHelpers", func(t *testing.T) {
 		vals := []string{"{\"a\":1}", "{\"b\":2}"}
 		raws := utils.ToRawMessages(vals)
 		if len(raws) != 2 {

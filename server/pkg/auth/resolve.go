@@ -7,13 +7,13 @@ import (
 )
 
 func validateAuthor(a string) (bool, string) {
-    if a == "" {
-        return false, "author required"
-    }
-    if len(a) > 128 {
-        return false, "author too long"
-    }
-    return true, ""
+	if a == "" {
+		return false, "author required"
+	}
+	if len(a) > 128 {
+		return false, "author too long"
+	}
+	return true, ""
 }
 
 // ResolveAuthorFromRequest is the single canonical resolver handlers should call.
@@ -24,24 +24,24 @@ func validateAuthor(a string) (bool, string) {
 // callers require a signature and will receive 401 when missing.
 func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, string) {
 	// Prefer signature-verified author from context
-    if id := AuthorIDFromContext(r.Context()); id != "" {
+	if id := AuthorIDFromContext(r.Context()); id != "" {
 		logger.Info("author_signature_verified", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
 		// If other provided authors conflict with the signature, reject.
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" && q != id {
 			logger.Warn("author_mismatch_signature_query", "signature", id, "query", q, "remote", r.RemoteAddr, "path", r.URL.Path)
-            return "", http.StatusForbidden, "author mismatch between signature and query param"
-        }
+			return "", http.StatusForbidden, "author mismatch between signature and query param"
+		}
 		if h := strings.TrimSpace(r.Header.Get("X-User-ID")); h != "" && h != id {
 			logger.Warn("author_mismatch_signature_header", "signature", id, "header", h, "remote", r.RemoteAddr, "path", r.URL.Path)
-            return "", http.StatusForbidden, "author mismatch between signature and header"
-        }
+			return "", http.StatusForbidden, "author mismatch between signature and header"
+		}
 		if bodyAuthor != "" && bodyAuthor != id {
 			logger.Warn("author_mismatch_signature_body", "signature", id, "body", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
-            return "", http.StatusForbidden, "author mismatch between signature and body author"
-        }
-        logger.Info("author_resolved_signature", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
-        return id, 0, ""
-    }
+			return "", http.StatusForbidden, "author mismatch between signature and body author"
+		}
+		logger.Info("author_resolved_signature", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
+		return id, 0, ""
+	}
 
 	// No signature; allow backend/admins to supply an author via body/header/query.
 	role := r.Header.Get("X-Role-Name")
@@ -71,11 +71,11 @@ func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, 
 			logger.Info("author_from_query_backend", "user", q, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return q, 0, ""
 		}
-        logger.Warn("backend_missing_author", "remote", r.RemoteAddr, "path", r.URL.Path)
-        return "", http.StatusBadRequest, "author required for backend requests"
-    }
+		logger.Warn("backend_missing_author", "remote", r.RemoteAddr, "path", r.URL.Path)
+		return "", http.StatusBadRequest, "author required for backend requests"
+	}
 
 	// Otherwise require signature
-    logger.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
-    return "", http.StatusUnauthorized, "missing or invalid author signature"
+	logger.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
+	return "", http.StatusUnauthorized, "missing or invalid author signature"
 }

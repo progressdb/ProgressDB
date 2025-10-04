@@ -21,8 +21,8 @@ import (
 )
 
 func TestRetention_Suite(t *testing.T) {
-    // Subtest: Test file lease acquire, renew, and release lifecycle semantics.
-    t.Run("FileLeaseLifecycle", func(t *testing.T) {
+	// Subtest: Test file lease acquire, renew, and release lifecycle semantics.
+	t.Run("FileLeaseLifecycle", func(t *testing.T) {
 		dir := t.TempDir()
 		lock := retention.NewFileLease(dir)
 		owner := utils.GenID()
@@ -41,16 +41,16 @@ func TestRetention_Suite(t *testing.T) {
 		}
 	})
 
-    // Subtest: Verify purge integration removes soft-deleted thread permanently.
-    t.Run("PurgeThreadIntegration", func(t *testing.T) {
+	// Subtest: Verify purge integration removes soft-deleted thread permanently.
+	t.Run("PurgeThreadIntegration", func(t *testing.T) {
 		dbdir := t.TempDir()
-        storePath := filepath.Join(dbdir, "store")
-        if err := os.MkdirAll(storePath, 0o700); err != nil {
-            t.Fatalf("mkdir store path: %v", err)
-        }
-        if err := store.Open(storePath); err != nil {
-            t.Fatalf("store.Open: %v", err)
-        }
+		storePath := filepath.Join(dbdir, "store")
+		if err := os.MkdirAll(storePath, 0o700); err != nil {
+			t.Fatalf("mkdir store path: %v", err)
+		}
+		if err := store.Open(storePath); err != nil {
+			t.Fatalf("store.Open: %v", err)
+		}
 		defer store.Close()
 
 		th := models.Thread{
@@ -74,9 +74,9 @@ func TestRetention_Suite(t *testing.T) {
 		}
 	})
 
-    // Subtest: Run retention in dry-run mode and verify audit entries are written while data remains.
-    t.Run("DryRunAudit", func(t *testing.T) {
-        // start server with retention enabled in dry-run and testing env enabled
+	// Subtest: Run retention in dry-run mode and verify audit entries are written while data remains.
+	t.Run("DryRunAudit", func(t *testing.T) {
+		// start server with retention enabled in dry-run and testing env enabled
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}

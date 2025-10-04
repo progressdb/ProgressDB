@@ -79,12 +79,12 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	// open audit writer
 	runID := utils.GenID()
 	logger.Info("retention_run_start", "run_id", runID, "owner", owner, "dry_run", ret.DryRun)
-    // header (emit audit event via dedicated audit logger if present)
-    if logger.Audit != nil {
-        logger.Audit.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
-    } else {
-        logger.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
-    }
+	// header (emit audit event via dedicated audit logger if present)
+	if logger.Audit != nil {
+		logger.Audit.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+	} else {
+		logger.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+	}
 
 	// compute cutoff
 	pd, perr := parseRetention(ret.Period)
@@ -116,45 +116,45 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 		if th.Deleted && time.Unix(0, th.DeletedTS).Before(cutoff) {
 			// eligible
 			entry := map[string]interface{}{"item_type": "thread", "item_id": th.ID}
-                if ret.DryRun {
-                    entry["status"] = "dry_run"
-                    if logger.Audit != nil {
-                        logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
-                    } else {
-                        logger.Info("retention_audit_item", "run_id", runID, "item", entry)
-                    }
-                    continue
-                }
+			if ret.DryRun {
+				entry["status"] = "dry_run"
+				if logger.Audit != nil {
+					logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+				} else {
+					logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+				}
+				continue
+			}
 			// attempt purge
 			err := store.PurgeThreadPermanently(th.ID)
-                if err != nil {
-                    entry["status"] = "failed"
-                    entry["error"] = err.Error()
-                    if logger.Audit != nil {
-                        logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
-                    } else {
-                        logger.Info("retention_audit_item", "run_id", runID, "item", entry)
-                    }
-                    logger.Error("retention_purge_failed", "thread", th.ID, "error", err)
-                    continue
-                }
-                entry["status"] = "success"
-                entry["purged_at"] = time.Now().UTC().Format(time.RFC3339)
-                if logger.Audit != nil {
-                    logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
-                } else {
-                    logger.Info("retention_audit_item", "run_id", runID, "item", entry)
-                }
+			if err != nil {
+				entry["status"] = "failed"
+				entry["error"] = err.Error()
+				if logger.Audit != nil {
+					logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+				} else {
+					logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+				}
+				logger.Error("retention_purge_failed", "thread", th.ID, "error", err)
+				continue
+			}
+			entry["status"] = "success"
+			entry["purged_at"] = time.Now().UTC().Format(time.RFC3339)
+			if logger.Audit != nil {
+				logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+			} else {
+				logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+			}
 			purged++
 			logger.Info("retention_item_purged", "type", "thread", "id", th.ID)
 		}
 	}
 
-    if logger.Audit != nil {
-        logger.Audit.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
-    } else {
-        logger.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
-    }
+	if logger.Audit != nil {
+		logger.Audit.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
+	} else {
+		logger.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
+	}
 	logger.Info("retention_run_complete", "scanned", scanned, "purged", purged)
 	return nil
 }

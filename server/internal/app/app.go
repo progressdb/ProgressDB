@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/joho/godotenv"
 
@@ -13,6 +12,7 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
+	"progressdb/pkg/state"
 	"progressdb/pkg/store"
 )
 
@@ -60,9 +60,11 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	// initValidation(eff)
 
 	// open store under <DBPath>/store (main ensures directories exist)
-	storePath := filepath.Join(eff.DBPath, "store")
-	if err := store.Open(storePath); err != nil {
-		return nil, fmt.Errorf("failed to open pebble at %s: %w", storePath, err)
+	if state.PathsVar.Store == "" {
+		return nil, fmt.Errorf("state paths not initialized")
+	}
+	if err := store.Open(state.PathsVar.Store); err != nil {
+		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 
 	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}

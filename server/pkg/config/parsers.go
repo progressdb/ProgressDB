@@ -11,11 +11,11 @@ import (
 
 // Flags holds parsed command-line flag values and which were set.
 type Flags struct {
-    Addr   string
-    DB     string
-    Config string
-    Set    map[string]bool
-    Validate bool
+	Addr     string
+	DB       string
+	Config   string
+	Set      map[string]bool
+	Validate bool
 }
 
 // EnvResult holds the results of applying environment overrides.
@@ -35,14 +35,14 @@ type EffectiveConfigResult struct {
 
 // ParseConfigFlags parses command-line flags and returns them as a Flags struct.
 func ParseConfigFlags() Flags {
-    addrPtr := flag.String("addr", ":8080", "HTTP listen address")
-    dbPtr := flag.String("db", "./.database", "Pebble DB path")
-    cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
-    validatePtr := flag.Bool("validate", false, "validate filesystem and exit")
-    flag.Parse()
-    setFlags := make(map[string]bool)
-    flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-    return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags, Validate: *validatePtr}
+	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
+	dbPtr := flag.String("db", "./.database", "Pebble DB path")
+	cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
+	validatePtr := flag.Bool("validate", false, "validate filesystem and exit")
+	flag.Parse()
+	setFlags := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+	return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags, Validate: *validatePtr}
 }
 
 // ParseConfigFile resolves the config path and loads the YAML file. It
@@ -254,9 +254,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Retention.MinPeriod = v
 	}
 
-    // retention audit path intentionally removed; audit logs are written to
-    // <DBPath>/state/audit by default. Operators may override via a future
-    // logging.audit_path configuration if needed.
+	// retention audit path intentionally removed; audit logs are written to
+	// <DBPath>/state/audit by default. Operators may override via a future
+	// logging.audit_path configuration if needed.
 
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }

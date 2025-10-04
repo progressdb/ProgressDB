@@ -21,8 +21,8 @@ import (
 )
 
 func TestLogging_Suite(t *testing.T) {
-    // subtest: Initialize logger and attach audit file sink; verify audit file created.
-    t.Run("InitAndAttachAuditSink", func(t *testing.T) {
+	// subtest: Initialize logger and attach audit file sink; verify audit file created.
+	t.Run("InitAndAttachAuditSink", func(t *testing.T) {
 		logger.Init()
 		if logger.Log == nil {
 			t.Fatalf("expected logger.Log to be non-nil after Init")
@@ -39,8 +39,8 @@ func TestLogging_Suite(t *testing.T) {
 		}
 	})
 
-    // subtest: Start server with debug log level and verify debug entries appear in log.
-    t.Run("LogLevelBehavior", func(t *testing.T) {
+	// subtest: Start server with debug log level and verify debug entries appear in log.
+	t.Run("LogLevelBehavior", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -59,10 +59,10 @@ logging:
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg, Env: map[string]string{"PROGRESSDB_LOG_SINK": "file:{{WORKDIR}}/app.log", "PROGRESSDB_LOG_LEVEL": "debug"}})
 		defer func() { _ = sp.Stop(t) }()
 
-        // make a request that will trigger auth_check debug log
-        if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
-            t.Fatalf("healthz request failed: %v", err)
-        }
+		// make a request that will trigger auth_check debug log
+		if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
+			t.Fatalf("healthz request failed: %v", err)
+		}
 
 		// check log file for debug entry
 		logPath := filepath.Join(sp.WorkDir, "app.log")
@@ -82,20 +82,20 @@ logging:
 		}
 	})
 
-    // subtest: Start server with an invalid audit/audit path and verify failure is logged (attach_audit_sink_failed).
-    t.Run("AuditPathFailureModes", func(t *testing.T) {
-        // create a tmp dir and a file at <db>/state/audit to provoke MkdirAll failure
-        tmp := t.TempDir()
-        db := filepath.Join(tmp, "db")
-        _ = os.MkdirAll(db, 0o700)
-        // ensure parent state dir exists, then create a file where the audit
-        // directory should be so AttachAuditFileSink sees an existing file.
-        stateDir := filepath.Join(db, "state")
-        _ = os.MkdirAll(stateDir, 0o700)
-        bad := filepath.Join(stateDir, "audit")
-        if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
-            t.Fatalf("write bad audit file: %v", err)
-        }
+	// subtest: Start server with an invalid audit/audit path and verify failure is logged (attach_audit_sink_failed).
+	t.Run("AuditPathFailureModes", func(t *testing.T) {
+		// create a tmp dir and a file at <db>/state/audit to provoke MkdirAll failure
+		tmp := t.TempDir()
+		db := filepath.Join(tmp, "db")
+		_ = os.MkdirAll(db, 0o700)
+		// ensure parent state dir exists, then create a file where the audit
+		// directory should be so AttachAuditFileSink sees an existing file.
+		stateDir := filepath.Join(db, "state")
+		_ = os.MkdirAll(stateDir, 0o700)
+		bad := filepath.Join(stateDir, "audit")
+		if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
+			t.Fatalf("write bad audit file: %v", err)
+		}
 
 		// build binary
 		bin := filepath.Join(tmp, "progressdb-bin")
@@ -124,18 +124,93 @@ logging:
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start server failed: %v", err)
 		}
-		// wait briefly for attach_audit_sink_failed
+		// wait briefly for state dir setup failure to be emitted
 		time.Sleep(500 * time.Millisecond)
 		_ = cmd.Process.Kill()
 		of.Close()
 		data, _ := os.ReadFile(outf)
-		if !bytes.Contains(data, []byte("attach_audit_sink_failed")) {
-			t.Fatalf("expected attach_audit_sink_failed in output; got:\n%s", string(data))
+		if !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
+			t.Fatalf("expected state_dirs_setup_failed in output; got:\n%s", string(data))
 		}
 	})
 
-    // subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
-    t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {
+	// Subtest: preflight validation --validate should fail when state layout is broken and succeed when OK.
+	t.Run("StatePreflight", func(t *testing.T) {
+		tmp := t.TempDir()
+		db := filepath.Join(tmp, "db")
+		_ = os.MkdirAll(db, 0o700)
+
+		// Case: broken state (audit is a file) -> preflight should fail
+		stateDir := filepath.Join(db, "state")
+		_ = os.MkdirAll(stateDir, 0o700)
+		bad := filepath.Join(stateDir, "audit")
+		if err := os.WriteFile(bad, []byte("not a dir"), 0o600); err != nil {
+			t.Fatalf("write bad audit file: %v", err)
+		}
+		bin := filepath.Join(tmp, "progressdb-bin")
+		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
+		build.Env = os.Environ()
+		build.Dir = ".."
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build failed: %v\n%s", err, string(out))
+		}
+		cfg := filepath.Join(tmp, "cfg.yaml")
+		conf := []byte("server:\n  address: 127.0.0.1\n  port: 0\n  db_path: " + db + "\nlogging:\n  level: info\n")
+		if err := os.WriteFile(cfg, conf, 0o600); err != nil {
+			t.Fatalf("write cfg: %v", err)
+		}
+		// run preflight
+		cmd := exec.Command(bin, "--config", cfg, "--validate")
+		outf := filepath.Join(tmp, "out.log")
+		of, _ := os.Create(outf)
+		cmd.Stdout = of
+		cmd.Stderr = of
+		err := cmd.Run()
+		of.Close()
+		data, _ := os.ReadFile(outf)
+		if err == nil {
+			t.Fatalf("expected preflight to fail for broken state; output:\n%s", string(data))
+		}
+		if !bytes.Contains(data, []byte("preflight failed")) && !bytes.Contains(data, []byte("state_dirs_setup_failed")) {
+			t.Fatalf("expected preflight failure message; got:\n%s", string(data))
+		}
+
+		// Case: valid state -> preflight should succeed
+		// create a fresh tmp with no broken files
+		tmp2 := t.TempDir()
+		db2 := filepath.Join(tmp2, "db")
+		_ = os.MkdirAll(db2, 0o700)
+		bin2 := filepath.Join(tmp2, "progressdb-bin")
+		build2 := exec.Command("go", "build", "-o", bin2, "./cmd/progressdb")
+		build2.Env = os.Environ()
+		build2.Dir = ".."
+		if out, err := build2.CombinedOutput(); err != nil {
+			t.Fatalf("build failed: %v\n%s", err, string(out))
+		}
+		cfg2 := filepath.Join(tmp2, "cfg.yaml")
+		conf2 := []byte("server:\n  address: 127.0.0.1\n  port: 0\n  db_path: " + db2 + "\nlogging:\n  level: info\n")
+		if err := os.WriteFile(cfg2, conf2, 0o600); err != nil {
+			t.Fatalf("write cfg: %v", err)
+		}
+		cmd2 := exec.Command(bin2, "--config", cfg2, "--validate")
+		outf2 := filepath.Join(tmp2, "out2.log")
+		of2, _ := os.Create(outf2)
+		cmd2.Stdout = of2
+		cmd2.Stderr = of2
+		if err := cmd2.Run(); err != nil {
+			of2.Close()
+			data2, _ := os.ReadFile(outf2)
+			t.Fatalf("expected preflight to succeed; got err %v output:\n%s", err, string(data2))
+		}
+		of2.Close()
+		data2, _ := os.ReadFile(outf2)
+		if !bytes.Contains(data2, []byte("preflight: OK")) {
+			t.Fatalf("expected preflight OK; got:\n%s", string(data2))
+		}
+	})
+
+	// subtest: Fire many concurrent requests to exercise logger under concurrency; ensure no panics and logs produced.
+	t.Run("ConcurrentLoggingSmoke", func(t *testing.T) {
 		cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -155,12 +230,12 @@ logging:
 		n := 20
 		done := make(chan struct{}, n)
 		for i := 0; i < n; i++ {
-                go func() {
-                    if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
-                        t.Logf("healthz request error in concurrent logger test: %v", err)
-                    }
-                    done <- struct{}{}
-                }()
+			go func() {
+				if _, err := http.Get(sp.Addr + "/healthz"); err != nil {
+					t.Logf("healthz request error in concurrent logger test: %v", err)
+				}
+				done <- struct{}{}
+			}()
 		}
 		for i := 0; i < n; i++ {
 			<-done
@@ -207,8 +282,8 @@ logging:
 	// allow 200 or error; we only care audit file created
 	_ = ares
 
-    // audit.log is under <DBPath>/state/audit/audit.log per main attaching behavior
-    auditPath := filepath.Join(sp.WorkDir, "db", "state", "audit", "audit.log")
+	// audit.log is under <DBPath>/state/audit/audit.log per main attaching behavior
+	auditPath := filepath.Join(sp.WorkDir, "db", "state", "audit", "audit.log")
 	// wait for file to appear
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

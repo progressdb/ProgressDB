@@ -15,9 +15,9 @@ type Thread struct {
 	Deleted   bool  `json:"deleted,omitempty"`
 	DeletedTS int64 `json:"deleted_ts,omitempty"`
 
-    // KMS holds optional per-thread DEK metadata used for encrypting child messages.
-    // Use a pointer so the field can be omitted entirely when not set.
-    KMS *KMSMeta `json:"kms,omitempty"`
+	// KMS holds optional per-thread DEK metadata used for encrypting child messages.
+	// Use a pointer so the field can be omitted entirely when not set.
+	KMS *KMSMeta `json:"kms,omitempty"`
 }
 
 type KMSMeta struct {
@@ -29,5 +29,5 @@ type KMSMeta struct {
 
 // Extend Thread with optional KMS metadata
 func (t *Thread) WithKMS(meta KMSMeta) {
-    t.KMS = &meta
+	t.KMS = &meta
 }

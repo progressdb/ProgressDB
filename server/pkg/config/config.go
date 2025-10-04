@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
-    "gopkg.in/yaml.v3"
-    "os"
-    "sync"
+	"gopkg.in/yaml.v3"
+	"os"
+	"sync"
 )
 
 // RuntimeConfig holds runtime key sets for use by other packages.
@@ -111,10 +111,10 @@ func (c *Config) Addr() string {
 
 // Load reads and parses a config file.
 func Load(path string) (*Config, error) {
-    b, err := os.ReadFile(path)
-    if err != nil {
-        if os.IsNotExist(err) {
-            return nil, fmt.Errorf("config file not found: %s", path)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("config file not found: %s", path)
 		}
 		return nil, err
 	}
@@ -141,14 +141,14 @@ func ResolveConfigPath(flagPath string, flagSet bool) string {
 
 // Retention configuration for the automatic purge runner.
 type RetentionConfig struct {
-    Enabled      bool   `yaml:"enabled"`
-    Cron         string `yaml:"cron"`
-    Period       string `yaml:"period"`
-    BatchSize    int    `yaml:"batch_size"`
-    BatchSleepMs int    `yaml:"batch_sleep_ms"`
-    DryRun       bool   `yaml:"dry_run"`
-    Paused       bool   `yaml:"paused"`
-    MinPeriod    string `yaml:"min_period"`
+	Enabled      bool   `yaml:"enabled"`
+	Cron         string `yaml:"cron"`
+	Period       string `yaml:"period"`
+	BatchSize    int    `yaml:"batch_size"`
+	BatchSleepMs int    `yaml:"batch_sleep_ms"`
+	DryRun       bool   `yaml:"dry_run"`
+	Paused       bool   `yaml:"paused"`
+	MinPeriod    string `yaml:"min_period"`
 }
 
 // Add Retention to main Config

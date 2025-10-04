@@ -38,10 +38,10 @@ logging:
 	if res.StatusCode != 200 && res.StatusCode != 201 {
 		t.Fatalf("unexpected create thread status: %d", res.StatusCode)
 	}
-    var tout map[string]interface{}
-    if err := json.NewDecoder(res.Body).Decode(&tout); err != nil {
-        t.Fatalf("failed to decode create thread response: %v", err)
-    }
+	var tout map[string]interface{}
+	if err := json.NewDecoder(res.Body).Decode(&tout); err != nil {
+		t.Fatalf("failed to decode create thread response: %v", err)
+	}
 	tid, ok := tout["id"].(string)
 	if !ok || tid == "" {
 		t.Fatalf("missing thread id in create response")
@@ -70,12 +70,12 @@ logging:
 	if lres.StatusCode != 200 {
 		t.Fatalf("unexpected list messages status: %d", lres.StatusCode)
 	}
-    var lout struct {
-        Messages []map[string]interface{} `json:"messages"`
-    }
-    if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
-        t.Fatalf("failed to decode list messages response: %v", err)
-    }
+	var lout struct {
+		Messages []map[string]interface{} `json:"messages"`
+	}
+	if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
+		t.Fatalf("failed to decode list messages response: %v", err)
+	}
 	if len(lout.Messages) == 0 {
 		t.Fatalf("expected messages returned for thread %s", tid)
 	}
@@ -111,42 +111,42 @@ logging:
 	// pagination: create 3 messages and request with limit=1
 	thBody := map[string]string{"author": "alice", "title": "pg"}
 	tb, _ := json.Marshal(thBody)
-    creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-    creq.Header.Set("Authorization", "Bearer admin-secret")
-    cres, err := http.DefaultClient.Do(creq)
-    if err != nil {
-        t.Fatalf("create thread failed: %v", err)
-    }
-    defer cres.Body.Close()
-    var tout map[string]interface{}
-    if err := json.NewDecoder(cres.Body).Decode(&tout); err != nil {
-        t.Fatalf("failed to decode create thread response: %v", err)
-    }
-    tid := tout["id"].(string)
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
+	creq.Header.Set("Authorization", "Bearer admin-secret")
+	cres, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatalf("create thread failed: %v", err)
+	}
+	defer cres.Body.Close()
+	var tout map[string]interface{}
+	if err := json.NewDecoder(cres.Body).Decode(&tout); err != nil {
+		t.Fatalf("failed to decode create thread response: %v", err)
+	}
+	tid := tout["id"].(string)
 
 	for i := 0; i < 3; i++ {
 		m := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "m"}, "thread": tid}
 		mb, _ := json.Marshal(m)
-        mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-        mreq.Header.Set("Authorization", "Bearer admin-secret")
-        if _, err := http.DefaultClient.Do(mreq); err != nil {
-            t.Fatalf("create message failed: %v", err)
-        }
+		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+		mreq.Header.Set("Authorization", "Bearer admin-secret")
+		if _, err := http.DefaultClient.Do(mreq); err != nil {
+			t.Fatalf("create message failed: %v", err)
+		}
 	}
 
-    lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?limit=1", nil)
-    lreq.Header.Set("Authorization", "Bearer admin-secret")
-    lres, err := http.DefaultClient.Do(lreq)
-    if err != nil {
-        t.Fatalf("list messages failed: %v", err)
-    }
-    defer lres.Body.Close()
-    var lout struct {
-        Messages []map[string]interface{} `json:"messages"`
-    }
-    if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
-        t.Fatalf("failed to decode list messages response: %v", err)
-    }
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?limit=1", nil)
+	lreq.Header.Set("Authorization", "Bearer admin-secret")
+	lres, err := http.DefaultClient.Do(lreq)
+	if err != nil {
+		t.Fatalf("list messages failed: %v", err)
+	}
+	defer lres.Body.Close()
+	var lout struct {
+		Messages []map[string]interface{} `json:"messages"`
+	}
+	if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
+		t.Fatalf("failed to decode list messages response: %v", err)
+	}
 	if len(lout.Messages) != 1 {
 		t.Fatalf("expected 1 message due to limit; got %d", len(lout.Messages))
 	}

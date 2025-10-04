@@ -52,36 +52,36 @@ func Init() {
 // <auditDir>/audit.log. If the file cannot be opened the function
 // returns an error and leaves Audit as nil.
 func AttachAuditFileSink(auditDir string) error {
-    if auditDir == "" {
-        return fmt.Errorf("empty audit dir")
-    }
-    // If the path exists and is a symlink, fail early to avoid TOCTOU.
-    if fi, err := os.Lstat(auditDir); err == nil {
-        if fi.Mode()&os.ModeSymlink != 0 {
-            return fmt.Errorf("audit path is a symlink: %s", auditDir)
-        }
-        // If the path exists but is not a directory, fail early.
-        if !fi.IsDir() {
-            return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
-        }
-        // check perms: disallow group/other write to avoid insecure dirs
-        if fi.Mode().Perm()&0o022 != 0 {
-            return fmt.Errorf("audit directory has permissive mode (group/other write): %s", auditDir)
-        }
-    }
-    // Ensure the audit directory exists with restrictive permissions.
-    if err := os.MkdirAll(auditDir, 0o700); err != nil {
-        return fmt.Errorf("failed to create audit directory: %w", err)
-    }
-    // double-check for symlink after creation
-    if fi2, err := os.Lstat(auditDir); err == nil {
-        if fi2.Mode()&os.ModeSymlink != 0 {
-            return fmt.Errorf("audit path is a symlink after creation: %s", auditDir)
-        }
-        if fi2.Mode().Perm()&0o022 != 0 {
-            return fmt.Errorf("audit directory has permissive mode after creation: %s", auditDir)
-        }
-    }
+	if auditDir == "" {
+		return fmt.Errorf("empty audit dir")
+	}
+	// If the path exists and is a symlink, fail early to avoid TOCTOU.
+	if fi, err := os.Lstat(auditDir); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("audit path is a symlink: %s", auditDir)
+		}
+		// If the path exists but is not a directory, fail early.
+		if !fi.IsDir() {
+			return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
+		}
+		// check perms: disallow group/other write to avoid insecure dirs
+		if fi.Mode().Perm()&0o022 != 0 {
+			return fmt.Errorf("audit directory has permissive mode (group/other write): %s", auditDir)
+		}
+	}
+	// Ensure the audit directory exists with restrictive permissions.
+	if err := os.MkdirAll(auditDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create audit directory: %w", err)
+	}
+	// double-check for symlink after creation
+	if fi2, err := os.Lstat(auditDir); err == nil {
+		if fi2.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("audit path is a symlink after creation: %s", auditDir)
+		}
+		if fi2.Mode().Perm()&0o022 != 0 {
+			return fmt.Errorf("audit directory has permissive mode after creation: %s", auditDir)
+		}
+	}
 	fname := filepath.Join(auditDir, "audit.log")
 	// If existing file too large, rotate it.
 	if fi, err := os.Stat(fname); err == nil {

@@ -6,14 +6,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 
-    "progressdb/internal/app"
-    "progressdb/pkg/config"
-    "progressdb/pkg/logger"
-    "progressdb/pkg/state"
+	"progressdb/internal/app"
+	"progressdb/pkg/config"
+	"progressdb/pkg/logger"
+	"progressdb/pkg/state"
 
 	"github.com/joho/godotenv"
 )
@@ -53,6 +52,8 @@ func main() {
 		log.Fatalf("failed to build effective config: %v", err)
 	}
 
+	// Initialize package-level state paths and optionally run preflight.
+	state.Init(eff.DBPath)
 	// If invoked with --validate, perform preflight filesystem checks and exit.
 	if flags.Validate {
 		if err := performPreflight(eff); err != nil {
@@ -62,19 +63,19 @@ func main() {
 		return
 	}
 
-    // Ensure canonical state/store layout exists (store, state/audit, state/retention, ...)
-    if err := state.EnsureStateDirs(eff.DBPath); err != nil {
-        logger.Error("state_dirs_setup_failed", "error", err)
-        fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
-        log.Fatalf("failed to ensure state directories under %s: %v", eff.DBPath, err)
-    }
+	// Ensure canonical state/store layout exists (store, state/audit, state/retention, ...)
+	if err := state.EnsureStateDirs(state.PathsVar.DB); err != nil {
+		logger.Error("state_dirs_setup_failed", "error", err)
+		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
+		log.Fatalf("failed to ensure state directories under %s: %v", state.PathsVar.DB, err)
+	}
 
-    // create audit file for audit logs if not present
-    auditPath := filepath.Join(eff.DBPath, "state", "audit")
-    if err := logger.AttachAuditFileSink(auditPath); err != nil {
-        logger.Error("attach_audit_sink_failed", "error", err)
-        log.Fatalf("failed to attach audit sink at %s: %v", auditPath, err)
-    }
+	// create audit file for audit logs if not present
+	auditPath := state.PathsVar.Audit
+	if err := logger.AttachAuditFileSink(auditPath); err != nil {
+		logger.Error("attach_audit_sink_failed", "error", err)
+		log.Fatalf("failed to attach audit sink at %s: %v", auditPath, err)
+	}
 
 	// initialize app
 	app, err := app.New(eff, version, commit, buildDate)
@@ -118,5 +119,5 @@ func main() {
 
 // performPreflight ensures required filesystem layout is createable and writable.
 func performPreflight(eff config.EffectiveConfigResult) error {
-    return state.EnsureStateDirs(eff.DBPath)
+	return state.EnsureStateDirs(state.PathsVar.DB)
 }
