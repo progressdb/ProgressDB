@@ -14,6 +14,9 @@ cd server
 # Log file for JSON output
 JSON_LOG="../logs/test-results.log"
 
+# Ensure the logs directory exists so `tee` can write to the JSON log
+mkdir -p "$(dirname "$JSON_LOG")"
+
 # Prefer gotestsum for nicer output and JSON log when available, otherwise fall back to go test with tee to file
 if command -v gotestsum >/dev/null 2>&1; then
   echo "Using gotestsum for formatted test output and JSON log"
