@@ -26,3 +26,19 @@ Example flow (high-level):
 - Frontend calls Vercel AI SDK to generate a response.
 - Save the AI response to ProgressDB as another message.
 
+Minimal curl example (frontend/server interaction):
+
+```sh
+# Backend: sign a user ID (server-side, using backend SDK / backend key)
+curl -X POST https://api.example.com/v1/_sign \
+  -H "Authorization: Bearer sk_example" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"alice"}'
+
+# Frontend: post a message with X-User headers
+curl -X POST https://api.example.com/v1/messages \
+  -H "X-User-ID: alice" \
+  -H "X-User-Signature: <signature-from-backend>" \
+  -H "Content-Type: application/json" \
+  -d '{"thread":"general","body":{"text":"Hello from Vercel"}}'
+```

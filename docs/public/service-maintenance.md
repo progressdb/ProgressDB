@@ -81,7 +81,24 @@ separate `progressdb-kms` service with restricted access.
 
 ## Quick smoke test
 
-1. Start server: `./progressdb --db ./data --addr :8080`.
-2. Health: `curl -s http://localhost:8080/healthz` → expect `{ "status": "ok" }`.
-3. Post message: `curl -X POST http://localhost:8080/v1/messages -H "Authorization: Bearer pk_example" -H "Content-Type: application/json" -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'`.
+1. Start server:
 
+```sh
+./progressdb --db ./data --addr :8080
+```
+
+2. Health check:
+
+```sh
+curl -s http://localhost:8080/healthz
+# expect: { "status": "ok" }
+```
+
+3. Post a message:
+
+```sh
+curl -X POST http://localhost:8080/v1/messages \
+  -H "Authorization: Bearer pk_example" \
+  -H "Content-Type: application/json" \
+  -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'
+```

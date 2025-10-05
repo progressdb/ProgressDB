@@ -29,19 +29,35 @@ const thread = await db.createThread({ title: 'General' }, 'service-account')
 const msg = await db.createMessage({ thread: thread.id, body: { text: 'hello' } }, 'service-account')
 ```
 
-API surface (selected)
+## API surface (selected)
 
-- `new BackendClient({ baseUrl, apiKey })` — factory that returns the client.
-- `request<T>(method, path, body?)` — low-level HTTP helper that sets `Authorization: Bearer <apiKey>`.
-- `signUser(userId)` — POST `/v1/_sign` (backend keys only); returns `{ userId, signature }`.
-- Admin helpers: `adminHealth()`, `adminStats()` — call `/admin/health` and `/admin/stats`.
-- Thread APIs: `listThreads(opts?)`, `getThread(id, author)`, `createThread(thread, author)`, `deleteThread(id, author)`.
-- Message APIs (thread-scoped):
-  - `createMessage(m, author)` — POST `/v1/messages`.
-  - `listThreadMessages(threadID, opts?, author?)` — GET `/v1/threads/{threadID}/messages`.
-  - `getThreadMessage(threadID, id, author?)` — GET `/v1/threads/{threadID}/messages/{id}`.
-  - `updateThreadMessage(threadID, id, msg, author?)` — PUT `/v1/threads/{threadID}/messages/{id}`.
-  - `deleteThreadMessage(threadID, id, author?)` — DELETE `/v1/threads/{threadID}/messages/{id}`.
+```ts
+// Factory
+new BackendClient(options: { baseUrl: string; apiKey: string }): BackendClient
+
+// Low-level request helper
+request<T>(method: string, path: string, body?: any): Promise<T>
+
+// Signing (backend keys only)
+signUser(userId: string): Promise<{ userId: string; signature: string }>
+
+// Admin helpers
+adminHealth(): Promise<{ status: string; service?: string }>
+adminStats(): Promise<{ threads: number; messages: number }>
+
+// Thread APIs
+listThreads(opts?: { author?: string; title?: string; slug?: string }): Promise<Thread[]>
+getThread(id: string, author?: string): Promise<Thread>
+createThread(thread: Partial<Thread>, author: string): Promise<Thread>
+deleteThread(id: string, author: string): Promise<void>
+
+// Thread-scoped message APIs
+createMessage(m: Partial<Message>, author: string): Promise<Message>
+listThreadMessages(threadID: string, opts?: { limit?: number }, author?: string): Promise<{ thread?: string; messages: Message[] }>
+getThreadMessage(threadID: string, id: string, author?: string): Promise<Message>
+updateThreadMessage(threadID: string, id: string, msg: Partial<Message>, author?: string): Promise<Message>
+deleteThreadMessage(threadID: string, id: string, author?: string): Promise<void>
+```
 
 Versions & reactions
 
@@ -67,4 +83,3 @@ Development
 - Tests: `npm test` (see `clients/sdk/backend/nodejs/tests/`).
 
 See `clients/sdk/backend/nodejs/README.md` for complete details and examples.
-

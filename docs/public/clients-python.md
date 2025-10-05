@@ -30,12 +30,28 @@ thread = client.create_thread({'title': 'General'}, author='service-account')
 msg = client.create_message({'thread': thread['id'], 'body': {'text': 'hello'}}, author='service-account')
 ```
 
-API highlights
+## API highlights
 
-- `sign_user(user_id)` — POST `/v1/_sign` (backend keys only) returns `{ userId, signature }`.
-- Admin endpoints: `admin_health()`, `admin_stats()`.
-- Thread & message helpers: `list_threads(opts)`, `get_thread(id, author)`, `create_thread(thread, author)`, `delete_thread(id, author)`.
-- Thread-scoped message APIs: `list_thread_messages(thread_id, limit=None, author=None)`, `get_thread_message(thread_id, id, author=None)`, `update_thread_message(thread_id, id, msg, author=None)`, `delete_thread_message(thread_id, id, author=None)`.
+```py
+# Signing (backend keys only)
+def sign_user(user_id: str) -> dict:  # -> { 'userId': str, 'signature': str }
+
+# Admin endpoints
+def admin_health() -> dict
+def admin_stats() -> dict
+
+# Thread & message helpers
+def list_threads(opts: dict = None) -> list
+def get_thread(id: str, author: str = None) -> dict
+def create_thread(thread: dict, author: str) -> dict
+def delete_thread(id: str, author: str) -> None
+
+# Thread-scoped message APIs
+def list_thread_messages(thread_id: str, limit: int = None, author: str = None) -> list
+def get_thread_message(thread_id: str, id: str, author: str = None) -> dict
+def update_thread_message(thread_id: str, id: str, msg: dict, author: str = None) -> dict
+def delete_thread_message(thread_id: str, id: str, author: str = None) -> None
+```
 
 Versions & reactions
 
@@ -55,4 +71,3 @@ Security
 Development
 
 - Package layout is under `clients/sdk/backend/python/` in the repo. See the local `README.md` for tests and packaging notes.
-

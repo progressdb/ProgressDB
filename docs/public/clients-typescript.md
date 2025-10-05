@@ -25,14 +25,23 @@ const client = new ProgressDBClient({ baseUrl: 'http://localhost:8080', apiKey: 
 Auth: frontends must obtain a user signature from a trusted backend and set
 `X-User-ID` and `X-User-Signature` on requests to protected endpoints.
 
-Recommended API surface
+## Recommended API surface
 
-- `new FrontendClient({ baseUrl, fetch? })` — factory for browser-safe client.
-- `listThreads(opts?)` — lists threads; supports filters `author`, `title`, `slug`.
-- `getThread(id)` — retrieve thread metadata.
-- `listMessages(threadId, opts?)` — list messages in a thread.
-- `createMessage(message, { userId, signature })` — create a message using a signed user.
-- `createThread({ title }, { userId, signature })` — create a thread using a signed user.
+```ts
+// Factory
+new FrontendClient(options: { baseUrl: string; fetch?: typeof fetch }): FrontendClient
+
+// Thread APIs
+listThreads(opts?: { author?: string; title?: string; slug?: string }): Promise<Thread[]>
+getThread(id: string): Promise<Thread>
+
+// Message APIs
+listMessages(threadId: string, opts?: { limit?: number; before?: string }): Promise<Message[]>
+createMessage(message: Partial<Message>, signer: { userId: string; signature: string }): Promise<Message>
+
+// Thread creation
+createThread(input: { title: string }, signer: { userId: string; signature: string }): Promise<Thread>
+```
 
 Notes
 
@@ -40,4 +49,3 @@ Notes
 - The SDK uses `fetch` and accepts a custom `fetch` implementation for non-browser runtimes.
 
 See `clients/sdk/frontend/README.md` for suggested types, React integration, and build notes.
-

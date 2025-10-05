@@ -39,13 +39,27 @@ export default function App(){
 }
 ```
 
-API surface (hooks)
+## API surface (hooks)
 
-- `useMessages(threadId)` — returns `{ messages, loading, create, list, update, remove }`.
-- `useThreads()` — thread list and create helpers.
-- `ProgressDBProvider` props:
-  - `options`: `{ baseUrl, apiKey, fetch? }` — `apiKey` should be a frontend/public key.
-  - `getUserSignature`: async function that returns `{ userId, signature }` for the current user.
+```jsx
+// Hooks
+function useMessages(threadId: string): {
+  messages: Message[] | undefined;
+  loading: boolean;
+  create(input: Partial<Message>): Promise<Message>;
+  list(opts?: { limit?: number }): Promise<Message[]>;
+  update(id: string, input: Partial<Message>): Promise<Message>;
+  remove(id: string): Promise<void>;
+}
+
+function useThreads(): {
+  threads?: Thread[];
+  create(input: { title: string }): Promise<Thread>;
+}
+
+// Provider
+<ProgressDBProvider options={{ baseUrl: string; apiKey?: string; fetch?: any }} getUserSignature={async () => ({ userId: string, signature: string })}>
+```
 
 Auth flow
 
@@ -54,4 +68,3 @@ Auth flow
 Development notes
 
 - The React bindings are lightweight and built on top of the frontend TypeScript SDK (`@progressdb/js`). See `clients/sdk/frontend/README.md` for details.
-
