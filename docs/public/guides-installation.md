@@ -25,9 +25,6 @@ docker run -d \
 ```
 
 Endpoints available locally after startup:
-
-- Admin viewer UI: `http://localhost:8080/viewer/`
-- OpenAPI / Swagger: `http://localhost:8080/docs/` and `GET /openapi.yaml`
 - Health: `http://localhost:8080/healthz`
 
 ## Prebuilt binary
@@ -85,18 +82,10 @@ point. Typical requirements:
 
 ## SDKs & clients
 
-- Python backend SDK: `pip install progressdb` (or use the local package under `clients/sdk/backend/python/`).
-- Node backend SDK: `npm install @progressdb/node` (see `clients/sdk/backend/nodejs/`).
-- Frontend SDKs: `npm install @progressdb/js @progressdb/react`.
+For information on available SDKs and client libraries (Python, Node, frontend, etc.), please refer to the **Clients** section of this documentation.
 
 ## Troubleshooting startup
 
 - If the server fails to bind, check that the requested `--addr` is allowed on the host and not already in use.
 - Check permissions on the DB path — the server process must be able to read/write the directory.
 - Check the server logs (stdout or systemd journal) for detailed errors.
-
-## Next steps
-
-- Configure `config.yaml` and API keys: `docs/public/service-configuration.md`.
-- Explore the API: `http://localhost:8080/docs/` and `server/docs/openapi.yaml`.
-

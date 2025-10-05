@@ -5,9 +5,9 @@ order: 3
 visibility: public
 ---
 
-# Maintenance (concise)
+# Maintenance
 
-Scope: concrete backup, restore, and short verification steps for operators. This is intentionally minimal — it assumes you follow the install guidance in `docs/public/guides-installation.md` and that you manage the service as a binary or container per your environment.
+Concrete backup, restore, and short verification steps for operators. This is intentionally minimal — it assumes you follow the install guidance in `docs/public/guides-installation.md` and that you manage the service as a binary or container per your environment.
 
 Pre-maintenance checklist
 
@@ -58,14 +58,3 @@ Quick smoke test (example)
 curl -s http://localhost:8080/healthz
 # expect: { "status": "ok" }
 ```
-
-3. Post a simple message to verify writes (replace API key/endpoint as needed):
-
-```sh
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Authorization: Bearer pk_example" \
-  -H "Content-Type: application/json" \
-  -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'
-```
-
-If you'd like, I can further shorten the smoke test commands or remove the example curl entirely.
