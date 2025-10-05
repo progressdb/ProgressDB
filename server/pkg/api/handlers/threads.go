@@ -91,6 +91,8 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 	t.Slug = utils.MakeSlug(t.Title, t.ID)
 	t.CreatedTS = time.Now().UTC().UnixNano()
 	t.UpdatedTS = t.CreatedTS
+	// initialize per-thread sequence to zero; first message will bump this
+	t.LastSeq = 0
 
 	if security.EncryptionEnabled() {
 		// Only provision per-thread KMS metadata when a KMS provider is

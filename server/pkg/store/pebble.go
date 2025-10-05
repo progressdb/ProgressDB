@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
+	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"progressdb/pkg/models"
@@ -23,6 +24,62 @@ var db *pebble.DB
 // seq provides a small counter to reduce key collisions when multiple
 // messages share the same nanosecond timestamp.
 var seq uint64
+
+var (
+	// per-thread locks to avoid concurrent RMW races in a single process
+	threadLocks = make(map[string]*sync.Mutex)
+	locksMu     sync.Mutex
+)
+
+// getThreadLock returns a mutex for a thread, creating it if necessary.
+func getThreadLock(threadID string) *sync.Mutex {
+	locksMu.Lock()
+	defer locksMu.Unlock()
+	if l, ok := threadLocks[threadID]; ok {
+		return l
+	}
+	l := &sync.Mutex{}
+	threadLocks[threadID] = l
+	return l
+}
+
+// computeMaxSeq scans existing message keys for a thread and returns the
+// highest sequence suffix observed. If no messages exist it returns 0.
+func computeMaxSeq(threadID string) (uint64, error) {
+	prefix := []byte("thread:" + threadID + ":msg:")
+	iter, err := db.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+	var max uint64
+	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), prefix) {
+			break
+		}
+		// key format ends with -<seq>, e.g. ...-000123
+		k := string(iter.Key())
+		// find last '-' which precedes the seq
+		i := strings.LastIndex(k, "-")
+		if i < 0 || i+1 >= len(k) {
+			continue
+		}
+		seqPart := k[i+1:]
+		if s, err := strconv.ParseUint(seqPart, 10, 64); err == nil {
+			if s > max {
+				max = s
+			}
+		}
+	}
+	return max, iter.Error()
+}
+
+// MaxSeqForThread is an exported wrapper that returns the highest sequence
+// suffix observed for messages in a thread. It is intended for migration
+// and admin tooling.
+func MaxSeqForThread(threadID string) (uint64, error) {
+	return computeMaxSeq(threadID)
+}
 
 // Open opens (or creates) a Pebble database at the given path and keeps
 // a global handle for simple usage in this package.
@@ -66,9 +123,6 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	// Key format: thread:<threadID>:msg:<unix_nano_padded>-<seq>
-	ts := time.Now().UTC().UnixNano()
-	s := atomic.AddUint64(&seq, 1)
-	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
 
 	// ensure msgID reflects the message's id when caller omitted it
 	if msgID == "" && msg.ID != "" {
@@ -112,22 +166,52 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 		}
 	}
 
-	// save to database
-	if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
+	// Before persisting, obtain and bump the per-thread LastSeq so we can
+	// persist a durable per-thread sequence suffix. Guard with an in-process
+	// lock so concurrent writers in this process don't collide.
+	lock := getThreadLock(threadID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// load thread metadata to obtain LastSeq
+	var th models.Thread
+	sthr2, terr2 := GetThread(threadID)
+	if terr2 == nil {
+		_ = json.Unmarshal([]byte(sthr2), &th)
+	}
+	// If LastSeq is zero, attempt to compute a starting value from existing keys
+	if th.LastSeq == 0 {
+		if max, err := computeMaxSeq(threadID); err == nil {
+			th.LastSeq = max
+		}
+	}
+	// bump per-thread seq
+	th.LastSeq = th.LastSeq + 1
+
+	ts := time.Now().UTC().UnixNano()
+	s := th.LastSeq
+	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
+
+	// persist updated thread meta and message atomically using a write batch.
+	th.UpdatedTS = time.Now().UTC().UnixNano()
+	nb, err := json.Marshal(th)
+	if err != nil {
+		return fmt.Errorf("failed to marshal thread meta: %w", err)
+	}
+
+	batch := new(pebble.Batch)
+	metaKey := []byte("thread:" + threadID + ":meta")
+	batch.Set(metaKey, nb, pebble.Sync)
+	batch.Set([]byte(key), data, pebble.Sync)
+	if msgID != "" {
+		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
+		batch.Set([]byte(idxKey), data, pebble.Sync)
+	}
+	if err := db.Apply(batch, pebble.Sync); err != nil {
 		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
 		return err
 	}
 	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
-
-	// Also index by message ID for quick lookup of versions.
-	if msgID != "" {
-		// store version under explicit version namespace
-		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
-		if err := db.Set([]byte(idxKey), data, pebble.Sync); err != nil {
-			logger.Error("save_message_index_failed", "idxKey", idxKey, "error", err)
-			return err
-		}
-	}
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 )
 
@@ -17,7 +18,46 @@ const (
 
 // Sync performs upgrade work between versions. Edit in-place for migration logic.
 func Sync(ctx context.Context, from, to string) error {
-	logger.Info("progressor_sync_noop", "from", from, "to", to)
+	logger.Info("progressor_sync_start", "from", from, "to", to)
+
+	// Migration: initialize LastSeq for threads that lack it by scanning
+	// existing message keys and setting thread.LastSeq to the highest
+	// observed sequence. This is idempotent and safe to run multiple times.
+	vals, err := store.ListThreads()
+	if err != nil {
+		logger.Error("progressor_list_threads_failed", "error", err)
+		return err
+	}
+	for _, s := range vals {
+		var th models.Thread
+		if err := json.Unmarshal([]byte(s), &th); err != nil {
+			logger.Error("progressor_unmarshal_thread_failed", "error", err)
+			continue
+		}
+		if th.LastSeq != 0 {
+			continue
+		}
+		// compute max seq for this thread
+		max, err := store.MaxSeqForThread(th.ID)
+		if err != nil {
+			logger.Error("progressor_maxseq_failed", "thread", th.ID, "error", err)
+			continue
+		}
+		if max == 0 {
+			// nothing to do
+			continue
+		}
+		th.LastSeq = max
+		th.UpdatedTS = time.Now().UTC().UnixNano()
+		nb, _ := json.Marshal(th)
+		if err := store.SaveThread(th.ID, string(nb)); err != nil {
+			logger.Error("progressor_save_thread_failed", "thread", th.ID, "error", err)
+			continue
+		}
+		logger.Info("progressor_thread_lastseq_initialized", "thread", th.ID, "last_seq", max)
+	}
+
+	logger.Info("progressor_sync_done", "from", from, "to", to)
 	return nil
 }
 

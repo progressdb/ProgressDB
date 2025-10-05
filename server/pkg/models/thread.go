@@ -11,6 +11,8 @@ type Thread struct {
 	CreatedTS int64 `json:"created_ts,omitempty"`
 	// Updated timestamp (ns) - last time metadata or thread activity changed
 	UpdatedTS int64 `json:"updated_ts,omitempty"`
+	// LastSeq is a per-thread sequence number, incremented and persisted with each message.
+	LastSeq uint64 `json:"last_seq,omitempty"`
 	// Deleted marks a thread as soft-deleted; DeletedTS records deletion time (ns)
 	Deleted   bool  `json:"deleted,omitempty"`
 	DeletedTS int64 `json:"deleted_ts,omitempty"`
