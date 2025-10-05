@@ -5,83 +5,48 @@ order: 3
 visibility: public
 ---
 
-# Maintenance Runbook
+# Maintenance (concise)
 
-This runbook provides concrete steps for backups, restores, KMS rotation,
-monitoring, and common troubleshooting tasks.
+Scope: concrete backup, restore, and short verification steps for operators. This is intentionally minimal — it assumes you follow the install guidance in `docs/public/guides-installation.md` and that you manage the service as a binary or container per your environment.
 
-## Backups
+Pre-maintenance checklist
 
-### What to back up
+- Ensure you have a recent backup of the Pebble DB directory (`--db` / `storage.db_path`).
+- Snapshot or copy KMS metadata (if using embedded KMS) or verify external KMS configuration and credentials are recorded.
+- Note the running binary path or container image tag for rollback purposes.
 
-- Pebble DB directory (configured via `--db` / `storage.db_path`).
-- KMS data directory and audit logs (when using embedded or external KMS).
+Backup procedure
 
-### Filesystem snapshot procedure
+- Preferred: create a filesystem snapshot (LVM, ZFS, etc.) of the DB path while the service is stopped or paused to ensure consistency.
+- Alternative: stop the service and use `rsync -a` to copy the DB directory to backup storage.
+- Also copy KMS files (embedded mode) or record external KMS settings (mode, endpoint, key IDs).
 
-1. Put the server into maintenance mode or stop it to ensure a consistent snapshot.
-2. Create a filesystem snapshot (LVM/ZFS) or use `rsync` to copy the DB directory to backup storage.
-3. Copy the KMS data directory and audit logs to the backup location.
-4. Record metadata: backup time, binary version, config file used, and KMS key IDs.
+Verify backups
 
-### Verify backups
+- Restore the backup to a staging host and start the service against the restored data.
+- Confirm `/healthz` returns `{ "status": "ok" }` and run a single read/write smoke test.
 
-- Restore the snapshot to a staging host and start the server against the restored data.
-- Run smoke tests: `/healthz`, create/list messages, check KMS decryption of encrypted fields.
+Restore procedure
 
-## Restore procedure
+1. Stop the target service.
+2. Replace the DB directory with the restored snapshot or backup copy.
+3. Restore KMS files if applicable or ensure external KMS endpoint and credentials are available.
+4. Start the service and verify `/healthz` and a basic smoke test.
 
-1. Stop the target server.
-2. Replace the `--db` directory with the backup snapshot.
-3. Restore the KMS data directory and audit logs if applicable.
-4. Start the server and validate `/healthz` and sample read/write flows.
+KMS notes
 
-## KMS rotation & rewrap (high level)
+- If using `embedded` KMS: securely back up the master key and KMS data directory before maintenance.
+- If using `external` KMS: ensure the external KMS endpoint, credentials, and key IDs remain unchanged and reachable.
+- For any rewrap or rotation, snapshot DB and KMS metadata first and validate reads on a staging restore.
 
-> Production recommendation: use `security.kms.mode: external` and run a
-separate `progressdb-kms` service with restricted access.
+Monitoring & quick checks
 
-### Rotation steps
+- Hit the health endpoint: `curl -s http://<host>:<port>/healthz` (expect `{ "status": "ok" }`).
+- Check logs for DB open errors or KMS errors after restart.
 
-1. Add the new KEK to the KMS and mark it active.
-2. Use the KMS rewrap command to iterate wrapped DEKs and rewrap them with the new KEK.
-3. KMS writes per-key backups into `kms-deks-backup/`; snapshot this directory.
-4. Validate reads on a sample of threads/messages.
-5. After a retention period and validation, retire old KEKs.
+Quick smoke test (example)
 
-### Safety notes
-
-- Always snapshot DB and KMS metadata before running a large rewrap.
-- Keep KMS audit logs; they provide an auditable trail of rewrap operations.
-
-## Monitoring & alerts
-
-- Scrape `GET /metrics` with Prometheus.
-- Suggested alerts:
-  - `progressdb_health_status != 1`
-  - High 5xx rate or error spikes
-  - Disk usage on the DB path > 80%
-
-## Troubleshooting
-
-- Service does not start:
-  - Check permissions on `--db` and KMS directories.
-  - Inspect logs for config parsing errors.
-- `/healthz` failing:
-  - Ensure the service can reach the KMS (if enabled).
-  - Check DB open errors in logs.
-- Missing or unreadable encrypted fields:
-  - Check KMS availability and KEK presence.
-
-## Operational checklist
-
-- [ ] Snapshot DB and KMS before upgrades.
-- [ ] Verify backups by restoring to staging.
-- [ ] Schedule maintenance windows for rewrap/migrations.
-
-## Quick smoke test
-
-1. Start server:
+1. Start the server (binary example):
 
 ```sh
 ./progressdb --db ./data --addr :8080
@@ -94,7 +59,7 @@ curl -s http://localhost:8080/healthz
 # expect: { "status": "ok" }
 ```
 
-3. Post a message:
+3. Post a simple message to verify writes (replace API key/endpoint as needed):
 
 ```sh
 curl -X POST http://localhost:8080/v1/messages \
@@ -102,3 +67,5 @@ curl -X POST http://localhost:8080/v1/messages \
   -H "Content-Type: application/json" \
   -d '{"thread":"smoke","author":"smoke","body":{"text":"smoke test"}}'
 ```
+
+If you'd like, I can further shorten the smoke test commands or remove the example curl entirely.

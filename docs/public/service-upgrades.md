@@ -5,60 +5,43 @@ order: 4
 visibility: public
 ---
 
-# Upgrades & Releases
+## Upgrades (concise)
 
-This guide outlines safe upgrade procedures, rolling upgrade patterns,
-backup and rollback steps, and a release checklist.
+Scope: short, practical guidance for replacing the executed binary or Docker image. This is not an exhaustive runbook — it assumes you follow the install guidance in `docs/public/guides-installation.md` and have backups in place.
 
-## Pre-upgrade checklist
+Pre-upgrade (always do these)
 
-- [ ] Backup Pebble DB (`--db`) and KMS metadata.
-- [ ] Restore backups to staging and run smoke tests.
-- [ ] Review release notes for breaking changes and data migrations.
-- [ ] Ensure previous binaries/images are available for rollback.
+- Backup the Pebble DB directory (configured via `--db` / `storage.db_path`).
+- Snapshot or copy KMS metadata / data (if using embedded KMS) or record external KMS configuration and keys.
+- Record the currently running binary or container image tag so you can redeploy the previous version.
 
-## Rolling upgrades (recommended)
+Upgrade options
 
-1. Deploy new version to a small canary subset of instances.
-2. Wait for `/healthz` to return `ok` on each new instance.
-3. Monitor metrics and logs for errors or latency regressions.
-4. Gradually roll out to remaining instances.
+- Binary-based upgrade
+  1. Stop the running service (systemd/unit, supervisor, or kill the process).
+  2. Keep a copy of the current binary (move or rename `progressdb` to `progressdb.old` or save the current release artifact).
+  3. Replace the binary with the new `progressdb` executable in the same path and ensure executable permissions.
+  4. Start the service and verify health (see verification below).
 
-Tips:
+- Container/image-based upgrade
+  1. Pull the new image and note the previous image tag.
+  2. Stop the old container and start a new container with the same volumes and config but the new image tag (or use your orchestrator's update mechanism).
+  3. Verify health (see verification below).
 
-- Use readiness probes to avoid routing traffic to instances that are still warming up.
-- Drain connections and stop old instances only after new instances are healthy.
+Verification
 
-## Upgrades that include data migrations
+- Check the health endpoint: `curl -s http://<host>:<port>/healthz` — expect `{ "status": "ok" }`.
+- Run a simple smoke test (create a thread or post a short message) against a staging/canary instance before wide rollout.
 
-- If the upgrade requires data migrations (schema changes, encryption rewrap), schedule a maintenance window.
-- Run migrations on a staging copy first and validate data integrity.
-- Prefer online migrations that are backwards-compatible when possible; otherwise, use downtime windows.
+Rollback
 
-## Quick rollback
+- If the new version shows failures, redeploy the previous binary or image tag you recorded.
+- If an incompatible data migration was performed and you cannot roll forward safely, restore the DB from the pre-upgrade backup and restart the previous version.
 
-If you detect problems post-upgrade:
+Notes
 
-1. Stop the new version and redeploy the previous known-good binary/image.
-2. If data migrations made incompatible changes, restore DB from the pre-upgrade backup and restart the previous version.
-3. Notify stakeholders and open an incident ticket with the timeline and logs.
+- Keep upgrades simple and aligned with how you installed the service (binary vs container).
+- Do not assume automatic migrations: if a release requires a migration that changes on-disk formats, treat it as a manual procedure and test it in staging first.
+- For KMS: if using `embedded` mode, ensure you have a secure backup of the master key; if using `external` mode, ensure the external KMS endpoint and credentials are preserved.
 
-## CI/CD recommendations
-
-- Use `goreleaser` (configured in this repo) to build artifacts and Docker images.
-- Publish artifacts with clear semantic tags and include release notes describing migrations and breaking changes.
-
-## Post-upgrade verification
-
-- Confirm `/healthz` is `ok` across all nodes.
-- Verify metrics (`/metrics`) for error spikes or latency regressions.
-- Run functional smoke tests: create thread, post message, list messages, sign user.
-
-## Release checklist (copyable)
-
-- [ ] Backup DB and KMS
-- [ ] Deploy to staging and run automated tests
-- [ ] Deploy to canary subset and monitor metrics/health
-- [ ] Rollout to remainder of fleet
-- [ ] Monitor for errors and latency regressions for at least one retention period
-
+If you want, I can also trim or simplify `docs/public/service-maintenance.md` to match this minimal style.
