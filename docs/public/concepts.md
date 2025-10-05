@@ -5,95 +5,79 @@ order: 2
 visibility: public
 ---
 
-# Concepts
+# Concepts — design, benefits, and trade‑offs
 
-This page explains ProgressDB's core concepts so you can design your
-application and operate the service effectively.
+A quick overview of ProgressDB’s core design principles and trade-offs.
 
-## Threads
+## Design principles
 
-- A thread is a logical conversation or channel that contains messages.
-- Thread metadata includes `id`, `created_ts`, `last_ts`, and optional `attributes` (freeform JSON).
-- Threads are created implicitly when the first message in a thread is posted or explicitly via `POST /v1/threads`.
+### Append‑only timeline
 
-### Thread fields
+- Core idea: all user events are stored as new entries rather than mutating existing records. Threads therefore behave like immutable logs with new events appended to the end.
+- Benefit: chronological integrity, simpler concurrency (no in‑place races), and a natural audit trail.
 
-- `id` — unique thread identifier (string).
-- `created_ts` — timestamp of first message.
-- `last_ts` — timestamp of most recent message.
-- `attributes` — optional freeform JSON (title, description, custom metadata).
+### Thread‑first model
 
-## Messages
+- Core idea: a thread is the primary unit of organization. Everything — messages, versions, metadata — is scoped to a thread.
+- Benefit: client interactions (infinite scroll, tailing, per‑thread permissions) map directly to server semantics.
 
-Messages are the primary append-only items stored in a thread.
+### Read‑optimized denormalization
 
-### Message fields
+- Core idea: optimize common read patterns (recent messages, tailing) even if it means storing small, deliberate duplicates to make reads cheap.
+- Benefit: low latency for chat UIs, predictable CPU/IO during reads, and simpler client code.
 
-- `id` — message id (server generates when omitted).
-- `thread` — associated thread id.
-- `author` — author/user id.
-- `ts` — timestamp (seconds or nanos); server fills when omitted.
-- `body` — freeform JSON payload owned by the application.
+### Versioning for auditability
 
-### Message lifecycle
+- Core idea: edits, deletes, and similar state changes append versioned entries instead of overwriting. Historical states are preserved.
+- Benefit: straightforward edit history, easier moderation and incident investigation, and safe soft‑delete semantics.
 
-- Edits: messages support versioning; each edit creates a new stored version.
-- Versions: listable via `GET /v1/threads/{threadID}/messages/{id}/versions`.
-- Soft-deletes: messages can be deleted while preserving history for audit.
+### Minimal, predictable APIs
 
-## Indexing & storage model
+- Core idea: keep the surface area small — thread/message primitives, lightweight signing, health and metrics. Clients should not need to reason about complex server internals.
+- Benefit: easier SDKs, fewer breaking changes, and clearer expectations for integrators.
 
-- Storage engine: Pebble DB with time-ordered keys for efficient timeline reads.
-- Primary key layout: `thread:<threadID>:<unix_nano>-<seq>` (append-ordered timeline keys).
-- Thread listing: iterate keys with prefix `thread:<threadID>:`.
-- Secondary indexes: compact keys for message id lookup and author-based indexes.
+### Encryption by design
 
-## Authentication & signing
+- Core idea: support encrypting sensitive fields or full payloads and separate key management so operators can choose embedded or external KMS setups.
+- Benefit: flexible security postures — simple local encryption for dev, hardened external KMS for production.
 
-- API key authentication: provide keys via `Authorization: Bearer <key>` or `X-API-Key: <key>`.
-- Key scopes:
-  - Backend keys (`sk_...`) — full privileges, may call `POST /v1/_sign` and admin routes.
-  - Frontend keys (`pk_...`) — limited scope (message endpoints, health).
+## How these principles help users
 
-### Signing flow (frontend)
+- **Low latency UIs:** append‑only timelines and read‑focused structures let the server serve recent messages with minimal IO and CPU work — the result is snappy scroll and live tail behavior for end users.
+- **Predictable ordering & consistency:** since events are appended, clients can rely on stable ordering and reason about causality (helpful for optimistic updates and conflict handling).
+- **Auditability & compliance:** versioned history provides a complete trail without bespoke logging systems — useful for moderation, legal holds, and debugging.
+- **Safer, incremental migrations:** monotonic data models make it easier to run background migrations or rewrap operations without blocking the service.
+- **Clear security boundaries:** separating signing and KMS concerns reduces the risk surface and makes security reviews and hardening simpler.
 
-1. Backend calls `POST /v1/_sign` with `{ "userId": "..." }` using a backend key.
-2. Server returns `{ "userId": "...", "signature": "..." }` (HMAC‑SHA256).
-3. Client includes `X-User-ID` and `X-User-Signature` headers on requests to assert identity.
+## Performance and operational trade‑offs
 
-## Encryption & KMS
+### Read vs write cost
 
-- ProgressDB supports optional field-level encryption (encrypt specific JSON paths) and full-message encryption modes.
-- KMS modes:
-  - `embedded`: in-process KMS (development/testing).
-  - `external`: production recommended; calls an external `progressdb-kms` daemon over HTTP/TCP.
-- Wrapped DEKs, metadata, and KMS audit logs are persisted under the KMS data directory and are used for rotation and rewrap operations.
+- Trade: optimizing reads can add modest write overhead (extra indexed entries, stored versions).
+- Rationale: for chat workloads, reads are often much more frequent and latency‑sensitive than writes.
 
-### Field-level encryption
+### Storage overhead & retention
 
-- Configure JSON paths to encrypt (e.g., `body.credit_card`). The server replaces encrypted fields with an envelope object like `{ "_enc": "gcm", "v": "<base64>" }`.
-- On reads the server decrypts envelopes and returns original JSON values (when the KMS is available and keys are valid).
+- Trade: keeping history and denormalized entries increases disk usage.
+- Mitigation: use retention policies, compaction, or TTLs to bound growth while preserving required audit windows.
 
-## Operational considerations
+### Compaction, retention and operational work
 
-- Backups: snapshot the Pebble DB path (`--db`) and KMS data directory before upgrades or rewraps.
-- Monitoring: scrape `/metrics` with Prometheus and use `/healthz` for readiness probes.
-- Security: protect API keys and KMS access using a secrets manager and network controls.
+- Challenge: retained history requires operational processes (retention policies, backups, tested restores).
+- Recommendation: plan retention windows that balance audit needs with storage cost, and automate restores for validation.
 
-## Examples
+## Developer & contributor guidance
 
-Create a message (curl):
+- Think in events: prefer appending descriptive events (edits, reactions, moderation markers) over in‑place mutations.
+- Keep features thread‑scoped: map UI components and permissions to per‑thread behavior for consistency.
+- Treat encryption and signing as separate, testable subsystems — keep secrets and key material out of client code.
 
-```sh
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Authorization: Bearer pk_example" \
-  -H "Content-Type: application/json" \
-  -d '{"thread":"general","author":"alice","body":{"text":"Hello"}}'
-```
+## Common usage patterns
 
-List message versions (curl):
+- **Chat & collaboration:** immediate append semantics make tailing and consistent scrollback trivial to implement.
+- **Moderation & auditing:** version history simplifies change review and moderation workflows.
+- **Analytics & export:** event streams are natural to replay for analytics, backups, or importing into other systems.
 
-```sh
-curl http://localhost:8080/v1/threads/general/messages/msg-123/versions \
-  -H "Authorization: Bearer sk_example"
-```
+## When this design is not a fit
+
+- Not ideal for workloads that demand tiny storage footprint, strictly mutable single‑record semantics, or where historical retention is actively harmful.
