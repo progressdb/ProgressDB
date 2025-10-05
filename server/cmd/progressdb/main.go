@@ -17,22 +17,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func main() {
-	// set build metadata
-	var (
-		version   = "dev"
-		commit    = "none"
-		buildDate = "unknown"
-	)
+// set build metadata
+var (
+	version   = "dev"
+	commit    = "none"
+	buildDate = "unknown"
+)
 
+func main() {
 	// load .env file if present
 	_ = godotenv.Load(".env")
 
 	// initialize centralized logger
 	logger.Init()
 	defer logger.Sync()
-
-	// after loading effective config below we will attach the audit file sink
 
 	// parse config flags
 	flags := config.ParseConfigFlags()
