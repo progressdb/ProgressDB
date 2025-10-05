@@ -127,60 +127,60 @@ func TestKeysBuildersParsers(t *testing.T) {
 
 // Additional key helper tests appended from package store helpers.
 func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
-    cases := []struct{
-        threadID string
-        msgID    string
-        ts       int64
-        seq      uint64
-    }{
-        {threadID: "t1", msgID: "m1", ts: 1, seq: 1},
-        {threadID: "a_b.C-123", msgID: "id.XYZ", ts: 0, seq: 0},
-        {threadID: "z9", msgID: "m-9", ts: 9999999999, seq: 42},
-    }
+	cases := []struct {
+		threadID string
+		msgID    string
+		ts       int64
+		seq      uint64
+	}{
+		{threadID: "t1", msgID: "m1", ts: 1, seq: 1},
+		{threadID: "a_b.C-123", msgID: "id.XYZ", ts: 0, seq: 0},
+		{threadID: "z9", msgID: "m-9", ts: 9999999999, seq: 42},
+	}
 
-    for _, c := range cases {
-        // MsgKey round-trip
-        k, err := store.MsgKey(c.threadID, c.ts, c.seq)
-        if err != nil {
-            t.Fatalf("MsgKey error: %v", err)
-        }
-        tid, pts, pseq, err := store.ParseMsgKey(k)
-        if err != nil {
-            t.Fatalf("ParseMsgKey error: %v (key=%s)", err, k)
-        }
-        if tid != c.threadID || pts != c.ts || pseq != c.seq {
-            t.Fatalf("ParseMsgKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", tid, pts, pseq, c.threadID, c.ts, c.seq)
-        }
+	for _, c := range cases {
+		// MsgKey round-trip
+		k, err := store.MsgKey(c.threadID, c.ts, c.seq)
+		if err != nil {
+			t.Fatalf("MsgKey error: %v", err)
+		}
+		tid, pts, pseq, err := store.ParseMsgKey(k)
+		if err != nil {
+			t.Fatalf("ParseMsgKey error: %v (key=%s)", err, k)
+		}
+		if tid != c.threadID || pts != c.ts || pseq != c.seq {
+			t.Fatalf("ParseMsgKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", tid, pts, pseq, c.threadID, c.ts, c.seq)
+		}
 
-        // VersionKey round-trip
-        vk, err := store.VersionKey(c.msgID, c.ts, c.seq)
-        if err != nil {
-            t.Fatalf("VersionKey error: %v", err)
-        }
-        mid, vts, vseq, err := store.ParseVersionKey(vk)
-        if err != nil {
-            t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
-        }
-        if mid != c.msgID || vts != c.ts || vseq != c.seq {
-            t.Fatalf("ParseVersionKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", mid, vts, vseq, c.msgID, c.ts, c.seq)
-        }
-    }
+		// VersionKey round-trip
+		vk, err := store.VersionKey(c.msgID, c.ts, c.seq)
+		if err != nil {
+			t.Fatalf("VersionKey error: %v", err)
+		}
+		mid, vts, vseq, err := store.ParseVersionKey(vk)
+		if err != nil {
+			t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
+		}
+		if mid != c.msgID || vts != c.ts || vseq != c.seq {
+			t.Fatalf("ParseVersionKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", mid, vts, vseq, c.msgID, c.ts, c.seq)
+		}
+	}
 }
 
 func TestPrefixesAndValidators_StoreHelpers(t *testing.T) {
-    // Prefix helpers
-    if p, err := store.MsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
-        t.Fatalf("MsgPrefix unexpected: %v %v", p, err)
-    }
-    if p, err := store.ThreadPrefix("abc"); err != nil || p != "thread:abc:" {
-        t.Fatalf("ThreadPrefix unexpected: %v %v", p, err)
-    }
+	// Prefix helpers
+	if p, err := store.MsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
+		t.Fatalf("MsgPrefix unexpected: %v %v", p, err)
+	}
+	if p, err := store.ThreadPrefix("abc"); err != nil || p != "thread:abc:" {
+		t.Fatalf("ThreadPrefix unexpected: %v %v", p, err)
+	}
 
-    // validators
-    if err := store.ValidateThreadID(""); err == nil {
-        t.Fatalf("expected error for empty thread id")
-    }
-    if err := store.ValidateMsgID(""); err == nil {
-        t.Fatalf("expected error for empty msg id")
-    }
+	// validators
+	if err := store.ValidateThreadID(""); err == nil {
+		t.Fatalf("expected error for empty thread id")
+	}
+	if err := store.ValidateMsgID(""); err == nil {
+		t.Fatalf("expected error for empty msg id")
+	}
 }

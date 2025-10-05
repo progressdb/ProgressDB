@@ -1,4 +1,4 @@
-
+so 
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -22,7 +22,47 @@ mkdir -p "$GOCACHE_DIR" "$GOMODCACHE_DIR"
 
 # Run the build from the package directory so module resolution is stable.
 # Honor caller-specified GOOS/GOARCH/CGO settings.
-(cd "$(dirname "$PKG")" && \
-  GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" GO111MODULE=on go build -o "$OLDPWD/$OUT" "$PKG")
+pkg_dir="$(dirname "$PKG")"
+pkg_base="$(basename "$PKG")"
 
-echo "Built: $OUT"
+# By default build for multiple targets and place outputs under `dist/`.
+# Override with HOST_ONLY=1 to build only for the current host platform.
+# To customize targets set TARGETS as a comma-separated list of "os/arch" pairs.
+# Examples:
+#   TARGETS="darwin/amd64,linux/amd64" ./scripts/build.sh
+#   HOST_ONLY=1 ./scripts/build.sh
+# Default target list when doing multi-target builds:
+DEFAULT_TARGETS="darwin/amd64,darwin/arm64,linux/amd64,windows/amd64"
+
+if [ "${HOST_ONLY:-0}" = "1" ]; then
+  host_os=$(go env GOOS)
+  host_arch=$(go env GOARCH)
+  TARGETS="$host_os/$host_arch"
+else
+  TARGETS=${TARGETS:-$DEFAULT_TARGETS}
+fi
+
+out_dir=$(dirname "$OUT")
+base_name=$(basename "$OUT")
+mkdir -p "$out_dir"
+
+OLDPWD=$(pwd)
+IFS=','; for t in $TARGETS; do
+  goos=${t%/*}
+  goarch=${t#*/}
+  ext=""
+  if [ "$goos" = "windows" ]; then
+    ext=".exe"
+  fi
+  outpath="$out_dir/${base_name}-${goos}-${goarch}${ext}"
+  echo "Building $base_name for $goos/$goarch -> $outpath"
+  (
+    cd "$pkg_dir/$pkg_base"
+    GOCACHE="$GOCACHE_DIR" GOMODCACHE="$GOMODCACHE_DIR" GO111MODULE=on \
+      CGO_ENABLED=${CGO_ENABLED:-0} GOOS=$goos GOARCH=$goarch \
+      go build -o "$OLDPWD/$outpath" .
+  )
+done
+
+echo "Built: $OUT (multi-target)
+Targets: $TARGETS"

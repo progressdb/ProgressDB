@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 )
 
@@ -34,8 +35,12 @@ func EnsureStateDirs(dbPath string) error {
 			if !fi.IsDir() {
 				return fmt.Errorf("path exists and is not a directory: %s", p)
 			}
-			if fi.Mode().Perm()&0o022 != 0 {
-				return fmt.Errorf("path has permissive mode (group/other write): %s", p)
+			// On Windows the permission bits reported by os.FileMode are not a
+			// reliable indicator of ACLs; skip the permissive-mode check there.
+			if runtime.GOOS != "windows" {
+				if fi.Mode().Perm()&0o022 != 0 {
+					return fmt.Errorf("path has permissive mode (group/other write): %s", p)
+				}
 			}
 		}
 
@@ -49,8 +54,10 @@ func EnsureStateDirs(dbPath string) error {
 			if fi2.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("path is a symlink after creation: %s", p)
 			}
-			if fi2.Mode().Perm()&0o022 != 0 {
-				return fmt.Errorf("path has permissive mode after creation: %s", p)
+			if runtime.GOOS != "windows" {
+				if fi2.Mode().Perm()&0o022 != 0 {
+					return fmt.Errorf("path has permissive mode after creation: %s", p)
+				}
 			}
 		}
 

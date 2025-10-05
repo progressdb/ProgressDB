@@ -225,3 +225,6 @@ Planned / In progress:
 4. Open a pull request against `main` with a clear description and testing notes.
 
 For development builds and advanced builds, see the "Build from source (advanced)" section above.
+
+
+[![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)

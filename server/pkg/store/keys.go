@@ -60,36 +60,36 @@ func FormatSeq(seq uint64) string {
 
 // ParseTS parses a padded timestamp string previously formatted with FormatTS.
 func ParseTS(s string) (int64, error) {
-    if len(s) == 0 || len(s) > tsPadWidth {
-        return 0, fmt.Errorf("ts length invalid: %s", s)
-    }
-    // allow legacy keys with fewer leading zeros by trimming left zeros
-    trimmed := strings.TrimLeft(s, "0")
-    if trimmed == "" {
-        // string was all zeros
-        return 0, nil
-    }
-    v, err := strconv.ParseInt(trimmed, 10, 64)
-    if err != nil {
-        return 0, fmt.Errorf("parse ts: %w", err)
-    }
-    return v, nil
+	if len(s) == 0 || len(s) > tsPadWidth {
+		return 0, fmt.Errorf("ts length invalid: %s", s)
+	}
+	// allow legacy keys with fewer leading zeros by trimming left zeros
+	trimmed := strings.TrimLeft(s, "0")
+	if trimmed == "" {
+		// string was all zeros
+		return 0, nil
+	}
+	v, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse ts: %w", err)
+	}
+	return v, nil
 }
 
 // ParseSeq parses a padded sequence string previously formatted with FormatSeq.
 func ParseSeq(s string) (uint64, error) {
-    if len(s) == 0 || len(s) > seqPadWidth {
-        return 0, fmt.Errorf("seq length invalid: %s", s)
-    }
-    trimmed := strings.TrimLeft(s, "0")
-    if trimmed == "" {
-        return 0, nil
-    }
-    v, err := strconv.ParseUint(trimmed, 10, 64)
-    if err != nil {
-        return 0, fmt.Errorf("parse seq: %w", err)
-    }
-    return v, nil
+	if len(s) == 0 || len(s) > seqPadWidth {
+		return 0, fmt.Errorf("seq length invalid: %s", s)
+	}
+	trimmed := strings.TrimLeft(s, "0")
+	if trimmed == "" {
+		return 0, nil
+	}
+	v, err := strconv.ParseUint(trimmed, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse seq: %w", err)
+	}
+	return v, nil
 }
 
 // MsgKey builds a message key for a given thread, timestamp and sequence.
