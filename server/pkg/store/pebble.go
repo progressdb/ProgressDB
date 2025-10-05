@@ -577,6 +577,19 @@ func DBSet(key, value []byte) error {
 	return db.Set(key, value, pebble.Sync)
 }
 
+// DeleteKey removes the given key from the DB.
+func DeleteKey(key string) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	if err := db.Delete([]byte(key), pebble.Sync); err != nil {
+		logger.Error("delete_key_failed", "key", key, "error", err)
+		return err
+	}
+	logger.Debug("delete_key_ok", "key", key)
+	return nil
+}
+
 // RotateThreadDEK migrates all messages in a thread from the old DEK to a
 // new DEK identified by newKeyID. It backs up original values under keys
 // prefixed with `backup:migrate:` before overwriting. On success it updates

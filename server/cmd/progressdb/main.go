@@ -12,6 +12,7 @@ import (
 	"progressdb/internal/app"
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/progressor"
 	"progressdb/pkg/state"
 
 	"github.com/joho/godotenv"
@@ -94,6 +95,13 @@ func main() {
 		// cancel context to trigger graceful shutdown
 		cancel()
 	}()
+
+	// run version checks and migrations - before start app
+	if invoked, err := progressor.Run(ctx, version); err != nil {
+		log.Fatalf("progressor run failed: %v", err)
+	} else if invoked {
+		logger.Info("progressor_invoked")
+	}
 
 	// run the app
 	if err := app.Run(ctx); err != nil {

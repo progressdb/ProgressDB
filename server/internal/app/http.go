@@ -45,6 +45,7 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 		// check store
 		if !store.Ready() {
 			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte("{\"status\":\"not ready\"}"))
 			return
 		}
@@ -66,7 +67,13 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 			}
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{\"status\":\"ok\"}"))
+		w.Header().Set("Content-Type", "application/json")
+		// include the running version to help ops verify what binary is active
+		ver := a.version
+		if ver == "" {
+			ver = "dev"
+		}
+		_, _ = w.Write([]byte("{\"status\":\"ok\",\"version\":\"" + ver + "\"}"))
 	})
 
 	mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
