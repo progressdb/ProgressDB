@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,7 +45,11 @@ func getThreadLock(threadID string) *sync.Mutex {
 // computeMaxSeq scans existing message keys for a thread and returns the
 // highest sequence suffix observed. If no messages exist it returns 0.
 func computeMaxSeq(threadID string) (uint64, error) {
-	prefix := []byte("thread:" + threadID + ":msg:")
+	mp, merr := MsgPrefix(threadID)
+	if merr != nil {
+		return 0, merr
+	}
+	prefix := []byte(mp)
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return 0, err
@@ -57,18 +60,15 @@ func computeMaxSeq(threadID string) (uint64, error) {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-		// key format ends with -<seq>, e.g. ...-000123
 		k := string(iter.Key())
-		// find last '-' which precedes the seq
-		i := strings.LastIndex(k, "-")
-		if i < 0 || i+1 >= len(k) {
+		// parse using canonical parser
+		_, _, s, perr := ParseMsgKey(k)
+		if perr != nil {
+			// skip keys that don't parse
 			continue
 		}
-		seqPart := k[i+1:]
-		if s, err := strconv.ParseUint(seqPart, 10, 64); err == nil {
-			if s > max {
-				max = s
-			}
+		if s > max {
+			max = s
 		}
 	}
 	return max, iter.Error()
@@ -190,7 +190,11 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 
 	ts := time.Now().UTC().UnixNano()
 	s := th.LastSeq
-	key := fmt.Sprintf("thread:%s:msg:%020d-%06d", threadID, ts, s)
+	k, kerr := MsgKey(threadID, ts, s)
+	if kerr != nil {
+		return fmt.Errorf("failed to build message key: %w", kerr)
+	}
+	key := k
 
 	// persist updated thread meta and message atomically using a write batch.
 	th.UpdatedTS = time.Now().UTC().UnixNano()
@@ -200,12 +204,18 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 	}
 
 	batch := new(pebble.Batch)
-	metaKey := []byte("thread:" + threadID + ":meta")
-	batch.Set(metaKey, nb, pebble.Sync)
+	mkey, mkerr := ThreadMetaKey(threadID)
+	if mkerr != nil {
+		return fmt.Errorf("invalid thread id for meta key: %w", mkerr)
+	}
+	batch.Set([]byte(mkey), nb, pebble.Sync)
 	batch.Set([]byte(key), data, pebble.Sync)
 	if msgID != "" {
-		idxKey := fmt.Sprintf("version:msg:%s:%020d-%06d", msgID, ts, s)
-		batch.Set([]byte(idxKey), data, pebble.Sync)
+		ik, ikerr := VersionKey(msgID, ts, s)
+		if ikerr != nil {
+			return fmt.Errorf("failed to build version index key: %w", ikerr)
+		}
+		batch.Set([]byte(ik), data, pebble.Sync)
 	}
 	if err := db.Apply(batch, pebble.Sync); err != nil {
 		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
@@ -221,7 +231,11 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	// build prefix for thread messages
-	prefix := []byte("thread:" + threadID + ":msg:")
+	mp, merr := MsgPrefix(threadID)
+	if merr != nil {
+		return nil, merr
+	}
+	prefix := []byte(mp)
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -467,8 +481,11 @@ func SaveThread(threadID, data string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("thread:" + threadID + ":meta")
-	if err := db.Set(key, []byte(data), pebble.Sync); err != nil {
+	tk, err := ThreadMetaKey(threadID)
+	if err != nil {
+		return fmt.Errorf("invalid thread id: %w", err)
+	}
+	if err := db.Set([]byte(tk), []byte(data), pebble.Sync); err != nil {
 		logger.Error("save_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -481,8 +498,11 @@ func GetThread(threadID string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("thread:" + threadID + ":meta")
-	v, closer, err := db.Get(key)
+	tk, err := ThreadMetaKey(threadID)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread id: %w", err)
+	}
+	v, closer, err := db.Get([]byte(tk))
 	if err != nil {
 		return "", err
 	}
@@ -497,8 +517,11 @@ func DeleteThread(threadID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("thread:" + threadID + ":meta")
-	if err := db.Delete(key, pebble.Sync); err != nil {
+	tk, err := ThreadMetaKey(threadID)
+	if err != nil {
+		return fmt.Errorf("invalid thread id: %w", err)
+	}
+	if err := db.Delete([]byte(tk), pebble.Sync); err != nil {
 		logger.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -511,7 +534,11 @@ func SoftDeleteThread(threadID, actor string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	key := []byte("thread:" + threadID + ":meta")
+	tk, terr := ThreadMetaKey(threadID)
+	if terr != nil {
+		return terr
+	}
+	key := []byte(tk)
 	v, closer, err := db.Get(key)
 	if err != nil {
 		logger.Error("soft_delete_load_failed", "thread", threadID, "error", err)
@@ -695,7 +722,11 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	prefix := []byte("thread:" + threadID + ":msg:")
+	mp, merr := MsgPrefix(threadID)
+	if merr != nil {
+		return merr
+	}
+	prefix := []byte(mp)
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
@@ -819,7 +850,11 @@ func PurgeThreadPermanently(threadID string) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	// prefix for thread keys
-	prefix := []byte("thread:" + threadID + ":")
+	tp, terr := ThreadPrefix(threadID)
+	if terr != nil {
+		return terr
+	}
+	prefix := []byte(tp)
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err

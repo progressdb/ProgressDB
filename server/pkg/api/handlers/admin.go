@@ -448,7 +448,12 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 				// already has DEK: skip provisioning and only report later
 			}
 			// iterate messages and encrypt plaintext ones
-			prefix := []byte("thread:" + tid + ":msg:")
+			mp, merr := store.MsgPrefix(tid)
+			if merr != nil {
+				resCh <- res{Thread: tid, Err: merr.Error()}
+				return
+			}
+			prefix := []byte(mp)
 			iter, err := store.DBIter()
 			if err != nil {
 				resCh <- res{Thread: tid, Err: err.Error()}

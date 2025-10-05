@@ -234,7 +234,8 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 
 	// Inspect raw stored value in Pebble to ensure it contains the encryption marker
 	// Message keys are prefixed with "thread:<tid>:msg:" — list keys and fetch one.
-	keys, err := store.ListKeys("thread:" + tid + ":msg:")
+	mp, _ := store.MsgPrefix(tid)
+	keys, err := store.ListKeys(mp)
 	if err != nil {
 		t.Fatalf("ListKeys failed: %v", err)
 	}
