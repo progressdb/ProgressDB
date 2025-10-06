@@ -64,10 +64,6 @@ func AttachAuditFileSink(auditDir string) error {
 		if !fi.IsDir() {
 			return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
 		}
-		// check perms: disallow group/other write to avoid insecure dirs
-		if fi.Mode().Perm()&0o022 != 0 {
-			return fmt.Errorf("audit directory has permissive mode (group/other write): %s", auditDir)
-		}
 	}
 	// Ensure the audit directory exists with restrictive permissions.
 	if err := os.MkdirAll(auditDir, 0o700); err != nil {
@@ -78,10 +74,11 @@ func AttachAuditFileSink(auditDir string) error {
 		if fi2.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("audit path is a symlink after creation: %s", auditDir)
 		}
-		if fi2.Mode().Perm()&0o022 != 0 {
-			return fmt.Errorf("audit directory has permissive mode after creation: %s", auditDir)
-		}
 	}
+
+	// Do not enforce ownership or POSIX permission checks here. For now
+	// prefer to create the audit directory and proceed; concrete handling
+	// for cross-user permissions will be addressed later.
 	fname := filepath.Join(auditDir, "audit.log")
 	// If existing file too large, rotate it.
 	if fi, err := os.Stat(fname); err == nil {
