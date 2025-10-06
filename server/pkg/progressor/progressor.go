@@ -12,117 +12,136 @@ import (
 )
 
 const (
-    systemVersionKey    = "system:version"
-    systemInProgressKey = "system:migration_in_progress"
+	systemVersionKey    = "system:version"
+	systemInProgressKey = "system:migration_in_progress"
 )
 
 const defaultStoredVersion = "0.1.2"
 
-// Sync performs upgrade work between versions. Edit in-place for migration logic.
-func Sync(ctx context.Context, from, to string) error {
-	logger.Info("progressor_sync_start", "from", from, "to", to)
+// migrateTo0_2_0 initializes per-thread LastSeq when missing (idempotent).
+func migrateTo0_2_0(ctx context.Context, from, to string) error {
+	logger.Info("migration_start", "from", from, "to", to)
 
-	// Migration: initialize LastSeq for threads that lack it by scanning
-	// existing message keys and setting thread.LastSeq to the highest
-	// observed sequence. This is idempotent and safe to run multiple times.
+	// Give all threads the new last seq field
 	vals, err := store.ListThreads()
 	if err != nil {
-		logger.Error("progressor_list_threads_failed", "error", err)
+		logger.Error("migration_list_threads_failed", "error", err)
 		return err
 	}
+
 	for _, s := range vals {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err != nil {
-			logger.Error("progressor_unmarshal_thread_failed", "error", err)
+			logger.Error("migration_unmarshal_thread_failed", "error", err)
 			continue
 		}
 		if th.LastSeq != 0 {
 			continue
 		}
-		// compute max seq for this thread
+
 		max, err := store.MaxSeqForThread(th.ID)
 		if err != nil {
-			logger.Error("progressor_maxseq_failed", "thread", th.ID, "error", err)
+			logger.Error("migration_maxseq_failed", "thread", th.ID, "error", err)
 			continue
 		}
 		if max == 0 {
-			// nothing to do
 			continue
 		}
+
 		th.LastSeq = max
 		th.UpdatedTS = time.Now().UTC().UnixNano()
 		nb, _ := json.Marshal(th)
 		if err := store.SaveThread(th.ID, string(nb)); err != nil {
-			logger.Error("progressor_save_thread_failed", "thread", th.ID, "error", err)
-			continue
+			logger.Error("migration_save_thread_failed", "thread", th.ID, "error", err)
+			return err
 		}
-		logger.Info("progressor_thread_lastseq_initialized", "thread", th.ID, "last_seq", max)
+		logger.Info("migration_thread_lastseq_initialized", "thread", th.ID, "last_seq", max)
 	}
 
-	logger.Info("progressor_sync_done", "from", from, "to", to)
+	logger.Info("migration_done", "to", to)
 	return nil
 }
 
-// Run checks for a version change and runs Sync if needed.
-// Returns (invoked, error): invoked is true if Sync ran.
-func Run(ctx context.Context, newVersion string) (bool, error) {
-    logger.Info("progressor_version_check", "stored", getStoredVersion(), "running", newVersion)
-    stored, err := store.GetKey(systemVersionKey)
-    if err != nil {
-        // treat missing system version key as a first-run case and use the
-        // historical last-known version as a sensible default so migrations
-        // are calculated from that point.
-        if store.IsNotFound(err) {
-            stored = defaultStoredVersion
-        } else {
-            logger.Error("progressor_read_version_failed", "error", err)
-        }
-    }
-	if stored == newVersion {
-		logger.Info("progressor_noop", "version", newVersion)
-		return false, nil
-	}
-
-	marker := map[string]string{
-		"from":       stored,
-		"to":         newVersion,
-		"started_at": time.Now().UTC().Format(time.RFC3339),
-	}
+// startMigration writes the in-progress marker and logs the start of a migration.
+func startMigration(from, to string) error {
+	marker := map[string]string{"from": from, "to": to, "started_at": time.Now().UTC().Format(time.RFC3339)}
 	mb, _ := json.Marshal(marker)
 	if err := store.SaveKey(systemInProgressKey, mb); err != nil {
 		logger.Error("progressor_write_inprogress_failed", "error", err)
-		return true, fmt.Errorf("failed to write in-progress marker: %w", err)
+		return fmt.Errorf("failed to write in-progress marker: %w", err)
 	}
+	logger.Info("progressor_start_sync", "from", from, "to", to)
+	return nil
+}
 
-	// TODO: add backup step here before performing migrations
-
-	logger.Info("progressor_start_sync", "from", stored, "to", newVersion)
-	if err := Sync(ctx, stored, newVersion); err != nil {
-		logger.Error("progressor_sync_failed", "from", stored, "to", newVersion, "error", err)
-		return true, err
+// finishMigration persists the new version, clears the in-progress marker and logs.
+func finishMigration(to string) error {
+	if err := store.SaveKey(systemVersionKey, []byte(to)); err != nil {
+		logger.Error("progressor_persist_version_failed", "version", to, "error", err)
+		return fmt.Errorf("failed to persist new version: %w", err)
 	}
-	logger.Info("progressor_sync_succeeded", "from", stored, "to", newVersion)
-
-	if err := store.SaveKey(systemVersionKey, []byte(newVersion)); err != nil {
-		logger.Error("progressor_persist_version_failed", "version", newVersion, "error", err)
-		return true, fmt.Errorf("failed to persist new version: %w", err)
-	}
-
 	if err := store.DeleteKey(systemInProgressKey); err != nil {
 		logger.Error("progressor_delete_inprogress_failed", "error", err)
 	}
+	logger.Info("progressor_version_persisted", "version", to)
+	return nil
+}
 
-	logger.Info("progressor_version_persisted", "version", newVersion)
-	return true, nil
+// Migrations are self-contained; Run dispatches the matching handler.
+func Run(ctx context.Context, newVersion string) (bool, error) {
+	stored, err := store.GetKey(systemVersionKey)
+	if err != nil {
+		// treat missing system version key as a first-run case and use the
+		// historical last-known version as a sensible default so migrations
+		// are calculated from that point.
+		if store.IsNotFound(err) {
+			stored = defaultStoredVersion
+		} else {
+			logger.Error("progressor_read_version_failed", "error", err)
+		}
+	}
+	if stored == newVersion {
+		return false, nil
+	}
+
+	// Dispatch known migrations; unknown versions are persisted silently.
+	switch newVersion {
+	case "0.2.0":
+		if err := startMigration(stored, newVersion); err != nil {
+			return true, err
+		}
+
+		if herr := migrateTo0_2_0(ctx, stored, newVersion); herr != nil {
+			logger.Error("progressor_migration_handler_failed", "from", stored, "to", newVersion, "error", herr)
+			return true, herr
+		}
+
+		if err := finishMigration(newVersion); err != nil {
+			return true, err
+		}
+		return true, nil
+	default:
+		if err := store.SaveKey(systemVersionKey, []byte(newVersion)); err != nil {
+			logger.Error("progressor_persist_version_failed", "version", newVersion, "error", err)
+			return true, fmt.Errorf("failed to persist new version: %w", err)
+		}
+		return true, nil
+	}
 }
 
 func getStoredVersion() string {
-    v, err := store.GetKey(systemVersionKey)
-    if err != nil {
-        if store.IsNotFound(err) {
-            return defaultStoredVersion
-        }
-        return ""
-    }
-    return v
+	v, err := store.GetKey(systemVersionKey)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return defaultStoredVersion
+		}
+		return ""
+	}
+	return v
 }

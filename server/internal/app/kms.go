@@ -26,7 +26,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 	}
 
 	if !useEnc {
-		log.Printf("encryption enabled: false")
+		log.Printf("kms: encryption disabled")
 		return nil
 	}
 

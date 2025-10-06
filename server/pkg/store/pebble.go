@@ -85,28 +85,25 @@ func MaxSeqForThread(threadID string) (uint64, error) {
 // Open opens (or creates) a Pebble database at the given path and keeps
 // a global handle for simple usage in this package.
 func Open(path string) error {
-	var err error
-	logger.Info("opening_pebble_db", "path", path)
-	db, err = pebble.Open(path, &pebble.Options{})
-	if err != nil {
-		logger.Error("pebble_open_failed", "path", path, "error", err)
-		return err
-	}
-	logger.Info("pebble_opened", "path", path)
-	return nil
+    var err error
+    db, err = pebble.Open(path, &pebble.Options{})
+    if err != nil {
+        logger.Error("pebble_open_failed", "path", path, "error", err)
+        return err
+    }
+    return nil
 }
 
 // Close closes the opened pebble DB if present.
 func Close() error {
-	if db == nil {
-		return nil
-	}
-	if err := db.Close(); err != nil {
-		return err
-	}
-	db = nil
-	logger.Info("pebble_closed")
-	return nil
+    if db == nil {
+        return nil
+    }
+    if err := db.Close(); err != nil {
+        return err
+    }
+    db = nil
+    return nil
 }
 
 // Ready reports whether the store is opened and ready.
