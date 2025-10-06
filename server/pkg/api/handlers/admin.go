@@ -35,7 +35,7 @@ func RegisterAdmin(r *mux.Router) {
 	r.HandleFunc("/encryption/generate-kek", adminEncryptionGenerateKEK).Methods(http.MethodPost)
 	// Encrypt legacy (pre-encryption) messages: { all: bool, thread_ids: [], parallelism: 4 }
 	r.HandleFunc("/encryption/encrypt-existing", adminEncryptionEncryptExisting).Methods(http.MethodPost)
-	logger.Info("admin_routes_registered", nil)
+    logger.Info("admin_routes_registered")
 
 	// test-only retention trigger. The handler checks TESTING env var before
 	// executing; registration is safe in production but the handler will refuse

@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	systemVersionKey    = "system:version"
-	systemInProgressKey = "system:migration_in_progress"
+    systemVersionKey    = "system:version"
+    systemInProgressKey = "system:migration_in_progress"
 )
+
+const defaultStoredVersion = "0.1.2"
 
 // Sync performs upgrade work between versions. Edit in-place for migration logic.
 func Sync(ctx context.Context, from, to string) error {
@@ -64,12 +66,18 @@ func Sync(ctx context.Context, from, to string) error {
 // Run checks for a version change and runs Sync if needed.
 // Returns (invoked, error): invoked is true if Sync ran.
 func Run(ctx context.Context, newVersion string) (bool, error) {
-	logger.Info("progressor_version_check", "stored", getStoredVersion(), "running", newVersion)
-
-	stored, err := store.GetKey(systemVersionKey)
-	if err != nil && err.Error() != "" {
-		logger.Error("progressor_read_version_failed", "error", err)
-	}
+    logger.Info("progressor_version_check", "stored", getStoredVersion(), "running", newVersion)
+    stored, err := store.GetKey(systemVersionKey)
+    if err != nil {
+        // treat missing system version key as a first-run case and use the
+        // historical last-known version as a sensible default so migrations
+        // are calculated from that point.
+        if store.IsNotFound(err) {
+            stored = defaultStoredVersion
+        } else {
+            logger.Error("progressor_read_version_failed", "error", err)
+        }
+    }
 	if stored == newVersion {
 		logger.Info("progressor_noop", "version", newVersion)
 		return false, nil
@@ -109,6 +117,12 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 }
 
 func getStoredVersion() string {
-	v, _ := store.GetKey(systemVersionKey)
-	return v
+    v, err := store.GetKey(systemVersionKey)
+    if err != nil {
+        if store.IsNotFound(err) {
+            return defaultStoredVersion
+        }
+        return ""
+    }
+    return v
 }

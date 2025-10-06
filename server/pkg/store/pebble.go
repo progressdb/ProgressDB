@@ -1,21 +1,22 @@
 package store
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"progressdb/pkg/kms"
-	"progressdb/pkg/logger"
-	"strings"
-	"sync"
-	"time"
+    "bytes"
+    "encoding/base64"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "progressdb/pkg/kms"
+    "progressdb/pkg/logger"
+    "strings"
+    "sync"
+    "time"
 
-	"progressdb/pkg/models"
-	"progressdb/pkg/security"
-	"progressdb/pkg/utils"
+    "progressdb/pkg/models"
+    "progressdb/pkg/security"
+    "progressdb/pkg/utils"
 
-	"github.com/cockroachdb/pebble"
+    "github.com/cockroachdb/pebble"
 )
 
 var db *pebble.DB
@@ -644,16 +645,30 @@ func GetKey(key string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	v, closer, err := db.Get([]byte(key))
-	if err != nil {
-		logger.Error("get_key_failed", "key", key, "error", err)
-		return "", err
-	}
+    v, closer, err := db.Get([]byte(key))
+    if err != nil {
+        // Avoid noisy ERROR-level logs for missing keys; callers can decide
+        // how to handle NotFound. Log at Debug level for missing keys so
+        // normal absent-key flows (e.g. first-run/version key) are quiet.
+        if errors.Is(err, pebble.ErrNotFound) {
+            logger.Debug("get_key_missing", "key", key)
+        } else {
+            logger.Error("get_key_failed", "key", key, "error", err)
+        }
+        return "", err
+    }
 	if closer != nil {
 		defer closer.Close()
 	}
 	logger.Debug("get_key_ok", "key", key, "len", len(v))
 	return string(v), nil
+}
+
+// IsNotFound reports whether the provided error originates from Pebble's
+// not-found sentinel. Callers can use this to handle missing keys without
+// relying on string matching.
+func IsNotFound(err error) bool {
+    return errors.Is(err, pebble.ErrNotFound)
 }
 
 // SaveKey stores an arbitrary key/value pair. Use with caution; callers should
