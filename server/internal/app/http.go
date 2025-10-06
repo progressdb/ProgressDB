@@ -2,17 +2,15 @@ package app
 
 import (
 	"context"
-	"net/http"
 
-	"progressdb/pkg/api"
+	frouter "github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
+
+	"progressdb/pkg/api/handlers"
 	"progressdb/pkg/auth"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
 	"progressdb/pkg/store"
-	"progressdb/pkg/telemetry"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // printBanner prints the startup banner and build info.
@@ -37,67 +35,42 @@ func (a *App) printBanner() {
 	banner.PrintWithEff(a.eff, verStr)
 }
 
-// setupHTTPHandlers sets up all HTTP handlers on the provided mux.
-func (a *App) setupHTTPHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("/readyz", a.readyzHandler)
-	mux.Handle("/viewer/", http.StripPrefix("/viewer/", http.FileServer(http.Dir("./viewer"))))
-	mux.HandleFunc("/healthz", healthzHandler)
-	mux.Handle("/", api.Handler())
-	mux.Handle("/docs/", httpSwagger.Handler(httpSwagger.URL("/openapi.yaml")))
-	mux.Handle("/openapi.yaml", http.FileServer(http.Dir("./docs")))
-	mux.Handle("/metrics", promhttp.Handler())
-}
-
-// readyzHandler handles the /readyz endpoint.
-func (a *App) readyzHandler(w http.ResponseWriter, r *http.Request) {
+// readyzHandler handles the /readyz endpoint (fasthttp).
+func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 	// check store
 	if !store.Ready() {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("{\"status\":\"not ready\"}"))
+		ctx.SetStatusCode(fasthttp.StatusServiceUnavailable)
+		ctx.SetContentType("application/json")
+		_, _ = ctx.WriteString("{\"status\":\"not ready\"}")
 		return
 	}
-	// check KMS if configured
 	if a.rc != nil {
 		if err := a.rc.Health(); err != nil {
-			// RemoteClient may implement a more complete check
-			if hc, ok := interface{}(a.rc).(interface{ HealthCheck() error }); ok {
-				if derr := hc.HealthCheck(); derr != nil {
-					w.WriteHeader(http.StatusServiceUnavailable)
-					_, _ = w.Write([]byte("{\"status\":\"kms unhealthy\"}"))
-					return
-				}
-			} else {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte("{\"status\":\"kms unhealthy\"}"))
-				return
-			}
+			ctx.SetStatusCode(fasthttp.StatusServiceUnavailable)
+			_, _ = ctx.WriteString("{\"status\":\"kms unhealthy\"}")
+			return
 		}
 	}
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	// include the running version to help ops verify what binary is active
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	ctx.SetContentType("application/json")
 	ver := a.version
 	if ver == "" {
 		ver = "dev"
 	}
-	_, _ = w.Write([]byte("{\"status\":\"ok\",\"version\":\"" + ver + "\"}"))
+	_, _ = ctx.WriteString("{\"status\":\"ok\",\"version\":\"" + ver + "\"}")
 }
 
-// healthzHandler handles the /healthz endpoint.
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("{\"status\":\"ok\"}"))
+// healthzHandler handles the /healthz endpoint (fasthttp).
+func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
+	ctx.SetContentType("application/json")
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	_, _ = ctx.WriteString("{\"status\":\"ok\"}")
 }
 
-// startHTTP builds the handler, starts the HTTP server in a goroutine and
-// returns a channel that will contain any server error.
+// readyzHandler handles the /readyz endpoint.
+
+// startHTTP builds and starts the fasthttp server, returning a channel that delivers errors.
 func (a *App) startHTTP(_ context.Context) <-chan error {
-	// create a new http mux
-	mux := http.NewServeMux()
-	a.setupHTTPHandlers(mux)
-
 	// build security config for auth middleware
 	secCfg := auth.SecConfig{
 		AllowedOrigins: append([]string{}, a.eff.Config.Security.CORS.AllowedOrigins...),
@@ -129,23 +102,35 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	}
 	config.SetRuntime(runtimeCfg)
 
-	// wrap mux with auth middleware, then telemetry middleware
-	wrapped := auth.AuthenticateRequestMiddleware(secCfg)(mux)
-	wrapped = telemetry.Middleware(wrapped)
+	// build fasthttp router and register API routes
+	r := frouter.New()
+	// health and ready handlers
+	r.GET("/healthz", a.healthzHandlerFast)
+	r.GET("/readyz", a.readyzHandlerFast)
+	// Register API routes on fasthttp router
+	handlers.RegisterSigningFast(r)
+	handlers.RegisterMessagesFast(r)
+	handlers.RegisterThreadsFast(r)
+	handlers.RegisterAdminFast(r)
+	r.NotFound(func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(fasthttp.StatusNotFound)
+		ctx.SetContentType("application/json")
+		_, _ = ctx.WriteString(`{"error":"not found"}`)
+	})
 
-	// create http server
-	a.srv = &http.Server{Addr: a.eff.Addr, Handler: wrapped}
+	fastHandler := r.Handler
+	// wrap with fasthttp native auth middleware
+	fastHandler = auth.AuthenticateRequestMiddlewareFast(secCfg)(fastHandler)
+
+	// create fasthttp server
+	a.srvFast = &fasthttp.Server{Handler: fastHandler}
 
 	// start server in goroutine and return error channel
 	errCh := make(chan error, 1)
 	go func() {
-		cert := a.eff.Config.Server.TLS.CertFile
-		key := a.eff.Config.Server.TLS.KeyFile
-		if cert != "" && key != "" {
-			errCh <- a.srv.ListenAndServeTLS(cert, key)
-		} else {
-			errCh <- a.srv.ListenAndServe()
-		}
+		// fasthttp has no direct TLS helper like ListenAndServeTLS here; for
+		// simplicity run plain TCP. TLS can be handled by a proxy in production.
+		errCh <- a.srvFast.ListenAndServe(a.eff.Addr)
 	}()
 	return errCh
 }

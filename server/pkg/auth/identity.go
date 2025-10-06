@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/valyala/fasthttp"
+
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/utils"
@@ -177,4 +179,62 @@ func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, 
 	// otherwise require signature
 	logger.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
 	return "", http.StatusUnauthorized, "missing or invalid author signature"
+}
+
+// ResolveAuthorFromRequestFast is the fasthttp variant of ResolveAuthorFromRequest.
+func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (string, int, string) {
+	// signature-verified author from user value if present
+	if v := ctx.UserValue("author"); v != nil {
+		if id, ok := v.(string); ok && id != "" {
+			logger.Info("author_signature_verified", "author", id, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			if q := string(ctx.QueryArgs().Peek("author")); q != "" && q != id {
+				logger.Warn("author_mismatch_signature_query", "signature", id, "query", q, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusForbidden, "author mismatch between signature and query param"
+			}
+			if h := string(ctx.Request.Header.Peek("X-User-ID")); h != "" && h != id {
+				logger.Warn("author_mismatch_signature_header", "signature", id, "header", h, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusForbidden, "author mismatch between signature and header"
+			}
+			if bodyAuthor != "" && bodyAuthor != id {
+				logger.Warn("author_mismatch_signature_body", "signature", id, "body", bodyAuthor, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusForbidden, "author mismatch between signature and body author"
+			}
+			logger.Info("author_resolved_signature", "author", id, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return id, 0, ""
+		}
+	}
+
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	logger.Info("no_signature_found", "role", role, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+	if role == "backend" || role == "admin" {
+		if bodyAuthor != "" {
+			if ok, msg := validateAuthor(bodyAuthor); !ok {
+				logger.Warn("invalid_backend_author", "user", bodyAuthor, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusBadRequest, msg
+			}
+			logger.Info("author_from_body_backend", "user", bodyAuthor, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return bodyAuthor, 0, ""
+		}
+		if h := string(ctx.Request.Header.Peek("X-User-ID")); h != "" {
+			if ok, msg := validateAuthor(h); !ok {
+				logger.Warn("invalid_backend_author", "user", h, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusBadRequest, msg
+			}
+			logger.Info("author_from_header_backend", "user", h, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return h, 0, ""
+		}
+		if q := string(ctx.QueryArgs().Peek("author")); q != "" {
+			if ok, msg := validateAuthor(q); !ok {
+				logger.Warn("invalid_backend_author", "user", q, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+				return "", fasthttp.StatusBadRequest, msg
+			}
+			logger.Info("author_from_query_backend", "user", q, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return q, 0, ""
+		}
+		logger.Warn("backend_missing_author", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+		return "", fasthttp.StatusBadRequest, "author required for backend requests"
+	}
+
+	logger.Warn("missing_author_signature", "role", role, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+	return "", fasthttp.StatusUnauthorized, "missing or invalid author signature"
 }

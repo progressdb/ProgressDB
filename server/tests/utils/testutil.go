@@ -5,11 +5,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
-	"net/http/httptest"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api"
 	"progressdb/pkg/config"
@@ -18,58 +20,71 @@ import (
 	"progressdb/pkg/store"
 )
 
-// localServer is a lightweight test server that routes requests directly to
-// the provided handler without creating real network listeners. It replaces
-// the global http.DefaultClient Transport while active and restores it on Close.
+// LocalServer starts an in-process fasthttp server bound to an ephemeral
+// localhost port. Tests can send regular net/http requests to LocalServer.URL.
 type LocalServer struct {
-	URL  string
-	prev *http.Client
+	URL string
+
+	srv *fasthttp.Server
+	ln  net.Listener
 }
 
 func (s *LocalServer) Close() {
-	if s.prev != nil {
-		http.DefaultClient = s.prev
+	if s.srv != nil {
+		_ = s.srv.Shutdown()
 	}
-	// Flush any logger state at test teardown.
+	if s.ln != nil {
+		_ = s.ln.Close()
+	}
 	logger.Sync()
 }
 
-type handlerRoundTripper struct {
-	handler http.Handler
-}
-
-func (h *handlerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	rr := httptest.NewRecorder()
-	h.handler.ServeHTTP(rr, req)
-	return rr.Result(), nil
-}
-
-// SetupServer initializes dependencies and returns a local test server that
-// routes requests directly to the API handler.
+// SetupServer initializes dependencies and starts a fasthttp server listening
+// on an ephemeral localhost port for use in tests.
 func SetupServer(t *testing.T) *LocalServer {
 	t.Helper()
+
 	dir := t.TempDir()
 	dbpath := dir + "/db"
 	storePath := filepath.Join(dbpath, "store")
 	_ = os.MkdirAll(storePath, 0o700)
+
 	logger.Init()
 	if err := store.Open(storePath); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}
+
 	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	prov, err := kms.NewHashicorpEmbeddedProvider(context.Background(), mk)
 	if err != nil {
 		t.Fatalf("NewHashicorpEmbeddedProvider: %v", err)
 	}
 	kms.RegisterKMSProvider(prov)
+
 	cfg := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"signsecret": {}}}
 	config.SetRuntime(cfg)
-	prev := http.DefaultClient
-	http.DefaultClient = &http.Client{Transport: &handlerRoundTripper{handler: api.Handler()}}
-	return &LocalServer{URL: "http://localtest", prev: prev}
+
+	h := api.Handler()
+	srv := &fasthttp.Server{Handler: h}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	go func() {
+		if err := srv.Serve(ln); err != nil {
+			t.Logf("fasthttp server stopped: %v", err)
+		}
+	}()
+
+	// Give the server a brief moment to start accepting connections.
+	time.Sleep(10 * time.Millisecond)
+
+	return &LocalServer{URL: "http://" + ln.Addr().String(), srv: srv, ln: ln}
 }
 
-// SignHMAC returns hex HMAC-SHA256 of user using key
+// SignHMAC returns hex HMAC-SHA256 of user using key.
 func SignHMAC(key, user string) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(user))

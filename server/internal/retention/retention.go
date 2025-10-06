@@ -39,10 +39,10 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 	ret := eff.Config.Retention
 
 	// if retention is not enabled, return no-op cancel
-    if !ret.Enabled {
-        logger.Info("retention_disabled")
-        return func() {}, nil
-    }
+	if !ret.Enabled {
+		logger.Info("retention_disabled")
+		return func() {}, nil
+	}
 
 	// Use a stable retention folder under the DB path for lock and retention
 	// artifacts: <DBPath>/state/retention.
@@ -88,9 +88,9 @@ const defaultLockTTL = 300000 * time.Millisecond
 func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPath string, cronExpr string) {
 	for {
 		select {
-        case <-ctx.Done():
-            logger.Info("retention_scheduler_stopping")
-            return
+		case <-ctx.Done():
+			logger.Info("retention_scheduler_stopping")
+			return
 		default:
 		}
 
@@ -101,12 +101,12 @@ func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPa
 		if err != nil {
 			logger.Error("retention_nexttick_failed", "cron", cronExpr, "error", err)
 			// fallback sleep then retry
-            select {
-            case <-time.After(30 * time.Second):
-            case <-ctx.Done():
-                logger.Info("retention_scheduler_stopping")
-                return
-            }
+			select {
+			case <-time.After(30 * time.Second):
+			case <-ctx.Done():
+				logger.Info("retention_scheduler_stopping")
+				return
+			}
 			continue
 		}
 
@@ -119,12 +119,12 @@ func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPa
 				}
 			}()
 			// small sleep to avoid tight loop
-            select {
-            case <-time.After(time.Second):
-            case <-ctx.Done():
-                logger.Info("retention_scheduler_stopping")
-                return
-            }
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				logger.Info("retention_scheduler_stopping")
+				return
+			}
 			continue
 		}
 

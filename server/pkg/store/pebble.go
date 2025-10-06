@@ -1,24 +1,24 @@
 package store
 
 import (
-    "bytes"
-    "context"
-    "encoding/base64"
-    "encoding/json"
-    "errors"
-    "fmt"
-    "progressdb/pkg/kms"
-    "progressdb/pkg/logger"
-    "strings"
-    "sync"
-    "time"
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
+	"strings"
+	"sync"
+	"time"
 
-    "progressdb/pkg/models"
-    "progressdb/pkg/security"
-    "progressdb/pkg/utils"
-    "progressdb/pkg/telemetry"
+	"progressdb/pkg/models"
+	"progressdb/pkg/security"
+	"progressdb/pkg/telemetry"
+	"progressdb/pkg/utils"
 
-    "github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble"
 )
 
 var db *pebble.DB
@@ -87,25 +87,25 @@ func MaxSeqForThread(threadID string) (uint64, error) {
 // Open opens (or creates) a Pebble database at the given path and keeps
 // a global handle for simple usage in this package.
 func Open(path string) error {
-    var err error
-    db, err = pebble.Open(path, &pebble.Options{})
-    if err != nil {
-        logger.Error("pebble_open_failed", "path", path, "error", err)
-        return err
-    }
-    return nil
+	var err error
+	db, err = pebble.Open(path, &pebble.Options{})
+	if err != nil {
+		logger.Error("pebble_open_failed", "path", path, "error", err)
+		return err
+	}
+	return nil
 }
 
 // Close closes the opened pebble DB if present.
 func Close() error {
-    if db == nil {
-        return nil
-    }
-    if err := db.Close(); err != nil {
-        return err
-    }
-    db = nil
-    return nil
+	if db == nil {
+		return nil
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+	db = nil
+	return nil
 }
 
 // Ready reports whether the store is opened and ready.
@@ -141,34 +141,34 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-    // if encryption is enabled, encrypt the message body or fields according to the policy
-    if security.EncryptionEnabled() {
-        getThreadSpan := telemetry.StartSpan(ctx, "store.get_thread")
-        sthr, terr := GetThread(threadID)
-        getThreadSpan()
-        if terr != nil {
-            return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
-        }
-        var th models.Thread
-        if err := json.Unmarshal([]byte(sthr), &th); err != nil {
-            return fmt.Errorf("invalid thread metadata: %w", err)
-        }
-        encSpan := telemetry.StartSpan(ctx, "store.encrypt_message")
-        encBody, err := security.EncryptMessageBody(&msg, th)
-        encSpan()
-        if err != nil {
-            return fmt.Errorf("encryption failed: %w", err)
-        }
-        // If EncryptMessageBody returns a new body, update msg.Body and marshal
-        if encBody != nil {
-            msg.Body = encBody
-            nb, err := json.Marshal(msg)
-            if err != nil {
-                return fmt.Errorf("failed to marshal message after encryption: %w", err)
-            }
-            data = nb
-        }
-    }
+	// if encryption is enabled, encrypt the message body or fields according to the policy
+	if security.EncryptionEnabled() {
+		getThreadSpan := telemetry.StartSpanNoCtx("store.get_thread")
+		sthr, terr := GetThread(threadID)
+		getThreadSpan()
+		if terr != nil {
+			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
+		}
+		var th models.Thread
+		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
+			return fmt.Errorf("invalid thread metadata: %w", err)
+		}
+		encSpan := telemetry.StartSpanNoCtx("store.encrypt_message")
+		encBody, err := security.EncryptMessageBody(&msg, th)
+		encSpan()
+		if err != nil {
+			return fmt.Errorf("encryption failed: %w", err)
+		}
+		// If EncryptMessageBody returns a new body, update msg.Body and marshal
+		if encBody != nil {
+			msg.Body = encBody
+			nb, err := json.Marshal(msg)
+			if err != nil {
+				return fmt.Errorf("failed to marshal message after encryption: %w", err)
+			}
+			data = nb
+		}
+	}
 
 	// Before persisting, obtain and bump the per-thread LastSeq so we can
 	// persist a durable per-thread sequence suffix. Guard with an in-process
@@ -183,14 +183,14 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	if terr2 == nil {
 		_ = json.Unmarshal([]byte(sthr2), &th)
 	}
-    // If LastSeq is zero, attempt to compute a starting value from existing keys
-    if th.LastSeq == 0 {
-        compSpan := telemetry.StartSpan(ctx, "store.compute_max_seq")
-        if max, err := computeMaxSeq(threadID); err == nil {
-            th.LastSeq = max
-        }
-        compSpan()
-    }
+	// If LastSeq is zero, attempt to compute a starting value from existing keys
+	if th.LastSeq == 0 {
+		compSpan := telemetry.StartSpanNoCtx("store.compute_max_seq")
+		if max, err := computeMaxSeq(threadID); err == nil {
+			th.LastSeq = max
+		}
+		compSpan()
+	}
 	// bump per-thread seq
 	th.LastSeq = th.LastSeq + 1
 
@@ -223,13 +223,13 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 		batch.Set([]byte(ik), data, pebble.Sync)
 	}
-    dbSpan := telemetry.StartSpan(ctx, "store.db_apply")
-    if err := db.Apply(batch, pebble.Sync); err != nil {
-        dbSpan()
-        logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
-        return err
-    }
-    dbSpan()
+	dbSpan := telemetry.StartSpanNoCtx("store.db_apply")
+	if err := db.Apply(batch, pebble.Sync); err != nil {
+		dbSpan()
+		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
+		return err
+	}
+	dbSpan()
 	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	return nil
 }
@@ -569,8 +569,8 @@ func SoftDeleteThread(threadID, actor string) error {
 		return err
 	}
 
-    // append tombstone message to the thread
-    tomb := models.Message{
+	// append tombstone message to the thread
+	tomb := models.Message{
 		ID:      utils.GenID(),
 		Thread:  threadID,
 		Author:  actor,
@@ -578,11 +578,11 @@ func SoftDeleteThread(threadID, actor string) error {
 		Body:    map[string]interface{}{"_event": "thread_deleted", "by": actor},
 		Deleted: true,
 	}
-    // SaveMessage expects a context, pass background here (internal path)
-    if err := SaveMessage(context.Background(), threadID, tomb.ID, tomb); err != nil {
-        logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
-        return err
-    }
+	// SaveMessage expects a context, pass background here (internal path)
+	if err := SaveMessage(context.Background(), threadID, tomb.ID, tomb); err != nil {
+		logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
+		return err
+	}
 
 	logger.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil
@@ -653,18 +653,18 @@ func GetKey(key string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
-    v, closer, err := db.Get([]byte(key))
-    if err != nil {
-        // Avoid noisy ERROR-level logs for missing keys; callers can decide
-        // how to handle NotFound. Log at Debug level for missing keys so
-        // normal absent-key flows (e.g. first-run/version key) are quiet.
-        if errors.Is(err, pebble.ErrNotFound) {
-            logger.Debug("get_key_missing", "key", key)
-        } else {
-            logger.Error("get_key_failed", "key", key, "error", err)
-        }
-        return "", err
-    }
+	v, closer, err := db.Get([]byte(key))
+	if err != nil {
+		// Avoid noisy ERROR-level logs for missing keys; callers can decide
+		// how to handle NotFound. Log at Debug level for missing keys so
+		// normal absent-key flows (e.g. first-run/version key) are quiet.
+		if errors.Is(err, pebble.ErrNotFound) {
+			logger.Debug("get_key_missing", "key", key)
+		} else {
+			logger.Error("get_key_failed", "key", key, "error", err)
+		}
+		return "", err
+	}
 	if closer != nil {
 		defer closer.Close()
 	}
@@ -676,7 +676,7 @@ func GetKey(key string) (string, error) {
 // not-found sentinel. Callers can use this to handle missing keys without
 // relying on string matching.
 func IsNotFound(err error) bool {
-    return errors.Is(err, pebble.ErrNotFound)
+	return errors.Is(err, pebble.ErrNotFound)
 }
 
 // SaveKey stores an arbitrary key/value pair. Use with caution; callers should

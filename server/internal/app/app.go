@@ -1,19 +1,21 @@
 package app
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
 	"github.com/joho/godotenv"
 
 	"net/http"
 
-    "progressdb/internal/retention"
-    "progressdb/pkg/config"
-    "progressdb/pkg/kms"
-    "progressdb/pkg/security"
-    "progressdb/pkg/state"
-    "progressdb/pkg/store"
+	"github.com/valyala/fasthttp"
+
+	"progressdb/internal/retention"
+	"progressdb/pkg/config"
+	"progressdb/pkg/kms"
+	"progressdb/pkg/security"
+	"progressdb/pkg/state"
+	"progressdb/pkg/store"
 )
 
 // App encapsulates the server components and lifecycle.
@@ -28,8 +30,9 @@ type App struct {
 	rc     *kms.RemoteClient
 	cancel context.CancelFunc
 
-	srv   *http.Server
-	state string
+	srv     *http.Server
+	srvFast *fasthttp.Server
+	state   string
 }
 
 // New initializes resources that do not require a running context (DB,
@@ -91,8 +94,8 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
-    // start HTTP server
-    errCh := a.startHTTP(ctx)
+	// start HTTP server
+	errCh := a.startHTTP(ctx)
 
 	select {
 	case <-ctx.Done():

@@ -45,14 +45,14 @@ func TestProgressorInitializesLastSeq(t *testing.T) {
 		t.Fatalf("DBSet k2: %v", err)
 	}
 
-    // run migration via the progressor Run entrypoint
-    invoked, err := progressor.Run(context.Background(), "0.2.0")
-    if err != nil {
-        t.Fatalf("progressor.Run: %v", err)
-    }
-    if !invoked {
-        t.Fatalf("expected progressor to run migration but it did not")
-    }
+	// run migration via the progressor Run entrypoint
+	invoked, err := progressor.Run(context.Background(), "0.2.0")
+	if err != nil {
+		t.Fatalf("progressor.Run: %v", err)
+	}
+	if !invoked {
+		t.Fatalf("expected progressor to run migration but it did not")
+	}
 
 	// verify LastSeq updated to 7
 	s, err := store.GetThread(th.ID)

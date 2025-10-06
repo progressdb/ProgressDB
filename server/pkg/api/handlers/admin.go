@@ -6,63 +6,55 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
-	"strings"
 
-	"progressdb/pkg/logger"
-
-	"github.com/gorilla/mux"
+	"github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
 )
 
-// RegisterAdmin registers admin-only routes onto the admin subrouter.
-func RegisterAdmin(r *mux.Router) {
-	r.HandleFunc("/health", adminHealth).Methods(http.MethodGet)
-	r.HandleFunc("/stats", adminStats).Methods(http.MethodGet)
-	r.HandleFunc("/threads", adminListThreads).Methods(http.MethodGet)
-	r.HandleFunc("/keys", adminListKeys).Methods(http.MethodGet)
-	r.HandleFunc("/keys/{key}", adminGetKey).Methods(http.MethodGet)
-	// Encryption admin routes
-	r.HandleFunc("/encryption/rotate-thread-dek", adminEncryptionRotateThreadDEK).Methods(http.MethodPost)
-	r.HandleFunc("/encryption/rewrap-deks", adminEncryptionRewrapDEKs).Methods(http.MethodPost)
-	r.HandleFunc("/encryption/generate-kek", adminEncryptionGenerateKEK).Methods(http.MethodPost)
-	// Encrypt legacy (pre-encryption) messages: { all: bool, thread_ids: [], parallelism: 4 }
-	r.HandleFunc("/encryption/encrypt-existing", adminEncryptionEncryptExisting).Methods(http.MethodPost)
-    logger.Info("admin_routes_registered")
-
-	// test-only retention trigger. The handler checks TESTING env var before
-	// executing; registration is safe in production but the handler will refuse
-	// to run unless tests explicitly enable it.
-	r.HandleFunc("/test/retention-run", adminTestRetentionRun).Methods(http.MethodPost)
+// RegisterAdminFast registers all admin endpoints on the fasthttp router.
+func RegisterAdminFast(r *router.Router) {
+	r.GET("/admin/health", adminHealthFast)
+	r.GET("/admin/stats", adminStatsFast)
+	r.GET("/admin/threads", adminListThreadsFast)
+	r.GET("/admin/keys", adminListKeysFast)
+	r.GET("/admin/keys/{key}", adminGetKeyFast)
+	r.POST("/admin/encryption/rotate-thread-dek", adminEncryptionRotateThreadDEKFast)
+	r.POST("/admin/encryption/rewrap-deks", adminEncryptionRewrapDEKsFast)
+	r.POST("/admin/encryption/generate-kek", adminEncryptionGenerateKEKFast)
+	r.POST("/admin/encryption/encrypt-existing", adminEncryptionEncryptExistingFast)
+	r.POST("/admin/test-retention-run", adminTestRetentionRunFast)
 }
 
-func adminHealth(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminHealthFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(`{"status":"ok","service":"progressdb"}`))
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_, _ = ctx.WriteString(`{"status":"ok","service":"progressdb"}`)
 }
 
-func adminStats(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminStatsFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	ctx.Response.Header.Set("Content-Type", "application/json")
 	threads, _ := store.ListThreads()
 	var msgCount int64
-	for _, tRaw := range threads {
+	for _, raw := range threads {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(tRaw), &th); err != nil {
+		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
 		}
 		msgs, err := store.ListMessages(th.ID)
@@ -71,169 +63,135 @@ func adminStats(w http.ResponseWriter, r *http.Request) {
 		}
 		msgCount += int64(len(msgs))
 	}
-	out := struct {
+	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads  int   `json:"threads"`
 		Messages int64 `json:"messages"`
-	}{Threads: len(threads), Messages: msgCount}
-	_ = json.NewEncoder(w).Encode(out)
+	}{Threads: len(threads), Messages: msgCount})
 }
 
-func adminListThreads(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminListThreadsFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	ctx.Response.Header.Set("Content-Type", "application/json")
 	vals, err := store.ListThreads()
 	if err != nil {
-		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = json.NewEncoder(w).Encode(struct {
+	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads []json.RawMessage `json:"threads"`
 	}{Threads: utils.ToRawMessages(vals)})
 }
 
-// adminListKeys lists keys in the underlying store. Optional query param
-// `prefix` can be provided to limit keys by prefix.
-func adminListKeys(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminListKeysFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	prefix := r.URL.Query().Get("prefix")
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	prefix := string(ctx.QueryArgs().Peek("prefix"))
 	keys, err := store.ListKeys(prefix)
 	if err != nil {
-		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = json.NewEncoder(w).Encode(struct {
+	_ = json.NewEncoder(ctx).Encode(struct {
 		Keys []string `json:"keys"`
 	}{Keys: keys})
 }
 
-// adminGetKey returns the raw value for a given key. The key path variable
-// is URL-unescaped before lookup.
-func adminGetKey(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminGetKeyFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	vars := mux.Vars(r)
-	keyEnc, ok := vars["key"]
-	if !ok {
-		http.Error(w, `{"error":"missing key"}`, http.StatusBadRequest)
+	keyEnc := pathParam(ctx, "key")
+	if keyEnc == "" {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing key")
 		return
 	}
-	// URL path variables are not automatically unescaped by gorilla/mux,
-	// so use PathUnescape to recover the original key string.
 	key, err := url.PathUnescape(keyEnc)
 	if err != nil {
-		http.Error(w, `{"error":"invalid key encoding"}`, http.StatusBadRequest)
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
 		return
 	}
-	v, err := store.GetKey(key)
+	val, err := store.GetKey(key)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	_, _ = w.Write([]byte(v))
+	ctx.Response.Header.Set("Content-Type", "application/octet-stream")
+	_, _ = ctx.Write([]byte(val))
 }
 
-func adminEncryptionRotateThreadDEK(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminEncryptionRotateThreadDEKFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	var req struct {
 		ThreadID string `json:"thread_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
-		if logger.Audit != nil {
-			logger.Audit.Info("admin_rotate_thread_dek", "status", "error", "error", "invalid request")
-		} else {
-			logger.Info("admin_rotate_thread_dek", "status", "error", "error", "invalid request")
-		}
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
+		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "invalid request"})
 		return
 	}
-	if req.ThreadID == "" {
-		http.Error(w, `{"error":"missing thread_id"}`, http.StatusBadRequest)
-		if logger.Audit != nil {
-			logger.Audit.Info("admin_rotate_thread_dek", "status", "error", "error", "missing thread_id")
-		} else {
-			logger.Info("admin_rotate_thread_dek", "status", "error", "error", "missing thread_id")
-		}
-		return
-	}
-	// create new DEK for thread
-	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		if logger.Audit != nil {
-			logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "status", "error", "error", err.Error())
-		} else {
-			logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "status", "error", "error", err.Error())
-		}
-		return
-	}
-	// perform migration first (use the existing thread metadata/old key)
-	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		if logger.Audit != nil {
-			logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "error", "error", err.Error())
-		} else {
-			logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "error", "error", err.Error())
-		}
+	if strings.TrimSpace(req.ThreadID) == "" {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing thread_id")
+		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "missing thread_id"})
 		return
 	}
 
-	// persist wrapped DEK and KEK metadata into thread record (canonical location)
+	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
+	if err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "status": "error", "error": err.Error()})
+		return
+	}
+
+	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "error", "error": err.Error()})
+		return
+	}
+
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
-			// If we have a wrapped value, persist it; otherwise the field will be empty.
-			if nb, merr := json.Marshal(th); merr == nil {
-				_ = store.SaveThread(th.ID, string(nb))
+			if payload, merr := json.Marshal(th); merr == nil {
+				_ = store.SaveThread(th.ID, string(payload))
 			}
 		}
 	}
 
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
-	if logger.Audit != nil {
-		logger.Audit.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "ok")
-	} else {
-		logger.Info("admin_rotate_thread_dek", "thread_id", req.ThreadID, "new_key", newKeyID, "status", "ok")
-	}
+	_ = json.NewEncoder(ctx).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
+	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
 }
 
-func adminTestRetentionRun(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminTestRetentionRunFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	// Only allow this in test environments
 	if v := os.Getenv("PROGRESSDB_TESTING"); v != "1" && strings.ToLower(v) != "true" {
-		http.Error(w, `{"error":"test endpoint disabled"}`, http.StatusForbidden)
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "test endpoint disabled")
 		return
 	}
 	if err := retention.RunImmediate(); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_, _ = ctx.WriteString(`{"status":"ok"}`)
 }
 
-// adminEncryptionRewrapDEKs triggers rewrap operations for DEKs related to threads.
-// Request JSON:
-// { "thread_ids": ["t1","t2"], "all": false, "new_kek_hex": "<hex>", "parallelism": 4 }
-func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+func adminEncryptionRewrapDEKsFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	var req struct {
@@ -242,52 +200,31 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 		NewKEKHex   string   `json:"new_kek_hex"`
 		Parallelism int      `json:"parallelism"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "invalid request")
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
 		return
 	}
 	if strings.TrimSpace(req.NewKEKHex) == "" {
-		utils.JSONError(w, http.StatusBadRequest, "missing new_kek_hex")
-		if logger.Audit != nil {
-			logger.Audit.Info("admin_rewrap_deks", "status", "error", "error", "missing new_kek_hex")
-		} else {
-			logger.Info("admin_rewrap_deks", "status", "error", "error", "missing new_kek_hex")
-		}
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing new_kek_hex")
+		auditLog("admin_rewrap_deks", map[string]interface{}{"status": "error", "error": "missing new_kek_hex"})
 		return
 	}
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
 
-	// Determine thread IDs
-	var threads []string
-	if req.All {
-		tvals, err := store.ListThreads()
-		if err != nil {
-			utils.JSONError(w, http.StatusInternalServerError, "failed list threads")
-			return
-		}
-		for _, t := range tvals {
-			var th models.Thread
-			if err := json.Unmarshal([]byte(t), &th); err != nil {
-				continue
-			}
-			threads = append(threads, th.ID)
-		}
-	} else {
-		threads = req.ThreadIDs
+	threads, err := determineThreadIDs(req.ThreadIDs, req.All)
+	if err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
 	}
-
 	if len(threads) == 0 {
-		utils.JSONError(w, http.StatusBadRequest, "no threads specified")
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no threads specified")
 		return
 	}
 
-	// Build unique list of key IDs from thread metadata
 	keyIDs := make(map[string]struct{})
 	for _, tid := range threads {
-		// lookup thread meta
-		// read canonical thread metadata to get key id
 		if s, err := store.GetThread(tid); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
@@ -299,77 +236,56 @@ func adminEncryptionRewrapDEKs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(keyIDs) == 0 {
-		utils.JSONError(w, http.StatusBadRequest, "no key mappings found for provided threads")
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no key mappings found for provided threads")
 		return
 	}
 
-	// Create remote client bound to the configured endpoint
-	// Use registered provider via security bridge; avoid creating per-request remote clients.
-	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)
-	type res struct {
+	type result struct {
 		Key string
 		Err string
 		Kek string
 	}
-	resCh := make(chan res, len(keyIDs))
+	resCh := make(chan result, len(keyIDs))
 	for kid := range keyIDs {
 		sem <- struct{}{}
-		go func(k string) {
+		go func(id string) {
 			defer func() { <-sem }()
-			_, newKek, _, err := kms.RewrapDEKForThread(k, strings.TrimSpace(req.NewKEKHex))
+			_, newKek, _, err := kms.RewrapDEKForThread(id, strings.TrimSpace(req.NewKEKHex))
 			if err != nil {
-				resCh <- res{Key: k, Err: err.Error()}
+				resCh <- result{Key: id, Err: err.Error()}
 				return
 			}
-			resCh <- res{Key: k, Kek: newKek}
+			resCh <- result{Key: id, Kek: newKek}
 		}(kid)
 	}
-	// wait for all
 	for i := 0; i < cap(sem); i++ {
 		sem <- struct{}{}
 	}
 	close(resCh)
 
-	// gather results
 	out := map[string]map[string]string{}
-	for rres := range resCh {
-		if _, ok := out[rres.Key]; !ok {
-			out[rres.Key] = map[string]string{}
+	for res := range resCh {
+		if _, ok := out[res.Key]; !ok {
+			out[res.Key] = map[string]string{}
 		}
-		if rres.Err != "" {
-			out[rres.Key]["status"] = "error"
-			out[rres.Key]["error"] = rres.Err
+		if res.Err != "" {
+			out[res.Key]["status"] = "error"
+			out[res.Key]["error"] = res.Err
 		} else {
-			out[rres.Key]["status"] = "ok"
-			out[rres.Key]["kek_id"] = rres.Kek
+			out[res.Key]["status"] = "ok"
+			out[res.Key]["kek_id"] = res.Kek
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out)
-	// emit audit summary
-	if logger.Audit != nil {
-		okCount := 0
-		errCount := 0
-		for _, m := range out {
-			if s, ok := m["status"]; ok && s == "ok" {
-				okCount++
-			} else {
-				errCount++
-			}
-		}
-		logger.Audit.Info("admin_rewrap_deks", "threads", len(threads), "keys", len(keyIDs), "ok", okCount, "errors", errCount)
-	} else {
-		logger.Info("admin_rewrap_deks", "threads", len(threads), "keys", len(keyIDs))
-	}
+
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_ = json.NewEncoder(ctx).Encode(out)
+	auditSummary("admin_rewrap_deks", len(threads), len(keyIDs), out)
 }
 
-// adminEncryptionEncryptExisting encrypts legacy plaintext messages for threads that
-// already have a DEK configured. Request JSON:
-// { "thread_ids": ["t1","t2"], "all": false, "parallelism": 4 }
-func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
+func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	var req struct {
@@ -377,186 +293,188 @@ func adminEncryptionEncryptExisting(w http.ResponseWriter, r *http.Request) {
 		All         bool     `json:"all"`
 		Parallelism int      `json:"parallelism"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "invalid request")
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
 		return
 	}
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
 
-	// Determine thread IDs
-	var threads []string
-	if req.All {
-		tvals, err := store.ListThreads()
-		if err != nil {
-			http.Error(w, `{"error":"failed list threads"}`, http.StatusInternalServerError)
-			return
-		}
-		for _, t := range tvals {
-			var th models.Thread
-			if err := json.Unmarshal([]byte(t), &th); err != nil {
-				continue
-			}
-			threads = append(threads, th.ID)
-		}
-	} else {
-		threads = req.ThreadIDs
+	threads, err := determineThreadIDs(req.ThreadIDs, req.All)
+	if err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
 	}
-
 	if len(threads) == 0 {
-		utils.JSONError(w, http.StatusBadRequest, "no threads specified")
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no threads specified")
 		return
 	}
 
-	// Create remote client bound to the configured endpoint
-	// Concurrency
 	sem := make(chan struct{}, req.Parallelism)
-	type res struct {
+	type result struct {
 		Thread string
 		Key    string
 		Err    string
 	}
-	resCh := make(chan res, len(threads))
+	resCh := make(chan result, len(threads))
 	for _, tid := range threads {
 		sem <- struct{}{}
-		go func(tid string) {
+		go func(threadID string) {
 			defer func() { <-sem }()
-			// lookup thread meta
-			s, err := store.GetThread(tid)
+			stored, err := store.GetThread(threadID)
 			if err != nil {
-				resCh <- res{Thread: tid, Err: "thread not found"}
+				resCh <- result{Thread: threadID, Err: "thread not found"}
 				return
 			}
 			var th models.Thread
-			if err := json.Unmarshal([]byte(s), &th); err != nil {
-				resCh <- res{Thread: tid, Err: "invalid thread metadata"}
+			if err := json.Unmarshal([]byte(stored), &th); err != nil {
+				resCh <- result{Thread: threadID, Err: "invalid thread metadata"}
 				return
 			}
 			if th.KMS == nil || th.KMS.KeyID == "" {
-				// provision a DEK for this thread
-				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(tid)
+				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
 				if err != nil {
-					resCh <- res{Thread: tid, Err: "create DEK failed: " + err.Error()}
+					resCh <- result{Thread: threadID, Err: "create DEK failed: " + err.Error()}
 					return
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
-				if nb, merr := json.Marshal(th); merr == nil {
-					_ = store.SaveThread(th.ID, string(nb))
+				if payload, merr := json.Marshal(th); merr == nil {
+					_ = store.SaveThread(th.ID, string(payload))
 				}
-			} else {
-				// already has DEK: skip provisioning and only report later
 			}
-			// iterate messages and encrypt plaintext ones
-			mp, merr := store.MsgPrefix(tid)
+
+			prefix, merr := store.MsgPrefix(threadID)
 			if merr != nil {
-				resCh <- res{Thread: tid, Err: merr.Error()}
+				resCh <- result{Thread: threadID, Err: merr.Error()}
 				return
 			}
-			prefix := []byte(mp)
 			iter, err := store.DBIter()
 			if err != nil {
-				resCh <- res{Thread: tid, Err: err.Error()}
+				resCh <- result{Thread: threadID, Err: err.Error()}
 				return
 			}
 			defer iter.Close()
-			for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
-				if !bytes.HasPrefix(iter.Key(), prefix) {
+			pfx := []byte(prefix)
+			for iter.SeekGE(pfx); iter.Valid(); iter.Next() {
+				if !bytes.HasPrefix(iter.Key(), pfx) {
 					break
 				}
 				k := append([]byte(nil), iter.Key()...)
 				v := append([]byte(nil), iter.Value()...)
-				// If value looks like JSON, assume plaintext and encrypt it.
 				if store.LikelyJSON(v) {
 					ct, kv, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
-						resCh <- res{Thread: tid, Err: err.Error()}
+						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
-					// backup original
 					backupKey := append([]byte("backup:encrypt:"), k...)
 					if err := store.SaveKey(string(backupKey), v); err != nil {
-						resCh <- res{Thread: tid, Err: err.Error()}
+						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
-					// write new ciphertext
 					if err := store.DBSet(k, ct); err != nil {
-						resCh <- res{Thread: tid, Err: err.Error()}
+						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
-					_ = kv // ignore key version here
+					_ = kv
 				}
 			}
-			resCh <- res{Thread: tid, Key: th.KMS.KeyID}
+			resCh <- result{Thread: threadID, Key: th.KMS.KeyID}
 		}(tid)
 	}
-	// wait for all
 	for i := 0; i < cap(sem); i++ {
 		sem <- struct{}{}
 	}
 	close(resCh)
 
 	out := map[string]map[string]string{}
-	for rres := range resCh {
-		if _, ok := out[rres.Thread]; !ok {
-			out[rres.Thread] = map[string]string{}
+	for res := range resCh {
+		if _, ok := out[res.Thread]; !ok {
+			out[res.Thread] = map[string]string{}
 		}
-		if rres.Err != "" {
-			out[rres.Thread]["status"] = "error"
-			out[rres.Thread]["error"] = rres.Err
+		if res.Err != "" {
+			out[res.Thread]["status"] = "error"
+			out[res.Thread]["error"] = res.Err
 		} else {
-			out[rres.Thread]["status"] = "ok"
-			out[rres.Thread]["key_id"] = rres.Key
+			out[res.Thread]["status"] = "ok"
+			out[res.Thread]["key_id"] = res.Key
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out)
 
-	// emit audit summary for encrypt-existing
-	if logger.Audit != nil {
-		okCount := 0
-		errCount := 0
-		for _, m := range out {
-			if s, ok := m["status"]; ok && s == "ok" {
-				okCount++
-			} else {
-				errCount++
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_ = json.NewEncoder(ctx).Encode(out)
+	auditSummary("admin_encrypt_existing", len(threads), 0, out)
+}
+
+func adminEncryptionGenerateKEKFast(ctx *fasthttp.RequestCtx) {
+	if !isAdminFast(ctx) {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to generate key")
+		return
+	}
+	kek := hex.EncodeToString(buf)
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_ = json.NewEncoder(ctx).Encode(map[string]string{"kek_hex": kek})
+	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
+}
+
+func isAdminFast(ctx *fasthttp.RequestCtx) bool {
+	return string(ctx.Request.Header.Peek("X-Role-Name")) == "admin"
+}
+
+func determineThreadIDs(ids []string, all bool) ([]string, error) {
+	if all {
+		vals, err := store.ListThreads()
+		if err != nil {
+			return nil, err
+		}
+		threads := make([]string, 0, len(vals))
+		for _, raw := range vals {
+			var th models.Thread
+			if err := json.Unmarshal([]byte(raw), &th); err != nil {
+				continue
 			}
+			threads = append(threads, th.ID)
 		}
-		logger.Audit.Info("admin_encrypt_existing", "threads", len(threads), "ok", okCount, "errors", errCount)
-	} else {
-		logger.Info("admin_encrypt_existing", "threads", len(threads))
+		return threads, nil
 	}
+	return ids, nil
 }
 
-// adminEncryptionGenerateKEK generates a new random 32-byte KEK and returns it as a
-// 64-hex string in JSON: { "kek_hex": "..." }
-func adminEncryptionGenerateKEK(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		utils.JSONError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-	// generate 32 random bytes
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		utils.JSONError(w, http.StatusInternalServerError, "failed to generate key")
-		return
-	}
-	kek := hex.EncodeToString(b)
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"kek_hex": kek})
-	// audit generation (do not log the kek value in audit to avoid leaking secret)
+func auditLog(event string, fields map[string]interface{}) {
 	if logger.Audit != nil {
-		logger.Audit.Info("admin_generate_kek", "status", "ok")
-	} else {
-		logger.Info("admin_generate_kek", "status", "ok")
+		attrs := make([]interface{}, 0, len(fields)*2)
+		for k, v := range fields {
+			attrs = append(attrs, k, v)
+		}
+		logger.Audit.Info(event, attrs...)
+		return
 	}
+	attrs := make([]interface{}, 0, len(fields)*2)
+	for k, v := range fields {
+		attrs = append(attrs, k, v)
+	}
+	logger.Info(event, attrs...)
 }
 
-// isAdmin checks if the request is from an admin.
-// Backend keys should not be treated as admin; admin endpoints require the
-// explicit admin role.
-func isAdmin(r *http.Request) bool {
-	role := r.Header.Get("X-Role-Name")
-	return role == "admin"
+func auditSummary(event string, threads int, keys int, out map[string]map[string]string) {
+	okCount := 0
+	errCount := 0
+	for _, m := range out {
+		if s, ok := m["status"]; ok && s == "ok" {
+			okCount++
+		} else {
+			errCount++
+		}
+	}
+	fields := map[string]interface{}{"threads": threads, "ok": okCount, "errors": errCount}
+	if keys > 0 {
+		fields["keys"] = keys
+	}
+	auditLog(event, fields)
 }

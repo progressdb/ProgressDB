@@ -1,11 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,78 +21,64 @@ import (
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
-	"github.com/gorilla/mux"
+	"github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
 )
 
-// RegisterThreads registers all thread-related HTTP routes to the provided router.
-func RegisterThreads(r *mux.Router) {
-	// Collection routes
-	r.HandleFunc("/threads", createThread).Methods(http.MethodPost)
-	r.HandleFunc("/threads", listThreads).Methods(http.MethodGet)
-	r.HandleFunc("/threads/{id}", updateThread).Methods(http.MethodPut)
+// RegisterThreadsFast registers all thread-related routes on the fasthttp router.
+func RegisterThreadsFast(r *router.Router) {
+	r.POST("/v1/threads", createThreadFast)
+	r.GET("/v1/threads", listThreadsFast)
+	r.PUT("/v1/threads/{id}", updateThreadFast)
+	r.GET("/v1/threads/{id}", getThreadFast)
+	r.DELETE("/v1/threads/{id}", deleteThreadFast)
 
-	// Single resource routes
-	r.HandleFunc("/threads/{id}", getThread).Methods(http.MethodGet)
-	r.HandleFunc("/threads/{id}", deleteThread).Methods(http.MethodDelete)
+	r.POST("/v1/threads/{threadID}/messages", createThreadMessageFast)
+	r.GET("/v1/threads/{threadID}/messages", listThreadMessagesFast)
+	r.GET("/v1/threads/{threadID}/messages/{id}", getThreadMessageFast)
+	r.PUT("/v1/threads/{threadID}/messages/{id}", updateThreadMessageFast)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}", deleteThreadMessageFast)
 
-	// Thread-scoped messages
-	r.HandleFunc("/threads/{threadID}/messages", createThreadMessage).Methods(http.MethodPost)
-	r.HandleFunc("/threads/{threadID}/messages", listThreadMessages).Methods(http.MethodGet)
-
-	// Thread-scoped message versions + reactions (migrated from message-level API)
-	r.HandleFunc("/threads/{threadID}/messages/{id}/versions", listMessageVersions).Methods(http.MethodGet)
-
-	// reactions moved under thread scope
-	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions", getReactions).Methods(http.MethodGet)
-	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions", addReaction).Methods(http.MethodPost)
-	r.HandleFunc("/threads/{threadID}/messages/{id}/reactions/{identity}", deleteReaction).Methods(http.MethodDelete)
-
-	// Thread-message-scoped endpoints
-	r.HandleFunc("/threads/{threadID}/messages/{id}", getThreadMessage).Methods(http.MethodGet)
-	r.HandleFunc("/threads/{threadID}/messages/{id}", updateThreadMessage).Methods(http.MethodPut)
-	r.HandleFunc("/threads/{threadID}/messages/{id}", deleteThreadMessage).Methods(http.MethodDelete)
+	r.GET("/v1/threads/{threadID}/messages/{id}/versions", listMessageVersionsFast)
+	r.GET("/v1/threads/{threadID}/messages/{id}/reactions", getReactionsFast)
+	r.POST("/v1/threads/{threadID}/messages/{id}/reactions", addReactionFast)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}/reactions/{identity}", deleteReactionFast)
 }
 
-// createThread handles POST /threads to create a new thread.
-// The request body must contain a JSON object representing the thread.
-// The "author" field is required in the body.
-func createThread(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func createThreadFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	var t models.Thread
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "invalid json")
+	var thread models.Thread
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&thread); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid json")
 		return
 	}
-	// resolve canonical author (signature or backend-provided)
-	if author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author); code != 0 {
-		utils.JSONError(w, code, msg)
+
+	if author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, thread.Author); code != 0 {
+		utils.JSONErrorFast(ctx, code, msg)
 		return
 	} else {
-		t.Author = author
+		thread.Author = author
 	}
-	created, err := createThreadInternal(r.Context(), t.Author, t.Title)
+
+	created, err := createThreadInternal(context.Background(), thread.Author, thread.Title)
 	if err != nil {
-		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = json.NewEncoder(w).Encode(created)
+	_ = json.NewEncoder(ctx).Encode(created)
 }
 
-// createThreadInternal performs the core thread creation logic without dealing
-// with HTTP concerns. It provisions per-thread KMS metadata when encryption is
-// enabled, saves the thread metadata, and returns the created Thread.
 func createThreadInternal(ctx context.Context, author, title string) (models.Thread, error) {
 	var t models.Thread
 	if title == "" {
 		title = defaultThreadTitle()
 	}
 
-	// overall start for local checkpoints
 	start := time.Now()
 	logger.Debug("thread_create_checkpoint", "step", "start", "author", author)
 
-	prepSpan := telemetry.StartSpan(ctx, "create_thread.prepare")
+	prepSpan := telemetry.StartSpanNoCtx("create_thread.prepare")
 	t.ID = utils.GenThreadID()
 	t.Author = author
 	t.Title = title
@@ -102,20 +88,14 @@ func createThreadInternal(ctx context.Context, author, title string) (models.Thr
 	prepSpan()
 	logger.Debug("thread_create_checkpoint", "step", "prepared", "elapsed_ms", time.Since(start).Milliseconds(), "thread", t.ID)
 
-	// initialize per-thread sequence to zero; first message will bump this
 	t.LastSeq = 0
 
-	encCheckSpan := telemetry.StartSpan(ctx, "create_thread.enc_check")
+	encCheckSpan := telemetry.StartSpanNoCtx("create_thread.enc_check")
 	encStart := time.Now()
 	if security.EncryptionEnabled() {
-		// Only provision per-thread KMS metadata when a KMS provider is
-		// actually registered and enabled. This avoids creating KMS metadata
-		// when encryption is disabled in config or when no provider is
-		// available (tests expect no KMS metadata when encryption.use=false).
 		if kms.IsProviderEnabled() {
 			logger.Info("provisioning_thread_kms", "thread", t.ID)
-			// record time spent provisioning DEK from KMS
-			kmsSpan := telemetry.StartSpan(ctx, "kms.create_dek_for_thread")
+			kmsSpan := telemetry.StartSpanNoCtx("kms.create_dek_for_thread")
 			kmsStart := time.Now()
 			keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(t.ID)
 			kmsSpan()
@@ -123,7 +103,6 @@ func createThreadInternal(ctx context.Context, author, title string) (models.Thr
 			if err != nil {
 				return models.Thread{}, err
 			}
-			// set pointer so kms is omitted when nil
 			t.KMS = &models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 		} else {
 			logger.Info("encryption_enabled_but_no_kms_provider", "thread", t.ID)
@@ -132,15 +111,15 @@ func createThreadInternal(ctx context.Context, author, title string) (models.Thr
 	encCheckSpan()
 	logger.Debug("thread_create_checkpoint", "step", "enc_check_done", "elapsed_ms", time.Since(encStart).Milliseconds(), "thread", t.ID)
 
-	marshalSpan := telemetry.StartSpan(ctx, "create_thread.marshal")
+	marshalSpan := telemetry.StartSpanNoCtx("create_thread.marshal")
 	marStart := time.Now()
-	b, _ := json.Marshal(t)
+	payload, _ := json.Marshal(t)
 	marshalSpan()
 	logger.Debug("thread_create_checkpoint", "step", "marshal_done", "elapsed_ms", time.Since(marStart).Milliseconds(), "thread", t.ID)
 
-	saveSpan := telemetry.StartSpan(ctx, "store.save_thread")
+	saveSpan := telemetry.StartSpanNoCtx("store.save_thread")
 	saveStart := time.Now()
-	if err := store.SaveThread(t.ID, string(b)); err != nil {
+	if err := store.SaveThread(t.ID, string(payload)); err != nil {
 		saveSpan()
 		return models.Thread{}, err
 	}
@@ -150,43 +129,39 @@ func createThreadInternal(ctx context.Context, author, title string) (models.Thr
 	return t, nil
 }
 
-// listThreads handles GET /threads to retrieve a list of threads.
-// The "author" query parameter is required and filters threads by the exact author name.
-// Optional query parameters:
-//   - "title": filters threads containing the given substring (case-insensitive) in the title.
-//   - "slug": filters threads by the exact slug.
-//
-// The response is a JSON object with a "threads" field containing the filtered list.
-func listThreads(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func listThreadsFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	// role := r.Header.Get("X-Role-Name")
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		utils.JSONError(w, code, msg)
-		return
+		if role == "admin" {
+			author = ""
+		} else {
+			utils.JSONErrorFast(ctx, code, msg)
+			return
+		}
 	}
-	titleQ := r.URL.Query().Get("title")
-	slugQ := r.URL.Query().Get("slug")
+
+	titleQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("title")))
+	slugQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("slug")))
 
 	vals, err := store.ListThreads()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
-	var out []models.Thread
-	for _, v := range vals {
+	out := make([]models.Thread, 0, len(vals))
+	for _, raw := range vals {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(v), &th); err != nil {
+		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
 		}
-		// hide deleted threads for non-admins
-		role := r.Header.Get("X-Role-Name")
 		if th.Deleted && role != "admin" {
 			continue
 		}
-		if th.Author != authorQ {
+		if author != "" && th.Author != author {
 			continue
 		}
 		if titleQ != "" && !strings.Contains(strings.ToLower(th.Title), strings.ToLower(titleQ)) {
@@ -198,249 +173,236 @@ func listThreads(w http.ResponseWriter, r *http.Request) {
 		out = append(out, th)
 	}
 
-	_ = json.NewEncoder(w).Encode(struct {
+	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads []models.Thread `json:"threads"`
 	}{Threads: out})
 }
 
-// getThread handles GET /threads/{id} to retrieve a single thread by its ID.
-// Returns 404 if the thread does not exist.
-// The "author" query parameter is required and must match the thread's author.
-func getThread(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func getThreadFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	id := mux.Vars(r)["id"]
+	id := pathParam(ctx, "id")
 	if id == "" {
-		http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 
-	// Prefer signature-verified author; for admin role allow listing without
-	// an explicit author (admin may inspect all messages).
-	role := r.Header.Get("X-Role-Name")
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
 		if role == "admin" {
-			// allow admin to proceed without an author filter
-			authorQ = ""
+			author = ""
 		} else {
-			http.Error(w, msg, code)
+			utils.JSONErrorFast(ctx, code, msg)
 			return
 		}
 	}
 
-	s, err := store.GetThread(id)
+	stored, err := store.GetThread(id)
 	if err != nil {
-		utils.JSONError(w, http.StatusNotFound, err.Error())
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 
 	var th models.Thread
-	if err := json.Unmarshal([]byte(s), &th); err != nil {
-		utils.JSONError(w, http.StatusInternalServerError, "failed to parse thread")
+	if err := json.Unmarshal([]byte(stored), &th); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
 		return
 	}
 	if th.Deleted && role != "admin" {
-		utils.JSONError(w, http.StatusNotFound, "thread not found")
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
 		return
 	}
-	if th.Author != authorQ {
-		utils.JSONError(w, http.StatusForbidden, "author does not match")
+	if author != "" && th.Author != author {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
 		return
 	}
 
-	_, _ = w.Write([]byte(s))
+	_, _ = ctx.WriteString(stored)
 }
 
-// deleteThread handles DELETE /threads/{id} to delete a thread by its ID.
-// Returns 404 if the thread does not exist.
-// The "author" query parameter is required and must match the thread's author.
-func deleteThread(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func deleteThreadFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	id := mux.Vars(r)["id"]
+	id := pathParam(ctx, "id")
 	if id == "" {
-		http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		http.Error(w, msg, code)
+		utils.JSONErrorFast(ctx, code, msg)
 		return
 	}
-	// perform soft-delete via store helper (marks thread deleted + append tombstone)
-	if err := store.SoftDeleteThread(id, authorQ); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+
+	if err := store.SoftDeleteThread(id, author); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
 }
 
-// updateThread handles PUT /threads/{id} to update thread metadata.
-func updateThread(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	id := mux.Vars(r)["id"]
+func updateThreadFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
+
+	id := pathParam(ctx, "id")
 	if id == "" {
-		http.Error(w, `{"error":"thread id missing"}`, http.StatusBadRequest)
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
-	var t models.Thread
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		utils.JSONError(w, http.StatusBadRequest, "invalid json")
+
+	var payload models.Thread
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid json")
 		return
 	}
-	// resolve author (signature or backend-provided)
-	author, code, msg := auth.ResolveAuthorFromRequest(r, t.Author)
+
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, payload.Author)
 	if code != 0 {
-		http.Error(w, msg, code)
+		utils.JSONErrorFast(ctx, code, msg)
 		return
 	}
-	// load existing thread
-	s, err := store.GetThread(id)
+
+	stored, err := store.GetThread(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
+
 	var th models.Thread
-	if err := json.Unmarshal([]byte(s), &th); err != nil {
-		http.Error(w, `{"error":"failed to parse thread"}`, http.StatusInternalServerError)
+	if err := json.Unmarshal([]byte(stored), &th); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
 		return
 	}
-	role := r.Header.Get("X-Role-Name")
+
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	if role != "admin" && th.Author != author {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
 		return
 	}
-	// Apply updates: allow title changes
-	if t.Title != "" {
-		th.Title = t.Title
+
+	if payload.Title != "" {
+		th.Title = payload.Title
 		th.Slug = utils.MakeSlug(th.Title, th.ID)
 	}
 	th.UpdatedTS = time.Now().UTC().UnixNano()
-	nb, _ := json.Marshal(th)
-	if err := store.SaveThread(th.ID, string(nb)); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+
+	buf, _ := json.Marshal(th)
+	if err := store.SaveThread(th.ID, string(buf)); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = json.NewEncoder(w).Encode(th)
+
+	_ = json.NewEncoder(ctx).Encode(th)
 }
 
-// defaultThreadTitle generates a default title for new threads.
-// It counts existing threads and returns "New Thread #<n>" where n is count+1.
-// On error (e.g., store unavailable) it falls back to a generic "New Thread" label.
-func defaultThreadTitle() string {
-	vals, err := store.ListThreads()
-	if err != nil {
-		return "New Thread"
-	}
-	return fmt.Sprintf("New Thread #%d", len(vals)+1)
-}
+func createThreadMessageFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-// createThreadMessage handles POST /threads/{threadID}/messages to create a new message in a thread.
-// The request body must contain a JSON object representing the message.
-// The "author" field is required in the body.
-func createThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	threadID := mux.Vars(r)["threadID"]
-	var m models.Message
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+	threadID := pathParam(ctx, "threadID")
+
+	var msg models.Message
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&msg); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid json")
 		return
 	}
-	// resolve canonical author (signature or backend-provided)
-	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
-		http.Error(w, msg, code)
+
+	if author, code, message := auth.ResolveAuthorFromRequestFast(ctx, msg.Author); code != 0 {
+		utils.JSONErrorFast(ctx, code, message)
 		return
 	} else {
-		m.Author = author
-	}
-	// Ensure role is present; default to "user" if omitted
-	if m.Role == "" {
-		m.Role = "user"
-	}
-	m.Thread = threadID
-	// Always generate message IDs server-side
-	m.ID = utils.GenID()
-	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
+		msg.Author = author
 	}
 
-	// Prevent posting into deleted threads (non-admin callers)
-	if sthr, err := store.GetThread(m.Thread); err == nil {
+	if msg.Role == "" {
+		msg.Role = "user"
+	}
+	msg.Thread = threadID
+	msg.ID = utils.GenID()
+	if msg.TS == 0 {
+		msg.TS = time.Now().UTC().UnixNano()
+	}
+
+	if stored, err := store.GetThread(msg.Thread); err == nil {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
-			if th.Deleted && r.Header.Get("X-Role-Name") != "admin" {
-				http.Error(w, `{"error":"thread deleted"}`, http.StatusForbidden)
+		if err := json.Unmarshal([]byte(stored), &th); err == nil {
+			if th.Deleted && string(ctx.Request.Header.Peek("X-Role-Name")) != "admin" {
+				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "thread deleted")
 				return
 			}
 		}
 	}
-	if err := validation.ValidateMessage(m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+
+	if err := validation.ValidateMessage(msg); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
-    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
-        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-        return
-    }
-	_ = json.NewEncoder(w).Encode(m)
+	if err := store.SaveMessage(context.Background(), msg.Thread, msg.ID, msg); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	_ = json.NewEncoder(ctx).Encode(msg)
 }
 
-// listThreadMessages handles GET /threads/{threadID}/messages to list messages in a thread.
-// Optional query parameter "limit" restricts the number of most recent messages returned.
-// The "author" query parameter is required.
-func listThreadMessages(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	role := r.Header.Get("X-Role-Name")
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+func listThreadMessagesFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
+
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
 		if role == "admin" {
-			// allow admin to list without providing an author filter
-			authorQ = ""
+			author = ""
 		} else {
-			http.Error(w, msg, code)
+			utils.JSONErrorFast(ctx, code, msg)
 			return
 		}
 	}
-	threadID := mux.Vars(r)["threadID"]
-	// If the thread is soft-deleted, hide it from non-admin callers
-	if sthr, err := store.GetThread(threadID); err == nil {
+
+	threadID := pathParam(ctx, "threadID")
+
+	if stored, err := store.GetThread(threadID); err == nil {
 		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err == nil {
-			if th.Deleted && r.Header.Get("X-Role-Name") != "admin" {
-				http.Error(w, `{"error":"thread not found"}`, http.StatusNotFound)
+		if err := json.Unmarshal([]byte(stored), &th); err == nil {
+			if th.Deleted && string(ctx.Request.Header.Peek("X-Role-Name")) != "admin" {
+				utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
 				return
 			}
 		}
 	}
+
 	msgs, err := store.ListMessages(threadID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	if limStr := r.URL.Query().Get("limit"); limStr != "" {
-		if lim, err := strconv.Atoi(limStr); err == nil && lim >= 0 && lim < len(msgs) {
-			msgs = msgs[len(msgs)-lim:]
+
+	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
+		if limit, err := strconv.Atoi(limStr); err == nil && limit >= 0 && limit < len(msgs) {
+			msgs = msgs[len(msgs)-limit:]
 		}
 	}
-	includeDeleted := r.URL.Query().Get("include_deleted") == "true"
+
+	includeDeleted := string(ctx.QueryArgs().Peek("include_deleted")) == "true"
+
 	latest := make(map[string]models.Message)
 	authorFound := false
-	for _, s := range msgs {
-		var mm models.Message
-		if err := json.Unmarshal([]byte(s), &mm); err != nil {
+	for _, encoded := range msgs {
+		var m models.Message
+		if err := json.Unmarshal([]byte(encoded), &m); err != nil {
 			continue
 		}
-		cur, ok := latest[mm.ID]
-		if !ok || mm.TS >= cur.TS {
-			latest[mm.ID] = mm
+		current, ok := latest[m.ID]
+		if !ok || m.TS >= current.TS {
+			latest[m.ID] = m
 		}
 	}
+
 	out := make([]models.Message, 0, len(latest))
 	for _, v := range latest {
-		if v.Author == authorQ {
+		if v.Author == author {
 			authorFound = true
 		}
 		if v.Deleted && !includeDeleted {
@@ -448,135 +410,144 @@ func listThreadMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, v)
 	}
-	// sort by TS ascending
+
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	// If there are no messages to return, respond with an empty list.
-	// For admin role, do not enforce the authorFound check; admin may view
-	// all messages in the thread.
+
 	if len(out) == 0 {
-		_ = json.NewEncoder(w).Encode(struct {
+		_ = json.NewEncoder(ctx).Encode(struct {
 			Thread   string           `json:"thread"`
 			Messages []models.Message `json:"messages"`
 		}{Thread: threadID, Messages: out})
 		return
 	}
-	if role != "admin" {
-		if !authorFound {
-			http.Error(w, `{"error":"author not found in any message in this thread"}`, http.StatusForbidden)
-			return
-		}
+
+	if role != "admin" && author != "" && !authorFound {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author not found in any message in this thread")
+		return
 	}
-	_ = json.NewEncoder(w).Encode(struct {
+
+	_ = json.NewEncoder(ctx).Encode(struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`
 	}{Thread: threadID, Messages: out})
 }
 
-// getThreadMessage handles GET /threads/{threadID}/messages/{id} to retrieve a single message by its ID.
-// Returns 404 if the message does not exist.
-// The "author" query parameter is required and must match the message's author.
-func getThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+func getThreadMessageFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
+
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		http.Error(w, msg, code)
+		utils.JSONErrorFast(ctx, code, msg)
 		return
 	}
-	id := mux.Vars(r)["id"]
-	s, err := store.GetLatestMessage(id)
+
+	id := pathParam(ctx, "id")
+	stored, err := store.GetLatestMessage(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
-	var m models.Message
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
-		http.Error(w, `{"error":"failed to parse message"}`, http.StatusInternalServerError)
+
+	var message models.Message
+	if err := json.Unmarshal([]byte(stored), &message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse message")
 		return
 	}
-	if m.Author != authorQ {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
+
+	if message.Author != author {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
 		return
 	}
-	_ = json.NewEncoder(w).Encode(m)
+
+	_ = json.NewEncoder(ctx).Encode(message)
 }
 
-// updateThreadMessage handles PUT /threads/{threadID}/messages/{id} to update a message.
-// The request body must contain a JSON object representing the message.
-// The "author" field is required in the body and must match the author query parameter if provided.
-func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	vars := mux.Vars(r)
-	threadID := vars["threadID"]
-	id := vars["id"]
+func updateThreadMessageFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
+	threadID := pathParam(ctx, "threadID")
+	id := pathParam(ctx, "id")
+
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
-	var m models.Message
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-		return
-	}
-	// require verified author and ensure body author (if present) matches
-	// resolveAuthor ensured author is present; proceed
-	if m.Author != "" && m.Author != authorQ {
-		http.Error(w, `{"error":"author in body does not match verified author"}`, http.StatusForbidden)
-		return
-	}
-	// enforce verified author
-	m.Author = authorQ
-	m.ID = id
-	m.Thread = threadID
-	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
-	}
-	if err := validation.ValidateMessage(m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		utils.JSONErrorFast(ctx, code, msg)
 		return
 	}
 
-    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
-        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-        return
-    }
-	_ = json.NewEncoder(w).Encode(m)
+	var message models.Message
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid json")
+		return
+	}
+
+	if message.Author != "" && message.Author != author {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author in body does not match verified author")
+		return
+	}
+
+	message.Author = author
+	message.ID = id
+	message.Thread = threadID
+	if message.TS == 0 {
+		message.TS = time.Now().UTC().UnixNano()
+	}
+
+	if err := validation.ValidateMessage(message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := store.SaveMessage(context.Background(), message.Thread, message.ID, message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	_ = json.NewEncoder(ctx).Encode(message)
 }
 
-// deleteThreadMessage handles DELETE /threads/{threadID}/messages/{id} to mark a message as deleted.
-// Returns 404 if the message does not exist.
-// The "author" query parameter is required and must match the message's author.
-func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	authorQ, code, msg := auth.ResolveAuthorFromRequest(r, "")
-	if code != 0 {
-		http.Error(w, msg, code)
-		return
-	}
-	id := mux.Vars(r)["id"]
-	s, err := store.GetLatestMessage(id)
-	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
-		return
-	}
-	var m models.Message
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
-		http.Error(w, `{"error":"invalid stored message"}`, http.StatusInternalServerError)
-		return
-	}
-	// allow admin role to bypass author match
-	role := r.Header.Get("X-Role-Name")
-	if role != "admin" && m.Author != authorQ {
-		http.Error(w, `{"error":"author does not match"}`, http.StatusForbidden)
-		return
-	}
-	m.Deleted = true
-	m.TS = time.Now().UTC().UnixNano()
+func deleteThreadMessageFast(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
 
-    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
-        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-        return
-    }
-	w.WriteHeader(http.StatusNoContent)
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		utils.JSONErrorFast(ctx, code, msg)
+		return
+	}
+
+	id := pathParam(ctx, "id")
+	stored, err := store.GetLatestMessage(id)
+	if err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
+		return
+	}
+
+	var message models.Message
+	if err := json.Unmarshal([]byte(stored), &message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "invalid stored message")
+		return
+	}
+
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	if role != "admin" && message.Author != author {
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
+		return
+	}
+
+	message.Deleted = true
+	message.TS = time.Now().UTC().UnixNano()
+
+	if err := store.SaveMessage(context.Background(), message.Thread, message.ID, message); err != nil {
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
+}
+
+func defaultThreadTitle() string {
+	vals, err := store.ListThreads()
+	if err != nil {
+		return "New Thread"
+	}
+	return fmt.Sprintf("New Thread #%d", len(vals)+1)
 }

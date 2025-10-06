@@ -23,9 +23,9 @@ type exitRequest struct {
 
 // Controlled abord handling from other parts of the code
 func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
-    // default abort delay (seconds). Keep at 10s so crash dumps and logs
-    // have time to flush before exit.
-    delay := 10
+	// default abort delay (seconds). Keep at 10s so crash dumps and logs
+	// have time to flush before exit.
+	delay := 10
 	if len(delaySeconds) > 0 && delaySeconds[0] >= 0 {
 		delay = delaySeconds[0]
 	}

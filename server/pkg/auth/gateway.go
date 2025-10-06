@@ -2,8 +2,9 @@ package auth
 
 import (
 	"net"
-	"net/http"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/telemetry"
@@ -12,54 +13,55 @@ import (
 
 // role and secconfig types are defined in identity.go
 
-func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
-	// rate limiters keyed by api key or remote ip
+// AuthenticateRequestMiddlewareFast is a fasthttp-native middleware equivalent
+// to AuthenticateRequestMiddleware. It returns a middleware that wraps a
+// fasthttp.RequestHandler.
+func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	limiters := &limiterPool{cfg: cfg}
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+		return func(ctx *fasthttp.RequestCtx) {
 			// log request (redacts sensitive headers)
-			logger.LogRequest(r)
+			logger.LogRequestFast(ctx)
 
-			// cors preflight
-			origin := r.Header.Get("Origin")
+			// CORS preflight
+			origin := string(ctx.Request.Header.Peek("Origin"))
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
-				w.Header().Set("Access-Control-Max-Age", "600")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
-				w.Header().Set("Access-Control-Expose-Headers", "X-Role-Name")
+				ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
+				ctx.Response.Header.Set("Vary", "Origin")
+				ctx.Response.Header.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
+				ctx.Response.Header.Set("Access-Control-Max-Age", "600")
+				ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
+				ctx.Response.Header.Set("Access-Control-Expose-Headers", "X-Role-Name")
 			}
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
+			if string(ctx.Method()) == fasthttp.MethodOptions {
+				ctx.SetStatusCode(fasthttp.StatusNoContent)
 				return
 			}
 
-			// ip whitelist
+			// IP whitelist
 			if len(cfg.IPWhitelist) > 0 {
-				ip := clientIP(r)
+				ip := clientIPFast(ctx)
 				logger.Debug("ip_check", "ip", ip)
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
-					utils.JSONError(w, http.StatusForbidden, "forbidden")
-					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", r.URL.Path)
+					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", string(ctx.Path()))
 					return
 				}
 			}
 
-			// extract authentication key from this
-			authSpan := telemetry.StartSpan(r.Context(), "auth.authenticate")
-			role, key, hasAPIKey := authenticate(r, cfg)
+			// auth
+			authSpan := telemetry.StartSpanNoCtx("auth.authenticate")
+			role, key, hasAPIKey := authenticateFast(ctx, cfg)
 			authSpan()
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			// allow unauthenticated health checks for probes
-			if (r.URL.Path == "/healthz" || r.URL.Path == "/readyz") && r.Method == http.MethodGet {
-				r.Header.Set("X-Role-Name", "unauth")
-				next.ServeHTTP(w, r)
+			if (string(ctx.Path()) == "/healthz" || string(ctx.Path()) == "/readyz") && string(ctx.Method()) == fasthttp.MethodGet {
+				ctx.Request.Header.Set("X-Role-Name", "unauth")
+				next(ctx)
 				return
 			}
 
-			// expose role name for handlers
 			var roleName string
 			switch role {
 			case RoleFrontend:
@@ -72,86 +74,56 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 				roleName = "unauth"
 			}
 
-			// block unauthenticated roles
 			if role == RoleUnauth || !hasAPIKey {
-				utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
-				logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+				utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "unauthorized")
+				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
 				return
 			} else {
-				// set role type for downstream
-				r.Header.Set("X-Role-Name", roleName)
+				ctx.Request.Header.Set("X-Role-Name", roleName)
 			}
 
-			// scope enforcement for frontend keys
-			if role == RoleFrontend && !frontendAllowed(r) {
-				utils.JSONError(w, http.StatusForbidden, "forbidden")
-				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
+			if role == RoleFrontend && !frontendAllowedFast(ctx) {
+				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
 				return
 			}
 
-			// rate limiting
-			rlSpan := telemetry.StartSpan(r.Context(), "auth.rate_limit")
+			rlSpan := telemetry.StartSpanNoCtx("auth.rate_limit")
 			if !limiters.Allow(key) {
 				rlSpan()
-				utils.JSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
-				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
+				utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
+				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
 				return
 			}
 			rlSpan()
 
-			// log that request passed middleware checks
-			logger.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
+			logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
 
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func originAllowed(origin string, allowed []string) bool {
-	// check if origin is allowed
-	if len(allowed) == 0 {
-		return false
-	}
-	for _, a := range allowed {
-		if a == "*" || strings.EqualFold(a, origin) {
-			return true
+			next(ctx)
 		}
 	}
-	return false
 }
 
-func clientIP(r *http.Request) string {
-	// get client ip from remoteaddr
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+func clientIPFast(ctx *fasthttp.RequestCtx) string {
+	host := ctx.RemoteAddr().String()
+	h, _, err := net.SplitHostPort(host)
 	if err != nil {
-		return r.RemoteAddr
+		return host
 	}
-	return host
+	return h
 }
 
-func ipWhitelisted(ip string, list []string) bool {
-	// check if ip is in whitelist
-	for _, w := range list {
-		if ip == w {
-			return true
-		}
-	}
-	return false
-}
-
-func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
-	// prefer authorization: bearer <key>, fallback to x-api-key
-	auth := r.Header.Get("Authorization")
+func authenticateFast(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool) {
+	auth := string(ctx.Request.Header.Peek("Authorization"))
 	var key string
-	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+	if len(auth) > 7 && strings.ToLower(auth[:7]) == "bearer " {
 		key = strings.TrimSpace(auth[7:])
 	}
 	if key == "" {
-		key = r.Header.Get("X-API-Key")
+		key = string(ctx.Request.Header.Peek("X-API-Key"))
 	}
 	if key == "" {
-		// no api key: return unauth role with client ip, hasapikey=false
-		return RoleUnauth, clientIP(r), false
+		return RoleUnauth, clientIPFast(ctx), false
 	}
 	if cfg.AdminKeys != nil {
 		if _, ok := cfg.AdminKeys[key]; ok {
@@ -167,14 +139,35 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
 	return RoleUnauth, key, true
 }
 
-func frontendAllowed(r *http.Request) bool {
-	// allow message create/list
-	if r.URL.Path == "/v1/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
+func frontendAllowedFast(ctx *fasthttp.RequestCtx) bool {
+	path := string(ctx.Path())
+	method := string(ctx.Method())
+	if path == "/v1/messages" && (method == fasthttp.MethodGet || method == fasthttp.MethodPost) {
 		return true
 	}
-	// allow thread collection and thread-scoped apis for frontend keys
-	if strings.HasPrefix(r.URL.Path, "/v1/threads") {
+	if strings.HasPrefix(path, "/v1/threads") {
 		return true
+	}
+	return false
+}
+
+func originAllowed(origin string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return false
+	}
+	for _, a := range allowed {
+		if a == "*" || strings.EqualFold(a, origin) {
+			return true
+		}
+	}
+	return false
+}
+
+func ipWhitelisted(ip string, list []string) bool {
+	for _, w := range list {
+		if ip == w {
+			return true
+		}
 	}
 	return false
 }

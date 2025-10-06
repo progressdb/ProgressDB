@@ -104,20 +104,20 @@ func initWriter() {
 // and writes a JSON-line diagnostic record to the telemetry writer. This is
 // best-effort and will not block the caller.
 func EmitDiagnostic(name string) {
-    // lightweight runtime diagnostic: avoid collecting full memstats and
-    // goroutine stacks because those operations are expensive and can
-    // significantly slow request handling when emitted frequently.
-    rec := map[string]interface{}{
-        "type":          "diagnostic",
-        "name":          name,
-        "ts":            time.Now().UnixNano() / 1e6,
-        "num_goroutine": runtime.NumGoroutine(),
-        "num_cpu":       runtime.NumCPU(),
-    }
-    b, err := json.Marshal(rec)
-    if err != nil {
-        return
-    }
+	// lightweight runtime diagnostic: avoid collecting full memstats and
+	// goroutine stacks because those operations are expensive and can
+	// significantly slow request handling when emitted frequently.
+	rec := map[string]interface{}{
+		"type":          "diagnostic",
+		"name":          name,
+		"ts":            time.Now().UnixNano() / 1e6,
+		"num_goroutine": runtime.NumGoroutine(),
+		"num_cpu":       runtime.NumCPU(),
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
 	writerOnce.Do(initWriter)
 	select {
 	case writerCh <- b:
@@ -376,6 +376,68 @@ func SetSlowThreshold(d time.Duration) {
 	}
 	slowThreshold = d
 }
+
+// --- Simple, context-less helpers ---
+// These helpers provide a lightweight, request-agnostic way to record spans
+// during migration away from context-bound telemetry. They write a small JSON
+// line with the span name and duration when the returned end function is
+// invoked. They are intentionally minimal and do not attempt to build full
+// parent/child traces.
+
+// StartSpanNoCtx starts a simple span that is not associated with any
+// request context. It returns an end function to record the span duration.
+func StartSpanNoCtx(name string) func() {
+	start := time.Now()
+	return func() {
+		dur := time.Since(start).Milliseconds()
+		rec := map[string]interface{}{
+			"type":          "span",
+			"name":          name,
+			"ts":            time.Now().UnixNano() / 1e6,
+			"duration_ms":   dur,
+			"num_goroutine": runtime.NumGoroutine(),
+		}
+		b, err := json.Marshal(rec)
+		if err != nil {
+			return
+		}
+		writerOnce.Do(initWriter)
+		select {
+		case writerCh <- b:
+		default:
+		}
+	}
+}
+
+// WithRootNoCtx creates a short-lived root span (no-op implementation of a
+// request root) and returns an end function that will write a summary record
+// when invoked.
+func WithRootNoCtx(op string) func() {
+	start := time.Now()
+	return func() {
+		dur := time.Since(start).Milliseconds()
+		rec := map[string]interface{}{
+			"type":        "root",
+			"op":          op,
+			"ts":          time.Now().UnixNano() / 1e6,
+			"duration_ms": dur,
+		}
+		b, err := json.Marshal(rec)
+		if err != nil {
+			return
+		}
+		writerOnce.Do(initWriter)
+		select {
+		case writerCh <- b:
+		default:
+		}
+	}
+}
+
+// SetRequestOpNoCtx is a no-op placeholder used during migration when a
+// request-scoped telemetry root is not available. It exists for symmetry
+// with SetRequestOp but does not modify any state.
+func SetRequestOpNoCtx(op string) {}
 
 // small helper to avoid importing fmt for a single use
 func fmtUint64(v uint64) string {
