@@ -1,11 +1,17 @@
+// test for claim 1k reqs/sec
 export let options = {
-  stages: [
-    { duration: '10s', target: 200 },  // ramp up to 200 VUs
-    { duration: '30s', target: 200 },  // hold 200 VUs
-    { duration: '10s', target: 0 }     // ramp down
-  ],
+  scenarios: {
+    constant_rate: {
+      executor: 'constant-arrival-rate',
+      rate: 1000,       // requests per second
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 600, // max VUs to handle the load
+      maxVUs: 1000
+    }
+  },
   thresholds: {
-    'http_req_duration': ['p(99)<100'], // 99% of requests must be under 100ms
-    'http_req_failed': ['rate<0.01']    // less than 1% failures allowed
+    'http_req_duration': ['p(99)<100'],
+    'http_req_failed': ['rate<0.01']
   }
 };

@@ -10,6 +10,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
@@ -34,11 +35,18 @@ func RegisterMessages(r *mux.Router) {
 // Response: 200 with created message JSON, or 400/500 on error.
 func createMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	ctx := r.Context()
+	// mark top-level op for request telemetry
+	telemetry.SetRequestOp(ctx, "create_message")
+	// top-level span for this handler (will be a child of request root when sampled)
+	defer telemetry.StartSpan(ctx, "create_message.handler")()
+
 	var m models.Message
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		utils.JSONError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	telemetry.SetSpanData(ctx, "decoded", true)
 	// determine caller role and canonical author
 	// resolve canonical author (from signature, or backend-provided body/header)
 	if author, code, msg := auth.ResolveAuthorFromRequest(r, m.Author); code != 0 {
@@ -47,12 +55,14 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		m.Author = author
 	}
+	telemetry.SetSpanData(ctx, "author", m.Author)
 	// Ensure message role is present. Default to "user" when omitted.
 	if m.Role == "" {
 		m.Role = "user"
 	}
 	// If no thread provided, create one explicitly via createThreadInternal
 	if m.Thread == "" {
+		defer telemetry.StartSpan(ctx, "create_thread")()
 		th, err := createThreadInternal(m.Author, defaultThreadTitle())
 		if err != nil {
 			utils.JSONError(w, http.StatusInternalServerError, "failed to create thread")
@@ -60,6 +70,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		// sync thread to message
 		m.Thread = th.ID
+		telemetry.SetSpanData(ctx, "thread_created", m.Thread)
 	} else {
 		// ensure provided thread exists and user is the author
 		s, err := store.GetThread(m.Thread)
@@ -74,6 +85,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		// Only allow creating if the user is the author, unless admin
 		role := r.Header.Get("X-Role-Name")
+		telemetry.SetSpanData(ctx, "thread_author", th.Author)
 		if role != "admin" && th.Author != m.Author {
 			utils.JSONError(w, http.StatusForbidden, "author does not match thread")
 			return
@@ -85,6 +97,7 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 	if m.TS == 0 {
 		m.TS = time.Now().UTC().UnixNano()
 	}
+	telemetry.SetSpanData(ctx, "message_id", m.ID)
 
 	// prevent posting to deleted thread
 	if sthr, err := store.GetThread(m.Thread); err == nil {
@@ -102,13 +115,16 @@ func createMessage(w http.ResponseWriter, r *http.Request) {
 		utils.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	telemetry.SetSpanData(ctx, "validated", true)
 
 	// At this point the thread exists (we either created it above & validated the provided thread id & message).
 	// lets store the message
+	defer telemetry.StartSpan(ctx, "save_message")()
 	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	telemetry.SetSpanData(ctx, "saved", true)
 	logger.Info("message_created", "thread", m.Thread, "id", m.ID)
 	_ = json.NewEncoder(w).Encode(m)
 }

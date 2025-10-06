@@ -114,8 +114,6 @@ func originAllowed(origin string, allowed []string) bool {
 	return false
 }
 
-// authenticate and frontendallowed are implemented below
-
 func clientIP(r *http.Request) string {
 	// get client ip from remoteaddr
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

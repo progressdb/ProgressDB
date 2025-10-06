@@ -13,10 +13,10 @@ security:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
   rate_limit:
-    rps: 10
-    burst: 20
+    rps: 100_000
+    burst: 200_000
   ip_whitelist:
-    - "127.0.0.1"
+  #   - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]

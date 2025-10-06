@@ -1,19 +1,19 @@
 package app
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
 	"github.com/joho/godotenv"
 
 	"net/http"
 
-	"progressdb/internal/retention"
-	"progressdb/pkg/config"
-	"progressdb/pkg/kms"
-	"progressdb/pkg/security"
-	"progressdb/pkg/state"
-	"progressdb/pkg/store"
+    "progressdb/internal/retention"
+    "progressdb/pkg/config"
+    "progressdb/pkg/kms"
+    "progressdb/pkg/security"
+    "progressdb/pkg/state"
+    "progressdb/pkg/store"
 )
 
 // App encapsulates the server components and lifecycle.
@@ -91,8 +91,8 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
-	// start the http server
-	errCh := a.startHTTP(ctx)
+    // start HTTP server
+    errCh := a.startHTTP(ctx)
 
 	select {
 	case <-ctx.Done():

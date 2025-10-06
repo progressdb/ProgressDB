@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # defaults
-DEFAULT_TARGET="http://192.168.0.132:8080"
+# DEFAULT_TARGET="http://192.168.0.132:8080"
+DEFAULT_TARGET="http://localhost:8080"
 DEFAULT_USER_ID="user1"
 DEFAULT_BACKEND_API_KEY="sk_example"
 DEFAULT_FRONTEND_API_KEY="pk_example"
