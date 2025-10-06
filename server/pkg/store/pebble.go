@@ -2,6 +2,7 @@ package store
 
 import (
     "bytes"
+    "context"
     "encoding/base64"
     "encoding/json"
     "errors"
@@ -15,6 +16,7 @@ import (
     "progressdb/pkg/models"
     "progressdb/pkg/security"
     "progressdb/pkg/utils"
+    "progressdb/pkg/telemetry"
 
     "github.com/cockroachdb/pebble"
 )
@@ -116,7 +118,7 @@ func Ready() bool {
 // SaveMessage appends a message to a thread and indexes it by message ID
 // so messages can be looked up and versioned by ID. If msgID is empty,
 // only the thread entry is written.
-func SaveMessage(threadID, msgID string, msg models.Message) error {
+func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -139,30 +141,34 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// if encryption is enabled, encrypt the message body or fields according to the policy
-	if security.EncryptionEnabled() {
-		sthr, terr := GetThread(threadID)
-		if terr != nil {
-			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
-		}
-		var th models.Thread
-		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
-			return fmt.Errorf("invalid thread metadata: %w", err)
-		}
-		encBody, err := security.EncryptMessageBody(&msg, th)
-		if err != nil {
-			return fmt.Errorf("encryption failed: %w", err)
-		}
-		// If EncryptMessageBody returns a new body, update msg.Body and marshal
-		if encBody != nil {
-			msg.Body = encBody
-			nb, err := json.Marshal(msg)
-			if err != nil {
-				return fmt.Errorf("failed to marshal message after encryption: %w", err)
-			}
-			data = nb
-		}
-	}
+    // if encryption is enabled, encrypt the message body or fields according to the policy
+    if security.EncryptionEnabled() {
+        getThreadSpan := telemetry.StartSpan(ctx, "store.get_thread")
+        sthr, terr := GetThread(threadID)
+        getThreadSpan()
+        if terr != nil {
+            return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
+        }
+        var th models.Thread
+        if err := json.Unmarshal([]byte(sthr), &th); err != nil {
+            return fmt.Errorf("invalid thread metadata: %w", err)
+        }
+        encSpan := telemetry.StartSpan(ctx, "store.encrypt_message")
+        encBody, err := security.EncryptMessageBody(&msg, th)
+        encSpan()
+        if err != nil {
+            return fmt.Errorf("encryption failed: %w", err)
+        }
+        // If EncryptMessageBody returns a new body, update msg.Body and marshal
+        if encBody != nil {
+            msg.Body = encBody
+            nb, err := json.Marshal(msg)
+            if err != nil {
+                return fmt.Errorf("failed to marshal message after encryption: %w", err)
+            }
+            data = nb
+        }
+    }
 
 	// Before persisting, obtain and bump the per-thread LastSeq so we can
 	// persist a durable per-thread sequence suffix. Guard with an in-process
@@ -177,12 +183,14 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 	if terr2 == nil {
 		_ = json.Unmarshal([]byte(sthr2), &th)
 	}
-	// If LastSeq is zero, attempt to compute a starting value from existing keys
-	if th.LastSeq == 0 {
-		if max, err := computeMaxSeq(threadID); err == nil {
-			th.LastSeq = max
-		}
-	}
+    // If LastSeq is zero, attempt to compute a starting value from existing keys
+    if th.LastSeq == 0 {
+        compSpan := telemetry.StartSpan(ctx, "store.compute_max_seq")
+        if max, err := computeMaxSeq(threadID); err == nil {
+            th.LastSeq = max
+        }
+        compSpan()
+    }
 	// bump per-thread seq
 	th.LastSeq = th.LastSeq + 1
 
@@ -215,10 +223,13 @@ func SaveMessage(threadID, msgID string, msg models.Message) error {
 		}
 		batch.Set([]byte(ik), data, pebble.Sync)
 	}
-	if err := db.Apply(batch, pebble.Sync); err != nil {
-		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
-		return err
-	}
+    dbSpan := telemetry.StartSpan(ctx, "store.db_apply")
+    if err := db.Apply(batch, pebble.Sync); err != nil {
+        dbSpan()
+        logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
+        return err
+    }
+    dbSpan()
 	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	return nil
 }
@@ -558,8 +569,8 @@ func SoftDeleteThread(threadID, actor string) error {
 		return err
 	}
 
-	// append tombstone message to the thread
-	tomb := models.Message{
+    // append tombstone message to the thread
+    tomb := models.Message{
 		ID:      utils.GenID(),
 		Thread:  threadID,
 		Author:  actor,
@@ -567,11 +578,11 @@ func SoftDeleteThread(threadID, actor string) error {
 		Body:    map[string]interface{}{"_event": "thread_deleted", "by": actor},
 		Deleted: true,
 	}
-	// SaveMessage expects a models.Message, not a string
-	if err := SaveMessage(threadID, tomb.ID, tomb); err != nil {
-		logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
-		return err
-	}
+    // SaveMessage expects a context, pass background here (internal path)
+    if err := SaveMessage(context.Background(), threadID, tomb.ID, tomb); err != nil {
+        logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
+        return err
+    }
 
 	logger.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil

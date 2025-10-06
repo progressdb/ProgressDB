@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 )
 
@@ -46,7 +47,9 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			}
 
 			// extract authentication key from this
+			authSpan := telemetry.StartSpan(r.Context(), "auth.authenticate")
 			role, key, hasAPIKey := authenticate(r, cfg)
+			authSpan()
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			// allow unauthenticated health checks for probes
@@ -87,11 +90,14 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			}
 
 			// rate limiting
+			rlSpan := telemetry.StartSpan(r.Context(), "auth.rate_limit")
 			if !limiters.Allow(key) {
+				rlSpan()
 				utils.JSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
 				return
 			}
+			rlSpan()
 
 			// log that request passed middleware checks
 			logger.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))

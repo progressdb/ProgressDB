@@ -2,11 +2,13 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"progressdb/pkg/state"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -31,18 +33,18 @@ var (
 
 // Span is a simple span relative to request start (milliseconds)
 type Span struct {
-	ID       string                 `json:"id"`
-	ParentID string                 `json:"parent_id,omitempty"`
-	Op       string                 `json:"op"`
-	StartMs  int64                  `json:"start_ms"`
-	Duration int64                  `json:"duration_ms"`
-	Data     map[string]interface{} `json:"data,omitempty"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id,omitempty"`
+	Op       string `json:"op"`
+	StartMs  int64  `json:"start_ms"`
+	Duration int64  `json:"duration_ms"`
 }
 
 // Telemetry holds the per-request trace and metadata. startTime is not exported.
 type Telemetry struct {
 	RequestID string `json:"request_id"`
 	Op        string `json:"op"`
+	Path      string `json:"path"`
 	StartMs   int64  `json:"start_ms"`
 	Duration  int64  `json:"duration_ms"`
 	Status    int    `json:"status"`
@@ -98,18 +100,46 @@ func initWriter() {
 	}()
 }
 
+// EmitDiagnostic collects runtime diagnostics (goroutine stacks, memstats)
+// and writes a JSON-line diagnostic record to the telemetry writer. This is
+// best-effort and will not block the caller.
+func EmitDiagnostic(name string) {
+    // lightweight runtime diagnostic: avoid collecting full memstats and
+    // goroutine stacks because those operations are expensive and can
+    // significantly slow request handling when emitted frequently.
+    rec := map[string]interface{}{
+        "type":          "diagnostic",
+        "name":          name,
+        "ts":            time.Now().UnixNano() / 1e6,
+        "num_goroutine": runtime.NumGoroutine(),
+        "num_cpu":       runtime.NumCPU(),
+    }
+    b, err := json.Marshal(rec)
+    if err != nil {
+        return
+    }
+	writerOnce.Do(initWriter)
+	select {
+	case writerCh <- b:
+	default:
+	}
+}
+
 // Middleware wraps the provided handler and records request timing and sampled spans.
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		// generate a request id for both sampled and non-sampled flows so slow logs
-		// and any later instrumentation can reference the same id.
-		reqID := genRequestID()
 		sampled := shouldSample(r)
 
 		var tel *Telemetry
+		// Force sampling for create_message endpoint so we always get summaries
+		pathNorm := normalizePath(r.URL.Path)
+		if pathNorm == "v1_messages" || strings.Contains(r.URL.Path, "/v1/messages") {
+			sampled = true
+		}
+
 		if sampled {
-			id := reqID
+			id := ""
 			op := r.Header.Get("X-Operation")
 			if op == "" {
 				// fallback to request path for meaningful op when header not provided
@@ -118,6 +148,7 @@ func Middleware(next http.Handler) http.Handler {
 			tel = &Telemetry{
 				RequestID: id,
 				Op:        op,
+				Path:      normalizePath(r.URL.Path),
 				startTime: start,
 				StartMs:   start.UnixNano() / 1e6,
 			}
@@ -143,6 +174,10 @@ func Middleware(next http.Handler) http.Handler {
 			// render text block and enqueue
 			b := renderTelemetryText(tel)
 			tel.mu.Unlock()
+			// if this request is slow, also emit a diagnostic JSON record
+			if dur > slowThreshold {
+				EmitDiagnostic("slow_request_" + normalizePath(r.URL.Path))
+			}
 			writerOnce.Do(initWriter)
 			select {
 			case writerCh <- b:
@@ -152,25 +187,10 @@ func Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// not sampled: only log slow requests as lightweight text
+		// For non-sampled requests, emit diagnostics when the request is
+		// slower than the configured threshold so we capture runtime state.
 		if dur > slowThreshold {
-			// op fallback to header or path
-			op := r.Header.Get("X-Operation")
-			if op == "" {
-				op = r.URL.Path
-			}
-			rec := map[string]interface{}{
-				"request_id":  reqID,
-				"op":          op,
-				"duration_ms": dur.Milliseconds(),
-				"status":      srw.status,
-			}
-			b := renderSlowText(rec)
-			writerOnce.Do(initWriter)
-			select {
-			case writerCh <- b:
-			default:
-			}
+			EmitDiagnostic("slow_request_" + normalizePath(r.URL.Path))
 		}
 	})
 }
@@ -214,33 +234,46 @@ func StartSpan(ctx context.Context, name string) func() {
 	}
 }
 
-// SetSpanData attaches a key/value to the currently active span for the
-// request (no-op if telemetry isn't enabled or no active span).
-func SetSpanData(ctx context.Context, key string, value interface{}) {
+// WithRoot ensures a telemetry root span exists on the context. If the
+// context already has telemetry (e.g. middleware), it returns the same
+// context and a child-span end function. If not, it creates a temporary
+// telemetry root for the duration of the returned end function and writes
+// the trace when ended.
+func WithRoot(ctx context.Context, op string) (context.Context, func()) {
 	v := ctx.Value(ctxKeyType{})
 	if v == nil {
-		return
-	}
-	tel, ok := v.(*Telemetry)
-	if !ok {
-		return
-	}
-	tel.mu.Lock()
-	defer tel.mu.Unlock()
-	if len(tel.spanStack) == 0 {
-		return
-	}
-	top := tel.spanStack[len(tel.spanStack)-1]
-	// find span by id from end
-	for i := len(tel.Spans) - 1; i >= 0; i-- {
-		if tel.Spans[i].ID == top {
-			if tel.Spans[i].Data == nil {
-				tel.Spans[i].Data = make(map[string]interface{})
-			}
-			tel.Spans[i].Data[key] = value
-			return
+		// create a new telemetry for this context
+		now := time.Now()
+		tel := &Telemetry{
+			RequestID: "",
+			Op:        op,
+			Path:      "",
+			startTime: now,
+			StartMs:   now.UnixNano() / 1e6,
 		}
+		// create root span
+		rootID := genSpanID()
+		rootSpan := Span{ID: rootID, Op: tel.Op, StartMs: 0}
+		tel.Spans = append(tel.Spans, rootSpan)
+		tel.spanStack = append(tel.spanStack, rootID)
+		ctx2 := context.WithValue(ctx, ctxKeyType{}, tel)
+		end := func() {
+			dur := time.Since(now)
+			tel.mu.Lock()
+			tel.Duration = dur.Milliseconds()
+			tel.Status = 0
+			b := renderTelemetryText(tel)
+			tel.mu.Unlock()
+			writerOnce.Do(initWriter)
+			select {
+			case writerCh <- b:
+			default:
+			}
+		}
+		return ctx2, end
 	}
+	// already have telemetry - just return a child span ender
+	return ctx, StartSpan(ctx, op)
 }
 
 // SetRequestOp allows a handler to override the top-level operation name for
@@ -266,19 +299,12 @@ func SetRequestOp(ctx context.Context, op string) {
 
 // renderTelemetryText renders a sampled Telemetry as an indented text block.
 func renderTelemetryText(t *Telemetry) []byte {
-	// If this trace is about create_message, emit a compact single-line
-	// summary to keep telemetry simple and fast.
-	for _, sp := range t.Spans {
-		if strings.Contains(sp.Op, "create_message") {
-			// emit single-line request summary
-			return []byte(fmt.Sprintf("REQ %s op=%s duration_ms=%d status=%d\n", t.RequestID, "create_message", t.Duration, t.Status))
-		}
+	// Render a simple parent + children list: parent has op and normalized path,
+	// children are printed as lines with label and duration only.
+	if len(t.Spans) == 0 {
+		return []byte("")
 	}
-
-	// otherwise, fallback to full indented format
-	var b strings.Builder
-	// top header
-	fmt.Fprintf(&b, "REQUEST %s op=%s start_ms=%d duration_ms=%d status=%d\n", t.RequestID, t.Op, t.StartMs, t.Duration, t.Status)
+	rootID := t.Spans[0].ID
 
 	// build children map
 	children := make(map[string][]Span)
@@ -286,44 +312,24 @@ func renderTelemetryText(t *Telemetry) []byte {
 		children[sp.ParentID] = append(children[sp.ParentID], sp)
 	}
 
-	// recursive print
-	var printSpan func(id string, depth int)
-	printSpan = func(id string, depth int) {
-		list := children[id]
-		// sort by start time (stable) to get consistent ordering
+	var b strings.Builder
+	// header: human-friendly op label and normalized path
+	fmt.Fprintf(&b, "PARENT op=%s path=%s duration_ms=%d status=%d\n", t.Op, t.Path, t.Duration, t.Status)
+
+	// recursive print of subtree starting under rootID
+	var printChildren func(parent string, depth int)
+	printChildren = func(parent string, depth int) {
+		list := children[parent]
 		sort.SliceStable(list, func(i, j int) bool { return list[i].StartMs < list[j].StartMs })
 		for _, sp := range list {
 			indent := strings.Repeat("  ", depth)
-			// compact data
-			dataStr := ""
-			if len(sp.Data) > 0 {
-				var parts []string
-				for k, v := range sp.Data {
-					parts = append(parts, fmt.Sprintf("%s=%v", k, v))
-				}
-				dataStr = " data=" + strings.Join(parts, ",")
-			}
-			fmt.Fprintf(&b, "%s- %s id=%s start_ms=%d duration_ms=%d%s\n", indent, sp.Op, sp.ID, sp.StartMs, sp.Duration, dataStr)
-			// recurse into children
-			printSpan(sp.ID, depth+1)
+			fmt.Fprintf(&b, "%s%s duration_ms=%d\n", indent, sp.Op, sp.Duration)
+			printChildren(sp.ID, depth+1)
 		}
 	}
 
-	// start from root (parent == "")
-	printSpan("", 1)
-	// trailing blank line to separate requests
+	printChildren(rootID, 1)
 	b.WriteString("\n")
-	return []byte(b.String())
-}
-
-// renderSlowText renders the compact single-line slow request record.
-func renderSlowText(rec map[string]interface{}) []byte {
-	var b strings.Builder
-	rid, _ := rec["request_id"].(string)
-	op, _ := rec["op"].(string)
-	dur := rec["duration_ms"]
-	status := rec["status"]
-	fmt.Fprintf(&b, "SLOW %s op=%s duration_ms=%v status=%v\n", rid, op, dur, status)
 	return []byte(b.String())
 }
 
@@ -344,11 +350,6 @@ func shouldSample(r *http.Request) bool {
 	}
 	n := int64(atomic.AddUint64(&requestCtr, 1))
 	return (n % denom) == 0
-}
-
-func genRequestID() string {
-	n := atomic.AddUint64(&requestCtr, 1)
-	return "r-" + time.Now().Format("20060102T150405") + "-" + fmtUint64(n)
 }
 
 func genSpanID() string {
@@ -393,6 +394,39 @@ func fmtUint64(v uint64) string {
 		buf[i], buf[j] = buf[j], buf[i]
 	}
 	return string(buf)
+}
+
+// normalizePath converts a request path into a compact label used as the
+// parent path identifier: removes leading slash, replaces '/' with '_', and
+// collapses non-alphanumeric to underscores.
+func normalizePath(p string) string {
+	if p == "/" || p == "" {
+		return "root"
+	}
+	// trim leading/trailing slash
+	if strings.HasPrefix(p, "/") {
+		p = p[1:]
+	}
+	if strings.HasSuffix(p, "/") {
+		p = p[:len(p)-1]
+	}
+	// replace '/' with '_'
+	p = strings.ReplaceAll(p, "/", "_")
+	// collapse non-alnum to underscore
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	out := b.String()
+	if out == "" {
+		return "root"
+	}
+	return out
 }
 
 // statusRecorder captures the response status code.

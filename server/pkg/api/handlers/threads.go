@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
@@ -69,7 +71,7 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 	} else {
 		t.Author = author
 	}
-	created, err := createThreadInternal(t.Author, t.Title)
+	created, err := createThreadInternal(r.Context(), t.Author, t.Title)
 	if err != nil {
 		utils.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -80,20 +82,31 @@ func createThread(w http.ResponseWriter, r *http.Request) {
 // createThreadInternal performs the core thread creation logic without dealing
 // with HTTP concerns. It provisions per-thread KMS metadata when encryption is
 // enabled, saves the thread metadata, and returns the created Thread.
-func createThreadInternal(author, title string) (models.Thread, error) {
+func createThreadInternal(ctx context.Context, author, title string) (models.Thread, error) {
 	var t models.Thread
 	if title == "" {
 		title = defaultThreadTitle()
 	}
+
+	// overall start for local checkpoints
+	start := time.Now()
+	logger.Debug("thread_create_checkpoint", "step", "start", "author", author)
+
+	prepSpan := telemetry.StartSpan(ctx, "create_thread.prepare")
 	t.ID = utils.GenThreadID()
 	t.Author = author
 	t.Title = title
 	t.Slug = utils.MakeSlug(t.Title, t.ID)
 	t.CreatedTS = time.Now().UTC().UnixNano()
 	t.UpdatedTS = t.CreatedTS
+	prepSpan()
+	logger.Debug("thread_create_checkpoint", "step", "prepared", "elapsed_ms", time.Since(start).Milliseconds(), "thread", t.ID)
+
 	// initialize per-thread sequence to zero; first message will bump this
 	t.LastSeq = 0
 
+	encCheckSpan := telemetry.StartSpan(ctx, "create_thread.enc_check")
+	encStart := time.Now()
 	if security.EncryptionEnabled() {
 		// Only provision per-thread KMS metadata when a KMS provider is
 		// actually registered and enabled. This avoids creating KMS metadata
@@ -101,7 +114,12 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 		// available (tests expect no KMS metadata when encryption.use=false).
 		if kms.IsProviderEnabled() {
 			logger.Info("provisioning_thread_kms", "thread", t.ID)
+			// record time spent provisioning DEK from KMS
+			kmsSpan := telemetry.StartSpan(ctx, "kms.create_dek_for_thread")
+			kmsStart := time.Now()
 			keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(t.ID)
+			kmsSpan()
+			logger.Debug("thread_create_checkpoint", "step", "kms_done", "elapsed_ms", time.Since(kmsStart).Milliseconds(), "thread", t.ID)
 			if err != nil {
 				return models.Thread{}, err
 			}
@@ -111,11 +129,24 @@ func createThreadInternal(author, title string) (models.Thread, error) {
 			logger.Info("encryption_enabled_but_no_kms_provider", "thread", t.ID)
 		}
 	}
+	encCheckSpan()
+	logger.Debug("thread_create_checkpoint", "step", "enc_check_done", "elapsed_ms", time.Since(encStart).Milliseconds(), "thread", t.ID)
 
+	marshalSpan := telemetry.StartSpan(ctx, "create_thread.marshal")
+	marStart := time.Now()
 	b, _ := json.Marshal(t)
+	marshalSpan()
+	logger.Debug("thread_create_checkpoint", "step", "marshal_done", "elapsed_ms", time.Since(marStart).Milliseconds(), "thread", t.ID)
+
+	saveSpan := telemetry.StartSpan(ctx, "store.save_thread")
+	saveStart := time.Now()
 	if err := store.SaveThread(t.ID, string(b)); err != nil {
+		saveSpan()
 		return models.Thread{}, err
 	}
+	saveSpan()
+	logger.Debug("thread_create_checkpoint", "step", "saved", "elapsed_ms", time.Since(saveStart).Milliseconds(), "thread", t.ID)
+	logger.Debug("thread_create_checkpoint", "step", "done", "total_elapsed_ms", time.Since(start).Milliseconds(), "thread", t.ID)
 	return t, nil
 }
 
@@ -350,10 +381,10 @@ func createThreadMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
 	_ = json.NewEncoder(w).Encode(m)
 }
 
@@ -506,10 +537,10 @@ func updateThreadMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
 	_ = json.NewEncoder(w).Encode(m)
 }
 
@@ -543,9 +574,9 @@ func deleteThreadMessage(w http.ResponseWriter, r *http.Request) {
 	m.Deleted = true
 	m.TS = time.Now().UTC().UnixNano()
 
-	if err := store.SaveMessage(m.Thread, m.ID, m); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
+    if err := store.SaveMessage(r.Context(), m.Thread, m.ID, m); err != nil {
+        http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+        return
+    }
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -5,9 +5,12 @@ export let options = {
       executor: 'constant-arrival-rate',
       rate: 1000,       // requests per second
       timeUnit: '1s',
-      duration: '30s',
-      preAllocatedVUs: 600, // max VUs to handle the load
-      maxVUs: 1000
+      // run short by default to send ~2k requests when iterating at 1k/sec
+      duration: '1s',
+      // pre-allocate enough VUs to sustain the target rate; adjust to match
+      // expected latency (preAllocatedVUs ~= rate * expected_latency_s).
+      preAllocatedVUs: 1000,
+      maxVUs: 1200
     }
   },
   thresholds: {

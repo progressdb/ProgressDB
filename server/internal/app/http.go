@@ -4,12 +4,12 @@ import (
 	"context"
 	"net/http"
 
-    "progressdb/pkg/api"
-    "progressdb/pkg/auth"
-    "progressdb/pkg/telemetry"
-    "progressdb/pkg/banner"
-    "progressdb/pkg/config"
-    "progressdb/pkg/store"
+	"progressdb/pkg/api"
+	"progressdb/pkg/auth"
+	"progressdb/pkg/banner"
+	"progressdb/pkg/config"
+	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -129,9 +129,9 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	}
 	config.SetRuntime(runtimeCfg)
 
-    // wrap mux with auth middleware, then telemetry middleware
-    wrapped := auth.AuthenticateRequestMiddleware(secCfg)(mux)
-    wrapped = telemetry.Middleware(wrapped)
+	// wrap mux with auth middleware, then telemetry middleware
+	wrapped := auth.AuthenticateRequestMiddleware(secCfg)(mux)
+	wrapped = telemetry.Middleware(wrapped)
 
 	// create http server
 	a.srv = &http.Server{Addr: a.eff.Addr, Handler: wrapped}
