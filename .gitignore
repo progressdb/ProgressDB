@@ -104,3 +104,4 @@ logs/
 /server/tests/test
 /server/tests/.database
 /server/tests/abort
+/server/tests/benching/artifacts

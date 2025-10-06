@@ -9,29 +9,24 @@ import (
 	"progressdb/pkg/utils"
 )
 
-// Role and SecConfig types are defined in identity.go
+// role and secconfig types are defined in identity.go
 
 func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handler {
-	// Rate limiters keyed by API key or remote IP
+	// rate limiters keyed by api key or remote ip
 	limiters := &limiterPool{cfg: cfg}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// request logging (redacts sensitive headers)
+			// log request (redacts sensitive headers)
 			logger.LogRequest(r)
-			// CORS preflight
+
+			// cors preflight
 			origin := r.Header.Get("Origin")
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
-				// Allow common methods used by the API (including mutation methods).
 				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
-				// Cache preflight response for 10 minutes to reduce preflight traffic.
 				w.Header().Set("Access-Control-Max-Age", "600")
-				// Include common custom headers used by the SDKs (X-API-Key) and
-				// the signed-author flow (X-User-ID, X-User-Signature). Keep this
-				// list in sync with any client headers you expect to receive.
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
-				// Expose role header to clients if they need it
 				w.Header().Set("Access-Control-Expose-Headers", "X-Role-Name")
 			}
 			if r.Method == http.MethodOptions {
@@ -39,7 +34,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 				return
 			}
 
-			// IP whitelist
+			// ip whitelist
 			if len(cfg.IPWhitelist) > 0 {
 				ip := clientIP(r)
 				logger.Debug("ip_check", "ip", ip)
@@ -50,34 +45,18 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 				}
 			}
 
-			// Auth
+			// extract authentication key from this
 			role, key, hasAPIKey := authenticate(r, cfg)
-
-			// Log authentication outcome (do not log full key content)
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
-			// Allow unauthenticated health checks for deployment probes.
-			// Probes often cannot send API keys; accept GET /healthz without
-			// authentication so external systems can verify service liveness.
+			// allow unauthenticated health checks for probes
 			if (r.URL.Path == "/healthz" || r.URL.Path == "/readyz") && r.Method == http.MethodGet {
 				r.Header.Set("X-Role-Name", "unauth")
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Do not allow unauthenticated requests for other endpoints unless
-			// the request carries signature headers (X-User-ID + X-User-Signature),
-			// in which case signature verification middleware will handle auth.
-			if role == RoleUnauth {
-				if !(r.Header.Get("X-User-ID") != "" && r.Header.Get("X-User-Signature") != "") {
-					utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
-					logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
-					return
-				}
-				// otherwise, allow through so signature middleware can verify
-			}
-
-			// Expose role name for handlers
+			// expose role name for handlers
 			var roleName string
 			switch role {
 			case RoleFrontend:
@@ -89,23 +68,32 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 			default:
 				roleName = "unauth"
 			}
-			r.Header.Set("X-Role-Name", roleName)
 
-			// Scope enforcement for frontend keys
+			// block unauthenticated roles
+			if role == RoleUnauth || !hasAPIKey {
+				utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+				logger.Warn("request_unauthorized", "path", r.URL.Path, "remote", r.RemoteAddr)
+				return
+			} else {
+				// set role type for downstream
+				r.Header.Set("X-Role-Name", roleName)
+			}
+
+			// scope enforcement for frontend keys
 			if role == RoleFrontend && !frontendAllowed(r) {
 				utils.JSONError(w, http.StatusForbidden, "forbidden")
 				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", r.URL.Path)
 				return
 			}
 
-			// Rate limiting
+			// rate limiting
 			if !limiters.Allow(key) {
 				utils.JSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", r.URL.Path)
 				return
 			}
 
-			// Log that request passed middleware checks
+			// log that request passed middleware checks
 			logger.Info("request_allowed", "method", r.Method, "path", r.URL.Path, "role", r.Header.Get("X-Role-Name"))
 
 			next.ServeHTTP(w, r)
@@ -114,6 +102,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(http.Handler) http.Handle
 }
 
 func originAllowed(origin string, allowed []string) bool {
+	// check if origin is allowed
 	if len(allowed) == 0 {
 		return false
 	}
@@ -125,10 +114,10 @@ func originAllowed(origin string, allowed []string) bool {
 	return false
 }
 
-// authenticate and frontendAllowed are implemented further below in this file.
+// authenticate and frontendallowed are implemented below
 
 func clientIP(r *http.Request) string {
-	// Expect direct connection for MVP; ignore X-Forwarded-For
+	// get client ip from remoteaddr
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -137,6 +126,7 @@ func clientIP(r *http.Request) string {
 }
 
 func ipWhitelisted(ip string, list []string) bool {
+	// check if ip is in whitelist
 	for _, w := range list {
 		if ip == w {
 			return true
@@ -146,7 +136,7 @@ func ipWhitelisted(ip string, list []string) bool {
 }
 
 func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
-	// Prefer Authorization: Bearer <key>, fallback to X-API-Key
+	// prefer authorization: bearer <key>, fallback to x-api-key
 	auth := r.Header.Get("Authorization")
 	var key string
 	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
@@ -156,8 +146,7 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
 		key = r.Header.Get("X-API-Key")
 	}
 	if key == "" {
-		// no API key present: return unauth role with client IP as identifier,
-		// and signal that no API key was provided (hasAPIKey=false)
+		// no api key: return unauth role with client ip, hasapikey=false
 		return RoleUnauth, clientIP(r), false
 	}
 	if cfg.AdminKeys != nil {
@@ -175,13 +164,11 @@ func authenticate(r *http.Request, cfg SecConfig) (Role, string, bool) {
 }
 
 func frontendAllowed(r *http.Request) bool {
-	// Allow message create/list
+	// allow message create/list
 	if r.URL.Path == "/v1/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
 		return true
 	}
-	// Allow thread collection and thread-scoped APIs for frontend keys.
-	// Handlers themselves require a verified author (RequireSignedAuthor)
-	// and perform ownership checks where appropriate.
+	// allow thread collection and thread-scoped apis for frontend keys
 	if strings.HasPrefix(r.URL.Path, "/v1/threads") {
 		return true
 	}

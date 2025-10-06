@@ -13,7 +13,7 @@ import (
 	"progressdb/pkg/utils"
 )
 
-// Role represents the resolved caller role for a request.
+// role represents the resolved caller role for a request
 type Role int
 
 const (
@@ -23,9 +23,7 @@ const (
 	RoleAdmin
 )
 
-// SecConfig mirrors the security-related configuration used to drive
-// authentication, CORS and rate limiting behavior. Put here so limiter.go
-// and gateway.go can reference the shared type.
+// secconfig holds security-related config for authentication, cors, and rate limiting
 type SecConfig struct {
 	AllowedOrigins []string
 	RPS            float64
@@ -38,43 +36,33 @@ type SecConfig struct {
 
 type ctxAuthorKey struct{}
 
-// RequireSignedAuthor verifies HMAC signature headers and injects the
-// verified author id into the request context.
+// requiresignedauthor checks for hmac signature headers and, if valid, injects the
+// verified author id into the request context. for backend/admin, signature is optional.
 func RequireSignedAuthor(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Determine caller role set earlier by gateway middleware
 		role := r.Header.Get("X-Role-Name")
 		userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 		sig := strings.TrimSpace(r.Header.Get("X-User-Signature"))
 
-		// Backend/admin callers: allow missing signature entirely, or accept
-		// a header-provided author without a signature. If a signature is
-		// present we will verify it below.
-		if role == "backend" || role == "admin" {
-			if sig == "" {
-				// No signature provided; allow the request through. Handlers may
-				// accept an author from body or X-User-ID header as appropriate.
-				next.ServeHTTP(w, r)
-				return
-			}
-			// signature present -> fallthrough to verification logic
+		// for backend/admin, allow through if no signature is present
+		if (role == "backend" || role == "admin") && sig == "" {
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		// If we reach here and there's no signature, the caller is not a
-		// trusted backend/admin and we must require signature headers.
+		// for all others, require both signature and userid
 		if sig == "" {
 			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
 			utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
 			return
 		}
-		// signature is present; require userID as well
 		if userID == "" {
 			logger.Warn("missing_signature_headers", "path", r.URL.Path, "remote", r.RemoteAddr)
 			utils.JSONError(w, http.StatusUnauthorized, "missing signature headers")
 			return
 		}
 
-		// Retrieve signing keys from the canonical config package.
+		// get signing keys from config
 		keys := config.GetSigningKeys()
 		if len(keys) == 0 {
 			logger.Error("no_signing_keys_configured")
@@ -82,9 +70,9 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 			return
 		}
 
-		// Try all configured signing keys.
+		// try all configured signing keys
 		ok := false
-		for k := range config.GetSigningKeys() {
+		for k := range keys {
 			mac := hmac.New(sha256.New, []byte(k))
 			mac.Write([]byte(userID))
 			expected := hex.EncodeToString(mac.Sum(nil))
@@ -101,12 +89,12 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 		logger.Info("signature_verified", "user", userID)
 		ctx := context.WithValue(r.Context(), ctxAuthorKey{}, userID)
 		r = r.WithContext(ctx)
-		// do not set headers; handlers should use context via AuthorIDFromContext
+		// do not set headers; handlers should use context via authoridfromcontext
 		next.ServeHTTP(w, r)
 	})
 }
 
-// AuthorIDFromContext returns the verified author id or empty string.
+// authoridfromcontext returns the verified author id or empty string
 func AuthorIDFromContext(ctx context.Context) string {
 	if v := ctx.Value(ctxAuthorKey{}); v != nil {
 		if s, ok := v.(string); ok {
@@ -116,8 +104,7 @@ func AuthorIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-// Note: authenticate and frontendAllowed are implemented in gateway.go
-// to keep gateway responsibilities self-contained.
+// note: authenticate and frontendallowed are implemented in gateway.go
 
 func validateAuthor(a string) (bool, string) {
 	if a == "" {
@@ -129,17 +116,16 @@ func validateAuthor(a string) (bool, string) {
 	return true, ""
 }
 
-// ResolveAuthorFromRequest is the single canonical resolver handlers should call.
-// It prefers a signature-verified author (in context). If a signature is present
-// it is authoritative — any conflicting author provided via header/body/query
-// will cause a 403. When no signature is present, backend/admin roles may
-// supply an author via body, header (X-User-ID) or query (fallback). Frontend
-// callers require a signature and will receive 401 when missing.
+// resolveauthorfromrequest is the canonical resolver for handlers.
+// prefers a signature-verified author (from context). if a signature is present,
+// it is authoritative: any conflicting author from header/body/query causes 403.
+// when no signature, backend/admin may supply author via body, header, or query.
+// frontend callers require a signature and get 401 if missing.
 func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, string) {
-	// Prefer signature-verified author from context
+	// prefer signature-verified author from context
 	if id := AuthorIDFromContext(r.Context()); id != "" {
 		logger.Info("author_signature_verified", "author", id, "remote", r.RemoteAddr, "path", r.URL.Path)
-		// If other provided authors conflict with the signature, reject.
+		// reject if any other provided author conflicts with signature
 		if q := strings.TrimSpace(r.URL.Query().Get("author")); q != "" && q != id {
 			logger.Warn("author_mismatch_signature_query", "signature", id, "query", q, "remote", r.RemoteAddr, "path", r.URL.Path)
 			return "", http.StatusForbidden, "author mismatch between signature and query param"
@@ -156,7 +142,7 @@ func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, 
 		return id, 0, ""
 	}
 
-	// No signature; allow backend/admins to supply an author via body/header/query.
+	// no signature; allow backend/admin to supply author via body/header/query
 	role := r.Header.Get("X-Role-Name")
 	logger.Info("no_signature_found", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
 	if role == "backend" || role == "admin" {
@@ -188,7 +174,7 @@ func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, 
 		return "", http.StatusBadRequest, "author required for backend requests"
 	}
 
-	// Otherwise require signature
+	// otherwise require signature
 	logger.Warn("missing_author_signature", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
 	return "", http.StatusUnauthorized, "missing or invalid author signature"
 }
