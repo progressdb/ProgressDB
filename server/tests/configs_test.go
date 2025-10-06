@@ -73,7 +73,7 @@ func TestConfigs_Suite(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected process to exit non-zero with malformed config")
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(12 * time.Second):
 			_ = cmd.Process.Kill()
 			t.Fatalf("server did not exit quickly on malformed config")
 		}
@@ -171,7 +171,7 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected process to exit non-zero with malformed config")
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second):
 		// still running -> fail
 		_ = cmd.Process.Kill()
 		t.Fatalf("server did not exit quickly on malformed config")

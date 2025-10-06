@@ -101,3 +101,6 @@ database/
 .gocache/
 test-results.json
 logs/
+/server/tests/test
+/server/tests/.database
+/server/tests/abort

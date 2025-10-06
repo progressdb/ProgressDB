@@ -3,18 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
-	"os/signal"
-	"runtime"
-	"syscall"
-
 	"progressdb/internal/app"
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/progressor"
 	"progressdb/pkg/shutdown"
 	"progressdb/pkg/state"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -53,7 +49,7 @@ func main() {
 		shutdown.Abort("failed to build effective config", err, flags.DB)
 	}
 
-	// Initialize package-level state paths and ensure the filesystem layout.
+	// init database folders and ensure the filesystem layout.
 	if err := state.Init(eff.DBPath); err != nil {
 		logger.Error("state_dirs_setup_failed", "error", err)
 		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
@@ -74,29 +70,8 @@ func main() {
 	}
 
 	// set up context and signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		s := <-sigc
-		log.Printf("signal received: %v, shutdown requested", s)
-		cancel()
-	}()
-
-	// Monitor SIGPIPE and print diagnostics if it occurs. Some test harness
-	// environments may deliver SIGPIPE when writing to closed pipes; catching
-	// it here and dumping goroutine stacks helps diagnose abrupt exits.
-	sigpipe := make(chan os.Signal, 1)
-	signal.Notify(sigpipe, syscall.SIGPIPE)
-	go func() {
-		s := <-sigpipe
-		log.Printf("signal received: %v (SIGPIPE) - dumping goroutine stacks", s)
-		buf := make([]byte, 1<<20)
-		n := runtime.Stack(buf, true)
-		log.Printf("=== goroutine stack dump ===\n%s\n=== end goroutine stack dump ===", string(buf[:n]))
-		// cancel context to trigger graceful shutdown
-		cancel()
-	}()
+	ctx, cancel := shutdown.SetupSignalHandler(context.Background())
+	defer cancel()
 
 	// run version checks and migrations - before start app
 	if invoked, err := progressor.Run(ctx, version); err != nil {
@@ -110,6 +85,8 @@ func main() {
 		shutdown.Abort("app run failed", err, eff.DBPath)
 	}
 
-	// shutdown the app
-	_ = app.Shutdown(context.Background())
+	// shutdown the app with a bounded timeout so teardown cannot hang forever
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer shutdownCancel()
+	_ = app.Shutdown(shutdownCtx)
 }
