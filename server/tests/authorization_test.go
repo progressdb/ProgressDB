@@ -43,7 +43,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		q := url.Values{}
 		q.Set("author", "alice")
 		req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
-		req.Header.Set("X-Role-Name", "admin")
+		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -53,10 +53,11 @@ func TestAuthorization_Suite(t *testing.T) {
 			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
 		}
 
-		sig := utils.SignHMAC("signsecret", "alice")
+		sig := utils.SignHMAC(utils.SigningSecret, "alice")
 		sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
 		sreq.Header.Set("X-User-ID", "alice")
 		sreq.Header.Set("X-User-Signature", sig)
+		sreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -79,6 +80,8 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
+    backend: ["backend-secret"]
+    frontend: ["frontend-secret"]
     admin: ["admin-secret"]
 logging:
   level: info
@@ -89,6 +92,7 @@ logging:
 		// request with allowed origin should include Access-Control-Allow-Origin
 		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req.Header.Set("Origin", "https://allowed.example")
+		req.Header.Set("Authorization", "Bearer admin-secret")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -100,6 +104,7 @@ logging:
 		// request with disallowed origin should not set header
 		req2, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req2.Header.Set("Origin", "https://evil.example")
+		req2.Header.Set("Authorization", "Bearer admin-secret")
 		res2, err := http.DefaultClient.Do(req2)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -184,6 +189,7 @@ security:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
     backend: ["backend-secret"]
+    frontend: ["frontend-secret"]
     admin: []
 logging:
   level: info
@@ -197,6 +203,7 @@ logging:
 		creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thBody))
 		creq.Header.Set("X-User-ID", "alice")
 		creq.Header.Set("X-User-Signature", sig)
+		creq.Header.Set("Authorization", "Bearer frontend-secret")
 		cres, err := http.DefaultClient.Do(creq)
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)
@@ -216,6 +223,7 @@ logging:
 		ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody))
 		ureq.Header.Set("X-User-ID", "bob")
 		ureq.Header.Set("X-User-Signature", sig)
+		ureq.Header.Set("Authorization", "Bearer frontend-secret")
 		ures, err := http.DefaultClient.Do(ureq)
 		if err != nil {
 			t.Fatalf("update request failed: %v", err)
@@ -229,6 +237,7 @@ logging:
 		ureq2, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody2))
 		ureq2.Header.Set("X-User-ID", "alice")
 		ureq2.Header.Set("X-User-Signature", sig)
+		ureq2.Header.Set("Authorization", "Bearer frontend-secret")
 		ures2, err := http.DefaultClient.Do(ureq2)
 		if err != nil {
 			t.Fatalf("update2 request failed: %v", err)

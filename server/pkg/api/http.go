@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
+	"progressdb/pkg/router"
 
 	"progressdb/pkg/api/handlers"
 )

@@ -21,9 +21,10 @@ import (
 )
 
 func TestConfigs_Suite(t *testing.T) {
+	_ = utils.TestArtifactsRoot(t)
 	// Subtest: Load a config file and verify ResolveConfigPath and parsing behave as expected.
 	t.Run("LoadAndResolve", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := utils.NewArtifactsDir(t, "configs-load")
 		p := filepath.Join(dir, "cfg.yaml")
 		content := []byte("server:\n  address: 127.0.0.1\n  port: 9090\nlogging:\n  level: debug\n")
 		if err := os.WriteFile(p, content, 0o600); err != nil {
@@ -48,7 +49,7 @@ func TestConfigs_Suite(t *testing.T) {
 	// Subtest: Start the server with a malformed global config and expect the process to exit quickly with an error.
 	t.Run("MalformedGlobalConfig", func(t *testing.T) {
 		// build binary and start with malformed config
-		tmp := t.TempDir()
+		tmp := utils.NewArtifactsDir(t, "configs-malformed-global")
 		bin := filepath.Join(tmp, "progressdb-bin")
 		// try building from the server dir first, then fall back to building from repo root
 		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
@@ -63,6 +64,7 @@ func TestConfigs_Suite(t *testing.T) {
 		_ = os.WriteFile(cfgPath, []byte("server: [::"), 0o600)
 
 		cmd := exec.Command(bin, "--config", cfgPath)
+		cmd.Dir = utils.NewArtifactsDir(t, "configs-malformed-global-proc")
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start failed: %v", err)
 		}
@@ -145,7 +147,7 @@ logging:
 
 func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	// build binary
-	tmp := t.TempDir()
+	tmp := utils.NewArtifactsDir(t, "configs-e2e-malformed")
 	bin := filepath.Join(tmp, "progressdb-bin")
 	// try building from the server dir first, then fall back to building from repo root
 	build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
@@ -161,6 +163,7 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	_ = os.WriteFile(cfgPath, []byte("::not yaml::"), 0o600)
 
 	cmd := exec.Command(bin, "--config", cfgPath)
+	cmd.Dir = utils.NewArtifactsDir(t, "configs-e2e-malformed-proc")
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}

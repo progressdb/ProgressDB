@@ -7,7 +7,6 @@ toolchain go1.24.7
 require (
 	github.com/adhocore/gronx v1.19.6
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/fasthttp/router v0.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/valyala/fasthttp v1.40.0
 	golang.org/x/time v0.3.0
@@ -63,5 +62,3 @@ require (
 )
 
 replace github.com/progressdb/kms => ../kms
-
-replace github.com/fasthttp/router => ./third_party/github.com/fasthttp/router

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -113,10 +114,20 @@ var initErr error
 // call multiple times; initialization happens only once. It also ensures the
 // filesystem layout exists by calling EnsureStateDirs and returns any error
 // encountered.
+
 func Init(dbPath string) error {
 	initOnce.Do(func() {
-		PathsVar = PathsFor(dbPath)
-		initErr = EnsureStateDirs(dbPath)
+		path := strings.TrimSpace(dbPath)
+		if path == "" {
+			if root := ArtifactRoot(); root != "" {
+				path = filepath.Join(root, "db")
+			} else {
+				path = "./.database"
+			}
+		}
+		path = filepath.Clean(path)
+		PathsVar = PathsFor(path)
+		initErr = EnsureStateDirs(path)
 	})
 	return initErr
 }

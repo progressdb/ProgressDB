@@ -45,7 +45,8 @@ type ServerProcess struct {
 func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	t.Helper()
 
-	workdir := t.TempDir()
+	workdir := NewArtifactsDir(t, "server-process")
+	artifactRoot := TestArtifactsRoot(t)
 
 	// allocate port if requested
 	port := opts.Port
@@ -138,7 +139,17 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	cmd := exec.Command(binPath, "--config", cfgPath)
 	cmd.Stdout = io.MultiWriter(stdoutF)
 	cmd.Stderr = io.MultiWriter(stderrF)
+	if opts.Env == nil {
+		opts.Env = map[string]string{}
+	}
+	if _, ok := opts.Env["PROGRESSDB_ARTIFACT_ROOT"]; !ok {
+		opts.Env["PROGRESSDB_ARTIFACT_ROOT"] = artifactRoot
+	}
+	if _, ok := opts.Env["TEST_ARTIFACTS_ROOT"]; !ok {
+		opts.Env["TEST_ARTIFACTS_ROOT"] = artifactRoot
+	}
 	cmd.Env = append(os.Environ(), envMapToSlice(opts.Env)...)
+	cmd.Dir = workdir
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server process: %v", err)
 	}

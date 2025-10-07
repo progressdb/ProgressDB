@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	frouter "github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
+	frouter "progressdb/pkg/router"
 
 	"progressdb/pkg/api/handlers"
 	"progressdb/pkg/auth"
@@ -67,8 +67,6 @@ func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.WriteString("{\"status\":\"ok\"}")
 }
 
-// readyzHandler handles the /readyz endpoint.
-
 // startHTTP builds and starts the fasthttp server, returning a channel that delivers errors.
 func (a *App) startHTTP(_ context.Context) <-chan error {
 	// build security config for auth middleware
@@ -120,6 +118,7 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 
 	fastHandler := r.Handler
 	// wrap with fasthttp native auth middleware
+	fastHandler = auth.RequireSignedAuthorFast(fastHandler)
 	fastHandler = auth.AuthenticateRequestMiddlewareFast(secCfg)(fastHandler)
 
 	// create fasthttp server

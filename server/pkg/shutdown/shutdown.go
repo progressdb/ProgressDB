@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/state"
 	"runtime"
 	"syscall"
 	"time"
@@ -57,6 +58,9 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 	if dbPath != "" {
 		crashDir = filepath.Join(dbPath, "state", "crash")
 		abortDir = filepath.Join(dbPath, "state", "abort")
+	} else if root := state.ArtifactRoot(); root != "" {
+		crashDir = filepath.Join(root, "crash")
+		abortDir = filepath.Join(root, "abort")
 	}
 	if e := os.MkdirAll(crashDir, 0o700); e != nil {
 		return "", "", fmt.Errorf("failed to create crash dir: %w", e)

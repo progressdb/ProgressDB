@@ -175,7 +175,7 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 	}
 
 	user := "enc_user"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	// create thread
 	thBody := map[string]string{"author": user, "title": "enc-thread"}
@@ -183,6 +183,7 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(tb))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
+	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -200,6 +201,7 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
+	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	mres, err := http.DefaultClient.Do(mreq)
 	if err != nil {
 		t.Fatalf("create message failed: %v", err)
@@ -213,6 +215,7 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
+	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list messages failed: %v", err)

@@ -32,7 +32,7 @@ func TestCreateMessage(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "msg_create"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	t.Logf("TestCreateMessage: user=%s, sig=%s", user, sig)
 
@@ -51,6 +51,7 @@ func TestCreateMessage(t *testing.T) {
 	}
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
+	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	t.Logf("TestCreateMessage: request URL=%s, headers=%v", req.URL.String(), req.Header)
 
 	// Send the request and check response
@@ -82,7 +83,7 @@ func TestListMessages(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "msg_list"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	// Create a message to ensure there is something to list
 	payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "listme"}}
@@ -90,6 +91,7 @@ func TestListMessages(t *testing.T) {
 	creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create message request failed: %v", err)
@@ -105,6 +107,7 @@ func TestListMessages(t *testing.T) {
 	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages?thread="+thread, nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
+	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list request failed: %v", err)

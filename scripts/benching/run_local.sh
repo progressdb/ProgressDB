@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$ROOT_DIR"
+
 # defaults
 # DEFAULT_TARGET="http://192.168.0.132:8080"
 DEFAULT_TARGET="http://localhost:8080"
@@ -51,8 +54,15 @@ if [[ -z "$SIG_VAL" ]]; then
 fi
 export GENERATED_USER_SIGNATURE="$SIG_VAL"
 
-# run k6 and save output
-ART_DIR=server/tests/benching/artifacts
+# ensure artifacts root is available for outputs
+ARTIFACT_ROOT=${TEST_ARTIFACTS_ROOT:-${PROGRESSDB_ARTIFACT_ROOT:-"$ROOT_DIR/tests/artifacts"}}
+mkdir -p "$ARTIFACT_ROOT"
+ARTIFACT_ROOT="$(cd "$ARTIFACT_ROOT" && pwd)"
+export PROGRESSDB_ARTIFACT_ROOT="$ARTIFACT_ROOT"
+export TEST_ARTIFACTS_ROOT="$ARTIFACT_ROOT"
+
+# run k6 and save output beneath perf artifacts
+ART_DIR="$ARTIFACT_ROOT/perf/k6"
 mkdir -p "$ART_DIR"
 TEST_ID="bench-$(date +%Y%m%d%H%M%S)"
 OUT_JSON="$ART_DIR/${TEST_ID}.json"

@@ -21,6 +21,7 @@ import (
 )
 
 func TestLogging_Suite(t *testing.T) {
+	_ = utils.TestArtifactsRoot(t)
 	// subtest: Initialize logger and attach audit file sink; verify audit file created.
 	t.Run("InitAndAttachAuditSink", func(t *testing.T) {
 		logger.Init()
@@ -28,7 +29,7 @@ func TestLogging_Suite(t *testing.T) {
 			t.Fatalf("expected logger.Log to be non-nil after Init")
 		}
 
-		dir := t.TempDir()
+		dir := utils.NewArtifactsDir(t, "logging-audit")
 		auditDir := filepath.Join(dir, "audit")
 		if err := logger.AttachAuditFileSink(auditDir); err != nil {
 			t.Fatalf("AttachAuditFileSink failed: %v", err)
@@ -85,7 +86,7 @@ logging:
 	// subtest: Start server with an invalid audit/audit path and verify failure is logged (attach_audit_sink_failed).
 	t.Run("AuditPathFailureModes", func(t *testing.T) {
 		// create a tmp dir and a file at <db>/state/audit to provoke MkdirAll failure
-		tmp := t.TempDir()
+		tmp := utils.NewArtifactsDir(t, "logging-audit-failure")
 		db := filepath.Join(tmp, "db")
 		_ = os.MkdirAll(db, 0o700)
 		// ensure parent state dir exists, then create a file where the audit
@@ -117,6 +118,7 @@ logging:
 
 		// run process (blocking) and capture stdout/stderr
 		cmd := exec.Command(bin, "--config", cfg)
+		cmd.Dir = utils.NewArtifactsDir(t, "logging-audit-failure-proc")
 		outf := filepath.Join(tmp, "out.log")
 		of, _ := os.Create(outf)
 		cmd.Stdout = of
@@ -179,6 +181,7 @@ logging:
 }
 
 func TestLogging_E2E_AuditFile(t *testing.T) {
+	_ = utils.TestArtifactsRoot(t)
 	// start server with admin key so we can call an admin endpoint that emits audit logs
 	cfg := `server:
   address: 127.0.0.1

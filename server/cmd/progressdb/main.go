@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"progressdb/internal/app"
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/progressor"
 	"progressdb/pkg/shutdown"
 	"progressdb/pkg/state"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -32,6 +34,11 @@ func main() {
 
 	// parse config flags
 	flags := config.ParseConfigFlags()
+	if !flags.Set["db"] {
+		if root := state.ArtifactRoot(); root != "" {
+			flags.DB = filepath.Join(root, ".database")
+		}
+	}
 
 	// parse config file
 	fileCfg, fileExists, err := config.ParseConfigFile(flags)
@@ -47,6 +54,11 @@ func main() {
 	if err != nil {
 		// try to use flags.DB as fallback db path for crash dump
 		shutdown.Abort("failed to build effective config", err, flags.DB)
+	}
+	if strings.TrimSpace(eff.DBPath) == "" {
+		if root := state.ArtifactRoot(); root != "" {
+			eff.DBPath = filepath.Join(root, ".database")
+		}
 	}
 
 	// init database folders and ensure the filesystem layout.

@@ -16,7 +16,7 @@ func TestAdmin_GenerateKEK(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	req, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/generate-kek", nil)
-	req.Header.Set("X-Role-Name", "admin")
+	req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -38,7 +38,7 @@ func TestAdmin_Health(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	req, _ := http.NewRequest("GET", srv.URL+"/admin/health", nil)
-	req.Header.Set("X-Role-Name", "admin")
+	req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("health request failed: %v", err)
@@ -61,12 +61,16 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	defer srv.Close()
 	// create a thread and a message so stats are non-zero
 	user := "stat_user"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "s1"}
 	b, _ := json.Marshal(body)
 	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -84,13 +88,15 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
+	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	if _, err := http.DefaultClient.Do(mreq); err != nil {
 		t.Fatalf("create message failed: %v", err)
 	}
 
 	// call stats
 	areq, _ := http.NewRequest("GET", srv.URL+"/admin/stats", nil)
-	areq.Header.Set("X-Role-Name", "admin")
+	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	ares, err := http.DefaultClient.Do(areq)
 	if err != nil {
 		t.Fatalf("stats request failed: %v", err)
@@ -118,7 +124,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 
 	// list keys
 	lreq, _ := http.NewRequest("GET", srv.URL+"/admin/keys?prefix=test", nil)
-	lreq.Header.Set("X-Role-Name", "admin")
+	lreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list keys failed: %v", err)
@@ -130,7 +136,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	// get specific key
 	gres, err := http.DefaultClient.Do(func() *http.Request {
 		req, _ := http.NewRequest("GET", srv.URL+"/admin/keys/testkey", nil)
-		req.Header.Set("X-Role-Name", "admin")
+		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		return req
 	}())
 	if err != nil {
@@ -154,12 +160,13 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "rot_user"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "r1"}
 	b, _ := json.Marshal(body)
 	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -173,7 +180,7 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 
 	rb, _ := json.Marshal(map[string]string{"thread_id": tid})
 	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
-	rreq.Header.Set("X-Role-Name", "admin")
+	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {
 		t.Fatalf("rotate request failed: %v", err)
@@ -195,12 +202,13 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "rw_user"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "rw1"}
 	b, _ := json.Marshal(body)
 	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -217,7 +225,7 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 	payload := map[string]interface{}{"thread_ids": []string{tid}, "new_kek_hex": mk, "parallelism": 1}
 	pb, _ := json.Marshal(payload)
 	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rewrap-deks", bytes.NewReader(pb))
-	rreq.Header.Set("X-Role-Name", "admin")
+	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {
 		t.Fatalf("rewrap request failed: %v", err)
@@ -231,12 +239,13 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "enc_user"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "e1"}
 	b, _ := json.Marshal(body)
 	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
+	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -254,6 +263,7 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
+	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	if _, err := http.DefaultClient.Do(mreq); err != nil {
 		t.Fatalf("create message failed: %v", err)
 	}
@@ -261,7 +271,7 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 	payload := map[string]interface{}{"thread_ids": []string{tid}, "parallelism": 1}
 	pb, _ := json.Marshal(payload)
 	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/encrypt-existing", bytes.NewReader(pb))
-	rreq.Header.Set("X-Role-Name", "admin")
+	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {
 		t.Fatalf("encrypt-existing request failed: %v", err)

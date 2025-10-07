@@ -14,8 +14,7 @@ func TestSign_Succeeds_For_Backend(t *testing.T) {
 	body := map[string]string{"userId": "u1"}
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", srv.URL+"/v1/_sign", bytes.NewReader(b))
-	req.Header.Set("X-Role-Name", "backend")
-	req.Header.Set("X-API-Key", "backend-secret")
+	req.Header.Set("Authorization", "Bearer "+utils.BackendAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)

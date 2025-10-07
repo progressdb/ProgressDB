@@ -17,8 +17,8 @@ import (
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
-	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
+	"progressdb/pkg/router"
 )
 
 // RegisterMessagesFast registers message routes on the fasthttp router.

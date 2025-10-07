@@ -17,12 +17,13 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
 	user := "e2e"
-	sig := utils.SignHMAC("signsecret", user)
+	sig := utils.SignHMAC(utils.SigningSecret, user)
 	th := map[string]interface{}{"author": user, "title": "e2e-thread"}
 	b, _ := json.Marshal(th)
 	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
+	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -38,13 +39,14 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
+	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	if _, err := http.DefaultClient.Do(mreq); err != nil {
 		t.Fatalf("create message failed: %v", err)
 	}
 	rreq := map[string]string{"thread_id": tid}
 	rb, _ := json.Marshal(rreq)
 	areq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
-	areq.Header.Set("X-Role-Name", "admin")
+	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	ares, err := http.DefaultClient.Do(areq)
 	if err != nil {
 		t.Fatalf("rotate request failed: %v", err)
@@ -57,6 +59,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
+	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list messages failed: %v", err)

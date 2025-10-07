@@ -18,12 +18,14 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
+	testutils "progressdb/tests/utils"
 )
 
 func TestRetention_Suite(t *testing.T) {
+	_ = testutils.TestArtifactsRoot(t)
 	// Subtest: Test file lease acquire, renew, and release lifecycle semantics.
 	t.Run("FileLeaseLifecycle", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := testutils.NewArtifactsDir(t, "retention-lease")
 		lock := retention.NewFileLease(dir)
 		owner := utils.GenID()
 		acq, err := lock.Acquire(owner, 2*time.Second)
@@ -43,7 +45,7 @@ func TestRetention_Suite(t *testing.T) {
 
 	// Subtest: Verify purge integration removes soft-deleted thread permanently.
 	t.Run("PurgeThreadIntegration", func(t *testing.T) {
-		dbdir := t.TempDir()
+		dbdir := testutils.NewArtifactsDir(t, "retention-db")
 		storePath := filepath.Join(dbdir, "store")
 		if err := os.MkdirAll(storePath, 0o700); err != nil {
 			t.Fatalf("mkdir store path: %v", err)

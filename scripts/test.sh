@@ -4,15 +4,22 @@ set -euo pipefail
 echo "Running server tests..."
 cd "$(dirname "$0")/.."
 
-# Use a repo-local Go build cache to avoid permissions on CI/host caches
-export GOCACHE="$(pwd)/.gocache"
+# Route all test artifacts into a shared root so logs and caches stay tidy
+ARTIFACT_ROOT=${TEST_ARTIFACTS_ROOT:-${PROGRESSDB_ARTIFACT_ROOT:-"$(pwd)/tests/artifacts"}}
+mkdir -p "$ARTIFACT_ROOT"
+ARTIFACT_ROOT="$(cd "$ARTIFACT_ROOT" && pwd)"
+export PROGRESSDB_ARTIFACT_ROOT="$ARTIFACT_ROOT"
+export TEST_ARTIFACTS_ROOT="$ARTIFACT_ROOT"
+
+# Use a repo-local Go build cache under the artifact root
+export GOCACHE="$ARTIFACT_ROOT/cache/go"
 mkdir -p "$GOCACHE"
 
 # Run from the server directory so the module resolves correctly
 cd server
 
 # Log file for JSON output
-JSON_LOG="../logs/test-results.log"
+JSON_LOG="$ARTIFACT_ROOT/logs/server-tests.jsonl"
 
 # Ensure the logs directory exists so `tee` can write to the JSON log
 mkdir -p "$(dirname "$JSON_LOG")"

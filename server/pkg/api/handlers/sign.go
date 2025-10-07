@@ -7,15 +7,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/router"
 	"progressdb/pkg/utils"
 )
 
 // RegisterSigningFast registers the fasthttp-native signing endpoint.
 func RegisterSigningFast(r *router.Router) {
 	r.POST("/_sign", signHandlerFast)
+	r.POST("/v1/_sign", signHandlerFast)
 }
 
 func signHandlerFast(ctx *fasthttp.RequestCtx) {

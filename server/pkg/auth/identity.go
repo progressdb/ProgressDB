@@ -96,6 +96,63 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 	})
 }
 
+// RequireSignedAuthorFast mirrors RequireSignedAuthor for fasthttp handlers. It verifies
+// X-User-ID/X-User-Signature headers, stashes the verified author in the request
+// context, and enforces signature consistency for frontend callers. Backend/admin
+// callers may omit signatures, matching the net/http middleware semantics.
+func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		role := strings.ToLower(string(ctx.Request.Header.Peek("X-Role-Name")))
+		userID := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-ID")))
+		sig := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-Signature")))
+
+		// For callers without a recognized role (healthz/readyz), bypass signature checks.
+		if role != "frontend" && role != "backend" && role != "admin" {
+			next(ctx)
+			return
+		}
+
+		if (role == "backend" || role == "admin") && sig == "" {
+			// backend/admin may operate without signatures; nothing to attach.
+			next(ctx)
+			return
+		}
+
+		if sig == "" || userID == "" {
+			logger.Warn("missing_signature_headers", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+			utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing signature headers")
+			return
+		}
+
+		keys := config.GetSigningKeys()
+		if len(keys) == 0 {
+			logger.Error("no_signing_keys_configured")
+			utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "server misconfigured: no signing secrets available")
+			return
+		}
+
+		ok := false
+		for k := range keys {
+			mac := hmac.New(sha256.New, []byte(k))
+			mac.Write([]byte(userID))
+			expected := hex.EncodeToString(mac.Sum(nil))
+			if hmac.Equal([]byte(expected), []byte(sig)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			logger.Warn("invalid_signature", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "invalid signature")
+			return
+		}
+
+		logger.Info("signature_verified", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+		ctx.SetUserValue("author", userID)
+		next(ctx)
+	}
+}
+
 // authoridfromcontext returns the verified author id or empty string
 func AuthorIDFromContext(ctx context.Context) string {
 	if v := ctx.Value(ctxAuthorKey{}); v != nil {

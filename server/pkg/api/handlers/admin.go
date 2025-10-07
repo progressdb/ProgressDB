@@ -17,8 +17,8 @@ import (
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 
-	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
+	"progressdb/pkg/router"
 )
 
 // RegisterAdminFast registers all admin endpoints on the fasthttp router.

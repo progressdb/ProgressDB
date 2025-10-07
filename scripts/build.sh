@@ -30,9 +30,25 @@ PKG=${PKG:-./server/cmd/progressdb}
 mkdir -p "$(dirname "$OUT")"
 echo "Building progressdb -> $OUT"
 
-# Use repo-local Go build caches to avoid polluting global caches
-GOCACHE_DIR="$(pwd)/.gocache"
-GOMODCACHE_DIR="$(pwd)/.gocache_modules"
+# Use repo-local Go build caches. If an artifact root is provided, keep
+# caches under it so build outputs stay centralized.
+if [ -n "${TEST_ARTIFACTS_ROOT:-}" ]; then
+  ARTIFACT_ROOT="$TEST_ARTIFACTS_ROOT"
+elif [ -n "${PROGRESSDB_ARTIFACT_ROOT:-}" ]; then
+  ARTIFACT_ROOT="$PROGRESSDB_ARTIFACT_ROOT"
+else
+  ARTIFACT_ROOT=""
+fi
+
+if [ -n "$ARTIFACT_ROOT" ]; then
+  mkdir -p "$ARTIFACT_ROOT"
+  ARTIFACT_ROOT="$(cd "$ARTIFACT_ROOT" && pwd)"
+  GOCACHE_DIR="$ARTIFACT_ROOT/cache/go-build"
+  GOMODCACHE_DIR="$ARTIFACT_ROOT/cache/go-mod"
+else
+  GOCACHE_DIR="$(pwd)/.gocache"
+  GOMODCACHE_DIR="$(pwd)/.gocache_modules"
+fi
 mkdir -p "$GOCACHE_DIR" "$GOMODCACHE_DIR"
 
 # Determine package directory and base (for stable module resolution)

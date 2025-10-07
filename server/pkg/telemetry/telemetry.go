@@ -67,6 +67,9 @@ func initWriter() {
 		if state.PathsVar.State != "" {
 			dbDir = filepath.Join(state.PathsVar.State, "telemetry")
 			stdDir = filepath.Join(state.PathsVar.State, "telemetry")
+		} else if root := state.ArtifactRoot(); root != "" {
+			dbDir = filepath.Join(root, "db", "state", "telemetry")
+			stdDir = filepath.Join(root, "standard", "state", "telemetry")
 		}
 		_ = os.MkdirAll(dbDir, 0o755)
 		_ = os.MkdirAll(stdDir, 0o755)

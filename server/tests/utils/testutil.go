@@ -14,10 +14,18 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api"
+	"progressdb/pkg/auth"
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store"
+)
+
+const (
+	BackendAPIKey  = "backend-test"
+	FrontendAPIKey = "frontend-test"
+	AdminAPIKey    = "admin-test"
+	SigningSecret  = "signsecret"
 )
 
 // LocalServer starts an in-process fasthttp server bound to an ephemeral
@@ -44,8 +52,8 @@ func (s *LocalServer) Close() {
 func SetupServer(t *testing.T) *LocalServer {
 	t.Helper()
 
-	dir := t.TempDir()
-	dbpath := dir + "/db"
+	workdir := NewArtifactsDir(t, "inproc-server")
+	dbpath := filepath.Join(workdir, "db")
 	storePath := filepath.Join(dbpath, "store")
 	_ = os.MkdirAll(storePath, 0o700)
 
@@ -61,11 +69,26 @@ func SetupServer(t *testing.T) *LocalServer {
 	}
 	kms.RegisterKMSProvider(prov)
 
-	cfg := &config.RuntimeConfig{SigningKeys: map[string]struct{}{"signsecret": {}}}
+	cfg := &config.RuntimeConfig{
+		BackendKeys: map[string]struct{}{
+			BackendAPIKey:  {},
+			FrontendAPIKey: {},
+			AdminAPIKey:    {},
+		},
+		SigningKeys: map[string]struct{}{SigningSecret: {}},
+	}
 	config.SetRuntime(cfg)
 
+	secCfg := auth.SecConfig{
+		BackendKeys:  map[string]struct{}{BackendAPIKey: {}},
+		FrontendKeys: map[string]struct{}{FrontendAPIKey: {}},
+		AdminKeys:    map[string]struct{}{AdminAPIKey: {}},
+	}
 	h := api.Handler()
-	srv := &fasthttp.Server{Handler: h}
+	wrapped := auth.RequireSignedAuthorFast(h)
+	wrapped = auth.AuthenticateRequestMiddlewareFast(secCfg)(wrapped)
+
+	srv := &fasthttp.Server{Handler: wrapped}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

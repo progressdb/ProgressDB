@@ -21,6 +21,7 @@
 .log
 logs/
 *.log
+tests/artifacts/
 
 # Build output
 /dist/
@@ -101,7 +102,3 @@ database/
 .gocache/
 test-results.json
 logs/
-/server/tests/test
-/server/tests/.database
-/server/tests/abort
-/server/tests/benching/artifacts

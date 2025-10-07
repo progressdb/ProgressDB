@@ -21,8 +21,8 @@ import (
 	"progressdb/pkg/utils"
 	"progressdb/pkg/validation"
 
-	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
+	"progressdb/pkg/router"
 )
 
 // RegisterThreadsFast registers all thread-related routes on the fasthttp router.
