@@ -9,6 +9,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -146,6 +147,7 @@ logging:
 }
 
 func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
+	root := utils.TestArtifactsRoot(t)
 	// build binary
 	tmp := utils.NewArtifactsDir(t, "configs-e2e-malformed")
 	bin := filepath.Join(tmp, "progressdb-bin")
@@ -163,7 +165,12 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	_ = os.WriteFile(cfgPath, []byte("::not yaml::"), 0o600)
 
 	cmd := exec.Command(bin, "--config", cfgPath)
-	cmd.Dir = utils.NewArtifactsDir(t, "configs-e2e-malformed-proc")
+	procDir := utils.NewArtifactsDir(t, "configs-e2e-malformed-proc")
+	cmd.Dir = procDir
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("PROGRESSDB_ARTIFACT_ROOT=%s", root),
+		fmt.Sprintf("TEST_ARTIFACTS_ROOT=%s", root),
+	)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}

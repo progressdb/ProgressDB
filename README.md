@@ -35,7 +35,7 @@ This will expose the same endpoints as the binary below.
 
 ## Quickstart — Binary Executable
 
-Want to try ProgressDB in seconds? 🚀 Download a prebuilt release — no Go toolchain required.
+Want to try ProgressDB in seconds?  Download a prebuilt release — no Go toolchain required.
 
 1) Get a binary
 
@@ -55,20 +55,7 @@ Want to try ProgressDB in seconds? 🚀 Download a prebuilt release — no Go to
 
    Unzip and run `progressdb.exe` from PowerShell.
 
-What to expect 🎉
-
-- The service prints a friendly banner on startup.
-- Admin viewer: http://localhost:8080/viewer/ 🖥️
-- API docs (OpenAPI/Swagger): http://localhost:8080/docs/ 📖
-- Metrics (Prometheus): http://localhost:8080/metrics 📈
-
-Pro tips ✨
-
-- Persist data locally with `--db ./data`.
-- Run in background: `./progressdb --db ./data &` or use a process manager / systemd / Docker.
-- Try sending a message (via SDK or `curl`) and watch ProgressDB auto-create a thread for you — instant feedback!
-
-That’s it — download, run, and connect with the SDKs below. Have fun! 🎉
+That’s it — download, run, and connect with the SDKs below. Have fun!
 
 
 ## Install SDKs
@@ -197,34 +184,5 @@ Planned / In progress:
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - [ ] API versioning, scaling and search
 - [ ] Realibility systems - WAL buffer etc
-
-
-## Links
-
-**Documentation**
-- User Guide & API Reference: [`server/docs/usage.md`](server/docs/usage.md)
-- OpenAPI Specification (YAML): [`server/docs/openapi.yaml`](server/docs/openapi.yaml)  
-- Swagger UI (interactive docs): available at [`/docs/`](http://localhost:8080/docs) when the service is running
-- Contribution Guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-
-**Production & Operations**
-- Admin Viewer: [`server/viewer/`](server/viewer/)  
-  (served at `/viewer/` when the service is running)
-- Metrics Endpoint: [`/metrics`](server/README.md#metrics) (Prometheus)
-- Releases (download binaries): [Releases](https://github.com/ha-sante/ProgressDB/releases)
-
-**SDKs**
-- Backend SDKs: [`clients/sdk/backend`](clients/sdk/backend)
-- Frontend SDKs: [`clients/sdk/frontend`](clients/sdk/frontend)
-
-## How to start contributing
-
-1. Read `CONTRIBUTING.md` for the development workflow and PR checklist.
-2. Fork the repo and create a branch for your change (e.g. `feat/your-feature`).
-3. Run tests and linters locally, add tests for new behavior.
-4. Open a pull request against `main` with a clear description and testing notes.
-
-For development builds and advanced builds, see the "Build from source (advanced)" section above.
-
 
 [![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)

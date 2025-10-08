@@ -102,3 +102,4 @@ database/
 .gocache/
 test-results.json
 logs/
+/docs/internal
