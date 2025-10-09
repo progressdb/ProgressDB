@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
@@ -38,7 +38,7 @@ func applyBatchToDB(entries []BatchEntry) error {
 		default:
 			// thread-level entry (MsgID empty). Interpret OpDelete as soft-delete
 			// otherwise write thread metadata.
-			if e.Handler == qpkg.HandlerThreadDelete {
+			if e.Handler == queue.HandlerThreadDelete {
 				// attempt soft-delete (actor unknown here)
 				if err := store.SoftDeleteThread(e.Thread, ""); err != nil {
 					logger.Error("apply_batch_soft_delete_failed", "err", err, "thread", e.Thread)

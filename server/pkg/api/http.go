@@ -2,15 +2,14 @@ package api
 
 import (
 	"fmt"
+
 	"progressdb/pkg/router"
 
 	"github.com/valyala/fasthttp"
 )
 
-// Handler returns the fasthttp handler for the ProgressDB API.
-func Handler() fasthttp.RequestHandler {
-	r := router.New()
-
+// RegisterRoutes wires all API routes onto the provided router.
+func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
 	r.POST("/_sign", Sign)
 	r.POST("/v1/_sign", Sign)
@@ -47,6 +46,12 @@ func Handler() fasthttp.RequestHandler {
 	r.GET("/admin/keys/{key}", AdminGetKey)
 	r.POST("/admin/encryption/rotate-thread-dek", AdminEncryptionRotateThreadDEK)
 	r.POST("/admin/test-retention-run", AdminTestRetentionRun)
+}
+
+// Handler returns the fasthttp handler for the ProgressDB API.
+func Handler() fasthttp.RequestHandler {
+	r := router.New()
+	RegisterRoutes(r)
 	return r.Handler
 }
 

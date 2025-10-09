@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
-	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
@@ -28,7 +27,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	_ = qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras})
+	_ = queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras})
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
 }
@@ -46,7 +45,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 		return
 	}
@@ -66,7 +65,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 		return
 	}
@@ -90,7 +89,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		if err == queue.ErrQueueFull {
 			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 			return
@@ -117,7 +116,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		if err == queue.ErrQueueFull {
 			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 			return
@@ -141,7 +140,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		if err == queue.ErrQueueFull {
 			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 			return
@@ -169,7 +168,7 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		if err == queue.ErrQueueFull {
 			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 			return
@@ -195,7 +194,7 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := qpkg.DefaultQueue.TryEnqueue(&qpkg.Op{Handler: qpkg.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		if err == queue.ErrQueueFull {
 			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 			return

@@ -15,7 +15,7 @@ import (
 	"runtime"
 
 	"progressdb/pkg/ingest"
-	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/sensor"
 
 	"progressdb/internal/retention"
@@ -114,7 +114,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.hwSensor = sensorObj
 
 	// start ingest processor
-	p := ingest.NewProcessor(qpkg.DefaultQueue, runtime.NumCPU())
+	p := ingest.NewProcessor(queue.DefaultQueue, runtime.NumCPU())
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
 	a.ingestProc = p

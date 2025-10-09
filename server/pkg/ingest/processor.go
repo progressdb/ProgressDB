@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
-	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store"
 )
@@ -23,12 +22,12 @@ const (
 // Processor orchestrates workers that consume from the API queue, invoke
 // registered handlers and ensure items are released back to the pool.
 type Processor struct {
-	q        *qpkg.Queue
+	q        *queue.Queue
 	workers  int
 	stop     chan struct{}
 	wg       sync.WaitGroup
 	running  int32
-	handlers map[qpkg.HandlerID]ProcessorFunc
+	handlers map[queue.HandlerID]ProcessorFunc
 
 	// batch knobs (future)
 	maxBatch int
@@ -38,16 +37,16 @@ type Processor struct {
 }
 
 // NewProcessor creates a new Processor attached to the provided queue.
-func NewProcessor(q *qpkg.Queue, workers int) *Processor {
+func NewProcessor(q *queue.Queue, workers int) *Processor {
 	if workers <= 0 {
 		workers = defaultWorkers
 	}
-	p := &Processor{q: q, workers: workers, stop: make(chan struct{}), handlers: make(map[qpkg.HandlerID]ProcessorFunc), maxBatch: defaultMaxBatchMsgs, flushDur: defaultFlushMS * time.Millisecond}
+	p := &Processor{q: q, workers: workers, stop: make(chan struct{}), handlers: make(map[queue.HandlerID]ProcessorFunc), maxBatch: defaultMaxBatchMsgs, flushDur: defaultFlushMS * time.Millisecond}
 	return p
 }
 
 // RegisterHandler registers a ProcessorFunc for a given HandlerID.
-func (p *Processor) RegisterHandler(h qpkg.HandlerID, fn ProcessorFunc) {
+func (p *Processor) RegisterHandler(h queue.HandlerID, fn ProcessorFunc) {
 	p.handlers[h] = fn
 }
 
