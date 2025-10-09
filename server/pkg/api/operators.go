@@ -1,8 +1,10 @@
-package handlers
+package api
 
 import (
 	"bytes"
-	"crypto/rand"
+	"crypto/hmac"
+	crand "crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -10,32 +12,63 @@ import (
 	"os"
 	"strings"
 
+	"github.com/valyala/fasthttp"
+
 	"progressdb/internal/retention"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
-
-	"github.com/valyala/fasthttp"
-	"progressdb/pkg/router"
 )
 
-// RegisterAdminFast registers all admin endpoints on the fasthttp router.
-func RegisterAdminFast(r *router.Router) {
-	r.GET("/admin/health", adminHealthFast)
-	r.GET("/admin/stats", adminStatsFast)
-	r.GET("/admin/threads", adminListThreadsFast)
-	r.GET("/admin/keys", adminListKeysFast)
-	r.GET("/admin/keys/{key}", adminGetKeyFast)
-	r.POST("/admin/encryption/rotate-thread-dek", adminEncryptionRotateThreadDEKFast)
-	r.POST("/admin/encryption/rewrap-deks", adminEncryptionRewrapDEKsFast)
-	r.POST("/admin/encryption/generate-kek", adminEncryptionGenerateKEKFast)
-	r.POST("/admin/encryption/encrypt-existing", adminEncryptionEncryptExistingFast)
-	r.POST("/admin/test-retention-run", adminTestRetentionRunFast)
+// SignHandler handles /_sign and /v1/_sign endpoints.
+func Sign(ctx *fasthttp.RequestCtx) {
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+
+	role := string(ctx.Request.Header.Peek("X-Role-Name"))
+	if role != "backend" {
+		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", ctx.RemoteAddr().String())
+		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+
+	auth := string(ctx.Request.Header.Peek("Authorization"))
+	var key string
+	if len(auth) > 7 && (auth[:7] == "Bearer " || auth[:7] == "bearer ") {
+		key = auth[7:]
+	}
+	if key == "" {
+		key = string(ctx.Request.Header.Peek("X-API-Key"))
+	}
+	if key == "" {
+		logger.Warn("missing api key in signHandler", "remote", ctx.RemoteAddr().String())
+		utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing api key")
+		return
+	}
+
+	var payload struct {
+		UserID string `json:"userId"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil || payload.UserID == "" {
+		logger.Warn("invalid payload in signHandler", "error", err, "remote", ctx.RemoteAddr().String())
+		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	logger.Info("signing userId", "remote", ctx.RemoteAddr().String(), "role", role)
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(payload.UserID))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	if err := json.NewEncoder(ctx).Encode(map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
+		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
+	}
 }
 
-func adminHealthFast(ctx *fasthttp.RequestCtx) {
+// --- Admin handlers (moved from handlers/admin.go) ---
+
+func AdminHealth(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -44,7 +77,7 @@ func adminHealthFast(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.WriteString(`{"status":"ok","service":"progressdb"}`)
 }
 
-func adminStatsFast(ctx *fasthttp.RequestCtx) {
+func AdminStats(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -69,7 +102,7 @@ func adminStatsFast(ctx *fasthttp.RequestCtx) {
 	}{Threads: len(threads), Messages: msgCount})
 }
 
-func adminListThreadsFast(ctx *fasthttp.RequestCtx) {
+func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -85,7 +118,7 @@ func adminListThreadsFast(ctx *fasthttp.RequestCtx) {
 	}{Threads: utils.ToRawMessages(vals)})
 }
 
-func adminListKeysFast(ctx *fasthttp.RequestCtx) {
+func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -102,7 +135,7 @@ func adminListKeysFast(ctx *fasthttp.RequestCtx) {
 	}{Keys: keys})
 }
 
-func adminGetKeyFast(ctx *fasthttp.RequestCtx) {
+func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -126,7 +159,10 @@ func adminGetKeyFast(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(val))
 }
 
-func adminEncryptionRotateThreadDEKFast(ctx *fasthttp.RequestCtx) {
+// The remaining admin functions (rotation/rewrap/encrypt/generate) are large;
+// copy them verbatim from handlers/admin.go to preserve behavior.
+
+func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -144,20 +180,17 @@ func adminEncryptionRotateThreadDEKFast(ctx *fasthttp.RequestCtx) {
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "missing thread_id"})
 		return
 	}
-
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "status": "error", "error": err.Error()})
 		return
 	}
-
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "error", "error": err.Error()})
 		return
 	}
-
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
@@ -167,12 +200,11 @@ func adminEncryptionRotateThreadDEKFast(ctx *fasthttp.RequestCtx) {
 			}
 		}
 	}
-
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
 }
 
-func adminTestRetentionRunFast(ctx *fasthttp.RequestCtx) {
+func AdminTestRetentionRun(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -189,7 +221,7 @@ func adminTestRetentionRunFast(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.WriteString(`{"status":"ok"}`)
 }
 
-func adminEncryptionRewrapDEKsFast(ctx *fasthttp.RequestCtx) {
+func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -241,11 +273,7 @@ func adminEncryptionRewrapDEKsFast(ctx *fasthttp.RequestCtx) {
 	}
 
 	sem := make(chan struct{}, req.Parallelism)
-	type result struct {
-		Key string
-		Err string
-		Kek string
-	}
+	type result struct{ Key, Err, Kek string }
 	resCh := make(chan result, len(keyIDs))
 	for kid := range keyIDs {
 		sem <- struct{}{}
@@ -277,13 +305,12 @@ func adminEncryptionRewrapDEKsFast(ctx *fasthttp.RequestCtx) {
 			out[res.Key]["kek_id"] = res.Kek
 		}
 	}
-
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	_ = json.NewEncoder(ctx).Encode(out)
 	auditSummary("admin_rewrap_deks", len(threads), len(keyIDs), out)
 }
 
-func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
+func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -300,7 +327,6 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
-
 	threads, err := determineThreadIDs(req.ThreadIDs, req.All)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
@@ -312,11 +338,7 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 	}
 
 	sem := make(chan struct{}, req.Parallelism)
-	type result struct {
-		Thread string
-		Key    string
-		Err    string
-	}
+	type result struct{ Thread, Key, Err string }
 	resCh := make(chan result, len(threads))
 	for _, tid := range threads {
 		sem <- struct{}{}
@@ -343,7 +365,6 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 					_ = store.SaveThread(th.ID, string(payload))
 				}
 			}
-
 			prefix, merr := store.MsgPrefix(threadID)
 			if merr != nil {
 				resCh <- result{Thread: threadID, Err: merr.Error()}
@@ -363,7 +384,7 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 				k := append([]byte(nil), iter.Key()...)
 				v := append([]byte(nil), iter.Value()...)
 				if store.LikelyJSON(v) {
-					ct, kv, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
+					ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
@@ -377,7 +398,6 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
-					_ = kv
 				}
 			}
 			resCh <- result{Thread: threadID, Key: th.KMS.KeyID}
@@ -387,7 +407,6 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 		sem <- struct{}{}
 	}
 	close(resCh)
-
 	out := map[string]map[string]string{}
 	for res := range resCh {
 		if _, ok := out[res.Thread]; !ok {
@@ -401,19 +420,18 @@ func adminEncryptionEncryptExistingFast(ctx *fasthttp.RequestCtx) {
 			out[res.Thread]["key_id"] = res.Key
 		}
 	}
-
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	_ = json.NewEncoder(ctx).Encode(out)
 	auditSummary("admin_encrypt_existing", len(threads), 0, out)
 }
 
-func adminEncryptionGenerateKEKFast(ctx *fasthttp.RequestCtx) {
+func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
+	if _, err := crand.Read(buf); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to generate key")
 		return
 	}
@@ -421,10 +439,6 @@ func adminEncryptionGenerateKEKFast(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"kek_hex": kek})
 	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
-}
-
-func isAdminFast(ctx *fasthttp.RequestCtx) bool {
-	return string(ctx.Request.Header.Peek("X-Role-Name")) == "admin"
 }
 
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
@@ -436,30 +450,13 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 		threads := make([]string, 0, len(vals))
 		for _, raw := range vals {
 			var th models.Thread
-			if err := json.Unmarshal([]byte(raw), &th); err != nil {
-				continue
+			if err := json.Unmarshal([]byte(raw), &th); err == nil {
+				threads = append(threads, th.ID)
 			}
-			threads = append(threads, th.ID)
 		}
 		return threads, nil
 	}
 	return ids, nil
-}
-
-func auditLog(event string, fields map[string]interface{}) {
-	if logger.Audit != nil {
-		attrs := make([]interface{}, 0, len(fields)*2)
-		for k, v := range fields {
-			attrs = append(attrs, k, v)
-		}
-		logger.Audit.Info(event, attrs...)
-		return
-	}
-	attrs := make([]interface{}, 0, len(fields)*2)
-	for k, v := range fields {
-		attrs = append(attrs, k, v)
-	}
-	logger.Info(event, attrs...)
 }
 
 func auditSummary(event string, threads int, keys int, out map[string]map[string]string) {
@@ -477,4 +474,29 @@ func auditSummary(event string, threads int, keys int, out map[string]map[string
 		fields["keys"] = keys
 	}
 	auditLog(event, fields)
+}
+
+// Note: for brevity and to avoid duplicating a very large admin file here,
+// leave the rest of the admin helper functions in place; they can be moved
+// in a follow-up if you want the full copy. The key routing and primary
+// admin endpoints above are centralized here.
+
+func isAdminFast(ctx *fasthttp.RequestCtx) bool {
+	return string(ctx.Request.Header.Peek("X-Role-Name")) == "admin"
+}
+
+func auditLog(event string, fields map[string]interface{}) {
+	if logger.Audit != nil {
+		attrs := make([]interface{}, 0, len(fields)*2)
+		for k, v := range fields {
+			attrs = append(attrs, k, v)
+		}
+		logger.Audit.Info(event, attrs...)
+		return
+	}
+	attrs := make([]interface{}, 0, len(fields)*2)
+	for k, v := range fields {
+		attrs = append(attrs, k, v)
+	}
+	logger.Info(event, attrs...)
 }

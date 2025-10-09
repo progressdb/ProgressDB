@@ -9,6 +9,12 @@ import (
 	"net/http"
 
 	"github.com/valyala/fasthttp"
+	"time"
+
+	"runtime"
+
+    "progressdb/pkg/sensor"
+    "progressdb/pkg/ingest"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
@@ -33,6 +39,11 @@ type App struct {
 	srv     *http.Server
 	srvFast *fasthttp.Server
 	state   string
+
+	// ingest processor + monitor
+	ingestProc          *ingest.Processor
+    ingestMonitorCancel context.CancelFunc
+    hwSensor            *sensor.Sensor
 }
 
 // New initializes resources that do not require a running context (DB,
@@ -95,10 +106,35 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// start HTTP server
+	// start hardware sensor
+    sensorObj := sensor.NewSensor(500 * time.Millisecond)
+    sensorObj.Start()
+    a.hwSensor = sensorObj
+
+	// start ingest processor
+	p := ingest.NewProcessor(ingest.DefaultQueue, runtime.NumCPU())
+	ingest.RegisterDefaultHandlers(p)
+	p.Start()
+	a.ingestProc = p
+
+	// start pebble monitor
+    cancelMonitor := sensor.StartPebbleMonitor(ctx, p, sensorObj, sensor.DefaultMonitorConfig())
+    a.ingestMonitorCancel = cancelMonitor
+
 	errCh := a.startHTTP(ctx)
 
 	select {
 	case <-ctx.Done():
+		// shutdown ingest and sensor
+		if a.ingestMonitorCancel != nil {
+			a.ingestMonitorCancel()
+		}
+		if a.ingestProc != nil {
+			a.ingestProc.Stop(context.Background())
+		}
+		if a.hwSensor != nil {
+			a.hwSensor.Stop()
+		}
 		return nil
 	case err := <-errCh:
 		return err

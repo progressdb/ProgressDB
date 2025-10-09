@@ -19,9 +19,12 @@ import (
 	"progressdb/pkg/utils"
 
 	"github.com/cockroachdb/pebble"
+	"sync/atomic"
 )
 
 var db *pebble.DB
+var dbPath string
+var pendingWrites uint64
 
 // seq provides a small counter to reduce key collisions when multiple
 // messages share the same nanosecond timestamp.
@@ -93,6 +96,8 @@ func Open(path string) error {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
+	// remember path for best-effort metrics
+	dbPath = path
 	return nil
 }
 
@@ -105,6 +110,63 @@ func Close() error {
 		return err
 	}
 	db = nil
+	return nil
+}
+
+// ApplyBatch applies a prepared pebble.Batch to the DB. If sync is true
+// the write will be performed with a sync to disk; otherwise it's applied
+// without forcing an fsync (group commit strategy can be used externally).
+func ApplyBatch(batch *pebble.Batch, sync bool) error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	var err error
+	if sync {
+		err = db.Apply(batch, pebble.Sync)
+	} else {
+		err = db.Apply(batch, pebble.NoSync)
+	}
+	if err != nil {
+		logger.Error("pebble_apply_batch_failed", "error", err)
+	}
+	if err == nil {
+		// record that we wrote some data (used by flusher)
+		atomic.AddUint64(&pendingWrites, 1)
+	}
+	return err
+}
+
+// RecordWrite increments pending write counter by n (best-effort)
+func RecordWrite(n int) {
+	if n <= 0 {
+		return
+	}
+	atomic.AddUint64(&pendingWrites, uint64(n))
+}
+
+// GetPendingWrites returns an approximate number of pending writes since last sync.
+func GetPendingWrites() uint64 {
+	return atomic.LoadUint64(&pendingWrites)
+}
+
+// ResetPendingWrites resets the pending write counter to zero.
+func ResetPendingWrites() {
+	atomic.StoreUint64(&pendingWrites, 0)
+}
+
+// ForceSync writes a tiny marker entry and forces a WAL fsync via pebble.Sync.
+// This is a pragmatic group-commit helper.
+func ForceSync() error {
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	// overwrite a single sync marker key to avoid growth
+	key := []byte("__progressdb_wal_sync_marker__")
+	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
+	if err := db.Set(key, val, pebble.Sync); err != nil {
+		logger.Error("pebble_force_sync_failed", "err", err)
+		return err
+	}
 	return nil
 }
 

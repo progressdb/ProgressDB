@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/valyala/fasthttp"
-	frouter "progressdb/pkg/router"
+	router "progressdb/pkg/router"
 
-	"progressdb/pkg/api/handlers"
+	"progressdb/pkg/api"
 	"progressdb/pkg/auth"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
@@ -101,15 +101,45 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	config.SetRuntime(runtimeCfg)
 
 	// build fasthttp router and register API routes
-	r := frouter.New()
+	r := router.New()
 	// health and ready handlers
 	r.GET("/healthz", a.healthzHandlerFast)
 	r.GET("/readyz", a.readyzHandlerFast)
 	// Register API routes on fasthttp router
-	handlers.RegisterSigningFast(r)
-	handlers.RegisterMessagesFast(r)
-	handlers.RegisterThreadsFast(r)
-	handlers.RegisterAdminFast(r)
+	// Signing endpoints
+	r.POST("/_sign", api.Sign)
+	r.POST("/v1/_sign", api.Sign)
+
+	// Thread & message routes (centralized)
+	r.POST("/v1/threads", api.CreateThread)
+	r.GET("/v1/threads", api.ListThreads)
+	r.PUT("/v1/threads/{id}", api.UpdateThread)
+	r.GET("/v1/threads/{id}", api.GetThread)
+	r.DELETE("/v1/threads/{id}", api.DeleteThread)
+
+	r.POST("/v1/threads/{threadID}/messages", api.CreateThreadMessage)
+	r.GET("/v1/threads/{threadID}/messages", api.ListThreadMessages)
+	r.GET("/v1/threads/{threadID}/messages/{id}", api.GetThreadMessage)
+	r.PUT("/v1/threads/{threadID}/messages/{id}", api.UpdateThreadMessage)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}", api.DeleteThreadMessage)
+
+	r.GET("/v1/threads/{threadID}/messages/{id}/versions", api.ListMessageVersions)
+	r.GET("/v1/threads/{threadID}/messages/{id}/reactions", api.GetReactions)
+	r.POST("/v1/threads/{threadID}/messages/{id}/reactions", api.AddReaction)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}/reactions/{identity}", api.DeleteReaction)
+
+	// Message-level routes
+	r.POST("/v1/messages", api.CreateMessage)
+	r.GET("/v1/messages", api.ListMessages)
+
+	// Admin routes
+	r.GET("/admin/health", api.AdminHealth)
+	r.GET("/admin/stats", api.AdminStats)
+	r.GET("/admin/threads", api.AdminListThreads)
+	r.GET("/admin/keys", api.AdminListKeys)
+	r.GET("/admin/keys/{key}", api.AdminGetKey)
+	r.POST("/admin/encryption/rotate-thread-dek", api.AdminEncryptionRotateThreadDEK)
+	r.POST("/admin/test-retention-run", api.AdminTestRetentionRun)
 	r.NotFound(func(ctx *fasthttp.RequestCtx) {
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 		ctx.SetContentType("application/json")

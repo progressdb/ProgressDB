@@ -261,6 +261,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 		}
 	}
 
+	// no signature; allow backend/admin to supply author via body/header/query
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	logger.Info("no_signature_found", "role", role, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 	if role == "backend" || role == "admin" {
@@ -292,6 +293,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 		return "", fasthttp.StatusBadRequest, "author required for backend requests"
 	}
 
+	// otherwise require signature
 	logger.Warn("missing_author_signature", "role", role, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 	return "", fasthttp.StatusUnauthorized, "missing or invalid author signature"
 }

@@ -103,3 +103,4 @@ database/
 test-results.json
 logs/
 /docs/internal
+ProgressDB.code-workspace
