@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"progressdb/pkg/ingest/queue"
+	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store"
 )
@@ -21,12 +23,12 @@ const (
 // Processor orchestrates workers that consume from the API queue, invoke
 // registered handlers and ensure items are released back to the pool.
 type Processor struct {
-	q        *Queue
+	q        *qpkg.Queue
 	workers  int
 	stop     chan struct{}
 	wg       sync.WaitGroup
 	running  int32
-	handlers map[OpType]ProcessorFunc
+	handlers map[qpkg.HandlerID]ProcessorFunc
 
 	// batch knobs (future)
 	maxBatch int
@@ -36,32 +38,32 @@ type Processor struct {
 }
 
 // NewProcessor creates a new Processor attached to the provided queue.
-func NewProcessor(q *Queue, workers int) *Processor {
+func NewProcessor(q *qpkg.Queue, workers int) *Processor {
 	if workers <= 0 {
 		workers = defaultWorkers
 	}
-	p := &Processor{q: q, workers: workers, stop: make(chan struct{}), handlers: make(map[OpType]ProcessorFunc), maxBatch: defaultMaxBatchMsgs, flushDur: defaultFlushMS * time.Millisecond}
+	p := &Processor{q: q, workers: workers, stop: make(chan struct{}), handlers: make(map[qpkg.HandlerID]ProcessorFunc), maxBatch: defaultMaxBatchMsgs, flushDur: defaultFlushMS * time.Millisecond}
 	return p
 }
 
-// RegisterHandler registers a ProcessorFunc for a given OpType.
-func (p *Processor) RegisterHandler(t OpType, fn ProcessorFunc) {
-	p.handlers[t] = fn
+// RegisterHandler registers a ProcessorFunc for a given HandlerID.
+func (p *Processor) RegisterHandler(h qpkg.HandlerID, fn ProcessorFunc) {
+	p.handlers[h] = fn
 }
 
 // SetBatchParams adjusts the batch parameters at runtime.
 func (p *Processor) SetBatchParams(maxMsgs int, flush time.Duration) {
-    if maxMsgs > 0 {
-        p.maxBatch = maxMsgs
-    }
-    if flush > 0 {
-        p.flushDur = flush
-    }
+	if maxMsgs > 0 {
+		p.maxBatch = maxMsgs
+	}
+	if flush > 0 {
+		p.flushDur = flush
+	}
 }
 
 // GetBatchParams returns the current batch parameters (max messages and flush duration).
 func (p *Processor) GetBatchParams() (int, time.Duration) {
-    return p.maxBatch, p.flushDur
+	return p.maxBatch, p.flushDur
 }
 
 // Pause stops processing new items until Resume is called.
@@ -123,7 +125,7 @@ func (p *Processor) workerLoop(workerID int) {
 		}
 
 		// Batch collect
-		var items []*Item
+		var items []*queue.Item
 		// block for first item or stop
 		select {
 		case it, ok := <-p.q.Out():
@@ -187,10 +189,10 @@ func (p *Processor) workerLoop(workerID int) {
 		for _, it := range items {
 			// create handler context including prefetched thread metadata map
 			hctx := context.WithValue(context.Background(), threadMetaKey, threadMeta)
-			if fn, ok := p.handlers[it.Op.Type]; ok && fn != nil {
+			if fn, ok := p.handlers[it.Op.Handler]; ok && fn != nil {
 				entries, err := fn(hctx, it.Op)
 				if err != nil {
-					logger.Error("ingest_handler_error", "type", it.Op.Type, "error", err)
+					logger.Error("ingest_handler_error", "handler", it.Op.Handler, "error", err)
 					it.Done()
 					continue
 				}
@@ -200,8 +202,11 @@ func (p *Processor) workerLoop(workerID int) {
 					}
 				}
 				batchEntries = append(batchEntries, entries...)
+				// release pooled resources for this item now that we've copied
+				// any necessary data into BatchEntries.
+				it.Done()
 			} else {
-				logger.Warn("no_ingest_handler", "type", it.Op.Type)
+				logger.Warn("no_ingest_handler", "handler", it.Op.Handler)
 				it.Done()
 			}
 		}

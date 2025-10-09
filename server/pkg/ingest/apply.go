@@ -1,56 +1,59 @@
 package ingest
 
 import (
-	"time"
+	"context"
+	"encoding/json"
 
+	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/models"
 	"progressdb/pkg/store"
-
-	"github.com/cockroachdb/pebble"
 )
 
-// applyBatchToDB converts BatchEntry list into a pebble.WriteBatch and
-// applies it atomically. This uses store.ApplyBatch to hand the batch to
-// the underlying DB. For now we use a simple per-entry key layout.
+// applyBatchToDB converts BatchEntry list into persisted store actions.
+// For message entries we call store.SaveMessage to ensure encryption and
+// per-thread sequencing logic is applied. For thread entries we call the
+// appropriate thread store helpers (SaveThread / SoftDeleteThread).
 func applyBatchToDB(entries []BatchEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	wb := new(pebble.Batch)
-	// Use entry.Enq as sequence if present; otherwise fall back to time-based seq.
-	var seq uint64 = uint64(time.Now().UnixNano() % 1000000)
+
+	// Apply each entry using the store helpers so we preserve thread-level
+	// semantics (encryption, LastSeq bump, version indexing).
 	for _, e := range entries {
-		if e.Enq != 0 {
-			seq = e.Enq
-		}
-		// build message key: thread:<threadID>:msg:<ts>-<seq>
-		key, kerr := store.MsgKey(e.Thread, e.TS, seq)
-		if kerr != nil {
-			logger.Error("apply_batch_invalid_key", "err", kerr)
-			continue
-		}
-		// set message value
-		wb.Set([]byte(key), e.Payload, pebble.NoSync)
-
-		// version index: version:msg:<msgID>:<ts>-<seq>
-		if e.MsgID != "" {
-			ik, ikerr := store.VersionKey(e.MsgID, e.TS, seq)
-			if ikerr == nil {
-				wb.Set([]byte(ik), e.Payload, pebble.NoSync)
+		switch {
+		case e.MsgID != "":
+			// message create/update/delete: unmarshal payload and call SaveMessage
+			var msg models.Message
+			if err := json.Unmarshal(e.Payload, &msg); err != nil {
+				logger.Error("apply_batch_unmarshal_message", "err", err)
+				continue
 			}
-			// latest pointer
-			lk := []byte("latest:msg:" + e.MsgID)
-			wb.Set(lk, e.Payload, pebble.NoSync)
+			if err := store.SaveMessage(context.Background(), e.Thread, e.MsgID, msg); err != nil {
+				logger.Error("apply_batch_save_message_failed", "err", err, "thread", e.Thread, "msg", e.MsgID)
+				// continue processing remaining entries
+				continue
+			}
+		default:
+			// thread-level entry (MsgID empty). Interpret OpDelete as soft-delete
+			// otherwise write thread metadata.
+			if e.Handler == qpkg.HandlerThreadDelete {
+				// attempt soft-delete (actor unknown here)
+				if err := store.SoftDeleteThread(e.Thread, ""); err != nil {
+					logger.Error("apply_batch_soft_delete_failed", "err", err, "thread", e.Thread)
+					continue
+				}
+			} else {
+				// write thread meta
+				if err := store.SaveThread(e.Thread, string(e.Payload)); err != nil {
+					logger.Error("apply_batch_save_thread_failed", "err", err, "thread", e.Thread)
+					continue
+				}
+			}
 		}
-		seq++
 	}
-
-	// Apply batch via store wrapper (sync=false for group commit control)
-	if err := store.ApplyBatch(wb, false); err != nil {
-		logger.Error("apply_batch_failed", "err", err)
-		return err
-	}
-	// record writes for group fsync accounting
+	// record writes for accounting
 	store.RecordWrite(len(entries))
 	return nil
 }

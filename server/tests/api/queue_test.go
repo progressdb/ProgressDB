@@ -4,19 +4,21 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	qpkg "progressdb/pkg/ingest/queue"
 )
 
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
-	q := NewQueue(2)
+	q := qpkg.NewQueue(2)
 
-	if err := q.TryEnqueueBytes(OpCreate, "t1", "m1", nil, 0); err != nil {
+	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := q.TryEnqueueBytes(OpCreate, "t1", "m2", nil, 0); err != nil {
+	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m2", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// next should fail with ErrQueueFull
-	if err := q.TryEnqueueBytes(OpCreate, "t1", "m3", nil, 0); err == nil {
+	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m3", nil, 0); err == nil {
 		t.Fatalf("expected ErrQueueFull, got nil")
 	}
 	if q.Dropped() == 0 {
@@ -25,10 +27,10 @@ func TestQueueTryEnqueueAndDrop(t *testing.T) {
 }
 
 func TestQueueEnqueueBlockingAndOut(t *testing.T) {
-	q := NewQueue(2)
+	q := qpkg.NewQueue(2)
 
 	// start consumer
-	recv := make(chan *Item, 4)
+	recv := make(chan *qpkg.Item, 4)
 	go func() {
 		for it := range q.Out() {
 			recv <- it
@@ -37,10 +39,10 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 
 	// enqueue two items
 	ctx := context.Background()
-	if err := q.EnqueueBytes(ctx, OpCreate, "t1", "m1", []byte("a"), 0); err != nil {
+	if err := q.EnqueueBytes(ctx, qpkg.HandlerMessageCreate, "t1", "m1", []byte("a"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
-	if err := q.EnqueueBytes(ctx, OpUpdate, "t1", "m2", []byte("b"), 0); err != nil {
+	if err := q.EnqueueBytes(ctx, qpkg.HandlerMessageUpdate, "t1", "m2", []byte("b"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
 
@@ -57,25 +59,25 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 }
 
 func TestEnqueueWithContextCancel(t *testing.T) {
-	q := NewQueue(1)
+	q := qpkg.NewQueue(1)
 	// fill queue
-	if err := q.TryEnqueueBytes(OpCreate, "t1", "m1", nil, 0); err != nil {
+	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	err := q.EnqueueBytes(ctx, OpCreate, "t1", "m2", nil, 0)
+	err := q.EnqueueBytes(ctx, qpkg.HandlerMessageCreate, "t1", "m2", nil, 0)
 	if err == nil {
 		t.Fatalf("expected enqueue to fail due to cancelled context")
 	}
 }
 
 func TestCloseAndDrain(t *testing.T) {
-	q := NewQueue(4)
+	q := qpkg.NewQueue(4)
 	// enqueue some items
-	_ = q.TryEnqueueBytes(OpCreate, "t1", "a", []byte("x"), 0)
-	_ = q.TryEnqueueBytes(OpCreate, "t1", "b", []byte("y"), 0)
+	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
+	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
 
 	q.CloseAndDrain()
 
@@ -85,16 +87,16 @@ func TestCloseAndDrain(t *testing.T) {
 }
 
 func TestRunWorkerEnsuresDone(t *testing.T) {
-	q := NewQueue(4)
+	q := qpkg.NewQueue(4)
 	stop := make(chan struct{})
 	processed := make(chan string, 4)
-	go q.RunWorker(stop, func(op *Op) error {
+	go q.RunWorker(stop, func(op *qpkg.Op) error {
 		processed <- op.ID
 		return nil
 	})
 
-	_ = q.TryEnqueueBytes(OpCreate, "t1", "x", []byte("p"), 0)
-	_ = q.TryEnqueueBytes(OpCreate, "t1", "y", []byte("q"), 0)
+	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
+	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
 
 	// allow worker to process
 	select {

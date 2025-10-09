@@ -1,6 +1,10 @@
 package ingest
 
-import "context"
+import (
+	"context"
+
+	"progressdb/pkg/ingest/queue"
+)
 
 // ProcessorFunc is the signature for operation handlers used by the
 // ingest processor. Handlers receive the unmarshalled Op and are expected
@@ -9,11 +13,12 @@ import "context"
 // ProcessorFunc processes a single Op and returns zero or more BatchEntry
 // objects to be applied together in a batch. Returning an error signals a
 // transient handler failure; the processor will log and continue.
-type ProcessorFunc func(ctx context.Context, op *Op) ([]BatchEntry, error)
+type ProcessorFunc func(ctx context.Context, op *queue.Op) ([]BatchEntry, error)
 
 // BatchEntry represents a single operation prepared for batch apply.
 type BatchEntry struct {
-	Type    OpType
+	// Handler identifies the originating handler for this batch entry.
+	Handler queue.HandlerID
 	Thread  string
 	MsgID   string
 	Payload []byte

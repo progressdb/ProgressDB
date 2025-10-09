@@ -14,7 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func ListThreads(ctx *fasthttp.RequestCtx) {
+func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
@@ -63,7 +63,7 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 	}{Threads: out})
 }
 
-func GetThread(ctx *fasthttp.RequestCtx) {
+func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	id := pathParam(ctx, "id")
@@ -106,7 +106,7 @@ func GetThread(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.WriteString(stored)
 }
 
-func ListThreadMessages(ctx *fasthttp.RequestCtx) {
+func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
@@ -191,7 +191,7 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	}{Thread: threadID, Messages: out})
 }
 
-func GetThreadMessage(ctx *fasthttp.RequestCtx) {
+func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
@@ -221,52 +221,7 @@ func GetThreadMessage(ctx *fasthttp.RequestCtx) {
 	_ = json.NewEncoder(ctx).Encode(message)
 }
 
-func ListMessageVersions(ctx *fasthttp.RequestCtx) {
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	id := pathParam(ctx, "id")
-	threadID := pathParam(ctx, "threadID")
-
-	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing id")
-		return
-	}
-
-	if threadID != "" {
-		stored, err := store.GetLatestMessage(id)
-		if err != nil {
-			utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
-			return
-		}
-		var msg models.Message
-		if err := json.Unmarshal([]byte(stored), &msg); err != nil {
-			utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse message")
-			return
-		}
-		if msg.Thread != threadID {
-			utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "message not found in thread")
-			return
-		}
-	}
-
-	versions, err := store.ListMessageVersions(id)
-	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-
-	out := make([]json.RawMessage, 0, len(versions))
-	for _, v := range versions {
-		out = append(out, json.RawMessage(v))
-	}
-
-	_ = json.NewEncoder(ctx).Encode(struct {
-		ID       string            `json:"id"`
-		Versions []json.RawMessage `json:"versions"`
-	}{ID: id, Versions: out})
-}
-
-func GetReactions(ctx *fasthttp.RequestCtx) {
+func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	id := pathParam(ctx, "id")
@@ -307,35 +262,4 @@ func GetReactions(ctx *fasthttp.RequestCtx) {
 		ID        string      `json:"id"`
 		Reactions interface{} `json:"reactions"`
 	}{ID: id, Reactions: out})
-}
-
-func ListMessages(ctx *fasthttp.RequestCtx) {
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	threadID := string(ctx.QueryArgs().Peek("thread"))
-	if threadID == "" {
-		threadID = "default"
-	}
-
-	msgs, err := store.ListMessages(threadID)
-	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if limit, err := strconv.Atoi(limStr); err == nil && limit >= 0 && limit < len(msgs) {
-			msgs = msgs[len(msgs)-limit:]
-		}
-	}
-
-	_ = json.NewEncoder(ctx).Encode(struct {
-		Messages []json.RawMessage `json:"messages"`
-	}{Messages: func() []json.RawMessage {
-		out := make([]json.RawMessage, 0, len(msgs))
-		for _, m := range msgs {
-			out = append(out, json.RawMessage(m))
-		}
-		return out
-	}()})
 }

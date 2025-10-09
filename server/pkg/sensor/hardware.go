@@ -1,4 +1,4 @@
-package hardware
+package sensor
 
 import (
 	"context"
@@ -69,7 +69,6 @@ type Sensor struct {
 // unavailable (non-Linux), the sensor will still provide runtime stats.
 func NewSensor(interval time.Duration) *Sensor {
 	s := &Sensor{interval: interval}
-	// no-op for now; richer procfs-based sampling can be enabled on Linux
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	return s
 }

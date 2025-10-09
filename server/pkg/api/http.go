@@ -16,28 +16,28 @@ func Handler() fasthttp.RequestHandler {
 	r.POST("/v1/_sign", Sign)
 
 	// thread metadata operations
-	r.POST("/v1/threads", CreateThread)
-	r.GET("/v1/threads", ListThreads)
-	r.PUT("/v1/threads/{id}", UpdateThread)
-	r.GET("/v1/threads/{id}", GetThread)
-	r.DELETE("/v1/threads/{id}", DeleteThread)
+	r.POST("/v1/threads", EnqueueCreateThread)
+	r.GET("/v1/threads", ReadThreadsList)
+	r.PUT("/v1/threads/{id}", EnqueueUpdateThread)
+	r.GET("/v1/threads/{id}", ReadThreadItem)
+	r.DELETE("/v1/threads/{id}", EnqueueDeleteThread)
 
 	// thread message operations
-	r.POST("/v1/threads/{threadID}/messages", CreateThreadMessage)
-	r.GET("/v1/threads/{threadID}/messages", ListThreadMessages)
-	r.GET("/v1/threads/{threadID}/messages/{id}", GetThreadMessage)
-	r.PUT("/v1/threads/{threadID}/messages/{id}", UpdateThreadMessage)
-	r.DELETE("/v1/threads/{threadID}/messages/{id}", DeleteThreadMessage)
+	r.POST("/v1/threads/{threadID}/messages", EnqueueCreateMessage)
+	r.GET("/v1/threads/{threadID}/messages", ReadThreadMessages)
+	r.GET("/v1/threads/{threadID}/messages/{id}", ReadThreadMessage)
+	r.PUT("/v1/threads/{threadID}/messages/{id}", EnqueueUpdateMessage)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}", EnqueueDeleteMessage)
 
 	// thread message reactions
-	r.GET("/v1/threads/{threadID}/messages/{id}/versions", ListMessageVersions)
-	r.GET("/v1/threads/{threadID}/messages/{id}/reactions", GetReactions)
-	r.POST("/v1/threads/{threadID}/messages/{id}/reactions", AddReaction)
-	r.DELETE("/v1/threads/{threadID}/messages/{id}/reactions/{identity}", DeleteReaction)
+	// r.GET("/v1/threads/{threadID}/messages/{id}/versions", ListMessageVersions)
+	r.GET("/v1/threads/{threadID}/messages/{id}/reactions", ReadMessageReactions)
+	r.POST("/v1/threads/{threadID}/messages/{id}/reactions", EnqueueAddReaction)
+	r.DELETE("/v1/threads/{threadID}/messages/{id}/reactions/{identity}", EnqueueDeleteReaction)
 
-	// helper message endpoints
-	r.POST("/v1/messages", CreateMessage)
-	r.GET("/v1/messages", ListMessages)
+	// // helper message endpoints
+	// r.POST("/v1/messages", CreateMessage)
+	// r.GET("/v1/messages", ListMessages)
 
 	// admin secure routes
 	r.GET("/admin/health", AdminHealth)
