@@ -106,3 +106,4 @@ logs/
 ProgressDB.code-workspace
 
 /server/tests/artifacts
+/wal

@@ -12,6 +12,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"path/filepath"
 	"runtime"
 
 	"progressdb/pkg/ingest"
@@ -114,6 +115,12 @@ func (a *App) Run(ctx context.Context) error {
 	a.hwSensor = sensorObj
 
 	// start ingest processor
+
+	// Attempt to enable a durable on-disk queue under the runtime state path.
+	// This is best-effort: if enabling fails we fall back to the in-memory
+	// queue.
+	_ = queue.EnableDurable(filepath.Join(state.PathsVar.State, "queue"))
+
 	p := ingest.NewProcessor(queue.DefaultQueue, runtime.NumCPU())
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
@@ -133,7 +140,10 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		// stop recieving queus
 		queue.DefaultQueue.Close()
-		
+
+		// close durable WAL if enabled
+		_ = queue.CloseDurable()
+
 		// stop processing new things
 		if a.ingestProc != nil {
 			a.ingestProc.Stop(context.Background())

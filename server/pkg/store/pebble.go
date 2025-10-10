@@ -91,7 +91,10 @@ func MaxSeqForThread(threadID string) (uint64, error) {
 // a global handle for simple usage in this package.
 func Open(path string) error {
 	var err error
-	db, err = pebble.Open(path, &pebble.Options{})
+	opts := &pebble.Options{
+		DisableWAL: true,
+	}
+	db, err = pebble.Open(path, opts)
 	if err != nil {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err

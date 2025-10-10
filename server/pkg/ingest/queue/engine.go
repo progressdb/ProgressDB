@@ -1,9 +1,12 @@
 package queue
 
 import (
+	"container/heap"
 	"context"
+	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/valyala/bytebufferpool"
 )
@@ -36,6 +39,16 @@ type Queue struct {
 	enqWg     sync.WaitGroup
 	closeOnce sync.Once
 	inFlight  int64
+
+	// WAL related
+	wal     WAL
+	walMode int // 0=none,1=batch,2=sync
+
+	// ack tracking for truncation
+	ackMu         sync.Mutex
+	outstanding   map[int64]struct{}
+	outstandingH  offsetHeap
+	lastTruncated int64
 }
 
 // NewQueue creates a bounded Queue of given capacity (>0).
@@ -44,6 +57,82 @@ func NewQueue(capacity int) *Queue {
 		capacity = fallbackQueueCapacity
 	}
 	return &Queue{ch: make(chan *Item, capacity), capacity: capacity}
+}
+
+// WAL modes
+const (
+	WalModeNone = iota
+	WalModeBatch
+	WalModeSync
+)
+
+// QueueOptions specify construction options for the queue including WAL.
+type QueueOptions struct {
+	Capacity int
+	WAL      WAL
+	// Mode: "none", "batch", "sync". If WAL is nil this is ignored.
+	Mode string
+	// Recover controls whether to replay WAL entries into the in-memory queue on startup.
+	Recover bool
+	// TruncateInterval controls optional background truncation of WAL files.
+	// If zero, no background truncation is started.
+	TruncateInterval time.Duration
+}
+
+// NewQueueWithOptions creates a Queue with options (WAL, capacity, recovery).
+func NewQueueWithOptions(opts *QueueOptions) *Queue {
+	cap := fallbackQueueCapacity
+	if opts != nil && opts.Capacity > 0 {
+		cap = opts.Capacity
+	}
+	q := &Queue{ch: make(chan *Item, cap), capacity: cap, outstanding: make(map[int64]struct{}), outstandingH: offsetHeap{}, lastTruncated: -1}
+	if opts != nil && opts.WAL != nil {
+		q.wal = opts.WAL
+		switch opts.Mode {
+		case "sync":
+			q.walMode = WalModeSync
+		case "batch":
+			q.walMode = WalModeBatch
+		default:
+			q.walMode = WalModeBatch
+		}
+
+		if opts.Recover {
+			// stream WAL records into the queue (do not re-append)
+			_ = q.wal.RecoverStream(func(r WALRecord) error {
+				op, err := deserializeOp(r.Data)
+				if err != nil {
+					// skip malformed records
+					return nil
+				}
+				op.WalOffset = r.Offset
+				// mark outstanding
+				q.ackMu.Lock()
+				if q.outstanding == nil {
+					q.outstanding = make(map[int64]struct{})
+				}
+				q.outstanding[r.Offset] = struct{}{}
+				heap.Push(&q.outstandingH, r.Offset)
+				q.ackMu.Unlock()
+				// push into channel non-blocking (assume capacity sufficient on startup)
+				it := &Item{Op: op, buf: nil, q: q}
+				q.ch <- it
+				atomic.AddInt64(&q.inFlight, 1)
+				return nil
+			})
+		}
+	}
+	// start background truncation if requested
+	if opts != nil && opts.TruncateInterval > 0 && q.wal != nil {
+		go func() {
+			ticker := time.NewTicker(opts.TruncateInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				q.doTruncate()
+			}
+		}()
+	}
+	return q
 }
 
 // SetDefaultQueue sets the package default if q is non-nil.
@@ -84,6 +173,36 @@ func (q *Queue) TryEnqueue(op *Op) error {
 		newOp.Extras = newMap
 	}
 	newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
+
+	// If WAL configured, persist before making item visible.
+	if q != nil && q.wal != nil {
+		data, err := serializeOp(newOp)
+		if err != nil {
+			opPool.Put(newOp)
+			atomic.AddUint64(&enqueueFailTotal, 1)
+			return err
+		}
+		var offset int64
+		if q.walMode == WalModeSync {
+			offset, err = q.wal.AppendSync(data)
+		} else {
+			offset, err = q.wal.Append(data)
+		}
+		if err != nil {
+			opPool.Put(newOp)
+			atomic.AddUint64(&enqueueFailTotal, 1)
+			return err
+		}
+		newOp.WalOffset = offset
+		// mark outstanding (set + heap)
+		q.ackMu.Lock()
+		if q.outstanding == nil {
+			q.outstanding = make(map[int64]struct{})
+		}
+		q.outstanding[offset] = struct{}{}
+		heap.Push(&q.outstandingH, offset)
+		q.ackMu.Unlock()
+	}
 
 	var bb *bytebufferpool.ByteBuffer
 	if len(op.Payload) > 0 {
@@ -138,6 +257,36 @@ func (q *Queue) Enqueue(ctx context.Context, op *Op) error {
 		newOp.Extras = newMap
 	}
 
+	// If WAL configured, persist before making item visible.
+	if q != nil && q.wal != nil {
+		data, err := serializeOp(newOp)
+		if err != nil {
+			opPool.Put(newOp)
+			atomic.AddUint64(&enqueueFailTotal, 1)
+			return err
+		}
+		var offset int64
+		if q.walMode == WalModeSync {
+			offset, err = q.wal.AppendSync(data)
+		} else {
+			offset, err = q.wal.Append(data)
+		}
+		if err != nil {
+			opPool.Put(newOp)
+			atomic.AddUint64(&enqueueFailTotal, 1)
+			return err
+		}
+		newOp.WalOffset = offset
+		// mark outstanding
+		q.ackMu.Lock()
+		if q.outstanding == nil {
+			q.outstanding = make(map[int64]struct{})
+		}
+		q.outstanding[offset] = struct{}{}
+		heap.Push(&q.outstandingH, offset)
+		q.ackMu.Unlock()
+	}
+
 	var bb *bytebufferpool.ByteBuffer
 	if len(op.Payload) > 0 {
 		bb = bytebufferpool.Get()
@@ -179,6 +328,91 @@ func (q *Queue) RunWorker(stop <-chan struct{}, handler func(*Op) error) {
 			return
 		}
 	}
+}
+
+// ack processes an acknowledgement for a WAL offset. When a contiguous prefix
+// of offsets becomes acknowledged, TruncateBefore is called on the WAL to
+// allow file cleanup. This method must be safe to call concurrently.
+func (q *Queue) ack(offset int64) {
+	if q == nil || q.wal == nil {
+		return
+	}
+	q.ackMu.Lock()
+	// remove from outstanding set
+	delete(q.outstanding, offset)
+
+	// lazily pop heap until top is an outstanding member
+	for q.outstandingH.Len() > 0 {
+		top := q.outstandingH[0]
+		if _, ok := q.outstanding[top]; ok {
+			break
+		}
+		heap.Pop(&q.outstandingH)
+	}
+
+	var newMin int64
+	if q.outstandingH.Len() == 0 {
+		// no outstanding entries
+		newMin = math.MaxInt64
+	} else {
+		newMin = q.outstandingH[0]
+	}
+	// only truncate if we've advanced beyond lastTruncated
+	shouldTruncate := q.lastTruncated == -1 || newMin > q.lastTruncated
+	if shouldTruncate {
+		q.lastTruncated = newMin
+	}
+	q.ackMu.Unlock()
+
+	if shouldTruncate {
+		_ = q.wal.TruncateBefore(newMin)
+	}
+}
+
+// doTruncate computes current smallest outstanding offset and calls WAL.TruncateBefore.
+func (q *Queue) doTruncate() {
+	if q == nil || q.wal == nil {
+		return
+	}
+	q.ackMu.Lock()
+	// lazily pop any heap entries already removed
+	for q.outstandingH.Len() > 0 {
+		top := q.outstandingH[0]
+		if _, ok := q.outstanding[top]; ok {
+			break
+		}
+		heap.Pop(&q.outstandingH)
+	}
+	var newMin int64
+	if q.outstandingH.Len() == 0 {
+		newMin = math.MaxInt64
+	} else {
+		newMin = q.outstandingH[0]
+	}
+	shouldTruncate := q.lastTruncated == -1 || newMin > q.lastTruncated
+	if shouldTruncate {
+		q.lastTruncated = newMin
+	}
+	q.ackMu.Unlock()
+
+	if shouldTruncate {
+		_ = q.wal.TruncateBefore(newMin)
+	}
+}
+
+// offsetHeap is a min-heap of int64 offsets.
+type offsetHeap []int64
+
+func (h offsetHeap) Len() int           { return len(h) }
+func (h offsetHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h offsetHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *offsetHeap) Push(x any)        { *h = append(*h, x.(int64)) }
+func (h *offsetHeap) Pop() any {
+	old := *h
+	n := len(old)
+	v := old[n-1]
+	*h = old[0 : n-1]
+	return v
 }
 
 // RunBatchWorker drains up to batchSize items from the queue and invokes the handler once per batch.
