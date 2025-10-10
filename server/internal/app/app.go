@@ -131,9 +131,15 @@ func (a *App) Run(ctx context.Context) error {
 		if a.ingestMonitorCancel != nil {
 			a.ingestMonitorCancel()
 		}
+		// stop recieving queus
+		queue.DefaultQueue.Close()
+		
+		// stop processing new things
 		if a.ingestProc != nil {
 			a.ingestProc.Stop(context.Background())
 		}
+
+		// stop the sensors
 		if a.hwSensor != nil {
 			a.hwSensor.Stop()
 		}

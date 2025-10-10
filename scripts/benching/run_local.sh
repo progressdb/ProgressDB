@@ -13,9 +13,9 @@ DEFAULT_FRONTEND_API_KEY="pk_example"
 DEFAULT_THREAD_ID="user1"
 
 # prompt for mode
-read -r -p "Mode (create/retrieve) [create]: " MODE
+read -r -p "Mode (create/create-thread/get-threads/retrieve) [create]: " MODE
 MODE=${MODE:-create}
-if [[ "$MODE" != "create" && "$MODE" != "retrieve" ]]; then
+if [[ "$MODE" != "create" && "$MODE" != "retrieve" && "$MODE" != "create-thread" && "$MODE" != "get-threads" ]]; then
   echo "Invalid mode: $MODE"; exit 2
 fi
 
@@ -70,6 +70,12 @@ OUT_JSON="$ART_DIR/${TEST_ID}.json"
 if [[ "$MODE" == "create" ]]; then
   echo "Running create k6"
   k6 run --out json=$OUT_JSON server/tests/benching/k6/create.js
+elif [[ "$MODE" == "create-thread" ]]; then
+  echo "Running create-thread k6"
+  k6 run --out json=$OUT_JSON server/tests/benching/k6/create-thread.js
+elif [[ "$MODE" == "get-threads" ]]; then
+  echo "Running get-threads k6"
+  k6 run --out json=$OUT_JSON server/tests/benching/k6/get-threads.js
 else
   echo "Running retrieve k6"
   k6 run --out json=$OUT_JSON server/tests/benching/k6/retrieve.js

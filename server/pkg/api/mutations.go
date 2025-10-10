@@ -11,7 +11,21 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Mutative HTTP handlers live in this file. They are thin fast-path
+func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
+	if err == nil {
+		return
+	}
+	switch err {
+	case queue.ErrQueueFull:
+		utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
+	case queue.ErrQueueClosed:
+		utils.JSONErrorFast(ctx, fasthttp.StatusServiceUnavailable, "server shutting down")
+	default:
+		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+	}
+}
+
+// Mutative HTTP handlers are thin fast-path
 // handlers which enqueue raw payloads into the global ingest queue and
 // return a 202. Heavy work (validation, auth lookups, KMS, DB writes)
 // happens inside the ingest pipeline.
@@ -27,7 +41,10 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	_ = queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras})
+	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+		handleQueueError(ctx, err)
+		return
+	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
 }
@@ -46,7 +63,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -66,7 +83,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -90,11 +107,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
-		if err == queue.ErrQueueFull {
-			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
-			return
-		}
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -117,11 +130,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
-		if err == queue.ErrQueueFull {
-			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
-			return
-		}
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -141,11 +150,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
-		if err == queue.ErrQueueFull {
-			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
-			return
-		}
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -169,11 +174,7 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
-		if err == queue.ErrQueueFull {
-			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
-			return
-		}
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
@@ -195,11 +196,7 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 		"remote":   ctx.RemoteAddr().String(),
 	}
 	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
-		if err == queue.ErrQueueFull {
-			utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
-			return
-		}
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)

@@ -3,22 +3,28 @@ package logger
 import (
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
-var sensitive = map[string]struct{}{
-	"authorization":    {},
-	"x-api-key":        {},
-	"x-user-signature": {},
-}
-
-func redactHeaderValue(k, v string) string {
+func maskedValue(v string) string {
 	if v == "" {
 		return ""
 	}
-	if _, ok := sensitive[strings.ToLower(k)]; ok {
+	// keep first and last rune, mask the middle with fixed asterisks
+	l := utf8.RuneCountInString(v)
+	if l <= 2 {
 		return "<redacted>"
 	}
-	return v
+	first, _ := utf8.DecodeRuneInString(v)
+	last, _ := utf8.DecodeLastRuneInString(v)
+	return string(first) + "*****" + string(last)
+}
+
+func redactHeaderValue(_ string, v string) string {
+	if v == "" {
+		return ""
+	}
+	return maskedValue(v)
 }
 
 // SafeHeaders returns a compact string representation of headers suitable for

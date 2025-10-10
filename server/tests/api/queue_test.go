@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,6 +108,99 @@ func TestRunWorkerEnsuresDone(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatalf("worker did not process item")
+	}
+
+	close(stop)
+}
+
+func TestQueueCloseWaitsForDrain(t *testing.T) {
+	q := qpkg.NewQueue(8)
+	stop := make(chan struct{})
+	var processed int32
+
+	go q.RunWorker(stop, func(op *qpkg.Op) error {
+		time.Sleep(5 * time.Millisecond)
+		atomic.AddInt32(&processed, 1)
+		return nil
+	})
+
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("m%d", i)
+		if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("p"), 0); err != nil {
+			t.Fatalf("enqueue failed: %v", err)
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		q.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("queue close timed out")
+	}
+
+	if got := atomic.LoadInt32(&processed); got != 3 {
+		t.Fatalf("expected 3 processed messages, got %d", got)
+	}
+
+	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {
+		t.Fatalf("expected ErrQueueClosed, got %v", err)
+	}
+
+	close(stop)
+}
+
+func TestRunBatchWorkerBatches(t *testing.T) {
+	q := qpkg.NewQueue(16)
+	stop := make(chan struct{})
+	batchCh := make(chan []string, 4)
+
+	go q.RunBatchWorker(stop, 3, func(ops []*qpkg.Op) error {
+		ids := make([]string, len(ops))
+		for i, op := range ops {
+			ids[i] = op.ID
+		}
+		batchCh <- ids
+		return nil
+	})
+
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("b%d", i)
+		if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
+			t.Fatalf("enqueue failed: %v", err)
+		}
+	}
+
+	q.Close()
+
+	var batches [][]string
+collect:
+	for {
+		select {
+		case ids := <-batchCh:
+			batches = append(batches, ids)
+		case <-time.After(200 * time.Millisecond):
+			break collect
+		}
+	}
+
+	if len(batches) == 0 {
+		t.Fatalf("expected batches to be processed")
+	}
+
+	total := 0
+	for _, b := range batches {
+		if len(b) > 3 {
+			t.Fatalf("batch size exceeded limit: %v", b)
+		}
+		total += len(b)
+	}
+	if total != 5 {
+		t.Fatalf("expected 5 ops processed, got %d", total)
 	}
 
 	close(stop)

@@ -1,6 +1,6 @@
 import http from 'k6/http';
 
-const targetRate = Number(__ENV.RATE || 100000);
+const targetRate = Number(__ENV.RATE || 100_000);
 const duration = __ENV.DURATION || '10s';
 const targetUrl = __ENV.TARGET || 'http://127.0.0.1:8080/healthz';
 
@@ -17,7 +17,7 @@ export let options = {
     },
   },
   thresholds: {
-    http_req_duration: ['p(99)<500'],
+    http_req_duration: ['p(99)<200'],
     http_req_failed: ['rate<0.01'],
   },
 };

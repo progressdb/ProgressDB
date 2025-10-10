@@ -3,7 +3,10 @@ package queue
 import (
 	"context"
 	"sync/atomic"
+	"time"
 )
+
+const drainPollInterval = 10 * time.Millisecond
 
 // TryEnqueueBytes copies payload into a pooled buffer and enqueues a new
 // Op constructed from the provided fields.
@@ -24,12 +27,46 @@ func (q *Queue) EnqueueOp(handler HandlerID, thread, id string, payload []byte, 
 	return q.TryEnqueue(op)
 }
 
+// Close stops accepting new items, waits for in-flight items to finish processing,
+// and closes the underlying channel. It is safe to call multiple times.
+func (q *Queue) Close() {
+	q.closeInternal(false)
+}
+
 // CloseAndDrain closes the queue channel and drains remaining items,
-// ensuring their resources are released.
+// ensuring their resources are released. This is primarily intended for tests.
 func (q *Queue) CloseAndDrain() {
-	close(q.ch)
-	for it := range q.ch {
-		it.Done()
+	q.closeInternal(true)
+}
+
+func (q *Queue) closeInternal(drain bool) {
+	if q == nil {
+		return
+	}
+	_ = atomic.CompareAndSwapInt32(&q.closed, 0, 1)
+
+	// wait for any in-flight enqueuers to finish before closing the channel
+	q.enqWg.Wait()
+
+	// ensure the channel is closed exactly once
+	q.closeOnce.Do(func() {
+		close(q.ch)
+	})
+
+	if drain {
+		for it := range q.ch {
+			it.Done()
+		}
+		return
+	}
+
+	ticker := time.NewTicker(drainPollInterval)
+	defer ticker.Stop()
+	for {
+		if atomic.LoadInt64(&q.inFlight) == 0 {
+			return
+		}
+		<-ticker.C
 	}
 }
 

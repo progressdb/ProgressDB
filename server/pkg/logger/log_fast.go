@@ -10,10 +10,7 @@ func SafeHeadersFast(ctx *fasthttp.RequestCtx) string {
 	parts := make([]string, 0)
 	ctx.Request.Header.VisitAll(func(k, v []byte) {
 		key := string(k)
-		val := string(v)
-		if _, ok := sensitive[strings.ToLower(key)]; ok {
-			val = "<redacted>"
-		}
+		val := redactHeaderValue(key, string(v))
 		parts = append(parts, key+"="+val)
 	})
 	return strings.Join(parts, "; ")

@@ -3,6 +3,7 @@ package queue
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/valyala/bytebufferpool"
 )
@@ -61,6 +62,10 @@ type Item struct {
 // Done releases internal pooled resources (buffer + op) back to the pool.
 func (it *Item) Done() {
 	it.once.Do(func() {
+		if it.q != nil {
+			atomic.AddInt64(&it.q.inFlight, -1)
+			it.q = nil
+		}
 		if it.buf != nil {
 			// avoid retaining huge buffers in the pool
 			if cap(it.buf.B) > maxPooledBuffer {
@@ -94,3 +99,6 @@ var maxPooledBuffer = 256 * 1024 // 256 KiB
 // ErrQueueFull is returned by TryEnqueue when the queue is at capacity.
 // Placed here so callers can reference it from the package.
 var ErrQueueFull = errors.New("ingest queue full")
+
+// ErrQueueClosed is returned when enqueue operations are attempted after the queue has closed.
+var ErrQueueClosed = errors.New("ingest queue closed")

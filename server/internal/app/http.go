@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"time"
+
+	router "progressdb/pkg/router"
 
 	"github.com/valyala/fasthttp"
-	router "progressdb/pkg/router"
 
 	"progressdb/pkg/api"
 	"progressdb/pkg/auth"
@@ -118,8 +120,27 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	fastHandler = auth.RequireSignedAuthorFast(fastHandler)
 	fastHandler = auth.AuthenticateRequestMiddlewareFast(secCfg)(fastHandler)
 
-	// create fasthttp server
-	a.srvFast = &fasthttp.Server{Handler: fastHandler}
+	// create fasthttp.Server options for readability and maintainability
+	const (
+		readBufferSize       = 64 * 1024        // 64 KiB read buffer per connection
+		maxRequestBodySize   = 5 * 1024 * 1024  // 5 MiB max request body
+		concurrency          = 0                // unlimited concurrency (0 means unlimited in fasthttp)
+		readTimeout          = 10 * time.Second // timeout for reading request
+		writeTimeout         = 10 * time.Second // timeout for writing response
+		idleTimeout          = 30 * time.Second // max keep-alive idle duration per connection
+		maxKeepaliveDuration = 2 * time.Minute  // max duration for keep-alive connection
+	)
+	a.srvFast = &fasthttp.Server{
+		Handler:              fastHandler,
+		ReadBufferSize:       readBufferSize,
+		MaxRequestBodySize:   maxRequestBodySize,
+		Concurrency:          concurrency,
+		ReduceMemoryUsage:    true, // reduces memory usage at the expense of performance
+		ReadTimeout:          readTimeout,
+		WriteTimeout:         writeTimeout,
+		IdleTimeout:          idleTimeout,
+		MaxKeepaliveDuration: maxKeepaliveDuration,
+	}
 
 	// start server in goroutine and return error channel
 	errCh := make(chan error, 1)

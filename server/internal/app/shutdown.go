@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/store"
 )
 
@@ -25,7 +26,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// 2) close KMS remote client
+	// close kms clinet
 	if a.rc != nil {
 		log.Printf("shutdown: closing KMS client")
 		if err := a.rc.Close(); err != nil {
@@ -39,7 +40,14 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.retentionCancel()
 	}
 
-	// 4) close store
+	// ensure ingest queue drains before closing store and stop ingest processor
+	queue.DefaultQueue.Close()
+	if a.ingestProc != nil {
+		log.Printf("shutdown: stopping ingest processor")
+		a.ingestProc.Stop(ctx)
+	}
+
+	// flush close the storage
 	log.Printf("shutdown: closing store")
 	if err := store.Close(); err != nil {
 		log.Printf("shutdown: store close error: %v", err)

@@ -104,3 +104,5 @@ test-results.json
 logs/
 /docs/internal
 ProgressDB.code-workspace
+
+/server/tests/artifacts
