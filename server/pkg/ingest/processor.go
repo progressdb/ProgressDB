@@ -34,6 +34,11 @@ type Processor struct {
 	flushDur time.Duration
 	// pause state
 	paused int32
+
+	seqCounter uint64
+	nextCommit uint64
+	commitMu   sync.Mutex
+	commitCond *sync.Cond
 }
 
 // NewProcessor creates a new Processor attached to the provided queue.
@@ -41,7 +46,16 @@ func NewProcessor(q *queue.Queue, workers int) *Processor {
 	if workers <= 0 {
 		workers = defaultWorkers
 	}
-	p := &Processor{q: q, workers: workers, stop: make(chan struct{}), handlers: make(map[queue.HandlerID]ProcessorFunc), maxBatch: defaultMaxBatchMsgs, flushDur: defaultFlushMS * time.Millisecond}
+	p := &Processor{
+		q:          q,
+		workers:    workers,
+		stop:       make(chan struct{}),
+		handlers:   make(map[queue.HandlerID]ProcessorFunc),
+		maxBatch:   defaultMaxBatchMsgs,
+		flushDur:   defaultFlushMS * time.Millisecond,
+		nextCommit: 1,
+	}
+	p.commitCond = sync.NewCond(&p.commitMu)
 	return p
 }
 
@@ -136,6 +150,8 @@ func (p *Processor) workerLoop(workerID int) {
 			return
 		}
 
+		seqID := atomic.AddUint64(&p.seqCounter, 1)
+
 		// drain up to maxBatch or until flushDur
 		drainTimer := time.NewTimer(p.flushDur)
 	drainLoop:
@@ -210,12 +226,35 @@ func (p *Processor) workerLoop(workerID int) {
 			}
 		}
 
-		// apply accumulated batch entries in one DB write
+		// apply accumulated batch entries in commit order
+		p.waitForCommit(seqID)
 		if len(batchEntries) > 0 {
 			if err := applyBatchToDB(batchEntries); err != nil {
 				logger.Error("apply_batch_failed", "err", err)
 				// TODO: retry / DLQ
 			}
 		}
+		p.markCommitted(seqID)
 	}
+}
+
+func (p *Processor) waitForCommit(seq uint64) {
+	p.commitMu.Lock()
+	for seq != p.nextCommit {
+		p.commitCond.Wait()
+	}
+	p.commitMu.Unlock()
+}
+
+func (p *Processor) markCommitted(seq uint64) {
+	p.commitMu.Lock()
+	if seq == p.nextCommit {
+		p.nextCommit++
+		p.commitCond.Broadcast()
+	} else if seq > p.nextCommit {
+		// Should not happen, but avoid deadlock if it does.
+		p.nextCommit = seq + 1
+		p.commitCond.Broadcast()
+	}
+	p.commitMu.Unlock()
 }
