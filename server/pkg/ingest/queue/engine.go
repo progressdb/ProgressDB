@@ -14,10 +14,10 @@ import (
 // TODO: queue full - drop strategy
 // TODO: handler error - handlng strategy
 
-// Default and configuration values.
-const defaultQueueCapacity = 64 * 1024
-const fallbackQueueCapacity = 1024
-const defaultBatchSize = 256
+// Note: canonical defaults live in `server/pkg/config` and the runtime
+// startup path should construct queues from that config. This package does
+// not provide configuration defaults — callers must supply validated
+// values. If callers pass invalid values, this is a programming error.
 
 // Counters for instrumentation.
 var (
@@ -27,7 +27,10 @@ var (
 )
 
 // DefaultQueue is the global queue for handlers; can be overridden.
-var DefaultQueue = NewQueue(defaultQueueCapacity)
+// It is intentionally nil until startup constructs and registers the
+// canonical queue (via SetDefaultQueue). Tests may construct local queues
+// directly with NewQueue for isolation.
+var DefaultQueue *Queue
 
 // Queue is a threadsafe, fixed-size in-memory queue of Op items.
 type Queue struct {
@@ -54,7 +57,7 @@ type Queue struct {
 // NewQueue creates a bounded Queue of given capacity (>0).
 func NewQueue(capacity int) *Queue {
 	if capacity <= 0 {
-		capacity = fallbackQueueCapacity
+		panic("queue.NewQueue: capacity must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
 	return &Queue{ch: make(chan *Item, capacity), capacity: capacity}
 }
@@ -81,10 +84,10 @@ type QueueOptions struct {
 
 // NewQueueWithOptions creates a Queue with options (WAL, capacity, recovery).
 func NewQueueWithOptions(opts *QueueOptions) *Queue {
-	cap := fallbackQueueCapacity
-	if opts != nil && opts.Capacity > 0 {
-		cap = opts.Capacity
+	if opts == nil || opts.Capacity <= 0 {
+		panic("queue.NewQueueWithOptions: opts and opts.Capacity must be provided; ensure config.ValidateConfig() applied defaults")
 	}
+	cap := opts.Capacity
 	q := &Queue{ch: make(chan *Item, cap), capacity: cap, outstanding: make(map[int64]struct{}), outstandingH: offsetHeap{}, lastTruncated: -1}
 	if opts != nil && opts.WAL != nil {
 		q.wal = opts.WAL
@@ -418,7 +421,7 @@ func (h *offsetHeap) Pop() any {
 // RunBatchWorker drains up to batchSize items from the queue and invokes the handler once per batch.
 func (q *Queue) RunBatchWorker(stop <-chan struct{}, batchSize int, handler func([]*Op) error) {
 	if batchSize <= 0 {
-		batchSize = defaultBatchSize
+		panic("queue.RunBatchWorker: batchSize must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
 	for {
 		select {

@@ -6,30 +6,48 @@ import (
 
 var activeWAL *FileWAL
 
-// EnableDurable attempts to enable a FileWAL under the provided directory
+// DurableEnableOptions provide a richer shape for enabling durable WAL and
+// constructing the canonical queue from configuration.
+type DurableEnableOptions struct {
+	Dir              string
+	Capacity         int
+	TruncateInterval time.Duration
+
+	// WAL tunables
+	WALMaxFileSize    int64
+	WALEnableBatch    bool
+	WALBatchSize      int
+	WALBatchInterval  time.Duration
+	WALEnableCompress bool
+}
+
+// EnableDurable attempts to enable a FileWAL under the provided options
 // and replaces the package DefaultQueue with a durable-backed queue. Best
 // effort: callers may ignore errors and continue with the in-memory queue.
-func EnableDurable(dir string) error {
-	if dir == "" {
+func EnableDurable(opts DurableEnableOptions) error {
+	if opts.Dir == "" {
 		return nil
 	}
-	opts := Options{
-		Dir:            dir,
-		EnableBatch:    true,
-		EnableCompress: false,
+
+	wopts := Options{
+		Dir:            opts.Dir,
+		MaxFileSize:    opts.WALMaxFileSize,
+		EnableBatch:    opts.WALEnableBatch,
+		BatchSize:      opts.WALBatchSize,
+		BatchInterval:  opts.WALBatchInterval,
+		EnableCompress: opts.WALEnableCompress,
 	}
-	w, err := New(opts)
+	w, err := New(wopts)
 	if err != nil {
 		return err
 	}
 	activeWAL = w
-
 	qopts := &QueueOptions{
-		Capacity:         defaultQueueCapacity,
+		Capacity:         opts.Capacity,
 		WAL:              w,
 		Mode:             "batch",
 		Recover:          true,
-		TruncateInterval: 30 * time.Second,
+		TruncateInterval: opts.TruncateInterval,
 	}
 	q := NewQueueWithOptions(qopts)
 	SetDefaultQueue(q)

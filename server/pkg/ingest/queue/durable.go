@@ -16,12 +16,9 @@ import (
 )
 
 const (
-	defaultMaxFileSize = 64 * 1024 * 1024 // 64MB per WAL file
-	// defaultBatchSize     = 100               // Records per batch
-	defaultBatchInterval = 100 * time.Millisecond
-	recordHeaderSize     = 17         // 8 (offset) + 4 (crc) + 4 (length) + 1 (flags)
-	fileHeaderSize       = 8          // 4 (magic) + 4 (file checksum placeholder)
-	fileMagic            = 0x57414C46 // "WALF"
+	recordHeaderSize = 17         // 8 (offset) + 4 (crc) + 4 (length) + 1 (flags)
+	fileHeaderSize   = 8          // 4 (magic) + 4 (file checksum placeholder)
+	fileMagic        = 0x57414C46 // "WALF"
 
 	// Flags
 	flagCompressed = 1 << 0
@@ -100,14 +97,19 @@ type FileWAL struct {
 }
 
 func New(opts Options) (*FileWAL, error) {
+	// Expect callers (startup path) to provide canonical defaults via
+	// configuration. If absent, return an error so the caller can abort
+	// startup with a helpful message.
 	if opts.MaxFileSize == 0 {
-		opts.MaxFileSize = defaultMaxFileSize
+		return nil, fmt.Errorf("wal options missing max_file_size; ensure config.ValidateConfig() applied defaults")
 	}
-	if opts.BatchSize == 0 {
-		opts.BatchSize = defaultBatchSize
-	}
-	if opts.BatchInterval == 0 {
-		opts.BatchInterval = defaultBatchInterval
+	if opts.EnableBatch {
+		if opts.BatchSize == 0 {
+			return nil, fmt.Errorf("wal options missing batch_size; ensure config.ValidateConfig() applied defaults")
+		}
+		if opts.BatchInterval == 0 {
+			return nil, fmt.Errorf("wal options missing batch_interval; ensure config.ValidateConfig() applied defaults")
+		}
 	}
 
 	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {

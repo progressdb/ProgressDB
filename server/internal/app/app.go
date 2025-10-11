@@ -113,9 +113,26 @@ func (a *App) Run(ctx context.Context) error {
 
 	// Attempt to enable a durable on-disk queue under the canonical WAL
 	// location (dbpath/wal). This is best-effort: if enabling fails we
-	// fall back to the in-memory queue.
-	_ = queue.EnableDurable(state.WalPath(a.eff.DBPath))
+	// fall back to the in-memory queue. Use configured capacity/truncate
+	// interval from the effective config so config controls defaults.
+	// Attempt to enable durable WAL using rich options mapped from config.
+	deOpts := queue.DurableEnableOptions{
+		Dir:               state.WalPath(a.eff.DBPath),
+		Capacity:          a.eff.Config.Ingest.Queue.Capacity,
+		TruncateInterval:  a.eff.Config.Ingest.Queue.TruncateInterval.Duration(),
+		WALMaxFileSize:    a.eff.Config.Ingest.Queue.WAL.MaxFileSize.Int64(),
+		WALEnableBatch:    a.eff.Config.Ingest.Queue.WAL.EnableBatch,
+		WALBatchSize:      a.eff.Config.Ingest.Queue.WAL.BatchSize,
+		WALBatchInterval:  a.eff.Config.Ingest.Queue.WAL.BatchInterval.Duration(),
+		WALEnableCompress: a.eff.Config.Ingest.Queue.WAL.EnableCompress,
+	}
+	if err := queue.EnableDurable(deOpts); err != nil {
+		// fallback to in-memory queue constructed from config
+		q := queue.NewQueue(a.eff.Config.Ingest.Queue.Capacity)
+		queue.SetDefaultQueue(q)
+	}
 
+	// Ensure DefaultQueue is set by now (either durable or in-memory)
 	p := ingest.NewProcessor(queue.DefaultQueue, runtime.NumCPU())
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
@@ -133,8 +150,10 @@ func (a *App) Run(ctx context.Context) error {
 		if a.ingestMonitorCancel != nil {
 			a.ingestMonitorCancel()
 		}
-		// stop recieving queus
-		queue.DefaultQueue.Close()
+		// stop receiving queues
+		if queue.DefaultQueue != nil {
+			queue.DefaultQueue.Close()
+		}
 
 		// close durable WAL if enabled
 		_ = queue.CloseDurable()
