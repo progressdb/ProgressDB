@@ -138,27 +138,26 @@ func (s *Sensor) SendThrottle(req ThrottleRequest) {
 
 // sample collects best-effort metrics and updates the current snapshot.
 func (s *Sensor) sample() {
-	var snap Snapshot
-	snap.Timestamp = time.Now()
-
-	// memory via runtime
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	snap.MemTotal = m.Sys
-	snap.MemUsed = m.Alloc
-
-	// Basic CPU utilization estimate: number of logical CPUs in use is
-	// best-effort signalled by NumCPU; precise CPU utilization requires
-	// platform-specific sampling (e.g., /proc/stat deltas) and is left for
-	// later. For now expose NumCPU via CPUUtil as fraction of 1 when >1.
-	if c := runtime.NumCPU(); c > 0 {
-		// not a real utilization metric; callers should treat as advisory
-		snap.CPUUtil = float64(c) / float64(c)
+	snap := Snapshot{
+		Timestamp: time.Now(),
 	}
 
-	// Other fields (Disk*, Net*) are left as zero on unsupported platforms.
+	// Capture memory statistics.
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	snap.MemTotal = memStats.Sys
+	snap.MemUsed = memStats.Alloc
 
-	// update atomically
+	// Provide a basic (placeholder) CPU utilization estimate.
+	cpuCount := runtime.NumCPU()
+	if cpuCount > 0 {
+		// This is not true CPU utilization—just a signal that CPUs are present.
+		snap.CPUUtil = 1.0
+	}
+
+	// Disk* and Net* fields remain zero if not available on this platform.
+
+	// Atomically update the snapshot.
 	s.mu.Lock()
 	s.snap = snap
 	s.mu.Unlock()

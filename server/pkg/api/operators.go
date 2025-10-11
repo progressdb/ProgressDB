@@ -66,8 +66,6 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-// --- Admin handlers (moved from handlers/admin.go) ---
-
 func AdminHealth(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
@@ -158,9 +156,6 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/octet-stream")
 	_, _ = ctx.Write([]byte(val))
 }
-
-// The remaining admin functions (rotation/rewrap/encrypt/generate) are large;
-// copy them verbatim from handlers/admin.go to preserve behavior.
 
 func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
@@ -475,11 +470,6 @@ func auditSummary(event string, threads int, keys int, out map[string]map[string
 	}
 	auditLog(event, fields)
 }
-
-// Note: for brevity and to avoid duplicating a very large admin file here,
-// leave the rest of the admin helper functions in place; they can be moved
-// in a follow-up if you want the full copy. The key routing and primary
-// admin endpoints above are centralized here.
 
 func isAdminFast(ctx *fasthttp.RequestCtx) bool {
 	return string(ctx.Request.Header.Peek("X-Role-Name")) == "admin"

@@ -146,8 +146,3 @@ func ResolveConfigPath(flagPath string, flagSet bool) string {
 	}
 	return flagPath
 }
-
-// SetDefaultRetention is kept for compatibility; types declared in types.go.
-func (c *Config) SetDefaultRetention() {
-	// noop placeholder for backward compatibility
-}
