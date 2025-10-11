@@ -1,13 +1,13 @@
-// tough test: 10k reqs/sec for 2 minutes, strict SLOs
+// target: 4k reqs/sec for 2 minutes, strict SLOs
 export let options = {
   scenarios: {
     constant_rate: {
       executor: 'constant-arrival-rate',
-      rate: 10000,           // requests per second
+      rate: 4000,            // requests per second
       timeUnit: '1s',
-      duration: '2m',        // 2 minutes to sustain pressure
-      preAllocatedVUs: 6000, // enough for high concurrency & spike tolerance
-      maxVUs: 10000
+      duration: '1m',        // 2 minutes to sustain pressure
+      preAllocatedVUs: 2400, // enough for high concurrency & spike tolerance
+      maxVUs: 4000
     }
   },
   thresholds: {

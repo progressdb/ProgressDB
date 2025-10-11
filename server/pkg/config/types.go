@@ -18,11 +18,13 @@ type RuntimeConfig struct {
 
 // Config is the main configuration struct.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Security  SecurityConfig  `yaml:"security"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Retention RetentionConfig `yaml:"retention"`
-	Ingest    IngestConfig    `yaml:"ingest"`
+    Server    ServerConfig    `yaml:"server"`
+    Security  SecurityConfig  `yaml:"security"`
+    Logging   LoggingConfig   `yaml:"logging"`
+    Retention RetentionConfig `yaml:"retention"`
+    Ingest    IngestConfig    `yaml:"ingest"`
+    Telemetry TelemetryConfig `yaml:"telemetry"`
+    Sensor    SensorConfig    `yaml:"sensor"`
 }
 
 // ServerConfig holds http and tls settings.
@@ -174,3 +176,21 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (d Duration) Duration() time.Duration { return time.Duration(d) }
+
+// TelemetryConfig controls sampling and slow-request thresholds.
+type TelemetryConfig struct {
+    SampleRate    float64 `yaml:"sample_rate"`
+    SlowThreshold Duration `yaml:"slow_threshold"`
+}
+
+// SensorConfig holds sensor related tuning knobs.
+type SensorConfig struct {
+    Monitor struct {
+        PollInterval  Duration  `yaml:"poll_interval"`
+        WALHighBytes  SizeBytes `yaml:"wal_high_bytes"`
+        WALLowBytes   SizeBytes `yaml:"wal_low_bytes"`
+        DiskHighPct   int       `yaml:"disk_high_pct"`
+        DiskLowPct    int       `yaml:"disk_low_pct"`
+        RecoveryWindow Duration `yaml:"recovery_window"`
+    } `yaml:"monitor"`
+}

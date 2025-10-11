@@ -13,8 +13,8 @@ DEFAULT_FRONTEND_API_KEY="pk_example"
 DEFAULT_THREAD_ID="user1"
 
 # prompt for mode
-read -r -p "Mode (create/create-thread/get-threads/retrieve) [create]: " MODE
-MODE=${MODE:-create}
+read -r -p "Mode (create/create-thread/get-threads/retrieve) [create-thread]: " MODE
+MODE=${MODE:-create-thread}
 if [[ "$MODE" != "create" && "$MODE" != "retrieve" && "$MODE" != "create-thread" && "$MODE" != "get-threads" ]]; then
   echo "Invalid mode: $MODE"; exit 2
 fi

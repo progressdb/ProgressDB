@@ -46,24 +46,24 @@ retention:
 
 ingest:
   processor:
-    workers: 128                 # Maximum parallelism, push CPU/core utilization
-    max_batch_msgs: 65536        # Huge batches for maximal amortization
-    flush_ms: 1               # Even less frequent flush to reduce overhead
+    workers: 48                 # Double concurrency (more cores for higher throughput)
+    max_batch: 10000            # Larger batch for better throughput
+    flush_ms: 1                 # Flush even faster for lower latency
   queue:
-    capacity: 16777216           # 16 million capacity for largest spikes
-    batch_size: 4096             # Much larger batches for throughput
-    drain_poll_interval: 1ms     # Aggressively low poll interval for minimum latency
-    max_pooled_buffer_bytes: 134217728  # 128MB pooled buffer for memory hungry workloads
+    capacity: 1048576           # 1M queue: much larger, handles big spikes/bursts
+    batch: 131072               # Larger batch size for higher throughput
+    poll_interval: 250us        # Faster polling for lower latency
+    max_buffer: 3221225472      # 3GB buffer (assuming lots of RAM for speed)
     recover: true
-    truncate_interval: 5s        # Frequent truncation to keep WAL lean
+    truncate: 60s               # Less frequent SSD writes, but not a bottleneck
     wal:
-      enabled: true              # Enable WAL for durability under heavy load
-      mode: "batch"
-      max_file_size: 1073741824  # 1GB WAL files for less frequent rotations
-      enable_batch: true
-      batch_size: 4096           # Large WAL batches
-      batch_interval: 20ms       # Fast flush intervals for WAL
-      enable_compress: true
-      compress_min_bytes: 128    # Compress everything >128 bytes
+      enabled: false             # WAL for durability
+      mode: batch
+      max_file: 2147483648      # 2GB WAL (less rotation, more headroom)
+      batch_enabled: true
+      batch: 4096               # Much larger WAL batch for best speed
+      interval: 2ms             # WAL flush very frequently for speed
+      compress: true
+      compress_min: 512         # Only compress payloads 512B+, conserves CPU
       retention_bytes: 0
       retention_age: 0

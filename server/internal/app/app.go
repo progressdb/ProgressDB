@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -13,6 +12,7 @@ import (
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/sensor"
+	"progressdb/pkg/telemetry"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
@@ -54,6 +54,10 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	if err := validateConfig(eff); err != nil {
 		return nil, err
 	}
+
+	// apply telemetry defaults from effective config
+	telemetry.SetSampleRate(eff.Config.Telemetry.SampleRate)
+	telemetry.SetSlowThreshold(eff.Config.Telemetry.SlowThreshold.Duration())
 
 	// runtime keys
 	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
@@ -123,18 +127,27 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	if err := queue.EnableDurable(deOpts); err != nil {
 		// fallback to in-memory queue constructed from config
-		q := queue.NewQueue(a.eff.Config.Ingest.Queue.Capacity)
+		q := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue)
 		queue.SetDefaultQueue(q)
 	}
 
 	// Ensure DefaultQueue is set by now (either durable or in-memory)
-	p := ingest.NewProcessor(queue.DefaultQueue, runtime.NumCPU())
+	p := ingest.NewProcessor(queue.DefaultQueue, a.eff.Config.Ingest.Processor)
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
 	a.ingestProc = p
 
 	// start pebble monitor
-	cancelMonitor := sensor.StartPebbleMonitor(ctx, p, sensorObj, sensor.DefaultMonitorConfig())
+	// convert effective config monitor to sensor.MonitorConfig
+	mon := sensor.MonitorConfig{
+		PollInterval:   a.eff.Config.Sensor.Monitor.PollInterval.Duration(),
+		WALHighBytes:   uint64(a.eff.Config.Sensor.Monitor.WALHighBytes.Int64()),
+		WALLowBytes:    uint64(a.eff.Config.Sensor.Monitor.WALLowBytes.Int64()),
+		DiskHighPct:    a.eff.Config.Sensor.Monitor.DiskHighPct,
+		DiskLowPct:     a.eff.Config.Sensor.Monitor.DiskLowPct,
+		RecoveryWindow: a.eff.Config.Sensor.Monitor.RecoveryWindow.Duration(),
+	}
+	cancelMonitor := sensor.StartPebbleMonitor(ctx, p, sensorObj, mon)
 	a.ingestMonitorCancel = cancelMonitor
 
 	errCh := a.startHTTP(ctx)
