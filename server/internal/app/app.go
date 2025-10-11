@@ -15,6 +15,8 @@ import (
 	"progressdb/pkg/sensor"
 	"progressdb/pkg/telemetry"
 
+	"github.com/dustin/go-humanize"
+
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
@@ -78,9 +80,34 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		if truncate > lossWindow {
 			lossWindow = truncate
 		}
-		// Log a structured warning with key config values so operators can
-		// decide whether this explicit choice is acceptable.
-		logger.Warn("no_persistent_wal_configured", "reason", "both application WAL and Pebble WAL disabled", "loss_window_ms", lossWindow.Milliseconds(), "processor_flush_ms", procFlush.Milliseconds(), "queue_truncate_ms", truncate.Milliseconds(), "queue_capacity", eff.Config.Ingest.Queue.Capacity, "processor_max_batch_msgs", eff.Config.Ingest.Processor.MaxBatchMsgs)
+		// Compute a simple messages-at-risk estimate and bytes-at-risk using
+		// a conservative default average message size of 1 KiB.
+		queueCapacity := eff.Config.Ingest.Queue.Capacity
+		procWorkers := eff.Config.Ingest.Processor.Workers
+		procBatch := eff.Config.Ingest.Processor.MaxBatchMsgs
+		messagesAtRisk := queueCapacity + procWorkers*procBatch
+		// bytesAtRisk := int64(messagesAtRisk) * 1024 // 1 KiB per message
+
+		// Prepare human-friendly representations for key values.
+		lossWindowHuman := lossWindow.String()
+		processorFlushHuman := procFlush.String()
+		truncateHuman := truncate.String()
+		queueCapacityHuman := humanize.Comma(int64(queueCapacity))
+		messagesAtRiskHuman := humanize.Comma(int64(messagesAtRisk))
+		// bytesAtRiskHuman := humanize.Bytes(uint64(bytesAtRisk))
+
+		// Log configuration summary
+		summaryItems := []string{
+			fmt.Sprintf("loss_window: %s", lossWindowHuman),
+			fmt.Sprintf("processor_flush: %s", processorFlushHuman),
+			fmt.Sprintf("queue_truncate: %s", truncateHuman),
+			fmt.Sprintf("queue_capacity: %s", queueCapacityHuman),
+			fmt.Sprintf("processor_workers: %d", procWorkers),
+			fmt.Sprintf("processor_max_batch_msgs: %s", humanize.Comma(int64(procBatch))),
+			fmt.Sprintf("messages_at_risk: %s", messagesAtRiskHuman),
+			// fmt.Sprintf("bytes_at_risk: %s", bytesAtRiskHuman),
+		}
+		logger.LogConfigSummary("config_durability_summary", summaryItems)
 	}
 
 	// apply telemetry defaults from effective config
@@ -100,9 +127,6 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		return nil, fmt.Errorf("invalid encryption fields: %w", err)
 	}
 
-	// validation rules
-	// initValidation(eff)
-
 	// open store under <DBPath>/store (main ensures directories exist)
 	if state.PathsVar.Store == "" {
 		return nil, fmt.Errorf("state paths not initialized")
@@ -116,9 +140,9 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 			disable = *aCfg.Ingest.Queue.WAL.DisablePebbleWAL
 		}
 	}
-	if err := store.Open(state.PathsVar.Store, disable); err != nil {
-		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
-	}
+    if err := store.Open(state.PathsVar.Store, disable, appWALEnabled); err != nil {
+        return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
+    }
 
 	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}
 	return a, nil

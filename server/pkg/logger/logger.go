@@ -167,8 +167,35 @@ func Warn(msg string, args ...any) {
 
 // Error logs with slog-style key/value pairs.
 func Error(msg string, args ...any) {
-	if Log == nil {
-		return
-	}
-	Log.Error(msg, args...)
+    if Log == nil {
+        return
+    }
+    Log.Error(msg, args...)
+}
+
+// LogConfigSummary logs a human-friendly, hyphenated list of configuration
+// results. The message will be emitted as a single structured field so
+// log consumers can still parse the event while human readers see a
+// readable multi-line list.
+func LogConfigSummary(title string, items []string) {
+    if len(items) == 0 {
+        return
+    }
+    // Render a compact human-friendly block to stdout (no timestamps or
+    // structured prefixes) so it's easy to read in terminal output and to
+    // copy/paste into runbooks. The block is printed regardless of the
+    // configured logger to make startup config dumps highly visible.
+    human := strings.ReplaceAll(title, "_", " ")
+    human = strings.Title(human)
+    header := "== " + human + " "
+    // pad header to a fixed width for visual separation
+    const width = 60
+    if len(header) < width {
+        header = header + strings.Repeat("=", width-len(header))
+    }
+    fmt.Fprintln(os.Stdout, header)
+    for _, it := range items {
+        fmt.Fprintln(os.Stdout, "- "+it)
+    }
+    fmt.Fprintln(os.Stdout)
 }

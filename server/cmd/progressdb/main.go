@@ -94,10 +94,8 @@ func main() {
 	defer cancel()
 
 	// run version checks and migrations - before start app
-	if invoked, err := progressor.Run(ctx, version); err != nil {
+	if _, err := progressor.Run(ctx, version); err != nil {
 		shutdown.Abort("progressor run failed", err, eff.DBPath)
-	} else if invoked {
-		logger.Info("progressor_invoked")
 	}
 
 	// run the app

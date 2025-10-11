@@ -89,27 +89,32 @@ func MaxSeqForThread(threadID string) (uint64, error) {
 }
 
 // Open opens (or creates) a Pebble database at the given path and keeps
-// a global handle for simple usage in this package. The `disableWAL`
+// a global handle for simple usage in this package. The `disablePebbleWAL`
 // parameter controls the underlying Pebble `DisableWAL` option. When true,
 // Pebble will not fsync the WAL and durability must be provided by the
-// application-level WAL. Historically the project defaulted to disabling
-// the Pebble WAL; callers should pass the effective config value.
-func Open(path string, disableWAL bool) error {
-	var err error
-	opts := &pebble.Options{
-		DisableWAL: disableWAL,
-	}
-	walDisabled = opts.DisableWAL
+// application-level WAL. The `appWALEnabled` parameter indicates whether
+// the application-level WAL is active; we only emit a warning about a
+// disabled Pebble WAL when the app WAL is also disabled so we don't spam
+// logs for legitimate durable configurations.
+func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
+    var err error
+    opts := &pebble.Options{
+        DisableWAL: disablePebbleWAL,
+    }
+    walDisabled = opts.DisableWAL
 
-	if walDisabled {
-		logger.Warn("pebble_wal_disabled", "note", "Pebble WAL is disabled; ensure the application-level WAL is providing durability")
-	}
+    // Only warn about Pebble WAL being disabled if the app-level WAL is
+    // not providing durability. If the application WAL is enabled, that
+    // is the intended durability mechanism and we avoid noisy warnings.
+    if walDisabled && !appWALEnabled {
+        logger.Warn("pebble_wal_disabled", "note", "Pebble WAL is disabled; ensure the application-level WAL is providing durability")
+    }
 
-	db, err = pebble.Open(path, opts)
-	if err != nil {
-		logger.Error("pebble_open_failed", "path", path, "error", err)
-		return err
-	}
+    db, err = pebble.Open(path, opts)
+    if err != nil {
+        logger.Error("pebble_open_failed", "path", path, "error", err)
+        return err
+    }
 	// remember path for best-effort metrics
 	dbPath = path
 	return nil

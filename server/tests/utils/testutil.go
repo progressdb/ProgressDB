@@ -58,9 +58,11 @@ func SetupServer(t *testing.T) *LocalServer {
 	_ = os.MkdirAll(storePath, 0o700)
 
 	logger.Init()
-	if err := store.Open(storePath, true); err != nil {
-		t.Fatalf("store.Open failed: %v", err)
-	}
+    // Tests run with Pebble WAL disabled by default; the application WAL
+    // is not active in these in-process tests so pass appWALEnabled=false.
+    if err := store.Open(storePath, true, false); err != nil {
+        t.Fatalf("store.Open failed: %v", err)
+    }
 
 	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	prov, err := kms.NewHashicorpEmbeddedProvider(context.Background(), mk)

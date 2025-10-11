@@ -48,24 +48,24 @@ retention:
 ingest:
   processor:
     workers: 48                 # Double concurrency (more cores for higher throughput)
-    max_batch_msgs: 1000        # Lower batch size for more frequent flush (better durability)
-    flush_ms: 0                 # Flush immediately (as soon as possible) for highest durability
+    max_batch_msgs: 10000       # Larger batch for better throughput
+    flush_ms: 1                 # Flush even faster for lower latency
   queue:
-    capacity: 131072            # Smaller queue, so less at risk in memory
-    batch_size: 4096            # Smaller batch size for more frequent writing to WAL
-    drain_poll_interval: 1ms    # Slightly slower polling, but avoids busy loop
-    max_pooled_buffer_bytes: 512MB # Lower buffer; less memory left unflushed
+    capacity: 1048576           # 1M queue: much larger, handles big spikes/bursts
+    batch_size: 131072          # Larger batch size for higher throughput
+    drain_poll_interval: 250us  # Faster polling for lower latency
+    max_pooled_buffer_bytes: 3GB # 3GB buffer (assuming lots of RAM for speed)
     recover: true
-    truncate_interval: 2s       # Truncate queue frequently for better durability
+    truncate_interval: 60s      # Less frequent SSD writes, but not a bottleneck
     wal:
-      enabled: true              # WAL for durability - MUST be enabled!
+      enabled: false             # WAL for durability
       mode: batch
-      max_file_size: 1GB         # Rotate WAL more often for integrity
-      enable_batch: false        # Write every event as soon as possible
-      batch_size: 1              # Write WAL every event (highest durability)
-      batch_interval: 0          # No batching interval, flush now
-      enable_compress: false     # Don't compress, optimize for speed/durability
-      compress_min_bytes: 0
+      max_file_size: 2GB         # 2GB WAL (less rotation, more headroom)
+      enable_batch: true
+      batch_size: 4096           # Much larger WAL batch for best speed
+      batch_interval: 10ms       # WAL flush very frequently for speed
+      enable_compress: true
+      compress_min_bytes: 512    # Only compress payloads 512B+, conserves CPU
       retention_bytes: 0
       retention_age: 0
 
