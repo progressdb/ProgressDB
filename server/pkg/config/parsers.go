@@ -34,6 +34,7 @@ type EffectiveConfigResult struct {
 }
 
 // ParseConfigFlags parses command-line flags and returns them as a Flags struct.
+// you can only pass 3 config values
 func ParseConfigFlags() Flags {
 	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
 	dbPtr := flag.String("db", "./.database", "Pebble DB path")
@@ -65,8 +66,49 @@ func ParseConfigFile(flags Flags) (*Config, bool, error) {
 // and whether envs were used. This function does not mutate any caller
 // provided config.
 func ParseConfigEnvs() (*Config, EnvResult) {
-	envCfg := &Config{}
+	// gather all relevant env variables up front
+	envs := map[string]string{
+		"SERVER_ADDR":             os.Getenv("PROGRESSDB_SERVER_ADDR"),
+		"ADDR":                    os.Getenv("PROGRESSDB_ADDR"),
+		"SERVER_ADDRESS":          os.Getenv("PROGRESSDB_SERVER_ADDRESS"),
+		"SERVER_PORT":             os.Getenv("PROGRESSDB_SERVER_PORT"),
+		"SERVER_DB_PATH":          os.Getenv("PROGRESSDB_SERVER_DB_PATH"),
+		"DB_PATH":                 os.Getenv("PROGRESSDB_DB_PATH"),
+		"ENCRYPTION_FIELDS":       os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"),
+		"CORS_ORIGINS":            os.Getenv("PROGRESSDB_CORS_ORIGINS"),
+		"RATE_RPS":                os.Getenv("PROGRESSDB_RATE_RPS"),
+		"RATE_BURST":              os.Getenv("PROGRESSDB_RATE_BURST"),
+		"IP_WHITELIST":            os.Getenv("PROGRESSDB_IP_WHITELIST"),
+		"API_BACKEND_KEYS":        os.Getenv("PROGRESSDB_API_BACKEND_KEYS"),
+		"API_FRONTEND_KEYS":       os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"),
+		"API_ADMIN_KEYS":          os.Getenv("PROGRESSDB_API_ADMIN_KEYS"),
+		"KMS_ENDPOINT":            os.Getenv("PROGRESSDB_KMS_ENDPOINT"),
+		"KMS_DATA_DIR":            os.Getenv("PROGRESSDB_KMS_DATA_DIR"),
+		"KMS_MASTER_KEY_FILE":     os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"),
+		"KMS_MASTER_KEY_HEX":      os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
+		"USE_ENCRYPTION":          os.Getenv("PROGRESSDB_USE_ENCRYPTION"),
+		"TLS_CERT":                os.Getenv("PROGRESSDB_TLS_CERT"),
+		"TLS_KEY":                 os.Getenv("PROGRESSDB_TLS_KEY"),
+		"RETENTION_ENABLED":       os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
+		"RETENTION_CRON":          os.Getenv("PROGRESSDB_RETENTION_CRON"),
+		"RETENTION_PERIOD":        os.Getenv("PROGRESSDB_RETENTION_PERIOD"),
+		"RETENTION_BATCH_SIZE":    os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"),
+		"RETENTION_BATCH_SLEEP_MS":os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"),
+		"RETENTION_DRY_RUN":       os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"),
+		"RETENTION_MIN_PERIOD":    os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"),
+	}
+
+	// check if any env was set
 	envUsed := false
+	for _, v := range envs {
+		if v != "" {
+			envUsed = true
+			break
+		}
+	}
+	envCfg := &Config{}
+
+	// parse helpers
 	parseList := func(v string) []string {
 		if v == "" {
 			return nil
@@ -80,9 +122,8 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		return parts
 	}
 
-	// Server address/port
-	if v := os.Getenv("PROGRESSDB_SERVER_ADDR"); v != "" {
-		envUsed = true
+	// apply env vars, giving precedence for address variables as per the original logic
+	if v := envs["SERVER_ADDR"]; v != "" {
 		if h, p, err := net.SplitHostPort(v); err == nil {
 			envCfg.Server.Address = h
 			if pi, err := strconv.Atoi(p); err == nil {
@@ -91,8 +132,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		} else {
 			envCfg.Server.Address = v
 		}
-	} else if v := os.Getenv("PROGRESSDB_ADDR"); v != "" {
-		envUsed = true
+	} else if v := envs["ADDR"]; v != "" {
 		if h, p, err := net.SplitHostPort(v); err == nil {
 			envCfg.Server.Address = h
 			if pi, err := strconv.Atoi(p); err == nil {
@@ -102,87 +142,69 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Server.Address = v
 		}
 	} else {
-		if host := os.Getenv("PROGRESSDB_SERVER_ADDRESS"); host != "" {
-			envUsed = true
+		if host := envs["SERVER_ADDRESS"]; host != "" {
 			envCfg.Server.Address = host
 		}
-		if port := os.Getenv("PROGRESSDB_SERVER_PORT"); port != "" {
-			envUsed = true
+		if port := envs["SERVER_PORT"]; port != "" {
 			if pi, err := strconv.Atoi(port); err == nil {
 				envCfg.Server.Port = pi
 			}
 		}
 	}
 
-	if v := os.Getenv("PROGRESSDB_SERVER_DB_PATH"); v != "" {
-		envUsed = true
+	if v := envs["SERVER_DB_PATH"]; v != "" {
 		envCfg.Server.DBPath = v
-	} else if v := os.Getenv("PROGRESSDB_DB_PATH"); v != "" {
-		envUsed = true
+	} else if v := envs["DB_PATH"]; v != "" {
 		envCfg.Server.DBPath = v
 	}
 
-	// Encryption fields (now just []string, not []FieldEntry)
-	if v := os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"); v != "" {
-		envUsed = true
-		parts := parseList(v)
-		envCfg.Security.Encryption.Fields = parts
+	// encryption fields (now just []string, not []FieldEntry)
+	if v := envs["ENCRYPTION_FIELDS"]; v != "" {
+		envCfg.Security.Encryption.Fields = parseList(v)
 	}
 
-	if v := os.Getenv("PROGRESSDB_CORS_ORIGINS"); v != "" {
-		envUsed = true
+	if v := envs["CORS_ORIGINS"]; v != "" {
 		envCfg.Security.CORS.AllowedOrigins = parseList(v)
 	}
-	if v := os.Getenv("PROGRESSDB_RATE_RPS"); v != "" {
+	if v := envs["RATE_RPS"]; v != "" {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			envUsed = true
 			envCfg.Security.RateLimit.RPS = f
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_RATE_BURST"); v != "" {
+	if v := envs["RATE_BURST"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envUsed = true
 			envCfg.Security.RateLimit.Burst = n
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_IP_WHITELIST"); v != "" {
-		envUsed = true
+	if v := envs["IP_WHITELIST"]; v != "" {
 		envCfg.Security.IPWhitelist = parseList(v)
 	}
-	if v := os.Getenv("PROGRESSDB_API_BACKEND_KEYS"); v != "" {
-		envUsed = true
+	if v := envs["API_BACKEND_KEYS"]; v != "" {
 		envCfg.Security.APIKeys.Backend = parseList(v)
 	}
-	if v := os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"); v != "" {
-		envUsed = true
+	if v := envs["API_FRONTEND_KEYS"]; v != "" {
 		envCfg.Security.APIKeys.Frontend = parseList(v)
 	}
-	if v := os.Getenv("PROGRESSDB_API_ADMIN_KEYS"); v != "" {
-		envUsed = true
+	if v := envs["API_ADMIN_KEYS"]; v != "" {
 		envCfg.Security.APIKeys.Admin = parseList(v)
 	}
 
-	// KMS related env overrides
-	if v := os.Getenv("PROGRESSDB_KMS_ENDPOINT"); v != "" {
-		envUsed = true
+	// kms related env overrides
+	if v := envs["KMS_ENDPOINT"]; v != "" {
 		envCfg.Security.KMS.Endpoint = v
 	}
-	if v := os.Getenv("PROGRESSDB_KMS_DATA_DIR"); v != "" {
-		envUsed = true
+	if v := envs["KMS_DATA_DIR"]; v != "" {
 		envCfg.Security.KMS.DataDir = v
 	}
-	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"); v != "" {
-		envUsed = true
+	if v := envs["KMS_MASTER_KEY_FILE"]; v != "" {
 		envCfg.Security.KMS.MasterKeyFile = v
 	}
-	if v := os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"); v != "" {
-		envUsed = true
+	if v := envs["KMS_MASTER_KEY_HEX"]; v != "" {
 		envCfg.Security.KMS.MasterKeyHex = v
 	}
 
-	// Encryption use flag
-	if v := os.Getenv("PROGRESSDB_USE_ENCRYPTION"); v != "" {
-		envUsed = true
+	// encryption use flag
+	if v := envs["USE_ENCRYPTION"]; v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes":
 			envCfg.Security.Encryption.Use = true
@@ -191,13 +213,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		}
 	}
 
-	// TLS cert/key
-	if c := os.Getenv("PROGRESSDB_TLS_CERT"); c != "" {
-		envUsed = true
+	// tls cert/key
+	if c := envs["TLS_CERT"]; c != "" {
 		envCfg.Server.TLS.CertFile = c
 	}
-	if k := os.Getenv("PROGRESSDB_TLS_KEY"); k != "" {
-		envUsed = true
+	if k := envs["TLS_KEY"]; k != "" {
 		envCfg.Server.TLS.KeyFile = k
 	}
 
@@ -210,9 +230,8 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		signingKeys[k] = struct{}{}
 	}
 
-	// Retention related env overrides
-	if v := os.Getenv("PROGRESSDB_RETENTION_ENABLED"); v != "" {
-		envUsed = true
+	// retention related env overrides
+	if v := envs["RETENTION_ENABLED"]; v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes":
 			envCfg.Retention.Enabled = true
@@ -220,28 +239,23 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Retention.Enabled = false
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_CRON"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_CRON"]; v != "" {
 		envCfg.Retention.Cron = v
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_PERIOD"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_PERIOD"]; v != "" {
 		envCfg.Retention.Period = v
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_BATCH_SIZE"]; v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			envCfg.Retention.BatchSize = i
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_BATCH_SLEEP_MS"]; v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			envCfg.Retention.BatchSleepMs = i
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_DRY_RUN"]; v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes":
 			envCfg.Retention.DryRun = true
@@ -249,15 +263,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Retention.DryRun = false
 		}
 	}
-	if v := os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"); v != "" {
-		envUsed = true
+	if v := envs["RETENTION_MIN_PERIOD"]; v != "" {
 		envCfg.Retention.MinPeriod = v
 	}
-
-	// retention audit path intentionally removed; audit logs are written to
-	// <DBPath>/state/audit by default. Operators may override via a future
-	// logging.audit_path configuration if needed.
-
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }
 
