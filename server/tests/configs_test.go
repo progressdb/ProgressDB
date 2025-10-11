@@ -31,7 +31,7 @@ func TestConfigs_Suite(t *testing.T) {
 		if err := os.WriteFile(p, content, 0o600); err != nil {
 			t.Fatalf("failed to write config file: %v", err)
 		}
-		c, err := config.Load(p)
+		c, err := config.LoadConfigFile(p)
 		if err != nil {
 			t.Fatalf("config.Load failed: %v", err)
 		}

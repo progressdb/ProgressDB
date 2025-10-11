@@ -18,6 +18,7 @@ require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/hashicorp/go-kms-wrapping/v2 v2.0.18 // indirect
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.1.9 // indirect

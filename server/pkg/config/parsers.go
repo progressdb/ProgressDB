@@ -7,9 +7,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/dustin/go-humanize"
 )
 
-// Flags holds parsed command-line flag values and which were set.
+// holds parsed command-line flag values and which were set
 type Flags struct {
 	Addr     string
 	DB       string
@@ -18,14 +21,14 @@ type Flags struct {
 	Validate bool
 }
 
-// EnvResult holds the results of applying environment overrides.
+// holds the results of applying environment overrides
 type EnvResult struct {
 	BackendKeys map[string]struct{}
 	SigningKeys map[string]struct{}
 	EnvUsed     bool
 }
 
-// EffectiveConfigResult holds the result of LoadEffectiveConfig.
+// holds the result of loadEffectiveConfig
 type EffectiveConfigResult struct {
 	Config *Config
 	Addr   string
@@ -33,25 +36,27 @@ type EffectiveConfigResult struct {
 	Source string // "flags", "config", or "env"
 }
 
-// ParseConfigFlags parses command-line flags and returns them as a Flags struct.
+// parses command-line flags and returns them as a Flags struct
 // you can only pass 3 config values
 func ParseConfigFlags() Flags {
+	// parse any flags with defaults
 	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
 	dbPtr := flag.String("db", "./.database", "Pebble DB path")
 	cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
-	// no validate flag; startup will always ensure state dirs
 	flag.Parse()
+
+	// record which flags were set explicitly
 	setFlags := make(map[string]bool)
 	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+
+	// return with defaults
 	return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags}
 }
 
-// ParseConfigFile resolves the config path and loads the YAML file. It
-// returns the parsed config, a boolean indicating whether the file was
-// present, and an error for fatal parsing problems.
+// resolves the config path and loads the yaml file, returning the parsed config, a boolean indicating whether the file was present, and an error for fatal parsing problems
 func ParseConfigFile(flags Flags) (*Config, bool, error) {
 	cfgPath := ResolveConfigPath(flags.Config, flags.Set["config"])
-	cfg, err := Load(cfgPath)
+	cfg, err := LoadConfigFile(cfgPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Config{}, false, nil
@@ -61,41 +66,54 @@ func ParseConfigFile(flags Flags) (*Config, bool, error) {
 	return cfg, true, nil
 }
 
-// ParseConfigEnvs reads environment variables into a fresh Config and
-// returns that env-only config plus an EnvResult describing keys present
-// and whether envs were used. This function does not mutate any caller
-// provided config.
+// reads environment variables into a fresh Config and returns that env-only config plus an EnvResult describing keys present and whether envs were used. this function does not mutate any caller provided config
 func ParseConfigEnvs() (*Config, EnvResult) {
-	// gather all relevant env variables up front
+	// gather all relevant env variables
 	envs := map[string]string{
-		"SERVER_ADDR":             os.Getenv("PROGRESSDB_SERVER_ADDR"),
-		"ADDR":                    os.Getenv("PROGRESSDB_ADDR"),
-		"SERVER_ADDRESS":          os.Getenv("PROGRESSDB_SERVER_ADDRESS"),
-		"SERVER_PORT":             os.Getenv("PROGRESSDB_SERVER_PORT"),
-		"SERVER_DB_PATH":          os.Getenv("PROGRESSDB_SERVER_DB_PATH"),
-		"DB_PATH":                 os.Getenv("PROGRESSDB_DB_PATH"),
-		"ENCRYPTION_FIELDS":       os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"),
-		"CORS_ORIGINS":            os.Getenv("PROGRESSDB_CORS_ORIGINS"),
-		"RATE_RPS":                os.Getenv("PROGRESSDB_RATE_RPS"),
-		"RATE_BURST":              os.Getenv("PROGRESSDB_RATE_BURST"),
-		"IP_WHITELIST":            os.Getenv("PROGRESSDB_IP_WHITELIST"),
-		"API_BACKEND_KEYS":        os.Getenv("PROGRESSDB_API_BACKEND_KEYS"),
-		"API_FRONTEND_KEYS":       os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"),
-		"API_ADMIN_KEYS":          os.Getenv("PROGRESSDB_API_ADMIN_KEYS"),
-		"KMS_ENDPOINT":            os.Getenv("PROGRESSDB_KMS_ENDPOINT"),
-		"KMS_DATA_DIR":            os.Getenv("PROGRESSDB_KMS_DATA_DIR"),
-		"KMS_MASTER_KEY_FILE":     os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"),
-		"KMS_MASTER_KEY_HEX":      os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
-		"USE_ENCRYPTION":          os.Getenv("PROGRESSDB_USE_ENCRYPTION"),
-		"TLS_CERT":                os.Getenv("PROGRESSDB_TLS_CERT"),
-		"TLS_KEY":                 os.Getenv("PROGRESSDB_TLS_KEY"),
-		"RETENTION_ENABLED":       os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
-		"RETENTION_CRON":          os.Getenv("PROGRESSDB_RETENTION_CRON"),
-		"RETENTION_PERIOD":        os.Getenv("PROGRESSDB_RETENTION_PERIOD"),
-		"RETENTION_BATCH_SIZE":    os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"),
-		"RETENTION_BATCH_SLEEP_MS":os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"),
-		"RETENTION_DRY_RUN":       os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"),
-		"RETENTION_MIN_PERIOD":    os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"),
+		"SERVER_ADDR":              os.Getenv("PROGRESSDB_SERVER_ADDR"),
+		"ADDR":                     os.Getenv("PROGRESSDB_ADDR"),
+		"SERVER_ADDRESS":           os.Getenv("PROGRESSDB_SERVER_ADDRESS"),
+		"SERVER_PORT":              os.Getenv("PROGRESSDB_SERVER_PORT"),
+		"SERVER_DB_PATH":           os.Getenv("PROGRESSDB_SERVER_DB_PATH"),
+		"DB_PATH":                  os.Getenv("PROGRESSDB_DB_PATH"),
+		"ENCRYPTION_FIELDS":        os.Getenv("PROGRESSDB_ENCRYPTION_FIELDS"),
+		"CORS_ORIGINS":             os.Getenv("PROGRESSDB_CORS_ORIGINS"),
+		"RATE_RPS":                 os.Getenv("PROGRESSDB_RATE_RPS"),
+		"RATE_BURST":               os.Getenv("PROGRESSDB_RATE_BURST"),
+		"IP_WHITELIST":             os.Getenv("PROGRESSDB_IP_WHITELIST"),
+		"API_BACKEND_KEYS":         os.Getenv("PROGRESSDB_API_BACKEND_KEYS"),
+		"API_FRONTEND_KEYS":        os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"),
+		"API_ADMIN_KEYS":           os.Getenv("PROGRESSDB_API_ADMIN_KEYS"),
+		"KMS_ENDPOINT":             os.Getenv("PROGRESSDB_KMS_ENDPOINT"),
+		"KMS_DATA_DIR":             os.Getenv("PROGRESSDB_KMS_DATA_DIR"),
+		"KMS_MASTER_KEY_FILE":      os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"),
+		"KMS_MASTER_KEY_HEX":       os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
+		"USE_ENCRYPTION":           os.Getenv("PROGRESSDB_USE_ENCRYPTION"),
+		"TLS_CERT":                 os.Getenv("PROGRESSDB_TLS_CERT"),
+		"TLS_KEY":                  os.Getenv("PROGRESSDB_TLS_KEY"),
+		"RETENTION_ENABLED":        os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
+		"RETENTION_CRON":           os.Getenv("PROGRESSDB_RETENTION_CRON"),
+		"RETENTION_PERIOD":         os.Getenv("PROGRESSDB_RETENTION_PERIOD"),
+		"RETENTION_BATCH_SIZE":     os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"),
+		"RETENTION_BATCH_SLEEP_MS": os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"),
+		"RETENTION_DRY_RUN":        os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"),
+		"RETENTION_MIN_PERIOD":     os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"),
+
+		// queue / wal envs
+		"QUEUE_CAPACITY":               os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
+		"QUEUE_RECOVER":                os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
+		"QUEUE_TRUNCATE_INTERVAL":      os.Getenv("PROGRESSDB_QUEUE_TRUNCATE_INTERVAL"),
+		"QUEUE_WAL_ENABLED":            os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
+		"QUEUE_WAL_DIR":                os.Getenv("PROGRESSDB_QUEUE_WAL_DIR"),
+		"QUEUE_WAL_MODE":               os.Getenv("PROGRESSDB_QUEUE_WAL_MODE"),
+		"QUEUE_WAL_MAX_FILE_SIZE":      os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_FILE_SIZE"),
+		"QUEUE_WAL_BATCH_ENABLED":      os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_ENABLED"),
+		"QUEUE_WAL_BATCH_SIZE":         os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_SIZE"),
+		"QUEUE_WAL_BATCH_INTERVAL":     os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_INTERVAL"),
+		"QUEUE_WAL_COMPRESS":           os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS"),
+		"QUEUE_WAL_COMPRESS_MIN_BYTES": os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_BYTES"),
+		"QUEUE_WAL_RETENTION_BYTES":    os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_BYTES"),
+		"QUEUE_WAL_RETENTION_AGE":      os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_AGE"),
 	}
 
 	// check if any env was set
@@ -120,6 +138,55 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			}
 		}
 		return parts
+	}
+
+	parseBool := func(v string, def bool) bool {
+		if v == "" {
+			return def
+		}
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes":
+			return true
+		default:
+			return false
+		}
+	}
+
+	parseInt64 := func(v string, def int64) int64 {
+		if v == "" {
+			return def
+		}
+		if i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return i
+		}
+		return def
+	}
+
+	// parse size and duration helpers for env values
+	parseSizeBytes := func(v string) SizeBytes {
+		if strings.TrimSpace(v) == "" {
+			return SizeBytes(0)
+		}
+		if u, err := humanize.ParseBytes(v); err == nil {
+			return SizeBytes(u)
+		}
+		if i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return SizeBytes(i)
+		}
+		return SizeBytes(0)
+	}
+
+	parseDuration := func(v string) Duration {
+		if strings.TrimSpace(v) == "" {
+			return Duration(0)
+		}
+		if td, err := time.ParseDuration(v); err == nil {
+			return Duration(td)
+		}
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return Duration(time.Duration(f * float64(time.Second)))
+		}
+		return Duration(0)
 	}
 
 	// apply env vars, giving precedence for address variables as per the original logic
@@ -158,7 +225,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Server.DBPath = v
 	}
 
-	// encryption fields (now just []string, not []FieldEntry)
+	// encryption fields ([]string)
 	if v := envs["ENCRYPTION_FIELDS"]; v != "" {
 		envCfg.Security.Encryption.Fields = parseList(v)
 	}
@@ -266,18 +333,62 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["RETENTION_MIN_PERIOD"]; v != "" {
 		envCfg.Retention.MinPeriod = v
 	}
+
+	// queue / wal env overrides
+	if v := envs["QUEUE_CAPACITY"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Queue.Capacity = n
+		}
+	}
+	if v := envs["QUEUE_RECOVER"]; v != "" {
+		envCfg.Ingest.Queue.Recover = parseBool(v, true)
+	}
+	if v := envs["QUEUE_TRUNCATE_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.TruncateInterval = parseDuration(v)
+	}
+
+	if v := envs["QUEUE_WAL_ENABLED"]; v != "" {
+		envCfg.Ingest.Queue.WAL.Enabled = parseBool(v, true)
+	}
+	if v := envs["QUEUE_WAL_DIR"]; v != "" {
+		envCfg.Ingest.Queue.WAL.Dir = v
+	}
+	if v := envs["QUEUE_WAL_MODE"]; v != "" {
+		envCfg.Ingest.Queue.WAL.Mode = strings.ToLower(strings.TrimSpace(v))
+	}
+	if v := envs["QUEUE_WAL_MAX_FILE_SIZE"]; v != "" {
+		envCfg.Ingest.Queue.WAL.MaxFileSize = parseSizeBytes(v)
+	}
+	if v := envs["QUEUE_WAL_BATCH_ENABLED"]; v != "" {
+		envCfg.Ingest.Queue.WAL.EnableBatch = parseBool(v, true)
+	}
+	if v := envs["QUEUE_WAL_BATCH_SIZE"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Queue.WAL.BatchSize = n
+		}
+	}
+	if v := envs["QUEUE_WAL_BATCH_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.WAL.BatchInterval = parseDuration(v)
+	}
+	if v := envs["QUEUE_WAL_COMPRESS"]; v != "" {
+		envCfg.Ingest.Queue.WAL.EnableCompress = parseBool(v, false)
+	}
+	if v := envs["QUEUE_WAL_COMPRESS_MIN_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.WAL.CompressMinBytes = parseInt64(v, 512)
+	}
+	if v := envs["QUEUE_WAL_RETENTION_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.WAL.RetentionBytes = parseSizeBytes(v)
+	}
+	if v := envs["QUEUE_WAL_RETENTION_AGE"]; v != "" {
+		envCfg.Ingest.Queue.WAL.RetentionAge = parseDuration(v)
+	}
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }
 
-// LoadEffectiveConfig decides which single source to use (flags, config
-// file, or env) and returns the effective config plus resolved addr and
-// dbPath. It honors an explicit flags.Config (user provided --config)
-// by using the config file only; otherwise it uses flags if any flags
-// are set; else if a config file exists it uses that; otherwise env.
+// decides which single source to use (flags, config file, or env) and returns the effective config plus resolved addr and dbPath. if --config is set, only the config file is used; otherwise flags if set; else config file if present; else env
 func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *Config, envRes EnvResult) (EffectiveConfigResult, error) {
 	var res EffectiveConfigResult
 
-	// If user explicitly passed --config, require the file to exist and use it.
 	if flags.Set["config"] {
 		if !fileExists {
 			return res, fmt.Errorf("config file %s not found", flags.Config)
@@ -289,7 +400,6 @@ func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *
 		return res, nil
 	}
 
-	// If user passed any non-config flags (addr/db), use flags exclusively.
 	if flags.Set["addr"] || flags.Set["db"] {
 		addr := flags.Addr
 		if !flags.Set["addr"] {
@@ -317,7 +427,6 @@ func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *
 		return res, nil
 	}
 
-	// No explicit flags: prefer file config if present, otherwise env.
 	if fileExists {
 		res.Config = fileCfg
 		res.Addr = fileCfg.Addr()
@@ -325,7 +434,6 @@ func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *
 		res.Source = "config"
 		return res, nil
 	}
-	// fallback to env
 	res.Config = envCfg
 	res.Addr = envCfg.Addr()
 	res.DBPath = envCfg.Server.DBPath
@@ -333,7 +441,7 @@ func LoadEffectiveConfig(flags Flags, fileCfg *Config, fileExists bool, envCfg *
 	return res, nil
 }
 
-// parsePortFromAddr extracts port integer from host:port string.
+// extracts port integer from host:port string
 func parsePortFromAddr(a string) int {
 	if a == "" {
 		return 0

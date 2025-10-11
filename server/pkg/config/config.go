@@ -2,16 +2,24 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
 	"sync"
+	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-// RuntimeConfig holds runtime key sets for use by other packages.
-type RuntimeConfig struct {
-	BackendKeys map[string]struct{}
-	SigningKeys map[string]struct{}
-}
+// Defaults and limits for queue/WAL configuration
+const (
+	DefaultQueueCapacity    = 64 * 1024
+	DefaultWALMaxFileSize   = 64 * 1024 * 1024 // 64 MiB
+	DefaultWALBatchInterval = 100 * time.Millisecond
+	DefaultWALBatchSize     = 100
+	MinWALFileSize          = 1 * 1024 * 1024 // 1 MiB
+	MinWALBatchInterval     = 10 * time.Millisecond
+	DefaultCompressMinBytes = 512
+)
 
 var (
 	runtimeMu  sync.RWMutex
@@ -53,49 +61,6 @@ func GetSigningKeys() map[string]struct{} {
 	return out
 }
 
-// Config is the main configuration struct.
-type Config struct {
-	Server struct {
-		Address string `yaml:"address"`
-		Port    int    `yaml:"port"`
-		DBPath  string `yaml:"db_path"`
-		TLS     struct {
-			CertFile string `yaml:"cert_file"`
-			KeyFile  string `yaml:"key_file"`
-		} `yaml:"tls"`
-	} `yaml:"server"`
-	Security struct {
-		CORS struct {
-			AllowedOrigins []string `yaml:"allowed_origins"`
-		} `yaml:"cors"`
-		RateLimit struct {
-			RPS   float64 `yaml:"rps"`
-			Burst int     `yaml:"burst"`
-		} `yaml:"rate_limit"`
-		IPWhitelist []string `yaml:"ip_whitelist"`
-		APIKeys     struct {
-			Backend  []string `yaml:"backend"`
-			Frontend []string `yaml:"frontend"`
-			Admin    []string `yaml:"admin"`
-		} `yaml:"api_keys"`
-		Encryption struct {
-			Use    bool     `yaml:"use"`
-			Fields []string `yaml:"fields"`
-		} `yaml:"encryption"`
-		KMS struct {
-			Endpoint      string `yaml:"endpoint"`
-			DataDir       string `yaml:"data_dir"`
-			Binary        string `yaml:"binary"`
-			MasterKeyFile string `yaml:"master_key_file"`
-			MasterKeyHex  string `yaml:"master_key_hex"`
-		} `yaml:"kms"`
-	} `yaml:"security"`
-	Logging struct {
-		Level string `yaml:"level"`
-	} `yaml:"logging"`
-	Retention RetentionConfig `yaml:"retention"`
-}
-
 // Addr returns the HTTP server address as host:port.
 func (c *Config) Addr() string {
 	addr := c.Server.Address
@@ -109,8 +74,8 @@ func (c *Config) Addr() string {
 	return fmt.Sprintf("%s:%d", addr, port)
 }
 
-// Load reads and parses a config file.
-func Load(path string) (*Config, error) {
+// LoadConfigFile reads and parses a config file.
+func LoadConfigFile(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -123,6 +88,55 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// Validate applies defaults and validates values in the config. It mutates
+// the receiver to fill in missing defaults and returns an error if any
+// configuration value is invalid.
+func (c *Config) ValidateConfig() error {
+	// Queue defaults
+	if c.Ingest.Queue.Capacity <= 0 {
+		c.Ingest.Queue.Capacity = DefaultQueueCapacity
+	}
+
+	// WAL defaults and validation
+	wc := &c.Ingest.Queue.WAL
+	if wc.MaxFileSize.Int64() == 0 {
+		wc.MaxFileSize = SizeBytes(DefaultWALMaxFileSize)
+	}
+	if wc.MaxFileSize.Int64() < MinWALFileSize {
+		return fmt.Errorf("wal.max_file_size must be >= %d bytes", MinWALFileSize)
+	}
+	if wc.BatchInterval.Duration() == 0 {
+		wc.BatchInterval = Duration(DefaultWALBatchInterval)
+	}
+	if wc.BatchInterval.Duration() < MinWALBatchInterval {
+		return fmt.Errorf("wal.batch_interval must be >= %s", MinWALBatchInterval)
+	}
+	if wc.BatchSize <= 0 {
+		wc.BatchSize = DefaultWALBatchSize
+	}
+	if wc.CompressMinBytes == 0 {
+		wc.CompressMinBytes = DefaultCompressMinBytes
+	}
+
+	// Normalize mode
+	switch wc.Mode {
+	case "", "batch", "sync", "none":
+		// ok
+	default:
+		return fmt.Errorf("wal.mode must be one of: none, batch, sync")
+	}
+	if !wc.Enabled {
+		wc.Mode = "none"
+	} else {
+		// enabled => dir must be provided
+		if strings.TrimSpace(wc.Dir) == "" {
+			return fmt.Errorf("wal.enabled is true but wal.dir is empty")
+		}
+	}
+
+	return nil
 }
 
 // ResolveConfigPath returns the config file path, preferring flag, then env.
@@ -139,19 +153,7 @@ func ResolveConfigPath(flagPath string, flagSet bool) string {
 	return flagPath
 }
 
-// Retention configuration for the automatic purge runner.
-type RetentionConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	Cron         string `yaml:"cron"`
-	Period       string `yaml:"period"`
-	BatchSize    int    `yaml:"batch_size"`
-	BatchSleepMs int    `yaml:"batch_sleep_ms"`
-	DryRun       bool   `yaml:"dry_run"`
-	Paused       bool   `yaml:"paused"`
-	MinPeriod    string `yaml:"min_period"`
-}
-
-// Add Retention to main Config
+// SetDefaultRetention is kept for compatibility; types declared in types.go.
 func (c *Config) SetDefaultRetention() {
 	// noop placeholder for backward compatibility
 }
