@@ -60,7 +60,7 @@ ingest:
     wal:
       enabled: true              # WAL for durability - MUST be enabled!
       mode: batch
-      max_file_size: 1GB         # Rotate WAL more often for integrity
+      max_file_size: 64MB         # Rotate WAL more often for integrity
       enable_batch: false        # Write every event as soon as possible
       batch_size: 1              # Write WAL every event (highest durability)
       batch_interval: 0          # No batching interval, flush now
