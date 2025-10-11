@@ -19,8 +19,8 @@ const (
 	minWALBatchInterval     = 10 * time.Millisecond
 	defaultCompressMinBytes = 512
 	// Ingest/processor defaults (kept small so zero can mean "use runtime.NumCPU()")
-	defaultProcessorMaxBatchMsgs = 500
-	defaultProcessorFlushMS      = 2
+	defaultProcessorMaxBatchMsgs = 1000
+	defaultProcessorFlushMS      = 1
 
 	// Queue defaults
 	defaultQueueBatchSize        = 256

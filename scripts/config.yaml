@@ -13,10 +13,10 @@ security:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
   rate_limit:
-    rps: 100_000
-    burst: 200_000
+    rps: 1000_0000
+    burst: 2000_0000
   ip_whitelist:
-  #   - "127.0.0.1"
+    # - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
@@ -33,3 +33,37 @@ security:
 
 logging:
   level: "info"
+
+retention:
+  enabled: false
+  cron: ""
+  period: "24h"
+  batch_size: 1000
+  batch_sleep_ms: 0
+  dry_run: false
+  paused: false
+  min_period: "1h"
+
+ingest:
+  processor:
+    workers: 128                 # Maximum parallelism, push CPU/core utilization
+    max_batch_msgs: 65536        # Huge batches for maximal amortization
+    flush_ms: 1               # Even less frequent flush to reduce overhead
+  queue:
+    capacity: 16777216           # 16 million capacity for largest spikes
+    batch_size: 4096             # Much larger batches for throughput
+    drain_poll_interval: 1ms     # Aggressively low poll interval for minimum latency
+    max_pooled_buffer_bytes: 134217728  # 128MB pooled buffer for memory hungry workloads
+    recover: true
+    truncate_interval: 5s        # Frequent truncation to keep WAL lean
+    wal:
+      enabled: true              # Enable WAL for durability under heavy load
+      mode: "batch"
+      max_file_size: 1073741824  # 1GB WAL files for less frequent rotations
+      enable_batch: true
+      batch_size: 4096           # Large WAL batches
+      batch_interval: 20ms       # Fast flush intervals for WAL
+      enable_compress: true
+      compress_min_bytes: 128    # Compress everything >128 bytes
+      retention_bytes: 0
+      retention_age: 0

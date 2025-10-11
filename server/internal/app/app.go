@@ -95,7 +95,6 @@ func (a *App) Run(ctx context.Context) error {
 	a.printBanner()
 
 	// start retention scheduler if enabled
-	// register effective config so tests may trigger runs
 	retention.SetEffectiveConfig(a.eff)
 	if cancel, err := retention.Start(ctx, a.eff); err != nil {
 		return err
@@ -103,7 +102,6 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
-	// start HTTP server
 	// start hardware sensor
 	sensorObj := sensor.NewSensor(500 * time.Millisecond)
 	sensorObj.Start()
@@ -111,11 +109,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	// start ingest processor
 
-	// Attempt to enable a durable on-disk queue under the canonical WAL
-	// location (dbpath/wal). This is best-effort: if enabling fails we
-	// fall back to the in-memory queue. Use configured capacity/truncate
-	// interval from the effective config so config controls defaults.
-	// Attempt to enable durable WAL using rich options mapped from config.
+	// try to enable durable queuer
+	// if it fails, fallback to inmemory queuer
 	deOpts := queue.DurableEnableOptions{
 		Dir:               state.WalPath(a.eff.DBPath),
 		Capacity:          a.eff.Config.Ingest.Queue.Capacity,
@@ -186,22 +181,3 @@ func initFieldPolicy(eff config.EffectiveConfigResult) error {
 	}
 	return security.SetEncryptionFieldPolicy(fields)
 }
-
-// initValidation builds validation rules from config and sets them globally.
-// func initValidation(eff config.EffectiveConfigResult) {
-// 	vr := validation.Rules{Types: map[string]string{}, MaxLen: map[string]int{}, Enums: map[string][]string{}}
-// 	vr.Required = append(vr.Required, eff.Config.Validation.Required...)
-// 	for _, t := range eff.Config.Validation.Types {
-// 		vr.Types[t.Path] = t.Type
-// 	}
-// 	for _, ml := range eff.Config.Validation.MaxLen {
-// 		vr.MaxLen[ml.Path] = ml.Max
-// 	}
-// 	for _, e := range eff.Config.Validation.Enums {
-// 		vr.Enums[e.Path] = append([]string{}, e.Values...)
-// 	}
-// 	for _, wt := range eff.Config.Validation.WhenThen {
-// 		vr.WhenThen = append(vr.WhenThen, validation.WhenThenRule{WhenPath: wt.When.Path, Equals: wt.When.Equals, ThenReq: append([]string{}, wt.Then.Required...)})
-// 	}
-// 	validation.SetRules(vr)
-// }
