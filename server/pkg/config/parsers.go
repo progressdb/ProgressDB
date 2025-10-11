@@ -104,7 +104,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"QUEUE_RECOVER":                os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
 		"QUEUE_TRUNCATE_INTERVAL":      os.Getenv("PROGRESSDB_QUEUE_TRUNCATE_INTERVAL"),
 		"QUEUE_WAL_ENABLED":            os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
-		"QUEUE_WAL_DIR":                os.Getenv("PROGRESSDB_QUEUE_WAL_DIR"),
 		"QUEUE_WAL_MODE":               os.Getenv("PROGRESSDB_QUEUE_WAL_MODE"),
 		"QUEUE_WAL_MAX_FILE_SIZE":      os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_FILE_SIZE"),
 		"QUEUE_WAL_BATCH_ENABLED":      os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_ENABLED"),
@@ -349,9 +348,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 
 	if v := envs["QUEUE_WAL_ENABLED"]; v != "" {
 		envCfg.Ingest.Queue.WAL.Enabled = parseBool(v, true)
-	}
-	if v := envs["QUEUE_WAL_DIR"]; v != "" {
-		envCfg.Ingest.Queue.WAL.Dir = v
 	}
 	if v := envs["QUEUE_WAL_MODE"]; v != "" {
 		envCfg.Ingest.Queue.WAL.Mode = strings.ToLower(strings.TrimSpace(v))

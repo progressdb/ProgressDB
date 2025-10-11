@@ -46,7 +46,7 @@ func main() {
 		shutdown.Abort("failed to load config file", err, flags.DB)
 	}
 
-	// parse config from environment variables
+	// parse config env variables
 	envCfg, envRes := config.ParseConfigEnvs()
 
 	// load effective config
@@ -59,6 +59,11 @@ func main() {
 		if root := state.ArtifactRoot(); root != "" {
 			eff.DBPath = filepath.Join(root, ".database")
 		}
+	}
+
+	// validate the effective config
+	if err := eff.Config.ValidateConfig(); err != nil {
+		shutdown.Abort("invalid configuration", err, eff.DBPath)
 	}
 
 	// init database folders and ensure the filesystem layout.

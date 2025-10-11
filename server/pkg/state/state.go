@@ -13,13 +13,14 @@ import (
 // restrictive permissions, and that they are writable by the process.
 func EnsureStateDirs(dbPath string) error {
 	storePath := filepath.Join(dbPath, "store")
+	walPath := filepath.Join(dbPath, "wal")
 	statePath := filepath.Join(dbPath, "state")
 	auditPath := filepath.Join(statePath, "audit")
 	retentionPath := filepath.Join(statePath, "retention")
 	kmsPath := filepath.Join(statePath, "kms")
 	tmpPath := filepath.Join(statePath, "tmp")
 
-	paths := []string{storePath, auditPath, retentionPath, kmsPath, tmpPath}
+	paths := []string{storePath, walPath, auditPath, retentionPath, kmsPath, tmpPath}
 
 	for _, p := range paths {
 		// ensure parent exists
@@ -65,38 +66,7 @@ func EnsureStateDirs(dbPath string) error {
 	return nil
 }
 
-// Paths holds canonical locations for runtime artifacts under a DB path.
-type Paths struct {
-	DB        string
-	Store     string
-	State     string
-	Audit     string
-	Retention string
-	KMS       string
-	Tmp       string
-}
-
-// PathsFor returns the canonical Paths for the provided DB path.
-func PathsFor(dbPath string) Paths {
-	statePath := filepath.Join(dbPath, "state")
-	return Paths{
-		DB:        dbPath,
-		Store:     filepath.Join(dbPath, "store"),
-		State:     statePath,
-		Audit:     filepath.Join(statePath, "audit"),
-		Retention: filepath.Join(statePath, "retention"),
-		KMS:       filepath.Join(statePath, "kms"),
-		Tmp:       filepath.Join(statePath, "tmp"),
-	}
-}
-
-// Convenience helpers
-func StorePath(dbPath string) string     { return PathsFor(dbPath).Store }
-func StatePath(dbPath string) string     { return PathsFor(dbPath).State }
-func AuditPath(dbPath string) string     { return PathsFor(dbPath).Audit }
-func RetentionPath(dbPath string) string { return PathsFor(dbPath).Retention }
-func KMSPath(dbPath string) string       { return PathsFor(dbPath).KMS }
-func TmpPath(dbPath string) string       { return PathsFor(dbPath).Tmp }
+// Paths and helpers are defined in types.go
 
 // package-level cached paths after Init
 var (

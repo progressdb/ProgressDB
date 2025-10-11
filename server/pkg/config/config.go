@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -129,11 +128,6 @@ func (c *Config) ValidateConfig() error {
 	}
 	if !wc.Enabled {
 		wc.Mode = "none"
-	} else {
-		// enabled => dir must be provided
-		if strings.TrimSpace(wc.Dir) == "" {
-			return fmt.Errorf("wal.enabled is true but wal.dir is empty")
-		}
 	}
 
 	return nil

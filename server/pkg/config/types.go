@@ -99,11 +99,10 @@ type QueueConfig struct {
 
 // WALConfig represents write-ahead log tunables.
 type WALConfig struct {
-	Enabled          bool      `yaml:"enabled"`
-	Dir              string    `yaml:"dir"`
-	Mode             string    `yaml:"mode"`          // none | batch | sync
-	MaxFileSize      SizeBytes `yaml:"max_file_size"` // human friendly (e.g. 64MB)
-	EnableBatch      bool      `yaml:"enable_batch"`
+    Enabled          bool      `yaml:"enabled"`
+    Mode             string    `yaml:"mode"`          // none | batch | sync
+    MaxFileSize      SizeBytes `yaml:"max_file_size"` // human friendly (e.g. 64MB)
+    EnableBatch      bool      `yaml:"enable_batch"`
 	BatchSize        int       `yaml:"batch_size"`
 	BatchInterval    Duration  `yaml:"batch_interval"`
 	EnableCompress   bool      `yaml:"enable_compress"`

@@ -3,17 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-
-	"github.com/joho/godotenv"
-
 	"net/http"
-
+	"runtime"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
-
-	"path/filepath"
-	"runtime"
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
@@ -116,10 +111,10 @@ func (a *App) Run(ctx context.Context) error {
 
 	// start ingest processor
 
-	// Attempt to enable a durable on-disk queue under the runtime state path.
-	// This is best-effort: if enabling fails we fall back to the in-memory
-	// queue.
-	_ = queue.EnableDurable(filepath.Join(state.PathsVar.State, "queue"))
+	// Attempt to enable a durable on-disk queue under the canonical WAL
+	// location (dbpath/wal). This is best-effort: if enabling fails we
+	// fall back to the in-memory queue.
+	_ = queue.EnableDurable(state.WalPath(a.eff.DBPath))
 
 	p := ingest.NewProcessor(queue.DefaultQueue, runtime.NumCPU())
 	ingest.RegisterDefaultHandlers(p)
