@@ -50,7 +50,7 @@ func TestRetention_Suite(t *testing.T) {
 		if err := os.MkdirAll(storePath, 0o700); err != nil {
 			t.Fatalf("mkdir store path: %v", err)
 		}
-		if err := store.Open(storePath); err != nil {
+		if err := store.Open(storePath, true); err != nil {
 			t.Fatalf("store.Open: %v", err)
 		}
 		defer store.Close()

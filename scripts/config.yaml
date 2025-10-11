@@ -63,7 +63,7 @@ ingest:
       max_file_size: 2GB         # 2GB WAL (less rotation, more headroom)
       enable_batch: true
       batch_size: 4096           # Much larger WAL batch for best speed
-      batch_interval: 2ms       # WAL flush very frequently for speed
+      batch_interval: 10ms       # WAL flush very frequently for speed
       enable_compress: true
       compress_min_bytes: 512    # Only compress payloads 512B+, conserves CPU
       retention_bytes: 0

@@ -1,16 +1,16 @@
 package ingest
 
 import (
-    "context"
-    "encoding/json"
-    "sync"
-    "sync/atomic"
-    "time"
+	"context"
+	"encoding/json"
+	"sync"
+	"sync/atomic"
+	"time"
 
-    "progressdb/pkg/config"
-    "progressdb/pkg/ingest/queue"
-    "progressdb/pkg/logger"
-    "progressdb/pkg/store"
+	"progressdb/pkg/config"
+	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/logger"
+	"progressdb/pkg/store"
 )
 
 // Processor orchestrates workers that consume from the API queue, invoke
@@ -38,20 +38,20 @@ type Processor struct {
 // NewProcessor creates a new Processor attached to the provided queue.
 // It expects a validated ProcessorConfig (defaults applied by config.ValidateConfig()).
 func NewProcessor(q *queue.Queue, pc config.ProcessorConfig) *Processor {
-    if pc.Workers <= 0 {
-        panic("processor.NewProcessor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
-    }
-    p := &Processor{
-        q:          q,
-        workers:    pc.Workers,
-        stop:       make(chan struct{}),
-        handlers:   make(map[queue.HandlerID]ProcessorFunc),
-        maxBatch:   pc.MaxBatchMsgs,
-        flushDur:   pc.FlushInterval.Duration(),
-        nextCommit: 1,
-    }
-    p.commitCond = sync.NewCond(&p.commitMu)
-    return p
+	if pc.Workers <= 0 {
+		panic("processor.NewProcessor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
+	}
+	p := &Processor{
+		q:          q,
+		workers:    pc.Workers,
+		stop:       make(chan struct{}),
+		handlers:   make(map[queue.HandlerID]ProcessorFunc),
+		maxBatch:   pc.MaxBatchMsgs,
+		flushDur:   pc.FlushInterval.Duration(),
+		nextCommit: 1,
+	}
+	p.commitCond = sync.NewCond(&p.commitMu)
+	return p
 }
 
 // RegisterHandler registers a ProcessorFunc for a given HandlerID.

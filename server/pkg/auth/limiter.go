@@ -69,9 +69,9 @@ func (p *limiterPool) get(key string) *rate.Limiter {
 		return e.l
 	}
 
-    // use configured RPS and burst (defaults should be applied by central config)
-    rps := p.cfg.RPS
-    burst := p.cfg.Burst
+	// use configured RPS and burst (defaults should be applied by central config)
+	rps := p.cfg.RPS
+	burst := p.cfg.Burst
 
 	l := rate.NewLimiter(rate.Limit(rps), burst)
 	p.m[key] = &limiterEntry{l: l, lastSeen: time.Now()}

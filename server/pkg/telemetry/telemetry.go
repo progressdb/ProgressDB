@@ -23,13 +23,13 @@ import (
 type ctxKeyType struct{}
 
 var (
-	writerOnce    sync.Once
-	writerCh      chan []byte
-	requestCtr    uint64
-	spanCtr       uint64
-    // defaults are provided by central config at startup; zero disables tracing until set
-    sampleRate    = 0.0
-    slowThreshold = 0 * time.Millisecond
+	writerOnce sync.Once
+	writerCh   chan []byte
+	requestCtr uint64
+	spanCtr    uint64
+	// defaults are provided by central config at startup; zero disables tracing until set
+	sampleRate    = 0.0
+	slowThreshold = 0 * time.Millisecond
 )
 
 // Span is a simple span relative to request start (milliseconds)

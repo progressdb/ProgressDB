@@ -1,16 +1,16 @@
 package queue
 
 import (
-    "container/heap"
-    "context"
-    "math"
-    "sync"
-    "sync/atomic"
-    "time"
+	"container/heap"
+	"context"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
 
-    "github.com/valyala/bytebufferpool"
+	"github.com/valyala/bytebufferpool"
 
-    "progressdb/pkg/config"
+	"progressdb/pkg/config"
 )
 
 // TODO: queue full - drop strategy
@@ -58,16 +58,16 @@ type Queue struct {
 
 // NewQueue creates a bounded Queue of given capacity (>0).
 func NewQueue(capacity int) *Queue {
-    if capacity <= 0 {
-        panic("queue.NewQueue: capacity must be > 0; ensure config.ValidateConfig() applied defaults")
-    }
-    return &Queue{ch: make(chan *Item, capacity), capacity: capacity}
+	if capacity <= 0 {
+		panic("queue.NewQueue: capacity must be > 0; ensure config.ValidateConfig() applied defaults")
+	}
+	return &Queue{ch: make(chan *Item, capacity), capacity: capacity}
 }
 
 // NewQueueFromConfig constructs a Queue from a typed `config.QueueConfig`.
 // Callers should ensure `config.ValidateConfig()` was run so fields are populated.
 func NewQueueFromConfig(qc config.QueueConfig) *Queue {
-    return NewQueue(qc.Capacity)
+	return NewQueue(qc.Capacity)
 }
 
 // WAL modes

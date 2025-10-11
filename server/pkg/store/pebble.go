@@ -89,19 +89,23 @@ func MaxSeqForThread(threadID string) (uint64, error) {
 }
 
 // Open opens (or creates) a Pebble database at the given path and keeps
-// a global handle for simple usage in this package.
-func Open(path string) error {
+// a global handle for simple usage in this package. The `disableWAL`
+// parameter controls the underlying Pebble `DisableWAL` option. When true,
+// Pebble will not fsync the WAL and durability must be provided by the
+// application-level WAL. Historically the project defaulted to disabling
+// the Pebble WAL; callers should pass the effective config value.
+func Open(path string, disableWAL bool) error {
 	var err error
-    // The system may manage WAL externally; keep the option that the
-    // application (or deploy) originally requested. By default we leave
-    // `DisableWAL` enabled here — callers must avoid using `pebble.Sync`
-    // when WAL is disabled. ForceSync handles the disabled-WAL case as a
-    // no-op below.
-    opts := &pebble.Options{
-        DisableWAL: true,
-    }
-    walDisabled = opts.DisableWAL
-    db, err = pebble.Open(path, opts)
+	opts := &pebble.Options{
+		DisableWAL: disableWAL,
+	}
+	walDisabled = opts.DisableWAL
+
+	if walDisabled {
+		logger.Warn("pebble_wal_disabled", "note", "Pebble WAL is disabled; ensure the application-level WAL is providing durability")
+	}
+
+	db, err = pebble.Open(path, opts)
 	if err != nil {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
@@ -131,7 +135,7 @@ func ApplyBatch(batch *pebble.Batch, sync bool) error {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	var err error
-    err = db.Apply(batch, writeOpt(sync))
+	err = db.Apply(batch, writeOpt(sync))
 	if err != nil {
 		logger.Error("pebble_apply_batch_failed", "error", err)
 	}
@@ -163,33 +167,33 @@ func ResetPendingWrites() {
 // ForceSync writes a tiny marker entry and forces a WAL fsync via pebble.Sync.
 // This is a pragmatic group-commit helper.
 func ForceSync() error {
-    if db == nil {
-        return fmt.Errorf("pebble not opened; call store.Open first")
-    }
-    // If WAL is disabled the application manages durability externally and
-    // ForceSync should be a no-op.
-    if walDisabled {
-        logger.Debug("pebble_force_sync_noop_wal_disabled")
-        return nil
-    }
-    // overwrite a single sync marker key to avoid growth
-    key := []byte("__progressdb_wal_sync_marker__")
-    val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
-    if err := db.Set(key, val, writeOpt(true)); err != nil {
-        logger.Error("pebble_force_sync_failed", "err", err)
-        return err
-    }
-    return nil
+	if db == nil {
+		return fmt.Errorf("pebble not opened; call store.Open first")
+	}
+	// If WAL is disabled the application manages durability externally and
+	// ForceSync should be a no-op.
+	if walDisabled {
+		logger.Debug("pebble_force_sync_noop_wal_disabled")
+		return nil
+	}
+	// overwrite a single sync marker key to avoid growth
+	key := []byte("__progressdb_wal_sync_marker__")
+	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
+	if err := db.Set(key, val, writeOpt(true)); err != nil {
+		logger.Error("pebble_force_sync_failed", "err", err)
+		return err
+	}
+	return nil
 }
 
 // writeOpt returns the Pebble WriteOptions to use for a requested sync.
 // When WAL is disabled we always return NoSync even if the caller requests
 // a sync; the external WAL is expected to handle durability.
 func writeOpt(requestSync bool) *pebble.WriteOptions {
-    if requestSync && !walDisabled {
-        return pebble.Sync
-    }
-    return pebble.NoSync
+	if requestSync && !walDisabled {
+		return pebble.Sync
+	}
+	return pebble.NoSync
 }
 
 // Ready reports whether the store is opened and ready.
@@ -293,26 +297,26 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		return fmt.Errorf("failed to marshal thread meta: %w", err)
 	}
 
-    batch := new(pebble.Batch)
-    mkey, mkerr := ThreadMetaKey(threadID)
+	batch := new(pebble.Batch)
+	mkey, mkerr := ThreadMetaKey(threadID)
 	if mkerr != nil {
 		return fmt.Errorf("invalid thread id for meta key: %w", mkerr)
 	}
-    batch.Set([]byte(mkey), nb, writeOpt(true))
-    batch.Set([]byte(key), data, writeOpt(true))
-    if msgID != "" {
+	batch.Set([]byte(mkey), nb, writeOpt(true))
+	batch.Set([]byte(key), data, writeOpt(true))
+	if msgID != "" {
 		ik, ikerr := VersionKey(msgID, ts, s)
 		if ikerr != nil {
 			return fmt.Errorf("failed to build version index key: %w", ikerr)
 		}
-        batch.Set([]byte(ik), data, writeOpt(true))
-    }
-    dbSpan := telemetry.StartSpanNoCtx("store.db_apply")
-    if err := db.Apply(batch, writeOpt(true)); err != nil {
-        dbSpan()
-        logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
-        return err
-    }
+		batch.Set([]byte(ik), data, writeOpt(true))
+	}
+	dbSpan := telemetry.StartSpanNoCtx("store.db_apply")
+	if err := db.Apply(batch, writeOpt(true)); err != nil {
+		dbSpan()
+		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
+		return err
+	}
 	dbSpan()
 	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	return nil
@@ -578,7 +582,7 @@ func SaveThread(threadID, data string) error {
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}
-    if err := db.Set([]byte(tk), []byte(data), writeOpt(true)); err != nil {
+	if err := db.Set([]byte(tk), []byte(data), writeOpt(true)); err != nil {
 		logger.Error("save_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -614,7 +618,7 @@ func DeleteThread(threadID string) error {
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}
-    if err := db.Delete([]byte(tk), writeOpt(true)); err != nil {
+	if err := db.Delete([]byte(tk), writeOpt(true)); err != nil {
 		logger.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -648,7 +652,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	th.Deleted = true
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
-    if err := db.Set(key, nb, writeOpt(true)); err != nil {
+	if err := db.Set(key, nb, writeOpt(true)); err != nil {
 		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -769,7 +773,7 @@ func SaveKey(key string, value []byte) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-    if err := db.Set([]byte(key), value, writeOpt(true)); err != nil {
+	if err := db.Set([]byte(key), value, writeOpt(true)); err != nil {
 		logger.Error("save_key_failed", "key", key, "error", err)
 		return err
 	}
@@ -792,7 +796,7 @@ func DBSet(key, value []byte) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-    return db.Set(key, value, writeOpt(true))
+	return db.Set(key, value, writeOpt(true))
 }
 
 // DeleteKey removes the given key from the DB.
@@ -800,7 +804,7 @@ func DeleteKey(key string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-    if err := db.Delete([]byte(key), writeOpt(true)); err != nil {
+	if err := db.Delete([]byte(key), writeOpt(true)); err != nil {
 		logger.Error("delete_key_failed", "key", key, "error", err)
 		return err
 	}
@@ -879,10 +883,10 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 					return fmt.Errorf("failed to marshal migrated message: %w", merr)
 				}
 				backupKey := append([]byte("backup:migrate:"), k...)
-                if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
+				if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
 					return fmt.Errorf("backup failed: %w", err)
 				}
-                if err := db.Set(k, nb, writeOpt(true)); err != nil {
+				if err := db.Set(k, nb, writeOpt(true)); err != nil {
 					return fmt.Errorf("write new ciphertext failed: %w", err)
 				}
 				continue
@@ -906,11 +910,11 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		}
 		// backup original value
 		backupKey := append([]byte("backup:migrate:"), k...)
-        if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
+		if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
 			return fmt.Errorf("backup failed: %w", err)
 		}
 		// overwrite with new ciphertext
-        if err := db.Set(k, ct, writeOpt(true)); err != nil {
+		if err := db.Set(k, ct, writeOpt(true)); err != nil {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
@@ -972,7 +976,7 @@ func PurgeThreadPermanently(threadID string) error {
 	var batch [][]byte
 	deleteBatch := func(keys [][]byte) {
 		for _, k := range keys {
-                if err := db.Delete(k, writeOpt(true)); err != nil {
+			if err := db.Delete(k, writeOpt(true)); err != nil {
 				logger.Error("purge_delete_failed", "key", string(k), "error", err)
 			}
 		}
@@ -1041,7 +1045,7 @@ func PurgeMessagePermanently(messageID string) error {
 		keys = append(keys, append([]byte(nil), vi.Key()...))
 	}
 	for _, k := range keys {
-        if err := db.Delete(k, writeOpt(true)); err != nil {
+		if err := db.Delete(k, writeOpt(true)); err != nil {
 			logger.Error("purge_message_delete_failed", "key", string(k), "error", err)
 		}
 	}

@@ -58,7 +58,7 @@ func SetupServer(t *testing.T) *LocalServer {
 	_ = os.MkdirAll(storePath, 0o700)
 
 	logger.Init()
-	if err := store.Open(storePath); err != nil {
+	if err := store.Open(storePath, true); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}
 

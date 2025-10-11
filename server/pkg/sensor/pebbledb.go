@@ -27,9 +27,9 @@ type MonitorConfig struct {
 // metrics and adjusts the processor and sensor accordingly. It returns
 // a function to stop the monitor.
 func StartPebbleMonitor(ctx context.Context, p *ingest.Processor, s *Sensor, cfg MonitorConfig) context.CancelFunc {
-    // Assumes cfg has sensible defaults applied by central config validation.
+	// Assumes cfg has sensible defaults applied by central config validation.
 	ctx, cancel := context.WithCancel(ctx)
-    go func() {
+	go func() {
 		ticker := time.NewTicker(cfg.PollInterval)
 		defer ticker.Stop()
 		var state = "normal"

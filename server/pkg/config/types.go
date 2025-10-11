@@ -18,13 +18,13 @@ type RuntimeConfig struct {
 
 // Config is the main configuration struct.
 type Config struct {
-    Server    ServerConfig    `yaml:"server"`
-    Security  SecurityConfig  `yaml:"security"`
-    Logging   LoggingConfig   `yaml:"logging"`
-    Retention RetentionConfig `yaml:"retention"`
-    Ingest    IngestConfig    `yaml:"ingest"`
-    Telemetry TelemetryConfig `yaml:"telemetry"`
-    Sensor    SensorConfig    `yaml:"sensor"`
+	Server    ServerConfig    `yaml:"server"`
+	Security  SecurityConfig  `yaml:"security"`
+	Logging   LoggingConfig   `yaml:"logging"`
+	Retention RetentionConfig `yaml:"retention"`
+	Ingest    IngestConfig    `yaml:"ingest"`
+	Telemetry TelemetryConfig `yaml:"telemetry"`
+	Sensor    SensorConfig    `yaml:"sensor"`
 }
 
 // ServerConfig holds http and tls settings.
@@ -76,18 +76,18 @@ type LoggingConfig struct {
 
 // RetentionConfig holds configuration for the automatic purge runner.
 type RetentionConfig struct {
-    Enabled      bool   `yaml:"enabled"`
-    Cron         string `yaml:"cron"`
-    Period       string `yaml:"period"`
-    BatchSize    int    `yaml:"batch_size"`
-    BatchSleepMs int    `yaml:"batch_sleep_ms"`
-    DryRun       bool   `yaml:"dry_run"`
-    Paused       bool   `yaml:"paused"`
-    MinPeriod    string `yaml:"min_period"`
-    // LockTTL controls the lease TTL used by the retention scheduler when
-    // acquiring a lock to perform a run. Specified as a duration string
-    // (e.g. "300s"). If zero, a sensible default will be applied.
-    LockTTL      Duration `yaml:"lock_ttl"`
+	Enabled      bool   `yaml:"enabled"`
+	Cron         string `yaml:"cron"`
+	Period       string `yaml:"period"`
+	BatchSize    int    `yaml:"batch_size"`
+	BatchSleepMs int    `yaml:"batch_sleep_ms"`
+	DryRun       bool   `yaml:"dry_run"`
+	Paused       bool   `yaml:"paused"`
+	MinPeriod    string `yaml:"min_period"`
+	// LockTTL controls the lease TTL used by the retention scheduler when
+	// acquiring a lock to perform a run. Specified as a duration string
+	// (e.g. "300s"). If zero, a sensible default will be applied.
+	LockTTL Duration `yaml:"lock_ttl"`
 }
 
 // IngestConfig holds queueing and processing configuration.
@@ -126,6 +126,11 @@ type WALConfig struct {
 	CompressMinBytes int64     `yaml:"compress_min_bytes"`
 	RetentionBytes   SizeBytes `yaml:"retention_bytes"`
 	RetentionAge     Duration  `yaml:"retention_age"`
+	// DisablePebbleWAL controls the underlying Pebble DB's WAL setting.
+	// Default is true - given application level WAl
+	// This is here for configuration access
+	// NOTE that enabling 2 wals can decrease performance.
+	DisablePebbleWAL *bool `yaml:"disable_pebble_wal"`
 }
 
 // SizeBytes represents a number of bytes, unmarshaled from human-friendly strings like "64MB" or plain integers.
@@ -183,18 +188,18 @@ func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
 // TelemetryConfig controls sampling and slow-request thresholds.
 type TelemetryConfig struct {
-    SampleRate    float64 `yaml:"sample_rate"`
-    SlowThreshold Duration `yaml:"slow_threshold"`
+	SampleRate    float64  `yaml:"sample_rate"`
+	SlowThreshold Duration `yaml:"slow_threshold"`
 }
 
 // SensorConfig holds sensor related tuning knobs.
 type SensorConfig struct {
-    Monitor struct {
-        PollInterval  Duration  `yaml:"poll_interval"`
-        WALHighBytes  SizeBytes `yaml:"wal_high_bytes"`
-        WALLowBytes   SizeBytes `yaml:"wal_low_bytes"`
-        DiskHighPct   int       `yaml:"disk_high_pct"`
-        DiskLowPct    int       `yaml:"disk_low_pct"`
-        RecoveryWindow Duration `yaml:"recovery_window"`
-    } `yaml:"monitor"`
+	Monitor struct {
+		PollInterval   Duration  `yaml:"poll_interval"`
+		WALHighBytes   SizeBytes `yaml:"wal_high_bytes"`
+		WALLowBytes    SizeBytes `yaml:"wal_low_bytes"`
+		DiskHighPct    int       `yaml:"disk_high_pct"`
+		DiskLowPct     int       `yaml:"disk_low_pct"`
+		RecoveryWindow Duration  `yaml:"recovery_window"`
+	} `yaml:"monitor"`
 }

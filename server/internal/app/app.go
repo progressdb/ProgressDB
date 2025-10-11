@@ -11,6 +11,7 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/sensor"
 	"progressdb/pkg/telemetry"
 
@@ -55,6 +56,33 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		return nil, err
 	}
 
+	// If both the application-level WAL and Pebble WAL are disabled the
+	// system is effectively running in-memory only. This may be an
+	// explicit choice (e.g., for tests) but deserves a prominent warning
+	// with an estimate of the potential data-loss window and relevant
+	// buffering knobs so operators can reason about risk.
+	appWALEnabled := eff.Config.Ingest.Queue.WAL.Enabled
+	pebbleWALDisabled := true
+	if eff.Config.Ingest.Queue.WAL.DisablePebbleWAL != nil {
+		pebbleWALDisabled = *eff.Config.Ingest.Queue.WAL.DisablePebbleWAL
+	}
+	if !appWALEnabled && pebbleWALDisabled {
+		// Estimate a loss window from producer/consumer batching knobs.
+		// Use processor flush interval and queue truncate interval as
+		// conservative approximations of how long significant state may
+		// remain only in memory.
+		procFlush := eff.Config.Ingest.Processor.FlushInterval.Duration()
+		truncate := eff.Config.Ingest.Queue.TruncateInterval.Duration()
+		// Choose the larger duration as a simple conservative estimate.
+		lossWindow := procFlush
+		if truncate > lossWindow {
+			lossWindow = truncate
+		}
+		// Log a structured warning with key config values so operators can
+		// decide whether this explicit choice is acceptable.
+		logger.Warn("no_persistent_wal_configured", "reason", "both application WAL and Pebble WAL disabled", "loss_window_ms", lossWindow.Milliseconds(), "processor_flush_ms", procFlush.Milliseconds(), "queue_truncate_ms", truncate.Milliseconds(), "queue_capacity", eff.Config.Ingest.Queue.Capacity, "processor_max_batch_msgs", eff.Config.Ingest.Processor.MaxBatchMsgs)
+	}
+
 	// apply telemetry defaults from effective config
 	telemetry.SetSampleRate(eff.Config.Telemetry.SampleRate)
 	telemetry.SetSlowThreshold(eff.Config.Telemetry.SlowThreshold.Duration())
@@ -79,7 +107,16 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	if state.PathsVar.Store == "" {
 		return nil, fmt.Errorf("state paths not initialized")
 	}
-	if err := store.Open(state.PathsVar.Store); err != nil {
+	// pass configured pebble WAL disable flag
+	// Default to the config's DisablePebbleWAL if provided, otherwise
+	// preserve historical default (true).
+	disable := true
+	if aCfg := eff.Config; aCfg != nil {
+		if aCfg.Ingest.Queue.WAL.DisablePebbleWAL != nil {
+			disable = *aCfg.Ingest.Queue.WAL.DisablePebbleWAL
+		}
+	}
+	if err := store.Open(state.PathsVar.Store, disable); err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 

@@ -28,9 +28,9 @@ func main() {
 	// load .env file if present
 	_ = godotenv.Load(".env")
 
-    // initialize centralized logger (env defaults) so startup logs are available.
-    logger.Init()
-    defer logger.Sync()
+	// initialize centralized logger (env defaults) so startup logs are available.
+	logger.Init()
+	defer logger.Sync()
 
 	// parse config flags
 	flags := config.ParseConfigFlags()
@@ -61,13 +61,13 @@ func main() {
 		}
 	}
 
-    // validate the effective config
-    if err := eff.Config.ValidateConfig(); err != nil {
-        shutdown.Abort("invalid configuration", err, eff.DBPath)
-    }
+	// validate the effective config
+	if err := eff.Config.ValidateConfig(); err != nil {
+		shutdown.Abort("invalid configuration", err, eff.DBPath)
+	}
 
-    // Reinitialize logger with config-driven level (overrides env default)
-    logger.InitWithLevel(eff.Config.Logging.Level)
+	// Reinitialize logger with config-driven level (overrides env default)
+	logger.InitWithLevel(eff.Config.Logging.Level)
 
 	// init database folders and ensure the filesystem layout.
 	if err := state.Init(eff.DBPath); err != nil {

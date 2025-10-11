@@ -52,38 +52,38 @@ func Init() {
 // `level` string ("debug", "info", "warn", "error"). If level is empty,
 // InitWithLevel falls back to the environment-based behavior of Init().
 func InitWithLevel(level string) {
-    // Allow overriding sink and level via env vars for tests and production
-    sink := os.Getenv("PROGRESSDB_LOG_SINK") // e.g. "file:/path/to/log"
-    lvl := strings.ToLower(strings.TrimSpace(level))
-    if lvl == "" {
-        lvl = strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_LOG_LEVEL")))
-    }
-    var lv slog.Level
-    switch lvl {
-    case "debug":
-        lv = slog.LevelDebug
-    case "warn", "warning":
-        lv = slog.LevelWarn
-    case "error":
-        lv = slog.LevelError
-    case "info":
-        lv = slog.LevelInfo
-    default:
-        lv = slog.LevelInfo
-    }
+	// Allow overriding sink and level via env vars for tests and production
+	sink := os.Getenv("PROGRESSDB_LOG_SINK") // e.g. "file:/path/to/log"
+	lvl := strings.ToLower(strings.TrimSpace(level))
+	if lvl == "" {
+		lvl = strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_LOG_LEVEL")))
+	}
+	var lv slog.Level
+	switch lvl {
+	case "debug":
+		lv = slog.LevelDebug
+	case "warn", "warning":
+		lv = slog.LevelWarn
+	case "error":
+		lv = slog.LevelError
+	case "info":
+		lv = slog.LevelInfo
+	default:
+		lv = slog.LevelInfo
+	}
 
-    if strings.HasPrefix(sink, "file:") {
-        // write logs to file
-        path := strings.TrimPrefix(sink, "file:")
-        f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-        if err == nil {
-            Log = slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv}))
-            return
-        }
-        // fallback to stdout
-        fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
-    }
-    Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lv}))
+	if strings.HasPrefix(sink, "file:") {
+		// write logs to file
+		path := strings.TrimPrefix(sink, "file:")
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+		if err == nil {
+			Log = slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv}))
+			return
+		}
+		// fallback to stdout
+		fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
+	}
+	Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lv}))
 }
 
 // AttachAuditFileSink configures a simple JSON-file audit logger writing to
