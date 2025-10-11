@@ -101,6 +101,24 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"RETENTION_DRY_RUN":        os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"),
 		"RETENTION_MIN_PERIOD":     os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"),
 
+		// retention lock TTL
+		"RETENTION_LOCK_TTL": os.Getenv("PROGRESSDB_RETENTION_LOCK_TTL"),
+
+		// telemetry
+		"TELEMETRY_SAMPLE_RATE":    os.Getenv("PROGRESSDB_TELEMETRY_SAMPLE_RATE"),
+		"TELEMETRY_SLOW_THRESHOLD": os.Getenv("PROGRESSDB_TELEMETRY_SLOW_THRESHOLD"),
+
+		// sensor.monitor
+		"SENSOR_MONITOR_POLL_INTERVAL":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_POLL_INTERVAL"),
+		"SENSOR_MONITOR_WAL_HIGH_BYTES":  os.Getenv("PROGRESSDB_SENSOR_MONITOR_WAL_HIGH_BYTES"),
+		"SENSOR_MONITOR_WAL_LOW_BYTES":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_WAL_LOW_BYTES"),
+		"SENSOR_MONITOR_DISK_HIGH_PCT":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_HIGH_PCT"),
+		"SENSOR_MONITOR_DISK_LOW_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_LOW_PCT"),
+		"SENSOR_MONITOR_RECOVERY_WINDOW": os.Getenv("PROGRESSDB_SENSOR_MONITOR_RECOVERY_WINDOW"),
+
+		// logging
+		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
+
 		// queue with tunable wal envs
 		"QUEUE_CAPACITY":               os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
 		"QUEUE_RECOVER":                os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
@@ -333,6 +351,50 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 	if v := envs["RETENTION_MIN_PERIOD"]; v != "" {
 		envCfg.Retention.MinPeriod = v
+	}
+
+	// retention lock TTL
+	if v := envs["RETENTION_LOCK_TTL"]; v != "" {
+		envCfg.Retention.LockTTL = parseDuration(v)
+	}
+
+	// telemetry env overrides
+	if v := envs["TELEMETRY_SAMPLE_RATE"]; v != "" {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			envCfg.Telemetry.SampleRate = f
+		}
+	}
+	if v := envs["TELEMETRY_SLOW_THRESHOLD"]; v != "" {
+		envCfg.Telemetry.SlowThreshold = parseDuration(v)
+	}
+
+	// sensor.monitor env overrides
+	if v := envs["SENSOR_MONITOR_POLL_INTERVAL"]; v != "" {
+		envCfg.Sensor.Monitor.PollInterval = parseDuration(v)
+	}
+	if v := envs["SENSOR_MONITOR_WAL_HIGH_BYTES"]; v != "" {
+		envCfg.Sensor.Monitor.WALHighBytes = parseSizeBytes(v)
+	}
+	if v := envs["SENSOR_MONITOR_WAL_LOW_BYTES"]; v != "" {
+		envCfg.Sensor.Monitor.WALLowBytes = parseSizeBytes(v)
+	}
+	if v := envs["SENSOR_MONITOR_DISK_HIGH_PCT"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Sensor.Monitor.DiskHighPct = n
+		}
+	}
+	if v := envs["SENSOR_MONITOR_DISK_LOW_PCT"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Sensor.Monitor.DiskLowPct = n
+		}
+	}
+	if v := envs["SENSOR_MONITOR_RECOVERY_WINDOW"]; v != "" {
+		envCfg.Sensor.Monitor.RecoveryWindow = parseDuration(v)
+	}
+
+	// logging env overrides
+	if v := envs["LOG_LEVEL"]; v != "" {
+		envCfg.Logging.Level = strings.TrimSpace(v)
 	}
 
 	// queue / wal env overrides

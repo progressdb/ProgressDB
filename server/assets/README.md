@@ -1,1 +1,0 @@
-[https://patorjk.com/software/taag/](https://patorjk.com/software/taag/)
