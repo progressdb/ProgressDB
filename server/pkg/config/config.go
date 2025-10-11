@@ -18,6 +18,15 @@ const (
 	MinWALFileSize          = 1 * 1024 * 1024 // 1 MiB
 	MinWALBatchInterval     = 10 * time.Millisecond
 	DefaultCompressMinBytes = 512
+	// Ingest/processor defaults (kept small so zero can mean "use runtime.NumCPU()")
+	DefaultProcessorMaxBatchMsgs = 500
+	DefaultProcessorFlushMS      = 2
+
+	// Queue defaults
+	DefaultQueueBatchSize        = 256
+	DefaultDrainPollInterval     = 10 * time.Millisecond
+	DefaultMaxPooledBufferBytes  = 256 * 1024 // 256 KiB
+	DefaultQueueTruncateInterval = 30 * time.Second
 )
 
 var (
@@ -97,6 +106,22 @@ func (c *Config) ValidateConfig() error {
 	if c.Ingest.Queue.Capacity <= 0 {
 		c.Ingest.Queue.Capacity = DefaultQueueCapacity
 	}
+	// Queue batch size (used by batch consumers)
+	if c.Ingest.Queue.BatchSize <= 0 {
+		c.Ingest.Queue.BatchSize = DefaultQueueBatchSize
+	}
+	// Drain poll interval (used when closing/draining the queue)
+	if c.Ingest.Queue.DrainPollInterval.Duration() == 0 {
+		c.Ingest.Queue.DrainPollInterval = Duration(DefaultDrainPollInterval)
+	}
+	// max pooled buffer size
+	if c.Ingest.Queue.MaxPooledBufferBytes.Int64() == 0 {
+		c.Ingest.Queue.MaxPooledBufferBytes = SizeBytes(DefaultMaxPooledBufferBytes)
+	}
+	// truncate interval: zero means disabled; default to reasonable value if unset
+	if c.Ingest.Queue.TruncateInterval.Duration() == 0 {
+		c.Ingest.Queue.TruncateInterval = Duration(DefaultQueueTruncateInterval)
+	}
 
 	// WAL defaults and validation
 	wc := &c.Ingest.Queue.WAL
@@ -128,6 +153,15 @@ func (c *Config) ValidateConfig() error {
 	}
 	if !wc.Enabled {
 		wc.Mode = "none"
+	}
+
+	// Processor defaults
+	pc := &c.Ingest.Processor
+	if pc.MaxBatchMsgs <= 0 {
+		pc.MaxBatchMsgs = DefaultProcessorMaxBatchMsgs
+	}
+	if pc.FlushInterval.Duration() == 0 {
+		pc.FlushInterval = Duration(time.Duration(DefaultProcessorFlushMS) * time.Millisecond)
 	}
 
 	return nil

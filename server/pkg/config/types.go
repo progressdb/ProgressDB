@@ -99,13 +99,13 @@ type ProcessorConfig struct {
 
 // QueueConfig holds in-memory queue and WAL embedding.
 type QueueConfig struct {
-	Capacity            int       `yaml:"capacity"`
-	BatchSize           int       `yaml:"batch_size"`
-	DrainPollInterval   Duration  `yaml:"drain_poll_interval"`
-	MaxPooledBufferBytes int      `yaml:"max_pooled_buffer_bytes"`
-	Recover             bool      `yaml:"recover"`
-	TruncateInterval    Duration  `yaml:"truncate_interval"`
-	WAL                 WALConfig `yaml:"wal"`
+	Capacity             int       `yaml:"capacity"`
+	BatchSize            int       `yaml:"batch_size"`
+	DrainPollInterval    Duration  `yaml:"drain_poll_interval"`
+	MaxPooledBufferBytes SizeBytes `yaml:"max_pooled_buffer_bytes"`
+	Recover              bool      `yaml:"recover"`
+	TruncateInterval     Duration  `yaml:"truncate_interval"`
+	WAL                  WALConfig `yaml:"wal"`
 }
 
 // WALConfig represents write-ahead log tunables.
