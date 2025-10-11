@@ -43,27 +43,41 @@ retention:
   dry_run: false
   paused: false
   min_period: "1h"
+  lock_ttl: 300s
 
 ingest:
   processor:
     workers: 48                 # Double concurrency (more cores for higher throughput)
-    max_batch: 10000            # Larger batch for better throughput
+    max_batch_msgs: 10000       # Larger batch for better throughput
     flush_ms: 1                 # Flush even faster for lower latency
   queue:
     capacity: 1048576           # 1M queue: much larger, handles big spikes/bursts
-    batch: 131072               # Larger batch size for higher throughput
-    poll_interval: 250us        # Faster polling for lower latency
-    max_buffer: 3221225472      # 3GB buffer (assuming lots of RAM for speed)
+    batch_size: 131072          # Larger batch size for higher throughput
+    drain_poll_interval: 250us  # Faster polling for lower latency
+    max_pooled_buffer_bytes: 3GB # 3GB buffer (assuming lots of RAM for speed)
     recover: true
-    truncate: 60s               # Less frequent SSD writes, but not a bottleneck
+    truncate_interval: 60s      # Less frequent SSD writes, but not a bottleneck
     wal:
       enabled: false             # WAL for durability
       mode: batch
-      max_file: 2147483648      # 2GB WAL (less rotation, more headroom)
-      batch_enabled: true
-      batch: 4096               # Much larger WAL batch for best speed
-      interval: 2ms             # WAL flush very frequently for speed
-      compress: true
-      compress_min: 512         # Only compress payloads 512B+, conserves CPU
+      max_file_size: 2GB         # 2GB WAL (less rotation, more headroom)
+      enable_batch: true
+      batch_size: 4096           # Much larger WAL batch for best speed
+      batch_interval: 2ms       # WAL flush very frequently for speed
+      enable_compress: true
+      compress_min_bytes: 512    # Only compress payloads 512B+, conserves CPU
       retention_bytes: 0
       retention_age: 0
+
+telemetry:
+  sample_rate: 0.001
+  slow_threshold: 200ms
+
+sensor:
+  monitor:
+    poll_interval: 500ms
+    wal_high_bytes: 1GiB
+    wal_low_bytes: 700MiB
+    disk_high_pct: 80
+    disk_low_pct: 60
+    recovery_window: 5s

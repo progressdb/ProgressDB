@@ -18,7 +18,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	ret := eff.Config.Retention
 	owner := utils.GenID()
 	lock := NewFileLease(auditPath)
-	acq, err := lock.Acquire(owner, defaultLockTTL)
+    acq, err := lock.Acquire(owner, ret.LockTTL.Duration())
 	if err != nil {
 		logger.Error("retention_lease_acquire_error", "error", err)
 		return fmt.Errorf("lease acquire failed: %w", err)
@@ -44,8 +44,8 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	// start heartbeat goroutine which will attempt to renew the lease and
 	// abort the run if renew fails repeatedly
 	hbCtx, hbCancel := context.WithCancel(runCtx)
-	go func() {
-		t := time.NewTicker(defaultLockTTL / 3)
+    go func() {
+        t := time.NewTicker(ret.LockTTL.Duration() / 3)
 		defer t.Stop()
 		defer hbCancel()
 		var failCount int
@@ -55,7 +55,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 			case <-hbCtx.Done():
 				return
 			case <-t.C:
-				if err := lock.Renew(owner, defaultLockTTL); err != nil {
+                if err := lock.Renew(owner, ret.LockTTL.Duration()); err != nil {
 					failCount++
 					logger.Error("retention_lease_renew_failed", "error", err, "count", failCount)
 					if failCount >= maxConsecutiveRenewFails {

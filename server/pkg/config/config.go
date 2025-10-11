@@ -28,6 +28,8 @@ const (
 	defaultDrainPollInterval     = 10 * time.Millisecond
 	defaultMaxPooledBufferBytes  = 256 * 1024 // 256 KiB
     defaultQueueTruncateInterval = 30 * time.Second
+    // Retention defaults
+    defaultRetentionLockTTL = 300 * time.Second
     // telemetry defaults
     defaultTelemetrySampleRate  = 0.001
     defaultTelemetrySlowMs      = 200
@@ -186,6 +188,14 @@ func (c *Config) ValidateConfig() error {
         c.Telemetry.SlowThreshold = Duration(time.Duration(defaultTelemetrySlowMs) * time.Millisecond)
     }
 
+    // Security defaults: rate limiting
+    if c.Security.RateLimit.RPS == 0 {
+        c.Security.RateLimit.RPS = 100
+    }
+    if c.Security.RateLimit.Burst == 0 {
+        c.Security.RateLimit.Burst = 100
+    }
+
     // Sensor monitor defaults
     if c.Sensor.Monitor.PollInterval.Duration() == 0 {
         c.Sensor.Monitor.PollInterval = Duration(defaultSensorPollInterval)
@@ -204,6 +214,11 @@ func (c *Config) ValidateConfig() error {
     }
     if c.Sensor.Monitor.RecoveryWindow.Duration() == 0 {
         c.Sensor.Monitor.RecoveryWindow = Duration(defaultSensorRecoveryWindow)
+    }
+
+    // Retention lock TTL default
+    if c.Retention.LockTTL.Duration() == 0 {
+        c.Retention.LockTTL = Duration(defaultRetentionLockTTL)
     }
 
 	return nil

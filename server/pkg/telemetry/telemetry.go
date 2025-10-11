@@ -27,8 +27,9 @@ var (
 	writerCh      chan []byte
 	requestCtr    uint64
 	spanCtr       uint64
-	sampleRate    = 0.001 // 0.1% default sampling for full traces (very low)
-	slowThreshold = 200 * time.Millisecond
+    // defaults are provided by central config at startup; zero disables tracing until set
+    sampleRate    = 0.0
+    slowThreshold = 0 * time.Millisecond
 )
 
 // Span is a simple span relative to request start (milliseconds)

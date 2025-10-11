@@ -80,7 +80,6 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 
 // runScheduler wakes periodically and triggers retention runs according
 // to the configured cron expression (simple minute/hour matcher).
-const defaultLockTTL = 300000 * time.Millisecond
 
 // runScheduler uses gronx to compute the next tick for the configured cron
 // expression and sleeps until that time. This yields sharper scheduling and

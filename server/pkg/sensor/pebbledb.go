@@ -23,18 +23,6 @@ type MonitorConfig struct {
 	RecoveryWindow time.Duration
 }
 
-// DefaultMonitorConfig returns sensible defaults.
-func DefaultMonitorConfig() MonitorConfig {
-	return MonitorConfig{
-		PollInterval:   500 * time.Millisecond,
-		WALHighBytes:   1 << 30, // 1 GiB
-		WALLowBytes:    700 << 20,
-		DiskHighPct:    80,
-		DiskLowPct:     60,
-		RecoveryWindow: 5 * time.Second,
-	}
-}
-
 // StartPebbleMonitor starts a background monitor that watches Pebble
 // metrics and adjusts the processor and sensor accordingly. It returns
 // a function to stop the monitor.
