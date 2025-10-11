@@ -84,25 +84,36 @@ type RetentionConfig struct {
 	MinPeriod    string `yaml:"min_period"`
 }
 
-// IngestConfig holds queueing related configuration.
+// IngestConfig holds queueing and processing configuration.
 type IngestConfig struct {
-	Queue QueueConfig `yaml:"queue"`
+	Processor ProcessorConfig `yaml:"processor"`
+	Queue     QueueConfig     `yaml:"queue"`
+}
+
+// ProcessorConfig controls worker concurrency and batching.
+type ProcessorConfig struct {
+	Workers       int      `yaml:"workers"`
+	MaxBatchMsgs  int      `yaml:"max_batch_msgs"`
+	FlushInterval Duration `yaml:"flush_ms"`
 }
 
 // QueueConfig holds in-memory queue and WAL embedding.
 type QueueConfig struct {
-	Capacity         int       `yaml:"capacity"`
-	Recover          bool      `yaml:"recover"`
-	TruncateInterval Duration  `yaml:"truncate_interval"`
-	WAL              WALConfig `yaml:"wal"`
+	Capacity            int       `yaml:"capacity"`
+	BatchSize           int       `yaml:"batch_size"`
+	DrainPollInterval   Duration  `yaml:"drain_poll_interval"`
+	MaxPooledBufferBytes int      `yaml:"max_pooled_buffer_bytes"`
+	Recover             bool      `yaml:"recover"`
+	TruncateInterval    Duration  `yaml:"truncate_interval"`
+	WAL                 WALConfig `yaml:"wal"`
 }
 
 // WALConfig represents write-ahead log tunables.
 type WALConfig struct {
-    Enabled          bool      `yaml:"enabled"`
-    Mode             string    `yaml:"mode"`          // none | batch | sync
-    MaxFileSize      SizeBytes `yaml:"max_file_size"` // human friendly (e.g. 64MB)
-    EnableBatch      bool      `yaml:"enable_batch"`
+	Enabled          bool      `yaml:"enabled"`
+	Mode             string    `yaml:"mode"` // none | batch | sync
+	MaxFileSize      SizeBytes `yaml:"max_file_size"`
+	EnableBatch      bool      `yaml:"enable_batch"`
 	BatchSize        int       `yaml:"batch_size"`
 	BatchInterval    Duration  `yaml:"batch_interval"`
 	EnableCompress   bool      `yaml:"enable_compress"`
@@ -111,8 +122,7 @@ type WALConfig struct {
 	RetentionAge     Duration  `yaml:"retention_age"`
 }
 
-// SizeBytes represents a number of bytes, unmarshaled from human-friendly
-// strings like "64MB" or plain integers.
+// SizeBytes represents a number of bytes, unmarshaled from human-friendly strings like "64MB" or plain integers.
 type SizeBytes int64
 
 func (s *SizeBytes) UnmarshalYAML(node *yaml.Node) error {
@@ -136,11 +146,9 @@ func (s *SizeBytes) UnmarshalYAML(node *yaml.Node) error {
 	return fmt.Errorf("invalid size value: %q", node.Value)
 }
 
-// Int64 returns the underlying int64 value.
 func (s SizeBytes) Int64() int64 { return int64(s) }
 
-// Duration is a wrapper around time.Duration that supports YAML parsing
-// from strings like "100ms" or plain numbers (interpreted as seconds).
+// Duration is a wrapper around time.Duration that supports YAML parsing from strings like "100ms" or plain numbers (interpreted as seconds).
 type Duration time.Duration
 
 func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
@@ -165,5 +173,4 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	return fmt.Errorf("invalid duration value: %q", node.Value)
 }
 
-// Duration returns time.Duration
 func (d Duration) Duration() time.Duration { return time.Duration(d) }
