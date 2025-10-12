@@ -5,7 +5,7 @@ order: 1
 visibility: public
 ---
 
-![Thread First Model](thread_first.jpg)
+![Thread First Model](/thread_first.jpg)
 
 # Thread First — a model for all chat experiences
 
