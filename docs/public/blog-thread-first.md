@@ -16,6 +16,7 @@ visibility: public
 
 If you ask the internet how to model a chat experience, you will get an approach based around messages and their user or authors.  
 This is simple, works, and scales if your only author is a user for the most part.
+<img src="/imgs/sql_threads.png" className="w-full lg:w-1/3"/>
 
 ## The limits of message-first
 
@@ -32,18 +33,16 @@ The concept of replies, reactions, comments uniquely tied to a message unit, usu
 - relinking or migrating them leads to a sprawl of new models, or hackish ways to keep it all operationally sane.
 - Operational complexity grows over time.
 
-
-For example, to build shared threads like OpenAI’s, you might end up creating a new collection or caching layer just to connect messages that logically belong together.
-
+For example, to build shared threads like OpenAI’s, you might end up creating a new collection, a caching layer, or an index just to connect messages that logically belong together.
 
 
 ##### This complexity is multiplied if you need to support different models of chat:
 
-- **Direct chat (1:1)**
-- **Group chat (N:N bounded)**
-- **Broadcast/channel (1:N)**
-- **Federated/public (M:M open)**
-- **Bot/assistant chat (1:service)**
+- Direct chat (1:1)
+- Group chat (N:N bounded)
+- Broadcast/channel (1:N)
+- Federated/public (M:M open)
+- Bot/assistant chat (1:service)
 
 The modelling becomes quickly multiplied and requires new modelling and, in some cases, tearing down old models and migrating data to the new model—and this does not cease for the most part.
 
@@ -51,7 +50,9 @@ Layer on other moving targets like moderation, encryption, etc., and you usually
 
 This is mostly fine, but when you multiply these moving parts by more requirements, it quickly leads to a modelling sprawl.
 
-It’s fairly standard for most teams—whether because they’re resourced or just because that’s “how it’s done”—to power through it. If anything, it’s accepted as a job requirement.
+It’s fairly standard for most teams—whether because they’re resourced or just because that’s “how it’s done”—to power through it.
+
+If anything, it’s accepted as a job requirement.
 
 But is it really the best way? Is it okay?
 
@@ -73,6 +74,7 @@ Instead of the message being the unit for organization,
 - We have `thread_id` prefixes organizing the messages, but not as a collection or single table—this structure _represents access to the data_.  
 - The ownership or participation in a thread lives separately from the message itself.
 
+<img src="/imgs/thread_first3.png" className="w-full lg:w-1/3"/>
 Compared to the earlier chat models, this detachment allows for all modes of chat without extra work to evolve user/message relationships.  
 
 - Most importantly, it *standardizes* the chat model so it can be replicated everywhere, for different chat contexts.
@@ -85,7 +87,7 @@ The concept here isn’t saying it’s “better” in all ways—it’s saying 
 
 ---
 
-## The storage medium
+## The storage problem
 
 Getting the model right is only half the battle.
 
@@ -101,11 +103,13 @@ A thread-first model needs a storage medium where appends, reads, and scans are 
 
 A proper thread-first store should make this a single contiguous read (a range scan by prefix), maintaining **lexicographic ordering**.
 
+<img src="/imgs/ds_comparison2.png" className="w-full mb-4"/>
+
 This is trivial in LSM-based KV stores like Pebble, RocksDB, or LevelDB, but it’s *unnatural* in SQL or document databases — they emulate order rather than live in it.
 
 The result is complexity in something that should be simple: scanning, appending, and replaying a thread in order.
 
-**The storage is where the chat problem begins.**
+**The storage is where the chat problem begins—and where the solution must start from.**
 
 ---
 
