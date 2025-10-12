@@ -15,9 +15,9 @@ import (
 
 // checks /admin/health returns 200 and {"status":"ok"}
 func TestAdmin_Health(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
-	req, _ := http.NewRequest("GET", srv.URL+"/admin/health", nil)
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
+	req, _ := http.NewRequest("GET", sp.Addr+"/admin/health", nil)
 	req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -38,14 +38,14 @@ func TestAdmin_Health(t *testing.T) {
 
 // checks /admin/stats returns nonzero stats after posting thread and message
 func TestAdmin_Stats_ListThreads(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	// create a thread and a message so stats are non-zero
 	user := "stat_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "s1"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -66,7 +66,7 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	// create a message in this thread
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "x"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -76,7 +76,7 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	}
 
 	// call stats
-	areq, _ := http.NewRequest("GET", srv.URL+"/admin/stats", nil)
+	areq, _ := http.NewRequest("GET", sp.Addr+"/admin/stats", nil)
 	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	ares, err := http.DefaultClient.Do(areq)
 	if err != nil {
@@ -97,15 +97,18 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 
 // checks listing and retrieving keys via /admin/keys endpoints
 func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
-	// save a test key directly into store
-	if err := store.SaveKey("testkey", []byte("val")); err != nil {
-		t.Fatalf("store.SaveKey failed: %v", err)
-	}
+	// pre-seed DB with a test key and start server with that workdir so
+	// the server can list and return the key via admin endpoints.
+	workdir := utils.PreseedDB(t, "admin-listkeys", func(storePath string) {
+		if err := store.SaveKey("testkey", []byte("val")); err != nil {
+			t.Fatalf("store.SaveKey failed: %v", err)
+		}
+	})
+	sp := utils.StartServerProcessWithWorkdir(t, workdir, utils.ServerOpts{})
+	defer func() { _ = sp.Stop(t) }()
 
 	// list keys
-	lreq, _ := http.NewRequest("GET", srv.URL+"/admin/keys?prefix=test", nil)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/admin/keys?prefix=test", nil)
 	lreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
@@ -117,7 +120,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 
 	// get specific key
 	gres, err := http.DefaultClient.Do(func() *http.Request {
-		req, _ := http.NewRequest("GET", srv.URL+"/admin/keys/testkey", nil)
+		req, _ := http.NewRequest("GET", sp.Addr+"/admin/keys/testkey", nil)
 		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		return req
 	}())
@@ -140,13 +143,13 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 
 // checks rotating a thread data encryption key with /admin/encryption/rotate-thread-dek
 func TestAdmin_RotateThreadDEK(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "rot_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "r1"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -162,7 +165,7 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 	tid := cout["id"].(string)
 
 	rb, _ := json.Marshal(map[string]string{"thread_id": tid})
-	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
+	rreq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
 	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {
@@ -183,13 +186,13 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 
 // test rewrapping a thread's DEK (data encryption key) using a new KEK.
 func TestAdmin_RewrapDEKs(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "rw_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "rw1"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -208,7 +211,7 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	payload := map[string]interface{}{"thread_ids": []string{tid}, "new_kek_hex": mk, "parallelism": 1}
 	pb, _ := json.Marshal(payload)
-	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rewrap-deks", bytes.NewReader(pb))
+	rreq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rewrap-deks", bytes.NewReader(pb))
 	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {
@@ -221,13 +224,13 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 
 // checks encrypting existing thread messages via /admin/encryption/encrypt-existing
 func TestAdmin_EncryptExisting(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "enc_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "e1"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -245,7 +248,7 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 	// create a plaintext message under the thread
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "plain"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -255,7 +258,7 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 
 	payload := map[string]interface{}{"thread_ids": []string{tid}, "parallelism": 1}
 	pb, _ := json.Marshal(payload)
-	rreq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/encrypt-existing", bytes.NewReader(pb))
+	rreq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/encrypt-existing", bytes.NewReader(pb))
 	rreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	rres, err := http.DefaultClient.Do(rreq)
 	if err != nil {

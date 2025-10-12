@@ -157,10 +157,7 @@ func (c *Config) ValidateConfig() error {
 		wc.CompressMinBytes = defaultCompressMinBytes
 	}
 
-	// Default for Pebble WAL disablement: the application-level WAL is the
-	// canonical durability mechanism. If the YAML did not explicitly set the
-	// `disable_pebble_wal` field, default to true to preserve historical
-	// behaviour.
+	// Default is to disable Pebble WAL.
 	if wc.DisablePebbleWAL == nil {
 		def := true
 		wc.DisablePebbleWAL = &def
@@ -198,11 +195,11 @@ func (c *Config) ValidateConfig() error {
 	}
 
 	// Security defaults: rate limiting
-	if c.Security.RateLimit.RPS == 0 {
-		c.Security.RateLimit.RPS = 100
+	if c.Security.RateLimit.RPS <= 0 {
+		c.Security.RateLimit.RPS = 1000
 	}
-	if c.Security.RateLimit.Burst == 0 {
-		c.Security.RateLimit.Burst = 100
+	if c.Security.RateLimit.Burst <= 0 {
+		c.Security.RateLimit.Burst = 1000
 	}
 
 	// Sensor monitor defaults

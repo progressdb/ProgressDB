@@ -17,32 +17,37 @@ import (
 	"testing"
 	"time"
 
-	"progressdb/pkg/models"
-	"progressdb/pkg/store"
 	utils "progressdb/tests/utils"
 )
 
 func TestAuthorization_Suite(t *testing.T) {
 	// Subtest: Ensure admins can access soft-deleted threads while non-admins (even signed users) cannot.
 	t.Run("DeletedThreadAdminAccess", func(t *testing.T) {
-		srv := utils.SetupServer(t)
-		defer srv.Close()
 
-		th := models.Thread{
-			ID:        "auth-thread-1",
-			Title:     "t",
-			Author:    "alice",
-			Deleted:   true,
-			DeletedTS: time.Now().Add(-24 * time.Hour).UnixNano(),
+		// create a thread then delete it (soft-delete) so admins can still access
+		sp := utils.StartTestServerProcess(t)
+		defer func() { _ = sp.Stop(t) }()
+
+		user := "alice"
+		tid, _ := utils.CreateThreadAPI(t, sp.Addr, user, "t")
+
+		// soft-delete as the author
+		sig := utils.SignHMAC(utils.SigningSecret, user)
+		dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid, nil)
+		dreq.Header.Set("X-User-ID", user)
+		dreq.Header.Set("X-User-Signature", sig)
+		dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+		dres, err := http.DefaultClient.Do(dreq)
+		if err != nil {
+			t.Fatalf("delete request failed: %v", err)
 		}
-		b, _ := json.Marshal(th)
-		if err := store.SaveThread(th.ID, string(b)); err != nil {
-			t.Fatalf("SaveThread: %v", err)
+		if dres.StatusCode != 204 {
+			t.Fatalf("expected delete to return 204; got %d", dres.StatusCode)
 		}
 
 		q := url.Values{}
 		q.Set("author", "alice")
-		req, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"?"+q.Encode(), nil)
+		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"?"+q.Encode(), nil)
 		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -53,10 +58,10 @@ func TestAuthorization_Suite(t *testing.T) {
 			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
 		}
 
-		sig := utils.SignHMAC(utils.SigningSecret, "alice")
-		sreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+th.ID+"", nil)
+		utils.WaitForThreadVisible(t, sp.Addr, tid, "alice", 5*time.Second)
+		sreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"", nil)
 		sreq.Header.Set("X-User-ID", "alice")
-		sreq.Header.Set("X-User-Signature", sig)
+		sreq.Header.Set("X-User-Signature", utils.SignHMAC(utils.SigningSecret, "alice"))
 		sreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		sres, err := http.DefaultClient.Do(sreq)
 		if err != nil {

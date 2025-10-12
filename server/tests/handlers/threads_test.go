@@ -13,13 +13,13 @@ import (
 // One focused test per handler in threads.go
 
 func TestCreateThread(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "alice"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "t1"}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -33,15 +33,15 @@ func TestCreateThread(t *testing.T) {
 }
 
 func TestListThreads(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "list_alice"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	// create a thread then list
 	body := map[string]interface{}{"author": user, "title": "lt1"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -49,7 +49,7 @@ func TestListThreads(t *testing.T) {
 		t.Fatalf("create thread request failed: %v", err)
 	}
 
-	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads", nil)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -63,14 +63,14 @@ func TestListThreads(t *testing.T) {
 }
 
 func TestGetThread(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "orig"}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -85,7 +85,7 @@ func TestGetThread(t *testing.T) {
 	}
 	tid := out["id"].(string)
 
-	greq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid, nil)
+	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid, nil)
 	greq.Header.Set("X-User-ID", user)
 	greq.Header.Set("X-User-Signature", sig)
 	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -100,14 +100,14 @@ func TestGetThread(t *testing.T) {
 }
 
 func TestUpdateThread(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "orig"}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -124,7 +124,7 @@ func TestUpdateThread(t *testing.T) {
 
 	up := map[string]interface{}{"title": "updated"}
 	ub, _ := json.Marshal(up)
-	ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/threads/"+tid, bytes.NewReader(ub))
+	ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(ub))
 	ureq.Header.Set("X-User-ID", user)
 	ureq.Header.Set("X-User-Signature", sig)
 	ureq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -139,14 +139,14 @@ func TestUpdateThread(t *testing.T) {
 }
 
 func TestDeleteThread(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "orig"}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -161,7 +161,7 @@ func TestDeleteThread(t *testing.T) {
 	}
 	tid := out["id"].(string)
 
-	dreq, _ := http.NewRequest("DELETE", srv.URL+"/v1/threads/"+tid, nil)
+	dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid, nil)
 	dreq.Header.Set("X-User-ID", user)
 	dreq.Header.Set("X-User-Signature", sig)
 	dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -176,15 +176,15 @@ func TestDeleteThread(t *testing.T) {
 }
 
 func TestCreateThreadMessage(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	// create thread
 	body := map[string]interface{}{"author": user, "title": "tm"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -202,7 +202,7 @@ func TestCreateThreadMessage(t *testing.T) {
 	// create message in thread
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -217,14 +217,14 @@ func TestCreateThreadMessage(t *testing.T) {
 }
 
 func TestListThreadMessages(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "tm2"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -242,7 +242,7 @@ func TestListThreadMessages(t *testing.T) {
 	// create message
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -250,7 +250,7 @@ func TestListThreadMessages(t *testing.T) {
 		t.Fatalf("create message request failed: %v", err)
 	}
 
-	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -265,14 +265,14 @@ func TestListThreadMessages(t *testing.T) {
 }
 
 func TestGetThreadMessage(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "tm3"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -289,7 +289,7 @@ func TestGetThreadMessage(t *testing.T) {
 
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -304,7 +304,7 @@ func TestGetThreadMessage(t *testing.T) {
 	}
 	mid := mout["id"].(string)
 
-	greq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, nil)
+	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
 	greq.Header.Set("X-User-ID", user)
 	greq.Header.Set("X-User-Signature", sig)
 	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -319,14 +319,14 @@ func TestGetThreadMessage(t *testing.T) {
 }
 
 func TestUpdateThreadMessage(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "tm4"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -343,7 +343,7 @@ func TestUpdateThreadMessage(t *testing.T) {
 
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -364,7 +364,7 @@ func TestUpdateThreadMessage(t *testing.T) {
 	visible := false
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		greq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, nil)
+		greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
 		greq.Header.Set("X-User-ID", user)
 		greq.Header.Set("X-User-Signature", sig)
 		greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -383,7 +383,7 @@ func TestUpdateThreadMessage(t *testing.T) {
 	}
 	up := map[string]interface{}{"author": user, "body": map[string]string{"text": "updated"}}
 	ub, _ := json.Marshal(up)
-	ureq, _ := http.NewRequest("PUT", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(ub))
+	ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(ub))
 	ureq.Header.Set("X-User-ID", user)
 	ureq.Header.Set("X-User-Signature", sig)
 	ureq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -398,14 +398,14 @@ func TestUpdateThreadMessage(t *testing.T) {
 }
 
 func TestDeleteThreadMessage(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+	sp := utils.StartTestServerProcess(t)
+	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
 	body := map[string]interface{}{"author": user, "title": "tm5"}
 	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -422,7 +422,7 @@ func TestDeleteThreadMessage(t *testing.T) {
 
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -437,7 +437,7 @@ func TestDeleteThreadMessage(t *testing.T) {
 	}
 	mid := mout["id"].(string)
 
-	dreq, _ := http.NewRequest("DELETE", srv.URL+"/v1/threads/"+tid+"/messages/"+mid, nil)
+	dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
 	dreq.Header.Set("X-User-ID", user)
 	dreq.Header.Set("X-User-Signature", sig)
 	dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)

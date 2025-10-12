@@ -18,12 +18,12 @@ import (
 func TestAuthentication_Suite(t *testing.T) {
 	// Subtest: Verify unsigned in-process request is rejected (no signature, no API key).
 	t.Run("UnsignedCallRejected_InProcess", func(t *testing.T) {
-		// existing lightweight in-process check retained for fast feedback
-		srv := utils.SetupServer(t)
-		defer srv.Close()
+		// start full server process for this test
+		sp := utils.StartTestServerProcess(t)
+		defer func() { _ = sp.Stop(t) }()
 
 		// try to create a thread without auth; should be rejected
-		req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader([]byte(`{"title":"t1"}`)))
+		req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"title":"t1"}`)))
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)

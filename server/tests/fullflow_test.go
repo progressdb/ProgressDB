@@ -14,13 +14,13 @@ import (
 )
 
 func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+    sp := utils.StartTestServerProcess(t)
+    defer func() { _ = sp.Stop(t) }()
 	user := "e2e"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 	th := map[string]interface{}{"author": user, "title": "e2e-thread"}
 	b, _ := json.Marshal(th)
-	req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(b))
+    req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -36,7 +36,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	tid := out["id"].(string)
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "before-rotate"}, "thread": tid}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+    mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -45,7 +45,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	}
 	rreq := map[string]string{"thread_id": tid}
 	rb, _ := json.Marshal(rreq)
-	areq, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
+    areq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
 	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	ares, err := http.DefaultClient.Do(areq)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 		t.Fatalf("rotate failed: %v", ares.Status)
 	}
 	time.Sleep(100 * time.Millisecond)
-	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+tid+"/messages", nil)
+    lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)

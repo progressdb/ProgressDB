@@ -28,9 +28,9 @@ func logResponseBody(t *testing.T, body io.Reader, context string) {
 }
 
 func TestCreateMessage(t *testing.T) {
-	// Set up test server and user credentials
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+    // Set up test server and user credentials
+    sp := utils.StartTestServerProcess(t)
+    defer func() { _ = sp.Stop(t) }()
 	user := "msg_create"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
@@ -47,7 +47,7 @@ func TestCreateMessage(t *testing.T) {
 	// Create a thread first, then POST the message under that thread
 	thBody := map[string]string{"author": user, "title": "msg-thread"}
 	thb, _ := json.Marshal(thBody)
-	treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(thb))
+    treq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thb))
 	treq.Header.Set("X-User-ID", user)
 	treq.Header.Set("X-User-Signature", sig)
 	treq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -63,7 +63,7 @@ func TestCreateMessage(t *testing.T) {
 	tid := tout["id"].(string)
 
 	// Create POST request to create a message under the thread
-	req, err := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(b))
+    req, err := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(b))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -97,9 +97,9 @@ func TestCreateMessage(t *testing.T) {
 }
 
 func TestListMessages(t *testing.T) {
-	// Set up test server and user credentials
-	srv := utils.SetupServer(t)
-	defer srv.Close()
+    // Set up test server and user credentials
+    sp := utils.StartTestServerProcess(t)
+    defer func() { _ = sp.Stop(t) }()
 	user := "msg_list"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
@@ -109,7 +109,7 @@ func TestListMessages(t *testing.T) {
 	// ensure a thread exists to post into: create thread and use returned id
 	thBody := map[string]string{"author": user, "title": "list-thread"}
 	thb, _ := json.Marshal(thBody)
-	treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(thb))
+    treq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thb))
 	treq.Header.Set("X-User-ID", user)
 	treq.Header.Set("X-User-Signature", sig)
 	treq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -124,7 +124,7 @@ func TestListMessages(t *testing.T) {
 	}
 	thread := tout["id"].(string)
 
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+thread+"/messages", bytes.NewReader(b))
+    creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+thread+"/messages", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -140,7 +140,7 @@ func TestListMessages(t *testing.T) {
 	thread = cout["thread"].(string)
 
 	// List messages in the thread
-	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+thread+"/messages", nil)
+    lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+thread+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
