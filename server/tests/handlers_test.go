@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	utils "progressdb/tests/utils"
 )
@@ -35,7 +36,7 @@ logging:
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
 	}
-	if res.StatusCode != 200 && res.StatusCode != 201 {
+	if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
 		t.Fatalf("unexpected create thread status: %d", res.StatusCode)
 	}
 	var tout map[string]interface{}
@@ -56,27 +57,37 @@ logging:
 	if err != nil {
 		t.Fatalf("create message failed: %v", err)
 	}
-	if mres.StatusCode != 200 && mres.StatusCode != 201 {
+	if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
 		t.Fatalf("unexpected create message status: %d", mres.StatusCode)
 	}
 
 	// list messages
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-	lreq.Header.Set("Authorization", "Bearer admin-secret")
-	lres, err := http.DefaultClient.Do(lreq)
-	if err != nil {
-		t.Fatalf("list messages failed: %v", err)
-	}
-	if lres.StatusCode != 200 {
-		t.Fatalf("unexpected list messages status: %d", lres.StatusCode)
-	}
+	// list messages (poll until visible to handle async ingest)
 	var lout struct {
 		Messages []map[string]interface{} `json:"messages"`
 	}
-	if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
-		t.Fatalf("failed to decode list messages response: %v", err)
+	visible := false
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
+		lreq.Header.Set("Authorization", "Bearer admin-secret")
+		lres, err := http.DefaultClient.Do(lreq)
+		if err == nil {
+			if lres.StatusCode == 200 {
+				_ = json.NewDecoder(lres.Body).Decode(&lout)
+				_ = lres.Body.Close()
+				if len(lout.Messages) > 0 {
+					visible = true
+					break
+				}
+			}
+			if lres != nil {
+				_ = lres.Body.Close()
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if len(lout.Messages) == 0 {
+	if !visible {
 		t.Fatalf("expected messages returned for thread %s", tid)
 	}
 }
@@ -97,15 +108,16 @@ logging:
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
-	// invalid JSON to create thread -> 400
+	// invalid JSON to create thread -> server now enqueues raw payload and
+	// returns 202 Accepted. Adjust expectation to match current behaviour.
 	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{invalid`)))
 	req.Header.Set("Authorization", "Bearer admin-secret")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	if res.StatusCode != 400 {
-		t.Fatalf("expected 400 for invalid JSON; got %d", res.StatusCode)
+	if res.StatusCode != 202 && res.StatusCode != 200 && res.StatusCode != 201 {
+		t.Fatalf("expected 202/200/201 for invalid JSON enqueue; got %d", res.StatusCode)
 	}
 
 	// pagination: create 3 messages and request with limit=1

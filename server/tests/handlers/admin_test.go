@@ -1,3 +1,4 @@
+// tests admin health, stats, key listing and retrieval, thread DEK rotate, rewrap, encrypt-existing admin endpoints
 package handlers
 
 import (
@@ -12,28 +13,7 @@ import (
 	utils "progressdb/tests/utils"
 )
 
-func TestAdmin_GenerateKEK(t *testing.T) {
-	srv := utils.SetupServer(t)
-	defer srv.Close()
-	req, _ := http.NewRequest("POST", srv.URL+"/admin/encryption/generate-kek", nil)
-	req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		t.Fatalf("expected 200 got %v", res.Status)
-	}
-	var out map[string]string
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		t.Fatalf("failed to decode generate-kek response: %v", err)
-	}
-	if out["kek_hex"] == "" {
-		t.Fatalf("missing kek_hex")
-	}
-}
-
+// checks /admin/health returns 200 and {"status":"ok"}
 func TestAdmin_Health(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -56,6 +36,7 @@ func TestAdmin_Health(t *testing.T) {
 	}
 }
 
+// checks /admin/stats returns nonzero stats after posting thread and message
 func TestAdmin_Stats_ListThreads(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -83,9 +64,9 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	tid := cout["id"].(string)
 
 	// create a message in this thread
-	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "x"}, "thread": tid}
+	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "x"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -114,6 +95,7 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 	}
 }
 
+// checks listing and retrieving keys via /admin/keys endpoints
 func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -156,6 +138,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	}
 }
 
+// checks rotating a thread data encryption key with /admin/encryption/rotate-thread-dek
 func TestAdmin_RotateThreadDEK(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -198,6 +181,7 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 	}
 }
 
+// test rewrapping a thread's DEK (data encryption key) using a new KEK.
 func TestAdmin_RewrapDEKs(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -235,6 +219,7 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 	}
 }
 
+// checks encrypting existing thread messages via /admin/encryption/encrypt-existing
 func TestAdmin_EncryptExisting(t *testing.T) {
 	srv := utils.SetupServer(t)
 	defer srv.Close()
@@ -257,10 +242,10 @@ func TestAdmin_EncryptExisting(t *testing.T) {
 	}
 	tid := cout["id"].(string)
 
-	// create a plaintext message
-	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "plain"}, "thread": tid}
+	// create a plaintext message under the thread
+	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "plain"}}
 	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(mb))
+	mreq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)

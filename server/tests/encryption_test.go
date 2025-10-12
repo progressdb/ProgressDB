@@ -72,7 +72,7 @@ logging:
 		t.Fatalf("create message failed: %v", err)
 	}
 	defer mres.Body.Close()
-	if mres.StatusCode != 200 && mres.StatusCode != 201 {
+	if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
 		t.Fatalf("unexpected create message status: %d", mres.StatusCode)
 	}
 
@@ -125,7 +125,7 @@ logging:
 		t.Fatalf("create thread failed: %v", err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != 200 && res.StatusCode != 201 {
+	if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
 		t.Fatalf("unexpected create thread status: %d", res.StatusCode)
 	}
 	var tout map[string]interface{}
@@ -207,7 +207,7 @@ func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
 		t.Fatalf("create message failed: %v", err)
 	}
 	defer mres.Body.Close()
-	if mres.StatusCode != 200 && mres.StatusCode != 201 {
+	if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
 		t.Fatalf("unexpected create message status: %d", mres.StatusCode)
 	}
 

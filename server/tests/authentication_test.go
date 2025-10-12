@@ -22,7 +22,8 @@ func TestAuthentication_Suite(t *testing.T) {
 		srv := utils.SetupServer(t)
 		defer srv.Close()
 
-		req, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader([]byte(`{"body":{}}`)))
+		// try to create a thread without auth; should be rejected
+		req, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader([]byte(`{"title":"t1"}`)))
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -63,7 +64,7 @@ logging:
 		}
 
 		// unauthenticated POST to messages should be rejected (no signature, no api key)
-		req, _ := http.NewRequest("POST", sp.Addr+"/v1/messages", bytes.NewReader([]byte(`{"body":{}}`)))
+		req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"title":"t1"}`)))
 		cre, err := http.DefaultClient.Do(req)
 		t.Logf("POST /v1/messages response: %+v", cre)
 		if err != nil {
@@ -150,13 +151,13 @@ logging:
 		}
 
 		// backend can create messages by supplying author in body
-		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/messages", bytes.NewReader([]byte(`{"author":"bob","body":{}}`)))
+		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"author":"bob","title":"t-bob"}`)))
 		mreq.Header.Set("Authorization", "Bearer backend-secret")
 		mres, err := http.DefaultClient.Do(mreq)
 		if err != nil {
 			t.Fatalf("create message failed: %v", err)
 		}
-		if mres.StatusCode != 200 && mres.StatusCode != 201 {
+		if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
 			t.Fatalf("expected backend to create message; status=%d", mres.StatusCode)
 		}
 
@@ -214,13 +215,13 @@ logging:
 		}
 
 		// admin can create messages by providing author
-		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/messages", bytes.NewReader([]byte(`{"author":"admin","body":{}}`)))
+		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"author":"admin","title":"t-admin"}`)))
 		mreq.Header.Set("Authorization", "Bearer admin-secret")
 		mres, err := http.DefaultClient.Do(mreq)
 		if err != nil {
 			t.Fatalf("create message failed: %v", err)
 		}
-		if mres.StatusCode != 200 && mres.StatusCode != 201 {
+		if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
 			t.Fatalf("expected admin to create message; status=%d", mres.StatusCode)
 		}
 	})

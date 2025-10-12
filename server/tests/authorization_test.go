@@ -208,7 +208,7 @@ logging:
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)
 		}
-		if cres.StatusCode != 200 && cres.StatusCode != 201 {
+		if cres.StatusCode != 200 && cres.StatusCode != 201 && cres.StatusCode != 202 {
 			t.Fatalf("unexpected create thread status: %d", cres.StatusCode)
 		}
 		defer cres.Body.Close()

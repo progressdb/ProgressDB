@@ -140,9 +140,9 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 			disable = *aCfg.Ingest.Queue.WAL.DisablePebbleWAL
 		}
 	}
-    if err := store.Open(state.PathsVar.Store, disable, appWALEnabled); err != nil {
-        return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
-    }
+	if err := store.Open(state.PathsVar.Store, disable, appWALEnabled); err != nil {
+		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
+	}
 
 	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}
 	return a, nil

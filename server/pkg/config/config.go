@@ -157,14 +157,14 @@ func (c *Config) ValidateConfig() error {
 		wc.CompressMinBytes = defaultCompressMinBytes
 	}
 
-    // Default for Pebble WAL disablement: the application-level WAL is the
-    // canonical durability mechanism. If the YAML did not explicitly set the
-    // `disable_pebble_wal` field, default to true to preserve historical
-    // behaviour.
-    if wc.DisablePebbleWAL == nil {
-        def := true
-        wc.DisablePebbleWAL = &def
-    }
+	// Default for Pebble WAL disablement: the application-level WAL is the
+	// canonical durability mechanism. If the YAML did not explicitly set the
+	// `disable_pebble_wal` field, default to true to preserve historical
+	// behaviour.
+	if wc.DisablePebbleWAL == nil {
+		def := true
+		wc.DisablePebbleWAL = &def
+	}
 
 	// Normalize mode
 	switch wc.Mode {

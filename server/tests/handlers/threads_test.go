@@ -27,8 +27,8 @@ func TestCreateThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	if res.StatusCode != 200 {
-		t.Fatalf("expected 200 got %v", res.Status)
+	if res.StatusCode != 200 && res.StatusCode != 202 {
+		t.Fatalf("expected 200 or 202 got %v", res.Status)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestCreateThreadMessage(t *testing.T) {
 		t.Fatalf("create thread message failed: %v", err)
 	}
 	defer mres.Body.Close()
-	if mres.StatusCode != 200 {
+	if mres.StatusCode != 200 && mres.StatusCode != 202 {
 		t.Fatalf("create thread message failed: %v", mres.Status)
 	}
 }

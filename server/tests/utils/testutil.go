@@ -16,6 +16,7 @@ import (
 	"progressdb/pkg/api"
 	"progressdb/pkg/auth"
 	"progressdb/pkg/config"
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store"
@@ -58,11 +59,11 @@ func SetupServer(t *testing.T) *LocalServer {
 	_ = os.MkdirAll(storePath, 0o700)
 
 	logger.Init()
-    // Tests run with Pebble WAL disabled by default; the application WAL
-    // is not active in these in-process tests so pass appWALEnabled=false.
-    if err := store.Open(storePath, true, false); err != nil {
-        t.Fatalf("store.Open failed: %v", err)
-    }
+	// Tests run with Pebble WAL disabled by default; the application WAL
+	// is not active in these in-process tests so pass appWALEnabled=false.
+	if err := store.Open(storePath, true, false); err != nil {
+		t.Fatalf("store.Open failed: %v", err)
+	}
 
 	mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	prov, err := kms.NewHashicorpEmbeddedProvider(context.Background(), mk)
@@ -80,6 +81,13 @@ func SetupServer(t *testing.T) *LocalServer {
 		SigningKeys: map[string]struct{}{SigningSecret: {}},
 	}
 	config.SetRuntime(cfg)
+
+	// ensure an in-memory default queue exists for in-process tests so handlers
+	// that enqueue operations do not panic when TryEnqueue is called. Use a
+	// reasonably large default capacity to avoid spurious drops in tests.
+	// The queue package is intentionally lightweight and this mirrors the
+	// behaviour performed during full App startup.
+	queue.SetDefaultQueue(queue.NewQueue(65536))
 
 	secCfg := auth.SecConfig{
 		BackendKeys:  map[string]struct{}{BackendAPIKey: {}},

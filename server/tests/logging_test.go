@@ -54,7 +54,8 @@ security:
     frontend: []
     admin: []
 logging:
-  level: info
+  # leave empty so PROGRESSDB_LOG_LEVEL env can control runtime level
+  level: ""
 `
 		// write logs to file and set debug level
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg, Env: map[string]string{"PROGRESSDB_LOG_SINK": "file:{{WORKDIR}}/app.log", "PROGRESSDB_LOG_LEVEL": "debug"}})

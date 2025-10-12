@@ -44,8 +44,26 @@ func TestCreateMessage(t *testing.T) {
 	}
 	t.Logf("TestCreateMessage: payload=%s", string(b))
 
-	// Create POST request to create a message
-	req, err := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+	// Create a thread first, then POST the message under that thread
+	thBody := map[string]string{"author": user, "title": "msg-thread"}
+	thb, _ := json.Marshal(thBody)
+	treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(thb))
+	treq.Header.Set("X-User-ID", user)
+	treq.Header.Set("X-User-Signature", sig)
+	treq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	tres, err := http.DefaultClient.Do(treq)
+	if err != nil {
+		t.Fatalf("create thread failed: %v", err)
+	}
+	defer tres.Body.Close()
+	var tout map[string]interface{}
+	if err := json.NewDecoder(tres.Body).Decode(&tout); err != nil {
+		t.Fatalf("failed to decode create thread response: %v", err)
+	}
+	tid := tout["id"].(string)
+
+	// Create POST request to create a message under the thread
+	req, err := http.NewRequest("POST", srv.URL+"/v1/threads/"+tid+"/messages", bytes.NewReader(b))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -61,7 +79,7 @@ func TestCreateMessage(t *testing.T) {
 	}
 	defer res.Body.Close()
 	t.Logf("TestCreateMessage: response status=%v", res.Status)
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 && res.StatusCode != 202 {
 		t.Logf("TestCreateMessage: error response status=%v", res.Status)
 		logResponseBody(t, res.Body, "TestCreateMessage error")
 		t.Fatalf("expected 200 got %v", res.Status)
@@ -88,7 +106,25 @@ func TestListMessages(t *testing.T) {
 	// Create a message to ensure there is something to list
 	payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "listme"}}
 	b, _ := json.Marshal(payload)
-	creq, _ := http.NewRequest("POST", srv.URL+"/v1/messages", bytes.NewReader(b))
+	// ensure a thread exists to post into: create thread and use returned id
+	thBody := map[string]string{"author": user, "title": "list-thread"}
+	thb, _ := json.Marshal(thBody)
+	treq, _ := http.NewRequest("POST", srv.URL+"/v1/threads", bytes.NewReader(thb))
+	treq.Header.Set("X-User-ID", user)
+	treq.Header.Set("X-User-Signature", sig)
+	treq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	tres, err := http.DefaultClient.Do(treq)
+	if err != nil {
+		t.Fatalf("create thread failed: %v", err)
+	}
+	defer tres.Body.Close()
+	var tout map[string]interface{}
+	if err := json.NewDecoder(tres.Body).Decode(&tout); err != nil {
+		t.Fatalf("failed to decode create thread response: %v", err)
+	}
+	thread := tout["id"].(string)
+
+	creq, _ := http.NewRequest("POST", srv.URL+"/v1/threads/"+thread+"/messages", bytes.NewReader(b))
 	creq.Header.Set("X-User-ID", user)
 	creq.Header.Set("X-User-Signature", sig)
 	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
@@ -101,10 +137,10 @@ func TestListMessages(t *testing.T) {
 	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
 		t.Fatalf("failed to decode create message response: %v", err)
 	}
-	thread := cout["thread"].(string)
+	thread = cout["thread"].(string)
 
 	// List messages in the thread
-	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/messages?thread="+thread, nil)
+	lreq, _ := http.NewRequest("GET", srv.URL+"/v1/threads/"+thread+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)

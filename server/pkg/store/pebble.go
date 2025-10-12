@@ -18,8 +18,9 @@ import (
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
-	"github.com/cockroachdb/pebble"
 	"sync/atomic"
+
+	"github.com/cockroachdb/pebble"
 )
 
 var db *pebble.DB
@@ -27,17 +28,15 @@ var dbPath string
 var pendingWrites uint64
 var walDisabled bool
 
-// seq provides a small counter to reduce key collisions when multiple
-// messages share the same nanosecond timestamp.
+// small counter to avoid key collisions on nanosecond timestamp
 var seq uint64
 
 var (
-	// per-thread locks to avoid concurrent RMW races in a single process
 	threadLocks = make(map[string]*sync.Mutex)
 	locksMu     sync.Mutex
 )
 
-// getThreadLock returns a mutex for a thread, creating it if necessary.
+// returns mutex for given thread (creates if needed)
 func getThreadLock(threadID string) *sync.Mutex {
 	locksMu.Lock()
 	defer locksMu.Unlock()
@@ -49,8 +48,7 @@ func getThreadLock(threadID string) *sync.Mutex {
 	return l
 }
 
-// computeMaxSeq scans existing message keys for a thread and returns the
-// highest sequence suffix observed. If no messages exist it returns 0.
+// scans messages for thread and returns largest sequence number
 func computeMaxSeq(threadID string) (uint64, error) {
 	mp, merr := MsgPrefix(threadID)
 	if merr != nil {
@@ -68,10 +66,8 @@ func computeMaxSeq(threadID string) (uint64, error) {
 			break
 		}
 		k := string(iter.Key())
-		// parse using canonical parser
 		_, _, s, perr := ParseMsgKey(k)
 		if perr != nil {
-			// skip keys that don't parse
 			continue
 		}
 		if s > max {
@@ -81,46 +77,33 @@ func computeMaxSeq(threadID string) (uint64, error) {
 	return max, iter.Error()
 }
 
-// MaxSeqForThread is an exported wrapper that returns the highest sequence
-// suffix observed for messages in a thread. It is intended for migration
-// and admin tooling.
+// wrapper for computeMaxSeq (for migrations/admin)
 func MaxSeqForThread(threadID string) (uint64, error) {
 	return computeMaxSeq(threadID)
 }
 
-// Open opens (or creates) a Pebble database at the given path and keeps
-// a global handle for simple usage in this package. The `disablePebbleWAL`
-// parameter controls the underlying Pebble `DisableWAL` option. When true,
-// Pebble will not fsync the WAL and durability must be provided by the
-// application-level WAL. The `appWALEnabled` parameter indicates whether
-// the application-level WAL is active; we only emit a warning about a
-// disabled Pebble WAL when the app WAL is also disabled so we don't spam
-// logs for legitimate durable configurations.
+// opens/creates pebble DB with WAL settings
 func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
-    var err error
-    opts := &pebble.Options{
-        DisableWAL: disablePebbleWAL,
-    }
-    walDisabled = opts.DisableWAL
+	var err error
+	opts := &pebble.Options{
+		DisableWAL: disablePebbleWAL,
+	}
+	walDisabled = opts.DisableWAL
 
-    // Only warn about Pebble WAL being disabled if the app-level WAL is
-    // not providing durability. If the application WAL is enabled, that
-    // is the intended durability mechanism and we avoid noisy warnings.
-    if walDisabled && !appWALEnabled {
-        logger.Warn("pebble_wal_disabled", "note", "Pebble WAL is disabled; ensure the application-level WAL is providing durability")
-    }
+	if walDisabled && !appWALEnabled {
+		logger.Warn("durability_disabled", "durability", "no WAL enabled")
+	}
 
-    db, err = pebble.Open(path, opts)
-    if err != nil {
-        logger.Error("pebble_open_failed", "path", path, "error", err)
-        return err
-    }
-	// remember path for best-effort metrics
+	db, err = pebble.Open(path, opts)
+	if err != nil {
+		logger.Error("pebble_open_failed", "path", path, "error", err)
+		return err
+	}
 	dbPath = path
 	return nil
 }
 
-// Close closes the opened pebble DB if present.
+// closes opened pebble DB
 func Close() error {
 	if db == nil {
 		return nil
@@ -132,9 +115,7 @@ func Close() error {
 	return nil
 }
 
-// ApplyBatch applies a prepared pebble.Batch to the DB. If sync is true
-// the write will be performed with a sync to disk; otherwise it's applied
-// without forcing an fsync (group commit strategy can be used externally).
+// applies batch; sync forces fsync if true, else async write
 func ApplyBatch(batch *pebble.Batch, sync bool) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -145,13 +126,12 @@ func ApplyBatch(batch *pebble.Batch, sync bool) error {
 		logger.Error("pebble_apply_batch_failed", "error", err)
 	}
 	if err == nil {
-		// record that we wrote some data (used by flusher)
 		atomic.AddUint64(&pendingWrites, 1)
 	}
 	return err
 }
 
-// RecordWrite increments pending write counter by n (best-effort)
+// increments pending write counter by n
 func RecordWrite(n int) {
 	if n <= 0 {
 		return
@@ -159,29 +139,25 @@ func RecordWrite(n int) {
 	atomic.AddUint64(&pendingWrites, uint64(n))
 }
 
-// GetPendingWrites returns an approximate number of pending writes since last sync.
+// returns count of pending writes since last sync
 func GetPendingWrites() uint64 {
 	return atomic.LoadUint64(&pendingWrites)
 }
 
-// ResetPendingWrites resets the pending write counter to zero.
+// resets pending write counter
 func ResetPendingWrites() {
 	atomic.StoreUint64(&pendingWrites, 0)
 }
 
-// ForceSync writes a tiny marker entry and forces a WAL fsync via pebble.Sync.
-// This is a pragmatic group-commit helper.
+// writes marker key, forces WAL fsync unless disabled (group-commit)
 func ForceSync() error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// If WAL is disabled the application manages durability externally and
-	// ForceSync should be a no-op.
 	if walDisabled {
 		logger.Debug("pebble_force_sync_noop_wal_disabled")
 		return nil
 	}
-	// overwrite a single sync marker key to avoid growth
 	key := []byte("__progressdb_wal_sync_marker__")
 	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
 	if err := db.Set(key, val, writeOpt(true)); err != nil {
@@ -191,9 +167,7 @@ func ForceSync() error {
 	return nil
 }
 
-// writeOpt returns the Pebble WriteOptions to use for a requested sync.
-// When WAL is disabled we always return NoSync even if the caller requests
-// a sync; the external WAL is expected to handle durability.
+// chooses sync/no-sync WriteOptions, always disables sync if WAL disabled
 func writeOpt(requestSync bool) *pebble.WriteOptions {
 	if requestSync && !walDisabled {
 		return pebble.Sync
@@ -201,40 +175,31 @@ func writeOpt(requestSync bool) *pebble.WriteOptions {
 	return pebble.NoSync
 }
 
-// Ready reports whether the store is opened and ready.
+// returns true if DB is opened
 func Ready() bool {
 	return db != nil
 }
 
-// SaveMessage appends a message to a thread by inserting a new key with
-// a sortable timestamp prefix. Messages are ordered by insertion time.
-// SaveMessage appends a message to a thread and indexes it by message ID
-// so messages can be looked up and versioned by ID. If msgID is empty,
-// only the thread entry is written.
+// saves message; inserts new key for thread, indexes by ID; assigns ID if missing
 func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// Key format: thread:<threadID>:msg:<unix_nano_padded>-<seq>
 
-	// ensure msgID reflects the message's id when caller omitted it
 	if msgID == "" && msg.ID != "" {
 		msgID = msg.ID
 	}
-	// If neither caller-provided msgID nor message.ID is present, generate
-	// a server-side ID so we always index message versions consistently.
 	if msgID == "" && msg.ID == "" {
 		msg.ID = utils.GenID()
 		msgID = msg.ID
 	}
 
-	// Prepare data for storage (possibly encrypted)
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// if encryption is enabled, encrypt the message body or fields according to the policy
+	// handle encryption if enabled
 	if security.EncryptionEnabled() {
 		getThreadSpan := telemetry.StartSpanNoCtx("store.get_thread")
 		sthr, terr := GetThread(threadID)
@@ -252,7 +217,6 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		if err != nil {
 			return fmt.Errorf("encryption failed: %w", err)
 		}
-		// If EncryptMessageBody returns a new body, update msg.Body and marshal
 		if encBody != nil {
 			msg.Body = encBody
 			nb, err := json.Marshal(msg)
@@ -263,20 +227,16 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 	}
 
-	// Before persisting, obtain and bump the per-thread LastSeq so we can
-	// persist a durable per-thread sequence suffix. Guard with an in-process
-	// lock so concurrent writers in this process don't collide.
+	// update thread sequence, lock for this thread
 	lock := getThreadLock(threadID)
 	lock.Lock()
 	defer lock.Unlock()
 
-	// load thread metadata to obtain LastSeq
 	var th models.Thread
 	sthr2, terr2 := GetThread(threadID)
 	if terr2 == nil {
 		_ = json.Unmarshal([]byte(sthr2), &th)
 	}
-	// If LastSeq is zero, attempt to compute a starting value from existing keys
 	if th.LastSeq == 0 {
 		compSpan := telemetry.StartSpanNoCtx("store.compute_max_seq")
 		if max, err := computeMaxSeq(threadID); err == nil {
@@ -284,8 +244,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 		compSpan()
 	}
-	// bump per-thread seq
-	th.LastSeq = th.LastSeq + 1
+	th.LastSeq++
 
 	ts := time.Now().UTC().UnixNano()
 	s := th.LastSeq
@@ -295,7 +254,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	}
 	key := k
 
-	// persist updated thread meta and message atomically using a write batch.
+	// save updated thread meta and message atomically in batch
 	th.UpdatedTS = time.Now().UTC().UnixNano()
 	nb, err := json.Marshal(th)
 	if err != nil {
@@ -327,12 +286,11 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	return nil
 }
 
-// ListMessages returns all messages for a thread in insertion order.
+// lists all messages for thread, ordered by insertion
 func ListMessages(threadID string, limit ...int) ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// build prefix for thread messages
 	mp, merr := MsgPrefix(threadID)
 	if merr != nil {
 		return nil, merr
@@ -344,7 +302,6 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 	}
 	defer iter.Close()
 	var out []string
-	// preload thread key id if encryption is enabled
 	var threadKeyID string
 	if security.EncryptionEnabled() {
 		if s, e := GetThread(threadID); e == nil {
@@ -356,19 +313,15 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 			}
 		}
 	}
-	// set max limit if provided
 	max := -1
 	if len(limit) > 0 {
 		max = limit[0]
 	}
-	// iterate over all messages with the prefix
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-		// copy value
 		v := append([]byte(nil), iter.Value()...)
-		// decrypt if needed
 		if security.EncryptionEnabled() {
 			logger.Debug("encryption_enabled_listmessages", "threadID", threadID, "threadKeyID", threadKeyID)
 			if security.EncryptionHasFieldPolicy() {
@@ -400,10 +353,6 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 					logger.Error("encryption_no_thread_key", "threadID", threadID)
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message")
 				}
-				// The stored value may be a JSON message where only the body is
-				// encrypted (body -> {"_enc":"gcm","v":"<base64>"}). Try to
-				// unmarshal and delegate to the canonical decrypt helper. If that
-				// fails (legacy/raw ciphertext), fall back to direct KMS decrypt.
 				var m models.Message
 				if err := json.Unmarshal(v, &m); err == nil {
 					b, derr := security.DecryptMessageBody(&m, threadKeyID)
@@ -431,85 +380,53 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 				}
 			}
 		}
-		// append to output
 		out = append(out, string(v))
-		// check limit
 		if max > 0 && len(out) >= max {
 			break
 		}
 	}
-	// return all messages or error
 	return out, iter.Error()
 }
 
-// ListMessageVersions returns all stored versions for a given message ID in
-// chronological order.
+// returns all versions for a given message in order
 func ListMessageVersions(msgID string) ([]string, error) {
-	// check if db is open
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-
-	// build prefix for message versions
 	prefix := []byte("version:msg:" + msgID + ":")
-
-	// create iterator for pebble
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Close()
-
 	var out []string
 	var threadKeyID string
 	var threadChecked bool
-
-	// iterate over all keys with the prefix
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
-		// stop if key does not match prefix
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break
 		}
-
-		// copy value bytes
 		v := append([]byte(nil), iter.Value()...)
-
-		// if encryption is enabled and we haven't checked thread key yet
 		if security.EncryptionEnabled() && !threadChecked {
 			threadChecked = true
-			// try to get thread id from message json
-			var msg struct {
-				Thread string `json:"thread"`
-			}
+			var msg struct{ Thread string `json:"thread"` }
 			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
-				// get thread metadata
 				sthr, terr := GetThread(msg.Thread)
 				if terr == nil {
-					// extract key id from thread metadata
-					var th struct {
-						KMS struct {
-							KeyID string `json:"key_id"`
-						} `json:"kms"`
-					}
+					var th struct{ KMS struct{ KeyID string `json:"key_id"` } `json:"kms"` }
 					if json.Unmarshal([]byte(sthr), &th) == nil {
 						threadKeyID = th.KMS.KeyID
 					}
 				}
 			} else {
-				// cannot determine thread for this message version
 				return nil, fmt.Errorf("cannot determine thread for message version")
 			}
 		}
-
-		// if encryption is enabled, decrypt the value
 		if security.EncryptionEnabled() {
-			// field-level encryption policy
 			if security.EncryptionHasFieldPolicy() {
-				// must have thread key id
 				if threadKeyID == "" {
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
 				}
-				// unmarshal message and decrypt body
 				var mm models.Message
 				if err := json.Unmarshal(v, &mm); err != nil {
 					return nil, fmt.Errorf("invalid message JSON: %w", err)
@@ -525,14 +442,9 @@ func ListMessageVersions(msgID string) ([]string, error) {
 				}
 				v = nb
 			} else {
-				// full-value encryption
 				if threadKeyID == "" {
 					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
 				}
-				// Attempt to unmarshal the stored value into a Message and
-				// delegate to the canonical decrypt helper; this handles the
-				// common case where only the body is embedded as
-				// {"_enc":"gcm","v":"<base64>"}.
 				var mm models.Message
 				if err := json.Unmarshal(v, &mm); err == nil {
 					b, derr := security.DecryptMessageBody(&mm, threadKeyID)
@@ -550,23 +462,17 @@ func ListMessageVersions(msgID string) ([]string, error) {
 					if err != nil {
 						return nil, fmt.Errorf("decrypt failed: %w", err)
 					}
-					// log decrypted length for debugging
 					logger.Debug("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_len", len(dec))
 					v = dec
 				}
 			}
 		}
-
-		// append the (possibly decrypted) value to output
 		out = append(out, string(v))
 	}
-
-	// return all versions or error from iterator
 	return out, iter.Error()
 }
 
-// GetLatestMessage returns the latest version for a message ID or an error
-// if none found.
+// returns latest version for message, error if not found
 func GetLatestMessage(msgID string) (string, error) {
 	vers, err := ListMessageVersions(msgID)
 	if err != nil {
@@ -578,7 +484,7 @@ func GetLatestMessage(msgID string) (string, error) {
 	return vers[len(vers)-1], nil
 }
 
-// SaveThread stores simple thread metadata under a reserved key.
+// saves thread metadata as JSON
 func SaveThread(threadID, data string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -595,7 +501,7 @@ func SaveThread(threadID, data string) error {
 	return nil
 }
 
-// GetThread returns the stored thread metadata JSON for a given thread ID.
+// gets thread metadata JSON for id
 func GetThread(threadID string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
@@ -614,7 +520,7 @@ func GetThread(threadID string) (string, error) {
 	return string(v), nil
 }
 
-// DeleteThread deletes the thread metadata for a given thread ID.
+// deletes thread metadata
 func DeleteThread(threadID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -631,7 +537,7 @@ func DeleteThread(threadID string) error {
 	return nil
 }
 
-// SoftDeleteThread marks the thread as deleted and appends a tombstone message.
+// marks thread as deleted and adds a tombstone message
 func SoftDeleteThread(threadID, actor string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -661,8 +567,6 @@ func SoftDeleteThread(threadID, actor string) error {
 		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}
-
-	// append tombstone message to the thread
 	tomb := models.Message{
 		ID:      utils.GenID(),
 		Thread:  threadID,
@@ -671,17 +575,16 @@ func SoftDeleteThread(threadID, actor string) error {
 		Body:    map[string]interface{}{"_event": "thread_deleted", "by": actor},
 		Deleted: true,
 	}
-	// SaveMessage expects a context, pass background here (internal path)
+	// use background context
 	if err := SaveMessage(context.Background(), threadID, tomb.ID, tomb); err != nil {
 		logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
 		return err
 	}
-
 	logger.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil
 }
 
-// ListThreads returns all saved thread metadata values.
+// lists all saved thread metadata as JSON
 func ListThreads() ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
@@ -706,8 +609,7 @@ func ListThreads() ([]string, error) {
 	return out, iter.Error()
 }
 
-// ListKeys returns all keys (as strings) that start with the given prefix.
-// If prefix is empty it returns all keys in the DB.
+// lists all keys as strings for prefix; returns all if prefix empty
 func ListKeys(prefix string) ([]string, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
@@ -741,16 +643,13 @@ func ListKeys(prefix string) ([]string, error) {
 	return out, iter.Error()
 }
 
-// GetKey returns the raw value for the given key.
+// returns raw value for key as string
 func GetKey(key string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	v, closer, err := db.Get([]byte(key))
 	if err != nil {
-		// Avoid noisy ERROR-level logs for missing keys; callers can decide
-		// how to handle NotFound. Log at Debug level for missing keys so
-		// normal absent-key flows (e.g. first-run/version key) are quiet.
 		if errors.Is(err, pebble.ErrNotFound) {
 			logger.Debug("get_key_missing", "key", key)
 		} else {
@@ -765,15 +664,12 @@ func GetKey(key string) (string, error) {
 	return string(v), nil
 }
 
-// IsNotFound reports whether the provided error originates from Pebble's
-// not-found sentinel. Callers can use this to handle missing keys without
-// relying on string matching.
+// returns true if error is pebble.ErrNotFound
 func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
-// SaveKey stores an arbitrary key/value pair. Use with caution; callers should
-// choose a safe namespace (e.g. "kms:dek:").
+// stores arbitrary key/value (namespace caution: e.g. "kms:dek:")
 func SaveKey(key string, value []byte) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -786,8 +682,7 @@ func SaveKey(key string, value []byte) error {
 	return nil
 }
 
-// DBIter returns a raw Pebble iterator for low-level operations. Caller must
-// close the iterator when done.
+// returns iterator, caller must close
 func DBIter() (*pebble.Iterator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
@@ -795,8 +690,7 @@ func DBIter() (*pebble.Iterator, error) {
 	return db.NewIter(&pebble.IterOptions{})
 }
 
-// DBSet writes a raw key (bytes) into the DB. This is a low-level helper used
-// by admin utilities.
+// writes key (bytes) as is, for admin use
 func DBSet(key, value []byte) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -804,7 +698,7 @@ func DBSet(key, value []byte) error {
 	return db.Set(key, value, writeOpt(true))
 }
 
-// DeleteKey removes the given key from the DB.
+// removes key
 func DeleteKey(key string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
@@ -817,15 +711,11 @@ func DeleteKey(key string) error {
 	return nil
 }
 
-// RotateThreadDEK migrates all messages in a thread from the old DEK to a
-// new DEK identified by newKeyID. It backs up original values under keys
-// prefixed with `backup:migrate:` before overwriting. On success it updates
-// the thread->key mapping to the new key.
+// migrates all thread messages to new DEK; backs up old data before overwriting
 func RotateThreadDEK(threadID, newKeyID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// read existing thread metadata for oldKeyID
 	oldKeyID := ""
 	if s, err := GetThread(threadID); err == nil {
 		var th models.Thread
@@ -855,33 +745,22 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		}
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
-		// decrypt with old DEK. The stored value may be either raw
-		// ciphertext (legacy) or a JSON-encoded message with an embedded
-		// encrypted body. Handle both cases.
 		if likelyJSON(v) {
-			// try to unmarshal into a message and decrypt the embedded body
 			var mm models.Message
 			if err := json.Unmarshal(v, &mm); err == nil {
-				// decrypt the message body using the canonical helper
 				decBody, derr := security.DecryptMessageBody(&mm, oldKeyID)
 				if derr != nil {
 					return fmt.Errorf("decrypt message failed: %w", derr)
 				}
-				// marshal the decrypted body to obtain plaintext bytes
 				pt, merr := json.Marshal(decBody)
 				if merr != nil {
 					return fmt.Errorf("marshal plaintext failed: %w", merr)
 				}
-				// encrypt plaintext with new DEK
 				ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
-				// zeroize plaintext
-				for i := range pt {
-					pt[i] = 0
-				}
+				for i := range pt { pt[i] = 0 }
 				if eerr != nil {
 					return fmt.Errorf("encrypt with new key failed: %w", eerr)
 				}
-				// replace embedded body with new ciphertext (base64)
 				mm.Body = map[string]interface{}{"_enc": "gcm", "v": base64.StdEncoding.EncodeToString(ct)}
 				nb, merr := json.Marshal(mm)
 				if merr != nil {
@@ -896,34 +775,24 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 				}
 				continue
 			}
-			// fallthrough to raw-case if unmarshal failed
 		}
-
-		// raw ciphertext path (legacy)
 		pt, derr := kms.DecryptWithDEK(oldKeyID, v, nil)
 		if derr != nil {
 			return fmt.Errorf("decrypt message failed: %w", derr)
 		}
-		// encrypt with new DEK
 		ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
-		// zeroize plaintext
-		for i := range pt {
-			pt[i] = 0
-		}
+		for i := range pt { pt[i] = 0 }
 		if eerr != nil {
 			return fmt.Errorf("encrypt with new key failed: %w", eerr)
 		}
-		// backup original value
 		backupKey := append([]byte("backup:migrate:"), k...)
 		if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
 			return fmt.Errorf("backup failed: %w", err)
 		}
-		// overwrite with new ciphertext
 		if err := db.Set(k, ct, writeOpt(true)); err != nil {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
-	// update mapping: persist into thread metadata key so readers use canonical location
 	if s, terr := GetThread(threadID); terr == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
@@ -941,11 +810,7 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	return iter.Error()
 }
 
-// likelyJSON is a helper function that heuristically determines if a byte slice
-// probably contains a JSON object or array. It does this by skipping any leading
-// whitespace and checking if the first non-whitespace character is '{' (indicating
-// a JSON object) or '[' (indicating a JSON array). This is useful for quickly
-// guessing whether a value is JSON-encoded without fully parsing it.
+// true if likely contains JSON object/array based on first non-whitespace
 func likelyJSON(b []byte) bool {
 	for _, c := range b {
 		if c == ' ' || c == '\n' || c == '\r' || c == '\t' {
@@ -956,16 +821,14 @@ func likelyJSON(b []byte) bool {
 	return false
 }
 
-// LikelyJSON is an exported version of likelyJSON, allowing other packages to
-// check if a byte slice likely contains JSON data.
+// exported version of likelyJSON
 func LikelyJSON(b []byte) bool { return likelyJSON(b) }
 
-// PurgeThreadPermanently deletes a thread and all messages/versions under it.
+// deletes thread and all messages/versions; removes in batches
 func PurgeThreadPermanently(threadID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// prefix for thread keys
 	tp, terr := ThreadPrefix(threadID)
 	if terr != nil {
 		return terr
@@ -976,7 +839,6 @@ func PurgeThreadPermanently(threadID string) error {
 		return err
 	}
 	defer iter.Close()
-	// Delete keys in batches while iterating to bound memory usage.
 	const deleteBatchSize = 1000
 	var batch [][]byte
 	deleteBatch := func(keys [][]byte) {
@@ -993,11 +855,9 @@ func PurgeThreadPermanently(threadID string) error {
 		}
 		k := append([]byte(nil), iter.Key()...)
 		batch = append(batch, k)
-		// try to unmarshal message to also delete versions index
 		v := append([]byte(nil), iter.Value()...)
 		var m models.Message
 		if err := json.Unmarshal(v, &m); err == nil && m.ID != "" {
-			// delete version index keys for this message id
 			vprefix := []byte("version:msg:" + m.ID + ":")
 			vi, _ := db.NewIter(&pebble.IterOptions{})
 			if vi != nil {
@@ -1023,19 +883,16 @@ func PurgeThreadPermanently(threadID string) error {
 	if len(batch) > 0 {
 		deleteBatch(batch)
 	}
-	// delete thread meta explicitly
 	_ = DeleteThread(threadID)
-	// deleted_keys unknown with streaming deletes
 	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", 0)
 	return nil
 }
 
-// PurgeMessagePermanently deletes a single message and its version indexes.
+// deletes message and all version keys
 func PurgeMessagePermanently(messageID string) error {
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	// delete version keys
 	vprefix := []byte("version:msg:" + messageID + ":")
 	vi, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
