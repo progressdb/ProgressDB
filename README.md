@@ -182,7 +182,8 @@ Planned / In progress:
 - [ ] Performance benchmarking & SLO/alerts
 - [ ] Backups & tested restores
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
-- [ ] API versioning, scaling and search
+- [ ] Search experience - (api)
 - [ ] Realibility systems - WAL buffer etc
+- [ ] Scaling systems — shar, part, clus, repl
 
 [![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)
