@@ -53,13 +53,8 @@ func TestConfigs_Suite(t *testing.T) {
 		tmp := utils.NewArtifactsDir(t, "configs-malformed-global")
 		bin := filepath.Join(tmp, "progressdb-bin")
 		// try building from the server dir first, then fall back to building from repo root
-		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
-		build.Env = os.Environ()
-		// run build from the `server` directory (tests execute from server/tests)
-		build.Dir = ".."
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build failed: %v\n%s", err, string(out))
-		}
+		// build binary using test helper to locate repo root reliably
+		utils.BuildProgressdb(t, bin)
 
 		cfgPath := filepath.Join(tmp, "bad.yaml")
 		_ = os.WriteFile(cfgPath, []byte("server: [::"), 0o600)
@@ -152,13 +147,8 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	tmp := utils.NewArtifactsDir(t, "configs-e2e-malformed")
 	bin := filepath.Join(tmp, "progressdb-bin")
 	// try building from the server dir first, then fall back to building from repo root
-	build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
-	build.Env = os.Environ()
-	// run build from the `server` directory (tests execute from server/tests)
-	build.Dir = ".."
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %v\n%s", err, string(out))
-	}
+	// build binary using test helper to locate repo root reliably
+	utils.BuildProgressdb(t, bin)
 
 	// write malformed config
 	cfgPath := filepath.Join(tmp, "bad.yaml")

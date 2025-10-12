@@ -102,13 +102,8 @@ logging:
 		// build binary
 		bin := filepath.Join(tmp, "progressdb-bin")
 		// try building from the server dir first, then fall back to building from repo root
-		build := exec.Command("go", "build", "-o", bin, "./cmd/progressdb")
-		build.Env = os.Environ()
-		// run build from the `server` directory (tests execute from server/tests)
-		build.Dir = ".."
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build failed: %v\n%s", err, string(out))
-		}
+		// build binary using test helper to locate repo root reliably
+		utils.BuildProgressdb(t, bin)
 
 		// create minimal config
 		cfg := filepath.Join(tmp, "cfg.yaml")

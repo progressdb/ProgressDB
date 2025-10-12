@@ -40,6 +40,92 @@ type ServerProcess struct {
 	exitCh     chan error
 }
 
+// copyFile copies src to dst (overwrites dst if exists).
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+// buildProgressdbBin attempts to build the progressdb binary into outPath.
+// It tries a few candidate directories: the module root (via 'go env GOMOD')
+// and a couple of sensible relatives to support running tests from different
+// working directories.
+func buildProgressdbBin(outPath string) error {
+	// try to detect module root
+	gomodCmd := exec.Command("go", "env", "GOMOD")
+	gomodCmd.Env = os.Environ()
+	if b, err := gomodCmd.Output(); err == nil {
+		gomod := strings.TrimSpace(string(b))
+		if gomod != "" && gomod != "/dev/null" {
+			modRoot := filepath.Dir(gomod)
+			pkgPath := filepath.Join(modRoot, "cmd", "progressdb")
+			if fi, err := os.Stat(pkgPath); err == nil && fi.IsDir() {
+				build := exec.Command("go", "build", "-o", outPath, "./cmd/progressdb")
+				build.Env = os.Environ()
+				build.Dir = modRoot
+				if bout, err := build.CombinedOutput(); err != nil {
+					return fmt.Errorf("build from module root failed: %v\n%s", err, string(bout))
+				}
+				return nil
+			}
+		}
+	}
+
+	// fallback candidates relative to current working dir
+	cwd, _ := os.Getwd()
+	candidates := []string{
+		filepath.Join(cwd, ".."),       // when running from server/tests
+		filepath.Join(cwd, "..", ".."), // when running from deeper paths
+		cwd,
+	}
+	var lastErr error
+	for _, dir := range candidates {
+		pkgPath := filepath.Join(dir, "cmd", "progressdb")
+		if fi, err := os.Stat(pkgPath); err == nil && fi.IsDir() {
+			build := exec.Command("go", "build", "-o", outPath, "./cmd/progressdb")
+			build.Env = os.Environ()
+			build.Dir = dir
+			if bout, err := build.CombinedOutput(); err != nil {
+				lastErr = fmt.Errorf("build from %s failed: %v\n%s", dir, err, string(bout))
+				continue
+			}
+			return nil
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	// final attempt: build without setting Dir
+	build := exec.Command("go", "build", "-o", outPath, "./cmd/progressdb")
+	build.Env = os.Environ()
+	if bout, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("final build attempt failed: %v\n%s", err, string(bout))
+	}
+	return nil
+}
+
+// BuildProgressdb builds the progressdb test binary at outPath and fails the
+// test on error. This is a convenience wrapper used by tests outside the
+// utils package.
+func BuildProgressdb(t *testing.T, outPath string) {
+	t.Helper()
+	if err := buildProgressdbBin(outPath); err != nil {
+		t.Fatalf("failed to build progressdb binary: %v", err)
+	}
+}
+
 // StartServerProcess builds (if needed) and starts the server process using opts.
 // It waits for readiness and fails the test on unrecoverable errors.
 func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
@@ -88,27 +174,30 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		// check env overrides first
 		if p := os.Getenv("PROGRESSDB_TEST_BINARY"); p != "" {
 			if _, err := os.Stat(p); err == nil {
-				binPath = p
+				// copy the provided binary into the workdir so we always have a local path
+				dst := filepath.Join(workdir, "progressdb-bin")
+				if err := copyFile(p, dst); err == nil {
+					binPath = dst
+				}
 			}
 		}
 		if binPath == "" {
 			if p := os.Getenv("PROGRESSDB_SERVER_BIN"); p != "" {
 				if _, err := os.Stat(p); err == nil {
-					binPath = p
+					dst := filepath.Join(workdir, "progressdb-bin")
+					if err := copyFile(p, dst); err == nil {
+						binPath = dst
+					}
 				}
 			}
 		}
 		if binPath == "" {
 			binPath = filepath.Join(workdir, "progressdb-bin")
-			// try building from the server dir first (tests execute from server/tests),
-			// then fall back to building from the repo root if that fails.
-			build := exec.Command("go", "build", "-o", binPath, "./cmd/progressdb")
-			build.Env = os.Environ()
-			// run from the `server` directory (tests execute from server/tests)
-			build.Dir = ".."
-			bout, err := build.CombinedOutput()
-			if err != nil {
-				t.Fatalf("failed to build server binary: %v\noutput:\n%s", err, string(bout))
+			// try building the binary from a sensible repo root. Prefer using
+			// 'go env GOMOD' to detect module root, fall back to a couple of
+			// relative candidates when running tests from subdirectories.
+			if err := buildProgressdbBin(binPath); err != nil {
+				t.Fatalf("failed to build server binary: %v", err)
 			}
 		}
 	}

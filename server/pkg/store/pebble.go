@@ -409,11 +409,17 @@ func ListMessageVersions(msgID string) ([]string, error) {
 		v := append([]byte(nil), iter.Value()...)
 		if security.EncryptionEnabled() && !threadChecked {
 			threadChecked = true
-			var msg struct{ Thread string `json:"thread"` }
+			var msg struct {
+				Thread string `json:"thread"`
+			}
 			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
 				sthr, terr := GetThread(msg.Thread)
 				if terr == nil {
-					var th struct{ KMS struct{ KeyID string `json:"key_id"` } `json:"kms"` }
+					var th struct {
+						KMS struct {
+							KeyID string `json:"key_id"`
+						} `json:"kms"`
+					}
 					if json.Unmarshal([]byte(sthr), &th) == nil {
 						threadKeyID = th.KMS.KeyID
 					}
@@ -757,7 +763,9 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 					return fmt.Errorf("marshal plaintext failed: %w", merr)
 				}
 				ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
-				for i := range pt { pt[i] = 0 }
+				for i := range pt {
+					pt[i] = 0
+				}
 				if eerr != nil {
 					return fmt.Errorf("encrypt with new key failed: %w", eerr)
 				}
@@ -781,7 +789,9 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			return fmt.Errorf("decrypt message failed: %w", derr)
 		}
 		ct, _, eerr := kms.EncryptWithDEK(newKeyID, pt, nil)
-		for i := range pt { pt[i] = 0 }
+		for i := range pt {
+			pt[i] = 0
+		}
 		if eerr != nil {
 			return fmt.Errorf("encrypt with new key failed: %w", eerr)
 		}

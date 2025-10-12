@@ -122,24 +122,24 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 	if binPath == "" {
 		if p := os.Getenv("PROGRESSDB_TEST_BINARY"); p != "" {
 			if _, err := os.Stat(p); err == nil {
-				binPath = p
+				dst := filepath.Join(workdir, "progressdb-bin")
+				_ = copyFile(p, dst)
+				binPath = dst
 			}
 		}
 		if binPath == "" {
 			if p := os.Getenv("PROGRESSDB_SERVER_BIN"); p != "" {
 				if _, err := os.Stat(p); err == nil {
-					binPath = p
+					dst := filepath.Join(workdir, "progressdb-bin")
+					_ = copyFile(p, dst)
+					binPath = dst
 				}
 			}
 		}
 		if binPath == "" {
 			binPath = filepath.Join(workdir, "progressdb-bin")
-			build := exec.Command("go", "build", "-o", binPath, "./cmd/progressdb")
-			build.Env = os.Environ()
-			build.Dir = ".."
-			bout, err := build.CombinedOutput()
-			if err != nil {
-				t.Fatalf("failed to build server binary: %v\noutput:\n%s", err, string(bout))
+			if err := buildProgressdbBin(binPath); err != nil {
+				t.Fatalf("failed to build server binary: %v", err)
 			}
 		}
 	}
@@ -363,6 +363,48 @@ func WaitForThreadVisible(t *testing.T, baseURL, id, user string, timeout time.D
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("timeout waiting for thread visible: %s", id)
+}
+
+// CreateThreadAndWait creates a thread via API and waits until it's visible.
+func CreateThreadAndWait(t *testing.T, baseURL, user, title string, timeout time.Duration) (string, map[string]interface{}) {
+	t.Helper()
+	id, out := CreateThreadAPI(t, baseURL, user, title)
+	WaitForThreadVisible(t, baseURL, id, user, timeout)
+	return id, out
+}
+
+// GetThreadAPI fetches a thread by id as the given user and decodes the JSON response into out.
+func GetThreadAPI(t *testing.T, baseURL, user, id string) (int, map[string]interface{}) {
+	t.Helper()
+	var out map[string]interface{}
+	status := DoSignedJSON(t, baseURL, "GET", "/v1/threads/"+id, nil, user, FrontendAPIKey, &out)
+	return status, out
+}
+
+// ListThreadsAPI lists threads for the given user (no query params) and decodes result.
+func ListThreadsAPI(t *testing.T, baseURL, user string) (int, map[string]interface{}) {
+	t.Helper()
+	var out map[string]interface{}
+	status := DoSignedJSON(t, baseURL, "GET", "/v1/threads", nil, user, FrontendAPIKey, &out)
+	return status, out
+}
+
+// CreateMessageAndWait creates a message and waits until it's visible.
+func CreateMessageAndWait(t *testing.T, baseURL, user, threadID string, body map[string]interface{}, timeout time.Duration) string {
+	t.Helper()
+	mid := CreateMessageAPI(t, baseURL, user, threadID, body)
+	// wait until GET message returns 200
+	deadline := time.Now().Add(timeout)
+	path := "/v1/threads/" + threadID + "/messages/" + mid
+	for time.Now().Before(deadline) {
+		status := DoSignedJSON(t, baseURL, "GET", path, nil, user, FrontendAPIKey, nil)
+		if status == 200 {
+			return mid
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("message not visible after timeout: %s", mid)
+	return ""
 }
 
 // DoSignedRequest performs an HTTP request to the test server using the
