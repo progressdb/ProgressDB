@@ -16,7 +16,7 @@ visibility: public
 
 If you ask the internet how to model a chat experience, you will get an approach based around messages and their user or authors.  
 This is simple, works, and scales if your only author is a user for the most part.
-<img src="/imgs/sql_threads.png" className="w-full lg:w-1/3"/>
+<img src="/imgs/sql_threads.png" className="w-full lg:w-5/12"/>
 
 ## The limits of message-first
 
@@ -63,18 +63,18 @@ For all of us—solo or team, well-resourced or time-inconvenienced—does the d
 
 ## Thread first
 
-A thread-first model is both a data structure **and** a storage model/setup that combines the message into a monotonic unit in the underlying store to brings order to things.
+A thread-first model treats the thread as the organizing unit and stores messages with a monotonic sequence (e.g., timestamp or counter) keyed by thread, simplifying ordered appends and sequential scans.
 
 Instead of the message being the unit for organization,  
 - what if **the thread** is the unit of organization?
 
-> NOTE: most databases _don't_ support this concept at the storage level; some do as an effect, but with limitations.
+> NOTE: most databases _don't_ support this concept at the storage level efficiently; some do as an effect, but with limitations.
 
 **Think:**  
 - We have `thread_id` prefixes organizing the messages, but not as a collection or single table—this structure _represents access to the data_.  
 - The ownership or participation in a thread lives separately from the message itself.
 
-<img src="/imgs/thread_first3.png" className="w-full lg:w-1/3"/>
+<img src="/imgs/thread_first3.png" className="w-full lg:w-5/12"/>
 Compared to the earlier chat models, this detachment allows for all modes of chat without extra work to evolve user/message relationships.  
 
 - Most importantly, it *standardizes* the chat model so it can be replicated everywhere, for different chat contexts.
@@ -95,9 +95,11 @@ The real challenge begins when you try to **store and access** it efficiently.
 
 Once the modelling is done, you’re still bound by how your database handles reads, writes, and scans.
 
-- SQL and NoSQL systems don’t natively support **prefix-based** or **monotonic threaded access** — threads lose their natural shape once they’re flattened into tables or collections.
-- Indexes and joins end up rebuilding what the storage layer never preserved.
-- Redis streams or sorted sets get close, but they’re still **bounded** or **ephemeral** — not a true underlying structure.
+- SQL and NoSQL systems don’t ultra efficiently support **prefix-based** or **monotonic threaded access** — threads lose their natural shape once they’re flattened into tables or collections.
+- Indexes and joins end up rebuilding what the store files never preserved.
+  - Without key adjacency, range scans can involve non-contiguous pages and higher random IO compared to sequential scans.
+- Redis streams or sorted sets get close, but they’re still **bounded** or **ephemeral**.
+  - their memory-centric design trades off storage density and long sequential scans versus disk-optimized KV layouts.
 
 A thread-first model needs a storage medium where appends, reads, and scans are natural — **not simulated.**
 
@@ -109,7 +111,7 @@ This is trivial in LSM-based KV stores like Pebble, RocksDB, or LevelDB, but it�
 
 The result is complexity in something that should be simple: scanning, appending, and replaying a thread in order.
 
-**The storage is where the chat problem begins—and where the solution must start from.**
+**The storage and its access patterns is where the chat problem begins—and where the solution must start from.**
 
 ---
 
