@@ -5,9 +5,14 @@ order: 1
 visibility: public
 ---
 
-![Thread First Model](/thread_first.jpg)
+<BlogTop
+  title="Thread First — a model for all chat experiences"
+  author_image="https://avatars.githubusercontent.com/u/90225652?s=400&u=18c8ff4ebf499e261f8b48ebf0b8e4010a0fd3bf&v=4"
+  author_name="Henry Asante"
+  published_date_time="2025-10-12"
+  cover_image="/thread_first.jpg"
+/>
 
-# Thread First — a model for all chat experiences
 
 If you ask the internet how to model a chat experience, you will get an approach based around messages and their user or authors.  
 This is simple, works, and scales if your only author is a user for the most part.
