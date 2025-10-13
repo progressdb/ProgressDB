@@ -17,15 +17,10 @@ import (
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		if role == "admin" {
-			author = ""
-		} else {
-			utils.JSONErrorFast(ctx, code, msg)
-			return
-		}
+		utils.JSONErrorFast(ctx, code, msg)
+		return
 	}
 
 	titleQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("title")))
@@ -43,7 +38,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
 		}
-		if th.Deleted && role != "admin" {
+		if th.Deleted {
 			continue
 		}
 		if author != "" && th.Author != author {
@@ -72,15 +67,10 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		if role == "admin" {
-			author = ""
-		} else {
-			utils.JSONErrorFast(ctx, code, msg)
-			return
-		}
+		utils.JSONErrorFast(ctx, code, msg)
+		return
 	}
 
 	stored, err := store.GetThread(id)
@@ -94,7 +84,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
 		return
 	}
-	if th.Deleted && role != "admin" {
+	if th.Deleted {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
 		return
 	}
@@ -109,15 +99,10 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		if role == "admin" {
-			author = ""
-		} else {
-			utils.JSONErrorFast(ctx, code, msg)
-			return
-		}
+		utils.JSONErrorFast(ctx, code, msg)
+		return
 	}
 
 	threadID := pathParam(ctx, "threadID")
@@ -125,7 +110,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	if stored, err := store.GetThread(threadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(stored), &th); err == nil {
-			if th.Deleted && string(ctx.Request.Header.Peek("X-Role-Name")) != "admin" {
+			if th.Deleted {
 				utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
 				return
 			}
@@ -180,7 +165,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if role != "admin" && author != "" && !authorFound {
+	if author != "" && !authorFound {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author not found in any message in this thread")
 		return
 	}

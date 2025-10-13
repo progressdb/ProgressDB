@@ -98,19 +98,19 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 	// prepare minimal config if none provided
 	cfgPath := filepath.Join(workdir, "config.yaml")
 	dbPath := filepath.Join(workdir, "db")
-    if opts.ConfigYAML == "" {
-        // Provide a default test config that includes the test API keys so
-        // that helpers which start the server against a pre-seeded workdir
-        // have the expected test credentials available.
-        mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        cfg := fmt.Sprintf(
-            "server:\n  address: 127.0.0.1\n  port: %d\n  db_path: %s\nsecurity:\n  kms:\n    master_key_hex: %s\n  api_keys:\n    backend: [\"%s\", \"%s\"]\n    frontend: [\"%s\"]\n    admin: [\"%s\"]\nlogging:\n  level: info\n",
-            port, dbPath, mk, SigningSecret, BackendAPIKey, FrontendAPIKey, AdminAPIKey,
-        )
-        if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
-            t.Fatalf("write config: %v", err)
-        }
-    } else {
+	if opts.ConfigYAML == "" {
+		// Provide a default test config that includes the test API keys so
+		// that helpers which start the server against a pre-seeded workdir
+		// have the expected test credentials available.
+		mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+		cfg := fmt.Sprintf(
+			"server:\n  address: 127.0.0.1\n  port: %d\n  db_path: %s\nsecurity:\n  kms:\n    master_key_hex: %s\n  api_keys:\n    backend: [\"%s\", \"%s\"]\n    frontend: [\"%s\"]\n    admin: [\"%s\"]\nlogging:\n  level: info\n",
+			port, dbPath, mk, SigningSecret, BackendAPIKey, FrontendAPIKey, AdminAPIKey,
+		)
+		if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+	} else {
 		cfgContent := opts.ConfigYAML
 		if strings.Contains(cfgContent, "{{PORT}}") {
 			cfgContent = strings.ReplaceAll(cfgContent, "{{PORT}}", strconv.Itoa(port))

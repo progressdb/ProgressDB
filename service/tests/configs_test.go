@@ -102,7 +102,7 @@ logging:
 		thBody := map[string]string{"author": "noenc", "title": "noenc-thread"}
 		tb, _ := json.Marshal(thBody)
 		req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-    req.Header.Set("Authorization", "Bearer backend-secret")
+		req.Header.Set("Authorization", "Bearer backend-secret")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)

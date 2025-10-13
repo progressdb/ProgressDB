@@ -39,15 +39,15 @@ type SecConfig struct {
 type ctxAuthorKey struct{}
 
 // requiresignedauthor checks for hmac signature headers and, if valid, injects the
-// verified author id into the request context. for backend/admin, signature is optional.
+// verified author id into the request context. for backend, signature is optional.
 func RequireSignedAuthor(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		role := r.Header.Get("X-Role-Name")
 		userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 		sig := strings.TrimSpace(r.Header.Get("X-User-Signature"))
 
-		// for backend/admin, allow through if no signature is present
-		if (role == "backend" || role == "admin") && sig == "" {
+		// for backend, allow through if no signature is present
+		if role == "backend" && sig == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -98,7 +98,7 @@ func RequireSignedAuthor(next http.Handler) http.Handler {
 
 // RequireSignedAuthorFast mirrors RequireSignedAuthor for fasthttp handlers. It verifies
 // X-User-ID/X-User-Signature headers, stashes the verified author in the request
-// context, and enforces signature consistency for frontend callers. Backend/admin
+// context, and enforces signature consistency for frontend callers. Backend
 // callers may omit signatures, matching the net/http middleware semantics.
 func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
@@ -112,8 +112,8 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 			return
 		}
 
-		if (role == "backend" || role == "admin") && sig == "" {
-			// backend/admin may operate without signatures; nothing to attach.
+		if role == "backend" && sig == "" {
+			// backend may operate without signatures; nothing to attach.
 			next(ctx)
 			return
 		}
@@ -201,10 +201,10 @@ func ResolveAuthorFromRequest(r *http.Request, bodyAuthor string) (string, int, 
 		return id, 0, ""
 	}
 
-	// no signature; allow backend/admin to supply author via body/header/query
+	// no signature; allow backend to supply author via body/header/query
 	role := r.Header.Get("X-Role-Name")
 	logger.Info("no_signature_found", "role", role, "remote", r.RemoteAddr, "path", r.URL.Path)
-	if role == "backend" || role == "admin" {
+	if role == "backend" {
 		if bodyAuthor != "" {
 			if ok, msg := validateAuthor(bodyAuthor); !ok {
 				logger.Warn("invalid_backend_author", "user", bodyAuthor, "remote", r.RemoteAddr, "path", r.URL.Path)
@@ -261,10 +261,10 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 		}
 	}
 
-	// no signature; allow backend/admin to supply author via body/header/query
+	// no signature; allow backend to supply author via body/header/query
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	logger.Info("no_signature_found", "role", role, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
-	if role == "backend" || role == "admin" {
+	if role == "backend" {
 		if bodyAuthor != "" {
 			if ok, msg := validateAuthor(bodyAuthor); !ok {
 				logger.Warn("invalid_backend_author", "user", bodyAuthor, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))

@@ -133,17 +133,17 @@ func TestListMessages(t *testing.T) {
 		t.Fatalf("create message request failed: %v", err)
 	}
 	defer cres.Body.Close()
-    var cout map[string]interface{}
-    if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-        t.Fatalf("failed to decode create message response: %v", err)
-    }
-    // Some server implementations return only the created message id (and not
-    // the thread) for an enqueued create. Preserve the thread id we already
-    // obtained from the create-thread call above if the response doesn't
-    // include it.
-    if th, ok := cout["thread"].(string); ok && th != "" {
-        thread = th
-    }
+	var cout map[string]interface{}
+	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
+		t.Fatalf("failed to decode create message response: %v", err)
+	}
+	// Some server implementations return only the created message id (and not
+	// the thread) for an enqueued create. Preserve the thread id we already
+	// obtained from the create-thread call above if the response doesn't
+	// include it.
+	if th, ok := cout["thread"].(string); ok && th != "" {
+		thread = th
+	}
 
 	// List messages in the thread
 	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+thread+"/messages", nil)

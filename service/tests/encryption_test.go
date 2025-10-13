@@ -12,6 +12,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,7 +52,7 @@ logging:
 	thBody := map[string]string{"author": "enc", "title": "enc-thread"}
 	tb, _ := json.Marshal(thBody)
 	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-    req.Header.Set("Authorization", "Bearer backend-secret")
+	req.Header.Set("Authorization", "Bearer backend-secret")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -67,7 +68,7 @@ logging:
 	msg := map[string]interface{}{"author": "enc", "body": map[string]string{"text": "secret"}, "thread": tid}
 	mb, _ := json.Marshal(msg)
 	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-    mreq.Header.Set("Authorization", "Bearer backend-secret")
+	mreq.Header.Set("Authorization", "Bearer backend-secret")
 	mres, err := http.DefaultClient.Do(mreq)
 	if err != nil {
 		t.Fatalf("create message failed: %v", err)
@@ -79,7 +80,7 @@ logging:
 
 	// read back via API and verify plaintext
 	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-    lreq.Header.Set("Authorization", "Bearer backend-secret")
+	lreq.Header.Set("Authorization", "Bearer backend-secret")
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list messages failed: %v", err)
@@ -169,11 +170,11 @@ logging:
 // raw stored keys via store.ListKeys/GetKey.
 
 func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
-    // Start a full server process with encryption enabled so messages are
-    // encrypted on write. We'll create a message via the API, stop the
-    // server, then open the Pebble DB directly to inspect the raw stored
-    // value for the encryption marker.
-    cfg := `server:
+	// Start a full server process with encryption enabled so messages are
+	// encrypted on write. We'll create a message via the API, stop the
+	// server, then open the Pebble DB directly to inspect the raw stored
+	// value for the encryption marker.
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -181,50 +182,50 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    frontend: ["` + FrontendAPIKey + `"]
+    frontend: ["%s"]
     admin: ["admin-secret"]
   encryption:
     use: true
     fields: ["body"]
 logging:
   level: info
-`
-    sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
-    // create thread and message via API
-    user := "enc_user"
-    thID, _ := utils.CreateThreadAPI(t, sp.Addr, user, "enc-thread")
-    _ = utils.CreateMessageAPI(t, sp.Addr, user, thID, map[string]interface{}{"
-        "author": user,
-        "body":   map[string]string{"text": "secret"},
-    })
-    // stop server so we can open DB
-    if err := sp.Stop(t); err != nil {
-        t.Fatalf("failed to stop server: %v", err)
-    }
+`, FrontendAPIKey)
+	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
+	// create thread and message via API
+	user := "enc_user"
+	thID, _ := utils.CreateThreadAPI(t, sp.Addr, user, "enc-thread")
+	_ = utils.CreateMessageAPI(t, sp.Addr, user, thID, map[string]interface{}{
+		"author": user,
+		"body":   map[string]string{"text": "secret"},
+	})
+	// stop server so we can open DB
+	if err := sp.Stop(t); err != nil {
+		t.Fatalf("failed to stop server: %v", err)
+	}
 
-    // open DB and inspect raw stored values
-    storePath := filepath.Join(sp.WorkDir, "db", "store")
-    logger.Init()
-    if err := store.Open(storePath, true, false); err != nil {
-        t.Fatalf("store.Open failed: %v", err)
-    }
-    defer func() {
-        _ = store.Close()
-    }()
+	// open DB and inspect raw stored values
+	storePath := filepath.Join(sp.WorkDir, "db", "store")
+	logger.Init()
+	if err := store.Open(storePath, true, false); err != nil {
+		t.Fatalf("store.Open failed: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
 
-    mp, _ := store.MsgPrefix(thID)
+	mp, _ := store.MsgPrefix(thID)
 	keys, err := store.ListKeys(mp)
 	if err != nil {
 		t.Fatalf("ListKeys failed: %v", err)
 	}
-    if len(keys) == 0 {
-        t.Fatalf("expected message keys in store for thread %s", thID)
-    }
-    raw, err := store.GetKey(keys[0])
+	if len(keys) == 0 {
+		t.Fatalf("expected message keys in store for thread %s", thID)
+	}
+	raw, err := store.GetKey(keys[0])
 	if err != nil {
 		t.Fatalf("GetKey failed: %v", err)
 	}
-    if !strings.Contains(string(raw), "\"_enc\"") {
-        t.Fatalf("expected stored message to contain encryption marker _enc; got: %s", string(raw))
-    }
+	if !strings.Contains(string(raw), "\"_enc\"") {
+		t.Fatalf("expected stored message to contain encryption marker _enc; got: %s", string(raw))
+	}
 }
