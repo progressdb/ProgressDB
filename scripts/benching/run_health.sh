@@ -13,7 +13,7 @@ if ! command -v k6 >/dev/null 2>&1; then
 fi
 
 TARGET=${TARGET:-http://127.0.0.1:8080/healthz}
-K6_SCRIPT=${K6_SCRIPT:-server/tests/benching/k6/health.js}
+K6_SCRIPT=${K6_SCRIPT:-service/tests/benching/k6/health.js}
 
 ARTIFACT_ROOT=${TEST_ARTIFACTS_ROOT:-${PROGRESSDB_ARTIFACT_ROOT:-"$ROOT_DIR/tests/artifacts"}}
 mkdir -p "$ARTIFACT_ROOT"

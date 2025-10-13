@@ -1,10 +1,10 @@
 /scripts/codex.sh
-/server/.database
-/server/dist
-/server/.gopath
-/server/vendor
-/server/config.yaml
-/server/.env.example
+/service/.database
+/service/dist
+/service/.gopath
+/service/vendor
+/service/config.yaml
+/service/.env.example
 /.gocache
 /.codex
 
@@ -25,7 +25,7 @@ tests/artifacts/
 
 # Build output
 /dist/
-/server/dist/
+/service/dist/
 /clients/**/dist/
 
 # Go build / test
@@ -88,7 +88,7 @@ secrets.yml
 *.key
 *.pem
 .aws/credentials
-server/.gopath/
+service/.gopath/
 .notes/
 NOTES.md
 .kms/
@@ -105,5 +105,5 @@ logs/
 /docs/internal
 ProgressDB.code-workspace
 
-/server/tests/artifacts
+/service/tests/artifacts
 /wal

@@ -165,7 +165,7 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 		fmt.Println("- Retention: disabled")
 	}
 
-	fmt.Println("\nRead the config docs to set up encryption and KMS: server/docs/encryption.md and docs/configs/README.md")
+	fmt.Println("\nRead the config docs to set up encryption and KMS: service/docs/encryption.md and docs/configs/README.md")
 
 	fmt.Println("\n== Logs: =================================================")
 }

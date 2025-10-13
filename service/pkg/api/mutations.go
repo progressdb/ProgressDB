@@ -24,11 +24,7 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 	}
 }
-
-// Mutative HTTP handlers are thin fast-path
-// handlers which enqueue raw payloads into the global ingest queue and
-// return a 202. Heavy work (validation, auth lookups, KMS, DB writes)
-// happens inside the ingest pipeline.
+// Mutating endpoints enqueue requests and return 202; processing happens in the ingest pipeline.
 
 // thread management
 func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {

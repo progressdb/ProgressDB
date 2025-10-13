@@ -16,7 +16,7 @@ import (
 // TODO: queue full - drop strategy
 // TODO: handler error - handlng strategy
 
-// Note: canonical defaults live in `server/pkg/config` and the runtime
+// Note: canonical defaults live in `service/pkg/config` and the runtime
 // startup path should construct queues from that config. This package does
 // not provide configuration defaults — callers must supply validated
 // values. If callers pass invalid values, this is a programming error.

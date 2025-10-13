@@ -1,6 +1,6 @@
 # @progressdb/js — ProgressDB Frontend SDK (TypeScript)
 
-This lightweight SDK provides typed wrappers for ProgressDB HTTP endpoints described in `server/docs/openapi.yaml`.
+This lightweight SDK provides typed wrappers for ProgressDB HTTP endpoints described in `service/docs/openapi.yaml`.
 
 Installation (after published):
 ```bash

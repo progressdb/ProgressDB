@@ -23,8 +23,8 @@ set -euo pipefail
 
 # Output path for the built binary (default: dist/progressdb)
 OUT=${OUT:-dist/progressdb}
-# Package path to build (relative to repo root, default: ./server/cmd/progressdb)
-PKG=${PKG:-./server/cmd/progressdb}
+# Package path to build (relative to repo root, default: ./service/cmd/progressdb)
+PKG=${PKG:-./service/cmd/progressdb}
 
 # Ensure output directory exists
 mkdir -p "$(dirname "$OUT")"

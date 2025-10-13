@@ -69,16 +69,16 @@ OUT_JSON="$ART_DIR/${TEST_ID}.json"
 
 if [[ "$MODE" == "create" ]]; then
   echo "Running create k6"
-  k6 run --out json=$OUT_JSON server/tests/benching/k6/create.js
+  k6 run --out json=$OUT_JSON service/tests/benching/k6/create.js
 elif [[ "$MODE" == "create-thread" ]]; then
   echo "Running create-thread k6"
-  k6 run --out json=$OUT_JSON server/tests/benching/k6/create-thread.js
+  k6 run --out json=$OUT_JSON service/tests/benching/k6/create-thread.js
 elif [[ "$MODE" == "get-threads" ]]; then
   echo "Running get-threads k6"
-  k6 run --out json=$OUT_JSON server/tests/benching/k6/get-threads.js
+  k6 run --out json=$OUT_JSON service/tests/benching/k6/get-threads.js
 else
   echo "Running retrieve k6"
-  k6 run --out json=$OUT_JSON server/tests/benching/k6/retrieve.js
+  k6 run --out json=$OUT_JSON service/tests/benching/k6/retrieve.js
 fi
 
 echo "Output: $OUT_JSON"

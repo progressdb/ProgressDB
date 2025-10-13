@@ -109,7 +109,7 @@ Configuration reference (option → explanation → env var)
 
 - `security.encryption.use`, `security.encryption.fields`
   - What it does: enable field-level encryption and list JSON paths to encrypt (e.g., `body.credit_card`). When `use: true` the server will attempt decryption on reads.
-  - Note: full-message encryption vs field-level: configuration defines behavior; see `server/docs/encryption.md`.
+  - Note: full-message encryption vs field-level: configuration defines behavior; see `service/docs/encryption.md`.
 
 - `security.kms.mode` (embedded|external)
   - What it does: selects the KMS provider mode. `embedded` runs an in-process KMS (dev/test). `external` makes HTTP calls to a separate `progressdb-kms` service (recommended for production).
@@ -130,7 +130,7 @@ Configuration reference (option → explanation → env var)
   - What it does: optional JSON path validation rules applied at write time (server accepts flexible JSON body but can enforce constraints here).
 
 - `retention.enabled`, `retention.days`
-  - What it does: if retention is enabled the server may periodically garbage collect old messages per policy. See `server/docs/retention.md` for specifics.
+  - What it does: if retention is enabled the server may periodically garbage collect old messages per policy. See `service/docs/retention.md` for specifics.
 
 - `metrics.enabled`, `metrics.path`
   - What it does: enables Prometheus metrics endpoint (default `/metrics`).

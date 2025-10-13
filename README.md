@@ -175,11 +175,12 @@ Implemented (ready to use):
 - [x] Frontend SDKs (TypeScript, React)
 - [x] Simple data viewer
 - [x] Encryption & key management
+  - [ ] Cloud backed ksm ~ hsm option
 - [x] Retention policies & management
+- [x] Performance benchmarking & SLO/alerts
 
 Planned / In progress:
 
-- [ ] Performance benchmarking & SLO/alerts
 - [ ] Backups & tested restores
 - [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
 - [ ] Search experience - (api)

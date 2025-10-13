@@ -26,7 +26,7 @@ API (summary)
 
 API Docs
 - Swagger UI: open `http://localhost:8080/docs/` to explore and test endpoints.
-- OpenAPI spec: `http://localhost:8080/openapi.yaml` (served from `server/docs/openapi.yaml`).
+- OpenAPI spec: `http://localhost:8080/openapi.yaml` (served from `service/docs/openapi.yaml`).
 
 Data Model
 - Message: fixed metadata + flexible payload.
@@ -67,7 +67,7 @@ Configuration
   - server.address: host/interface (e.g., `0.0.0.0`)
   - server.port: 8080
   - server.db_path: `./data/progressdb`
-  - encryption: use the external KMS provider (see `server/docs/kms.md`)
+  - encryption: use the external KMS provider (see `service/docs/kms.md`)
   - logging.level: `info` (reserved; simple stdout logging used in MVP)
   - validation:
     - required: list of dot-paths that must exist (e.g., `body.text`).
@@ -84,9 +84,9 @@ Environment Variables
   - `PROGRESSDB_ADDRESS`: host/interface (used with `PROGRESSDB_PORT`).
   - `PROGRESSDB_PORT`: port number (string accepted, e.g., `8080`).
   - `PROGRESSDB_DB_PATH`: Pebble database path.
-- `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `server/docs/kms.md`.
+- `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `service/docs/kms.md`.
   - `PROGRESSDB_KMS_ENDPOINT`: address of external KMS (host:port or full URL). Default: `127.0.0.1:6820`.
-  - `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `server/docs/kms.md`.
+  - `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `service/docs/kms.md`.
   - `PROGRESSDB_CONFIG`: path to `config.yaml` (optional; you can also pass `--config`).
   - `PROGRESSDB_LOG_LEVEL`: `debug|info|warn|error` (optional hint; stdout only).
 
@@ -159,7 +159,7 @@ Field-Level Encryption
   - Old records without envelopes are treated as plaintext.
   - Full-message encrypted records continue to be supported; field-level and full-message modes are mutually exclusive per deployment.
 - Operational notes:
-  - Note: local symmetric key support has been removed; use an external KMS instead. See `server/docs/kms.md`.
+  - Note: local symmetric key support has been removed; use an external KMS instead. See `service/docs/kms.md`.
   - Rotation: use KMS rotation procedures; the KMS rewraps DEKs and updates metadata.
   - Performance: per-field crypto adds overhead; benchmark and cache matchers as needed.
 
@@ -167,7 +167,7 @@ Examples
 - Minimal `.env`:
   - `PROGRESSDB_ADDR=0.0.0.0:8080`
   - `PROGRESSDB_DB_PATH=./data/progressdb`
-  - Encryption: configure and run an external KMS. See `server/docs/kms.md` for examples and runbook.
+  - Encryption: configure and run an external KMS. See `service/docs/kms.md` for examples and runbook.
 
 Metrics
 - Prometheus endpoint: `GET /metrics` (default registry via promhttp).
@@ -192,7 +192,7 @@ Security
   storage:
     db_path: "./data/progressdb"
   security:
-    # Encryption is provided by an external KMS. See server/docs/kms.md
+    # Encryption is provided by an external KMS. See service/docs/kms.md
     cors:
       allowed_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
     rate_limit:
