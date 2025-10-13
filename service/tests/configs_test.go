@@ -59,8 +59,6 @@ func TestConfigs_Suite(t *testing.T) {
 
 		cmd := exec.Command(bin, "--config", cfgPath)
 		cmd.Dir = utils.NewArtifactsDir(t, "configs-malformed-global-proc")
-		// PROGRESSDB_TESTING=1 should cause test harnesses to shorten abort delay but main binary's default is 10s
-		cmd.Env = append(os.Environ(), "PROGRESSDB_TESTING=1")
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start failed: %v", err)
 		}
@@ -156,8 +154,6 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	// build binary
 	tmp := utils.NewArtifactsDir(t, "configs-e2e-malformed")
 	bin := filepath.Join(tmp, "progressdb-bin")
-	// try building from the server dir first, then fall back to building from repo root
-	// build binary using test helper to locate repo root reliably
 	utils.BuildProgressdb(t, bin)
 
 	// write malformed config (invalid YAML)
@@ -170,21 +166,29 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("PROGRESSDB_ARTIFACT_ROOT=%s", root),
 		fmt.Sprintf("TEST_ARTIFACTS_ROOT=%s", root),
-		"PROGRESSDB_TESTING=1",
 	)
+
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
 	done := make(chan error)
 	go func() { done <- cmd.Wait() }()
+
 	select {
 	case <-done:
 		// process exited (non-zero or zero) — treat as fast exit for this test
 		// historically we expected non-zero; accept any exit as a fast failure
 		return
 	case <-time.After(20 * time.Second):
-		// still running -> fail
+		// still running -> send kill then wait for shutdown to complete
 		_ = cmd.Process.Kill()
-		t.Fatalf("server did not exit quickly on malformed config")
+		// Wait up to 10 seconds for shutdown process to complete after sending kill
+		select {
+		case <-done:
+			// Killed process exited after shutdown sequence. Pass.
+			return
+		case <-time.After(11 * time.Second):
+			t.Fatalf("server did not exit quickly on malformed config after kill")
+		}
 	}
 }

@@ -9,12 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/valyala/fasthttp"
 
-	"progressdb/internal/retention"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
@@ -197,23 +195,6 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	}
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
-}
-
-func AdminTestRetentionRun(ctx *fasthttp.RequestCtx) {
-	if !isAdminFast(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
-		return
-	}
-	if v := os.Getenv("PROGRESSDB_TESTING"); v != "1" && strings.ToLower(v) != "true" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "test endpoint disabled")
-		return
-	}
-	if err := retention.RunImmediate(); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-	ctx.Response.Header.Set("Content-Type", "application/json")
-	_, _ = ctx.WriteString(`{"status":"ok"}`)
 }
 
 func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
@@ -436,6 +417,8 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
 }
 
+
+// helpers
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	if all {
 		vals, err := store.ListThreads()

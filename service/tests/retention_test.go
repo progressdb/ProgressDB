@@ -10,7 +10,11 @@ package tests
 // 4. Tests should trigger retention deterministically (test trigger endpoint) rather than relying on timers.
 
 import (
+	"bytes"
 	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -95,7 +99,7 @@ retention:
   period: 1s
   dry_run: true
 `
-		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg, Env: map[string]string{"PROGRESSDB_TESTING": "1"}})
+		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
 		// create a soft-deleted thread older than period

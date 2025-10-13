@@ -45,7 +45,6 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/admin/keys", AdminListKeys)
 	r.GET("/admin/keys/{key}", AdminGetKey)
 	r.POST("/admin/encryption/rotate-thread-dek", AdminEncryptionRotateThreadDEK)
-	r.POST("/admin/test-retention-run", AdminTestRetentionRun)
 }
 
 // Handler returns the fasthttp handler for the ProgressDB API.
