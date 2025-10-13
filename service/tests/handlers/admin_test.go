@@ -142,7 +142,22 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 
 // checks rotating a thread data encryption key with /admin/encryption/rotate-thread-dek
 func TestAdmin_RotateThreadDEK(t *testing.T) {
-	sp := utils.StartTestServerProcess(t)
+	cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["backend-secret"]
+    admin: ["admin-secret"]
+  encryption:
+    use: true
+logging:
+  level: info
+`
+	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rot_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
@@ -186,7 +201,22 @@ func TestAdmin_RotateThreadDEK(t *testing.T) {
 
 // test rewrapping a thread's DEK (data encryption key) using a new KEK.
 func TestAdmin_RewrapDEKs(t *testing.T) {
-	sp := utils.StartTestServerProcess(t)
+	cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["backend-secret"]
+    admin: ["admin-secret"]
+  encryption:
+    use: true
+logging:
+  level: info
+`
+	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rw_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
@@ -223,7 +253,23 @@ func TestAdmin_RewrapDEKs(t *testing.T) {
 
 // checks encrypting existing thread messages via /admin/encryption/encrypt-existing
 func TestAdmin_EncryptExisting(t *testing.T) {
-	sp := utils.StartTestServerProcess(t)
+	cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    frontend: ["` + utils.FrontendAPIKey + `"]
+    admin: ["admin-secret"]
+  encryption:
+    use: true
+    fields: ["body"]
+logging:
+  level: info
+`
+	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "enc_user"
 	sig := utils.SignHMAC(utils.SigningSecret, user)

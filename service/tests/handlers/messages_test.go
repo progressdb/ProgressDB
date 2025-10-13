@@ -7,6 +7,7 @@ import (
 	"net/http"
 	utils "progressdb/tests/utils"
 	"testing"
+	"time"
 )
 
 func logResponseBody(t *testing.T, body io.Reader, context string) {
@@ -103,50 +104,13 @@ func TestListMessages(t *testing.T) {
 	user := "msg_list"
 	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	// Create a message to ensure there is something to list
+	// Create a thread and message, and wait until the message is visible.
 	payload := map[string]interface{}{"author": user, "body": map[string]string{"text": "listme"}}
-	b, _ := json.Marshal(payload)
-	// ensure a thread exists to post into: create thread and use returned id
-	thBody := map[string]string{"author": user, "title": "list-thread"}
-	thb, _ := json.Marshal(thBody)
-	treq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thb))
-	treq.Header.Set("X-User-ID", user)
-	treq.Header.Set("X-User-Signature", sig)
-	treq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	tres, err := http.DefaultClient.Do(treq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer tres.Body.Close()
-	var tout map[string]interface{}
-	if err := json.NewDecoder(tres.Body).Decode(&tout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	thread := tout["id"].(string)
-
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+thread+"/messages", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create message request failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create message response: %v", err)
-	}
-	// Some server implementations return only the created message id (and not
-	// the thread) for an enqueued create. Preserve the thread id we already
-	// obtained from the create-thread call above if the response doesn't
-	// include it.
-	if th, ok := cout["thread"].(string); ok && th != "" {
-		thread = th
-	}
+	thID, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "list-thread", 5*time.Second)
+	_ = utils.CreateMessageAndWait(t, sp.Addr, user, thID, payload, 5*time.Second)
 
 	// List messages in the thread
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+thread+"/messages", nil)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+thID+"/messages", nil)
 	lreq.Header.Set("X-User-ID", user)
 	lreq.Header.Set("X-User-Signature", sig)
 	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
