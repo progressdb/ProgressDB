@@ -49,6 +49,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		q.Set("author", "alice")
 		req, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
 		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
+		
 		// admin API key is sufficient for /admin routes
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -59,7 +60,8 @@ func TestAuthorization_Suite(t *testing.T) {
 			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
 		}
 
-		utils.WaitForThreadVisible(t, sp.Addr, tid, "alice", 5*time.Second)
+		// admin visibility is via the admin key endpoint for the thread meta
+		utils.WaitForAdminKeyVisible(t, sp.Addr, "thread:"+tid+":meta", 5*time.Second)
 		sreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"", nil)
 		sreq.Header.Set("X-User-ID", "alice")
 		sreq.Header.Set("X-User-Signature", utils.SignHMAC(utils.SigningSecret, "alice"))

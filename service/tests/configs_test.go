@@ -143,6 +143,7 @@ logging:
 	})
 }
 
+// tests if a malformed config will cause the config to exit after its 10sec mark
 func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	root := utils.TestArtifactsRoot(t)
 	// build binary

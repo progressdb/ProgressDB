@@ -10,7 +10,7 @@ import (
 	utils "progressdb/tests/utils"
 )
 
-// Objectives: verify handlers end-to-end for CRUD flows, validation, and store integration.
+// verifies end-to-end thread and message creation/listing via handlers
 func TestHandlers_E2E_ThreadsMessagesCRUD(t *testing.T) {
 	cfg := `server:
   address: 127.0.0.1
@@ -27,7 +27,7 @@ logging:
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
-	// create a thread as admin (admin may supply author in body)
+	// create a thread as backend (backend may supply author in body or params)
 	thBody := map[string]string{"author": "alice", "title": "t1"}
 	tb, _ := json.Marshal(thBody)
 	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
@@ -48,7 +48,7 @@ logging:
 		t.Fatalf("missing thread id in create response")
 	}
 
-	// create a message under thread as admin
+	// create a message under thread as backend
 	msg := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "hello"}, "thread": tid}
 	mb, _ := json.Marshal(msg)
 	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
@@ -85,13 +85,16 @@ logging:
 				_ = lres.Body.Close()
 			}
 		}
-		time.Sleep(50 * time.Millisecond)
+
+		// verify the 10ms claim
+		time.Sleep(10 * time.Millisecond)
 	}
 	if !visible {
 		t.Fatalf("expected messages returned for thread %s", tid)
 	}
 }
 
+// verifies handler behavior for validation and pagination (invalid JSON and message listing with limit)
 func TestHandlers_E2E_ValidationAndPagination(t *testing.T) {
 	cfg := `server:
   address: 127.0.0.1
