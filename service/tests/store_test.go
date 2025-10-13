@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
@@ -46,16 +47,18 @@ func TestProgressorInitializesLastSeq(t *testing.T) {
 	sp := testutils.StartServerProcessWithWorkdir(t, workdir, testutils.ServerOpts{})
 	defer func() { _ = sp.Stop(t) }()
 
-    // fetch thread via admin key endpoint (raw KV key) and verify LastSeq was initialized to 7
-    var got models.Thread
-    keyName := "thread:" + th.ID + ":meta"
-    status, body := testutils.GetAdminKey(t, sp.Addr, keyName)
-    if status != 200 {
-        t.Fatalf("expected 200 fetching thread meta via admin key; got %d", status)
-    }
-    if err := json.Unmarshal(body, &got); err != nil {
-        t.Fatalf("failed to decode thread meta: %v (body=%s)", err, string(body))
-    }
+	// fetch thread via admin key endpoint (raw KV key) and verify LastSeq was initialized to 7
+	var got models.Thread
+	keyName := "thread:" + th.ID + ":meta"
+	// progressor runs on startup; wait until the admin-visible key is readable
+	testutils.WaitForAdminKeyVisible(t, sp.Addr, keyName, 5*time.Second)
+	status, body := testutils.GetAdminKey(t, sp.Addr, keyName)
+	if status != 200 {
+		t.Fatalf("expected 200 fetching thread meta via admin key; got %d", status)
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("failed to decode thread meta: %v (body=%s)", err, string(body))
+	}
 	if got.LastSeq != 7 {
 		t.Fatalf("expected LastSeq=7; got %d", got.LastSeq)
 	}

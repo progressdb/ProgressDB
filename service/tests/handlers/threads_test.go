@@ -23,7 +23,7 @@ func TestCreateThread(t *testing.T) {
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", sig)
 	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-    res, err := http.DefaultClient.Do(req)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -83,19 +83,19 @@ func TestGetThread(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
 		t.Fatalf("failed to decode create thread response: %v", err)
 	}
-    tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "orig", 5*time.Second)
-    greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid, nil)
-    greq.Header.Set("X-User-ID", user)
-    greq.Header.Set("X-User-Signature", sig)
-    greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-    gres, err := http.DefaultClient.Do(greq)
-    if err != nil {
-        t.Fatalf("get thread failed: %v", err)
-    }
-    defer gres.Body.Close()
-    if gres.StatusCode != 200 {
-        t.Fatalf("get thread failed: %v", gres.Status)
-    }
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "orig", 5*time.Second)
+	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid, nil)
+	greq.Header.Set("X-User-ID", user)
+	greq.Header.Set("X-User-Signature", sig)
+	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	gres, err := http.DefaultClient.Do(greq)
+	if err != nil {
+		t.Fatalf("get thread failed: %v", err)
+	}
+	defer gres.Body.Close()
+	if gres.StatusCode != 200 {
+		t.Fatalf("get thread failed: %v", gres.Status)
+	}
 }
 
 func TestUpdateThread(t *testing.T) {
@@ -238,21 +238,21 @@ func TestListThreadMessages(t *testing.T) {
 	}
 	tid := cout["id"].(string)
 
-    // create message and wait until visible
-    msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
-    _ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
-    lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-    lreq.Header.Set("X-User-ID", user)
-    lreq.Header.Set("X-User-Signature", sig)
-    lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-    lres, err := http.DefaultClient.Do(lreq)
-    if err != nil {
-        t.Fatalf("list thread messages failed: %v", err)
-    }
-    defer lres.Body.Close()
-    if lres.StatusCode != 200 {
-        t.Fatalf("list thread messages failed: %v", lres.Status)
-    }
+	// create message and wait until visible
+	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
+	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
+	lreq.Header.Set("X-User-ID", user)
+	lreq.Header.Set("X-User-Signature", sig)
+	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
+	lres, err := http.DefaultClient.Do(lreq)
+	if err != nil {
+		t.Fatalf("list thread messages failed: %v", err)
+	}
+	defer lres.Body.Close()
+	if lres.StatusCode != 200 {
+		t.Fatalf("list thread messages failed: %v", lres.Status)
+	}
 }
 
 func TestGetThreadMessage(t *testing.T) {
@@ -284,20 +284,20 @@ func TestGetThreadMessage(t *testing.T) {
 	mreq.Header.Set("X-User-ID", user)
 	mreq.Header.Set("X-User-Signature", sig)
 	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-    mres, err := http.DefaultClient.Do(mreq)
+	mres, err := http.DefaultClient.Do(mreq)
 	if err != nil {
 		t.Fatalf("create message failed: %v", err)
 	}
 	defer mres.Body.Close()
-    var mout map[string]interface{}
-    if err := json.NewDecoder(mres.Body).Decode(&mout); err != nil {
-        t.Fatalf("failed to decode create message response: %v", err)
-    }
-    mid := mout["id"].(string)
-    // wait until message visible
-    _ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
+	var mout map[string]interface{}
+	if err := json.NewDecoder(mres.Body).Decode(&mout); err != nil {
+		t.Fatalf("failed to decode create message response: %v", err)
+	}
+	mid := mout["id"].(string)
+	// wait until message visible
+	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
 
-    greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
+	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
 	greq.Header.Set("X-User-ID", user)
 	greq.Header.Set("X-User-Signature", sig)
 	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)

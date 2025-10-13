@@ -4,9 +4,11 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"progressdb/pkg/store"
 
@@ -105,6 +107,9 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	sp := utils.StartServerProcessWithWorkdir(t, workdir, utils.ServerOpts{})
 	defer func() { _ = sp.Stop(t) }()
 
+	// wait until admin key is visible (server may still be initializing)
+	utils.WaitForAdminKeyVisible(t, sp.Addr, "testkey", 5*time.Second)
+
 	// list keys
 	lreq, _ := http.NewRequest("GET", sp.Addr+"/admin/keys?prefix=test", nil)
 	lreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
@@ -142,7 +147,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 
 // checks rotating a thread data encryption key with /admin/encryption/rotate-thread-dek
 func TestAdmin_RotateThreadDEK(t *testing.T) {
-	cfg := `server:
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -150,13 +155,14 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
+    backend: ["%s"]
+    frontend: ["%s"]
+    admin: ["%s"]
   encryption:
     use: true
 logging:
   level: info
-`
+`, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rot_user"
@@ -201,7 +207,7 @@ logging:
 
 // test rewrapping a thread's DEK (data encryption key) using a new KEK.
 func TestAdmin_RewrapDEKs(t *testing.T) {
-	cfg := `server:
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -209,13 +215,14 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
+    backend: ["%s"]
+    frontend: ["%s"]
+    admin: ["%s"]
   encryption:
     use: true
 logging:
   level: info
-`
+`, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rw_user"

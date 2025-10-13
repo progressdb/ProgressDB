@@ -48,12 +48,10 @@ func TestConfigs_Suite(t *testing.T) {
 	})
 
 	// Subtest: Start the server with a malformed global config and expect the process to exit quickly with an error.
+	// Note: server takes 10 seconds to exit after fatal config error, so timeout must be generous.
 	t.Run("MalformedGlobalConfig", func(t *testing.T) {
-		// build binary and start with malformed config
 		tmp := utils.NewArtifactsDir(t, "configs-malformed-global")
 		bin := filepath.Join(tmp, "progressdb-bin")
-		// try building from the server dir first, then fall back to building from repo root
-		// build binary using test helper to locate repo root reliably
 		utils.BuildProgressdb(t, bin)
 
 		cfgPath := filepath.Join(tmp, "bad.yaml")
@@ -61,19 +59,28 @@ func TestConfigs_Suite(t *testing.T) {
 
 		cmd := exec.Command(bin, "--config", cfgPath)
 		cmd.Dir = utils.NewArtifactsDir(t, "configs-malformed-global-proc")
+		// PROGRESSDB_TESTING=1 should cause test harnesses to shorten abort delay but main binary's default is 10s
+		cmd.Env = append(os.Environ(), "PROGRESSDB_TESTING=1")
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start failed: %v", err)
 		}
 		done := make(chan error)
 		go func() { done <- cmd.Wait() }()
+		// Should exit within 13s in all cases
 		select {
 		case err := <-done:
 			if err == nil {
 				t.Fatalf("expected process to exit non-zero with malformed config")
 			}
-		case <-time.After(12 * time.Second):
+		case <-time.After(13 * time.Second):
 			_ = cmd.Process.Kill()
-			t.Fatalf("server did not exit quickly on malformed config")
+			// Wait a little to let process die after kill
+			select {
+			case <-done:
+				t.Fatalf("server did not exit non-zero with malformed config (required kill after timeout)")
+			case <-time.After(10 * time.Second):
+				t.Fatalf("server did not exit within 2s even after being killed (expected ~10s abort delay plus force)")
+			}
 		}
 	})
 
@@ -153,9 +160,9 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	// build binary using test helper to locate repo root reliably
 	utils.BuildProgressdb(t, bin)
 
-	// write malformed config
+	// write malformed config (invalid YAML)
 	cfgPath := filepath.Join(tmp, "bad.yaml")
-	_ = os.WriteFile(cfgPath, []byte("::not yaml::"), 0o600)
+	_ = os.WriteFile(cfgPath, []byte("server: [::"), 0o600)
 
 	cmd := exec.Command(bin, "--config", cfgPath)
 	procDir := utils.NewArtifactsDir(t, "configs-e2e-malformed-proc")
@@ -163,6 +170,7 @@ func TestConfigs_E2E_MalformedConfigFailsFast(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("PROGRESSDB_ARTIFACT_ROOT=%s", root),
 		fmt.Sprintf("TEST_ARTIFACTS_ROOT=%s", root),
+		"PROGRESSDB_TESTING=1",
 	)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)

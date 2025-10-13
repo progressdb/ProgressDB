@@ -69,7 +69,7 @@ logging:
 	visible := false
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
+		lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?author=alice", nil)
 		lreq.Header.Set("Authorization", "Bearer backend-secret")
 		lres, err := http.DefaultClient.Do(lreq)
 		if err == nil {
@@ -149,7 +149,7 @@ logging:
 		}
 	}
 
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?limit=1", nil)
+	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?limit=1&author=alice", nil)
 	lreq.Header.Set("Authorization", "Bearer backend-secret")
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {

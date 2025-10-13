@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-    "io"
-    "net/http"
-    "net/url"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -480,23 +480,23 @@ func DoAdminJSON(t *testing.T, baseURL, method, path string, body interface{}, o
 func GetAdminKey(t *testing.T, baseURL, key string) (int, []byte) {
 	t.Helper()
 	esc := url.PathEscape(key)
-path := "/admin/keys/" + esc
-resp, body := DoSignedRequest(t, baseURL, "GET", path, nil, "", AdminAPIKey)
-defer resp.Body.Close()
-return resp.StatusCode, body
+	path := "/admin/keys/" + esc
+	resp, body := DoSignedRequest(t, baseURL, "GET", path, nil, "", AdminAPIKey)
+	defer resp.Body.Close()
+	return resp.StatusCode, body
 }
 
 // WaitForAdminKeyVisible polls the admin key endpoint until it returns 200
 // or the timeout elapses. Fails the test on timeout.
 func WaitForAdminKeyVisible(t *testing.T, baseURL, key string, timeout time.Duration) {
 	t.Helper()
-deadline := time.Now().Add(timeout)
-for time.Now().Before(deadline) {
-	status, _ := GetAdminKey(t, baseURL, key)
- 	if status == 200 {
- 		return
- 	}
-	 time.Sleep(200 * time.Millisecond)
-}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		status, _ := GetAdminKey(t, baseURL, key)
+		if status == 200 {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 	t.Fatalf("timeout waiting for admin key visible: %s", key)
 }
