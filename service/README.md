@@ -1,218 +1,41 @@
-ProgressDB Server
+# ProgressDB Service
 
-Overview
-- HTTP server that appends and lists messages per thread.
-- PebbleDB as the storage engine.
-- Optional AES‑256‑GCM encryption for stored messages.
+ProgressDB is a simple HTTP API service designed for appending and retrieving messages grouped into threads. It uses PebbleDB for storage and supports optional field-level encryption using AES-256-GCM via an external KMS.
 
-Run
-- Start (dev): `.scripts/start.sh --addr :8080 --db ./data` or run the `cmd/progressdb` binary with `--addr` and `--db` flags
-- Build: `./scripts/build.sh`
+## Features
 
-API (summary)
-- POST `/v1/messages`: JSON body of message
-  - {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello"}}
-  - `id` and `ts` are optional; server fills them if missing.
-- GET `/v1/messages?thread=<id>&limit=<n>`: List messages for a thread (newest last). `limit` optional.
-- GET `/v1/threads/{threadID}/messages/{id}/versions`: List all stored versions for a message ID (thread-scoped)
-- POST `/v1/threads`: Create a thread (returns thread metadata)
-- GET `/v1/threads`: List saved threads
-- GET `/v1/threads/{id}`: Get thread metadata
-- DELETE `/v1/threads/{id}`: Delete thread metadata (non-destructive; returns 204)
- - GET `/v1/threads/{threadID}/messages/{id}/reactions`: List reactions on a message
- - POST `/v1/threads/{threadID}/messages/{id}/reactions`: Add/update a reaction on a message
- - DELETE `/v1/threads/{threadID}/messages/{id}/reactions/{identity}`: Remove a reaction for an identity
-- GET `/healthz`: Health check (`{"status":"ok"}`).
+- Store and list messages by thread.
+- Flexible message schema with custom JSON payloads.
+- Optional encryption for full messages or specific fields.
+- Prometheus metrics endpoint and health checks.
+- Swagger/OpenAPI auto-generated documentation.
+- Configurable via YAML file, environment variables, or flags.
+- Built-in support for API keys, rate limiting, CORS, and TLS.
 
-API Docs
-- Swagger UI: open `http://localhost:8080/docs/` to explore and test endpoints.
-- OpenAPI spec: `http://localhost:8080/openapi.yaml` (served from `service/docs/openapi.yaml`).
+## Usage
 
-Data Model
-- Message: fixed metadata + flexible payload.
-  - id: unique message id (string, e.g., `msg-123`).
-  - thread: thread id (string, e.g., `thread-9`).
-  - author: author/user id (string, e.g., `user-5`).
-  - ts: unix timestamp seconds (int) or nanos (int64).
-  - body: freeform JSON payload defined by the customer.
-  - example:
-    {"id":"msg-123","thread":"thread-9","author":"user-5","ts":1693888302,"body":{"text":"hello","tags":["greeting"]}}
-- Defaults on POST `/v1/messages` when fields are omitted:
-  - id: generated as `msg-<unix_nano>-<seq>`.
-  - thread: generated as `thread-<unix_nano>-<seq>`.
-  - ts: current time in nanoseconds.
-  - author: `none`.
-- Thread: minimal metadata with rollups.
-  - id: thread id (string).
-  - created_ts: first message timestamp.
-  - last_ts: last message timestamp.
-  - message_count: count of messages (optional to maintain in MVP).
-  - attributes: optional freeform JSON (e.g., title/subject).
+- Start the service with a simple shell script or binary.
+- Configure using a YAML file, environment variables, or flag overrides.
+- Use API keys for both frontend (public) and backend (admin) operations.
 
-Keyspace & Indexing
-- Primary storage (append-ordered by time):
-  - key: `thread:<threadID>:<unix_nano>-<seq>`
-  - val: message bytes (MVP: plaintext or encrypted; future: JSON-encoded message object).
-- Listing a thread: iterate by `prefix = "thread:" + threadID + ":"`.
-- Secondary indexes (future):
-  - by message id: `msg:<id> -> pointer or full JSON`.
-  - by author: `author:<authorID>:<unix_nano>-<seq> -> msg id`.
+## Data Model
 
-Schema Strategy
-- MVP: fixed metadata + flexible `body` JSON for customer-defined payloads.
-- Optional schema registration (future): allow customers to supply JSON Schema/Protobuf for validation and richer queries.
+Messages include fixed metadata (ID, thread, author, timestamp) and a flexible JSON body for custom data.
+Threads are lightweight metadata groupings for messages.
 
-Configuration
-- Config file: `config.yaml` (YAML)
-  - server.address: host/interface (e.g., `0.0.0.0`)
-  - server.port: 8080
-  - server.db_path: `./data/progressdb`
-  - encryption: use the external KMS provider (see `service/docs/kms.md`)
-  - logging.level: `info` (reserved; simple stdout logging used in MVP)
-  - validation:
-    - required: list of dot-paths that must exist (e.g., `body.text`).
-    - types: list of `{ path, type }` constraints (`string|number|boolean|object|array`).
-    - max_len: list of `{ path, max }` (applies to strings/arrays).
-    - enums: list of `{ path, values[] }` (string enums).
-    - when_then: list of conditional rules:
-      - when: `{ path, equals }` then: `{ required[] }`.
+## Security
 
-Environment Variables
-- `.env` support: if a `.env` file is present in the working directory, it is loaded at startup.
-- Variables:
-- `PROGRESSDB_ADDR`: full listen addr `host:port` (e.g., `0.0.0.0:8080`).
-  - `PROGRESSDB_ADDRESS`: host/interface (used with `PROGRESSDB_PORT`).
-  - `PROGRESSDB_PORT`: port number (string accepted, e.g., `8080`).
-  - `PROGRESSDB_DB_PATH`: Pebble database path.
-- `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `service/docs/kms.md`.
-  - `PROGRESSDB_KMS_ENDPOINT`: address of external KMS (host:port or full URL). Default: `127.0.0.1:6820`.
-  - `PROGRESSDB_ENCRYPTION_KEY`: deprecated/removed; the server uses an external KMS. See `service/docs/kms.md`.
-  - `PROGRESSDB_CONFIG`: path to `config.yaml` (optional; you can also pass `--config`).
-  - `PROGRESSDB_LOG_LEVEL`: `debug|info|warn|error` (optional hint; stdout only).
+API key authentication is required for all endpoints. TLS, CORS, IP allowlists, and rate limits are supported. Encryption uses an external key management service.
 
-Validation Examples
-- Require text and limit its length; require `body.card_last4` when `body.has_payment` is true.
+## Configuration
 
-  validation:
-    required:
-      - body.text
-    types:
-      - path: body.text
-        type: string
-      - path: body.has_payment
-        type: boolean
-    max_len:
-      - path: body.text
-        max: 200
-    when_then:
-      - when:
-          path: body.has_payment
-          equals: true
-        then:
-          required:
-            - body.card_last4
+Supports `.env` loading, comprehensive YAML config, and various environment variables.
+Fields, validation, encryption, authentication, and logging level are all easily configurable.
 
-Precedence
-- Flags explicitly set > Environment variables > Config file values > Built‑in defaults.
+## Encryption
 
-Security Notes
-- Keep `config.yaml` and `.env` out of version control.
-- Set permissions to owner‑read/write only (e.g., `chmod 600 config.yaml .env`).
-- Rotating the encryption key on existing data is non‑trivial; plan a migration.
+Messages can be encrypted in full or at selected fields, keeping essential metadata indexable and clear.
 
-Encryption Policy
-- Full-message encryption (default when key is set):
-  - Writes: value bytes are encrypted with AES‑256‑GCM (nonce|ciphertext stored).
-  - Reads: values are decrypted transparently before returning via API.
-- Selective field-level encryption (configurable):
-  - Define JSON paths under `encryption.fields` or via `PROGRESSDB_ENCRYPTION_FIELDS` (comma-separated paths).
-  - Example config:
-    encryption:
-      fields:
-        - path: body.credit_card
-          algorithm: aes-gcm
-        - path: body.phi.*
-          algorithm: aes-gcm
-  - Write path: encrypt configured fields before persist; non-JSON payloads fall back to full-message encryption.
-  - Read path: decrypt envelopes on matched fields; full-message decryption is attempted first for backwards compatibility.
+## Admin
 
-Field-Level Encryption
-- Goal: allow encrypting specific JSON fields while keeping indexable metadata clear (thread/id/author/ts remain plaintext).
-- Path syntax (proposed):
-  - Dot notation relative to the message root, e.g., `body.credit_card`, `body.phi.*`.
-  - `*` matches a single object key level (no deep recursion).
-  - Array indices supported with numeric selectors, e.g., `body.items[0].secret` (wildcards for arrays may be added later).
-  - Only `body.*` paths are recommended; encrypting top-level metadata would break indexing.
-- Storage format:
-  - Replace the plaintext field value with an envelope object:
-    {"_enc":"gcm","v":"<base64(nonce|ciphertext)>"}
-  - Keeps the JSON shape intact and signals encrypted fields explicitly.
-- Write pipeline:
-  - Parse message JSON, traverse paths, and for each match:
-    - Serialize field value to JSON bytes, encrypt with AES‑GCM (single instance key), base64 it.
-    - Replace the field value with the encryption envelope.
-  - Persist the resulting message JSON as the record value (existing nonce|ciphertext-at-value option remains for full-message mode).
-- Read pipeline:
-  - Parse fetched message JSON and traverse; where envelope objects are found, decrypt back to the original JSON value.
-  - If decryption fails and policy requires, return an error; otherwise, redact or pass envelope through (configurable).
-- Backwards compatibility:
-  - Old records without envelopes are treated as plaintext.
-  - Full-message encrypted records continue to be supported; field-level and full-message modes are mutually exclusive per deployment.
-- Operational notes:
-  - Note: local symmetric key support has been removed; use an external KMS instead. See `service/docs/kms.md`.
-  - Rotation: use KMS rotation procedures; the KMS rewraps DEKs and updates metadata.
-  - Performance: per-field crypto adds overhead; benchmark and cache matchers as needed.
-
-Examples
-- Minimal `.env`:
-  - `PROGRESSDB_ADDR=0.0.0.0:8080`
-  - `PROGRESSDB_DB_PATH=./data/progressdb`
-  - Encryption: configure and run an external KMS. See `service/docs/kms.md` for examples and runbook.
-
-Metrics
-- Prometheus endpoint: `GET /metrics` (default registry via promhttp).
-
-Security
-- CORS: configure allowed origins via `security.cors.allowed_origins` (YAML) or `PROGRESSDB_CORS_ORIGINS` (comma-separated). Preflight handled automatically.
-- Rate limiting: enable with `security.rate_limit.rps` and `burst` (or env `PROGRESSDB_RATE_RPS`, `PROGRESSDB_RATE_BURST`). Applied per API key or client IP.
-- IP whitelist: `security.ip_whitelist: ["1.2.3.4"]`. If set, only listed IPs may access.
-- TLS: set `server.tls.cert_file` and `server.tls.key_file`, or env `PROGRESSDB_TLS_CERT`/`PROGRESSDB_TLS_KEY`. Server switches to TLS when set.
-- API keys:
-  - Backend keys: `security.api_keys.backend: ["sk_...", ...]` or env `PROGRESSDB_API_BACKEND_KEYS`.
-  - Frontend keys: `security.api_keys.frontend: ["pk_...", ...]` or env `PROGRESSDB_API_FRONTEND_KEYS`.
-  - Scope: frontend keys may only call `GET/POST /v1/messages` and the health endpoint. All API access requires an API key; there is no allow-unauth mode.
-
-- Minimal `config.yaml`:
-  server:
-    address: "0.0.0.0"
-    port: 8080
-    tls:
-      cert_file: ""   # set for TLS
-      key_file:  ""   # set for TLS
-  storage:
-    db_path: "./data/progressdb"
-  security:
-    # Encryption is provided by an external KMS. See service/docs/kms.md
-    cors:
-      allowed_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
-    rate_limit:
-      rps: 10
-      burst: 20
-    ip_whitelist: []   # e.g., ["127.0.0.1"]
-    api_keys:
-      backend:  ["sk_example"]
-      frontend: ["pk_example"]
-  logging:
-    level: "info"
-
-Auth
-- Send API key via either header:
-  - `Authorization: Bearer <key>`
-  - `X-API-Key: <key>`
-- Frontend (public) key scope: `GET|POST /v1/messages`, `GET /healthz`.
-- Backend (secret) key scope: all routes.
-
-
-Admin
------
-The server exposes a small set of admin endpoints under /admin/*...
+Minimal admin endpoints are provided for operational tasks.

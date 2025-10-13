@@ -88,6 +88,7 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
+    backend: ["backend-secret"]
     admin: ["admin-secret"]
   encryption:
     use: false
@@ -101,7 +102,7 @@ logging:
 		thBody := map[string]string{"author": "noenc", "title": "noenc-thread"}
 		tb, _ := json.Marshal(thBody)
 		req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-		req.Header.Set("Authorization", "Bearer admin-secret")
+    req.Header.Set("Authorization", "Bearer backend-secret")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)

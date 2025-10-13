@@ -19,8 +19,8 @@ func TestHandlers_E2E_ThreadsMessagesCRUD(t *testing.T) {
 security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    admin: ["admin-secret"]
+    api_keys:
+    backend: ["backend-secret"]
 logging:
   level: info
 `
@@ -31,7 +31,7 @@ logging:
 	thBody := map[string]string{"author": "alice", "title": "t1"}
 	tb, _ := json.Marshal(thBody)
 	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-	req.Header.Set("Authorization", "Bearer admin-secret")
+	req.Header.Set("Authorization", "Bearer backend-secret")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -52,7 +52,7 @@ logging:
 	msg := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "hello"}, "thread": tid}
 	mb, _ := json.Marshal(msg)
 	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("Authorization", "Bearer admin-secret")
+	mreq.Header.Set("Authorization", "Bearer backend-secret")
 	mres, err := http.DefaultClient.Do(mreq)
 	if err != nil {
 		t.Fatalf("create message failed: %v", err)
@@ -69,8 +69,8 @@ logging:
 	visible := false
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-		lreq.Header.Set("Authorization", "Bearer admin-secret")
+            lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
+            lreq.Header.Set("Authorization", "Bearer backend-secret")
 		lres, err := http.DefaultClient.Do(lreq)
 		if err == nil {
 			if lres.StatusCode == 200 {
@@ -100,8 +100,8 @@ func TestHandlers_E2E_ValidationAndPagination(t *testing.T) {
 security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    admin: ["admin-secret"]
+    api_keys:
+    backend: ["backend-secret"]
 logging:
   level: info
 `
@@ -110,8 +110,8 @@ logging:
 
 	// invalid JSON to create thread -> server now enqueues raw payload and
 	// returns 202 Accepted. Adjust expectation to match current behaviour.
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{invalid`)))
-	req.Header.Set("Authorization", "Bearer admin-secret")
+    req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{invalid`)))
+    req.Header.Set("Authorization", "Bearer backend-secret")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -123,8 +123,8 @@ logging:
 	// pagination: create 3 messages and request with limit=1
 	thBody := map[string]string{"author": "alice", "title": "pg"}
 	tb, _ := json.Marshal(thBody)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-	creq.Header.Set("Authorization", "Bearer admin-secret")
+    creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
+    creq.Header.Set("Authorization", "Bearer backend-secret")
 	cres, err := http.DefaultClient.Do(creq)
 	if err != nil {
 		t.Fatalf("create thread failed: %v", err)
@@ -139,15 +139,15 @@ logging:
 	for i := 0; i < 3; i++ {
 		m := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "m"}, "thread": tid}
 		mb, _ := json.Marshal(m)
-		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-		mreq.Header.Set("Authorization", "Bearer admin-secret")
+            mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
+            mreq.Header.Set("Authorization", "Bearer backend-secret")
 		if _, err := http.DefaultClient.Do(mreq); err != nil {
 			t.Fatalf("create message failed: %v", err)
 		}
 	}
 
 	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages?limit=1", nil)
-	lreq.Header.Set("Authorization", "Bearer admin-secret")
+	lreq.Header.Set("Authorization", "Bearer backend-secret")
 	lres, err := http.DefaultClient.Do(lreq)
 	if err != nil {
 		t.Fatalf("list messages failed: %v", err)

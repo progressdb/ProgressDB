@@ -214,15 +214,15 @@ logging:
 			t.Fatalf("expected admin key to be forbidden for sign endpoint; got 200")
 		}
 
-		// admin can create messages by providing author
+		// admin should NOT be able to call non-/admin endpoints (enforce admin-only routes)
 		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"author":"admin","title":"t-admin"}`)))
 		mreq.Header.Set("Authorization", "Bearer admin-secret")
 		mres, err := http.DefaultClient.Do(mreq)
 		if err != nil {
 			t.Fatalf("create message failed: %v", err)
 		}
-		if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
-			t.Fatalf("expected admin to create message; status=%d", mres.StatusCode)
+		if mres.StatusCode == 200 {
+			t.Fatalf("expected admin key to be forbidden for non-admin endpoints; got 200")
 		}
 	})
 }

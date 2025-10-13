@@ -24,7 +24,6 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 	}
 }
-// Mutating endpoints enqueue requests and return 202; processing happens in the ingest pipeline.
 
 // thread management
 func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {

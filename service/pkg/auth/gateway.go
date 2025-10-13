@@ -88,6 +88,16 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				return
 			}
 
+			// Enforce admin-only route prefix: admin API keys may only access /admin/*
+			if role == RoleAdmin {
+				path := string(ctx.Path())
+				if !strings.HasPrefix(path, "/admin") {
+					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
+					logger.Warn("admin_route_violation", "path", path, "remote", ctx.RemoteAddr().String())
+					return
+				}
+			}
+
 			rlSpan := telemetry.StartSpanNoCtx("auth.rate_limit")
 			if !limiters.Allow(key) {
 				rlSpan()

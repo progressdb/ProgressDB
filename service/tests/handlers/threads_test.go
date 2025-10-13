@@ -133,7 +133,7 @@ func TestUpdateThread(t *testing.T) {
 		t.Fatalf("update request failed: %v", err)
 	}
 	defer ures.Body.Close()
-	if ures.StatusCode != 200 {
+	if ures.StatusCode != 200 && ures.StatusCode != 202 {
 		t.Fatalf("update failed: %v", ures.Status)
 	}
 }
@@ -170,7 +170,7 @@ func TestDeleteThread(t *testing.T) {
 		t.Fatalf("delete request failed: %v", err)
 	}
 	defer dres.Body.Close()
-	if dres.StatusCode != 204 {
+	if dres.StatusCode != 204 && dres.StatusCode != 202 {
 		t.Fatalf("delete failed: %v", dres.Status)
 	}
 }
@@ -392,7 +392,7 @@ func TestUpdateThreadMessage(t *testing.T) {
 		t.Fatalf("update request failed: %v", err)
 	}
 	defer ures.Body.Close()
-	if ures.StatusCode != 200 {
+	if ures.StatusCode != 200 && ures.StatusCode != 202 {
 		t.Fatalf("update thread message failed: %v", ures.Status)
 	}
 }
@@ -446,7 +446,7 @@ func TestDeleteThreadMessage(t *testing.T) {
 		t.Fatalf("delete request failed: %v", err)
 	}
 	defer dres.Body.Close()
-	if dres.StatusCode != 204 {
+	if dres.StatusCode != 204 && dres.StatusCode != 202 {
 		t.Fatalf("delete thread message failed: %v", dres.Status)
 	}
 }

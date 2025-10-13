@@ -21,7 +21,7 @@ import (
 )
 
 func TestAuthorization_Suite(t *testing.T) {
-	// Subtest: Ensure admins can access soft-deleted threads while non-admins (even signed users) cannot.
+	// ensure admins can access soft-deleted threads while non-admins (even signed users) cannot.
 	t.Run("DeletedThreadAdminAccess", func(t *testing.T) {
 
 		// create a thread then delete it (soft-delete) so admins can still access
@@ -41,13 +41,13 @@ func TestAuthorization_Suite(t *testing.T) {
 		if err != nil {
 			t.Fatalf("delete request failed: %v", err)
 		}
-		if dres.StatusCode != 204 {
-			t.Fatalf("expected delete to return 204; got %d", dres.StatusCode)
+		if dres.StatusCode != 202 {
+			t.Fatalf("expected delete to return 202; got %d", dres.StatusCode)
 		}
 
 		q := url.Values{}
 		q.Set("author", "alice")
-		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"?"+q.Encode(), nil)
+		req, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
 		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -97,7 +97,7 @@ logging:
 		// request with allowed origin should include Access-Control-Allow-Origin
 		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req.Header.Set("Origin", "https://allowed.example")
-		req.Header.Set("Authorization", "Bearer admin-secret")
+		req.Header.Set("Authorization", "Bearer frontend-secret")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -109,7 +109,7 @@ logging:
 		// request with disallowed origin should not set header
 		req2, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req2.Header.Set("Origin", "https://evil.example")
-		req2.Header.Set("Authorization", "Bearer admin-secret")
+		req2.Header.Set("Authorization", "Bearer frontend-secret")
 		res2, err := http.DefaultClient.Do(req2)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
