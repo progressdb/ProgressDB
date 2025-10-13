@@ -6,13 +6,7 @@ import (
 	"progressdb/pkg/ingest/queue"
 )
 
-// ProcessorFunc is the signature for operation handlers used by the
-// ingest processor. Handlers receive the unmarshalled Op and are expected
-// to perform persistence work (or prepare DB entries) synchronously. They
-// must return an error when the operation should be retried.
-// ProcessorFunc processes a single Op and returns zero or more BatchEntry
-// objects to be applied together in a batch. Returning an error signals a
-// transient handler failure; the processor will log and continue.
+// ProcessorFunc handles an Op, returning batch entries or an error for retry.
 type ProcessorFunc func(ctx context.Context, op *queue.Op) ([]BatchEntry, error)
 
 // BatchEntry represents a single operation prepared for batch apply.

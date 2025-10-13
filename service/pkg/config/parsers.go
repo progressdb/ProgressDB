@@ -53,7 +53,7 @@ func ParseConfigFlags() Flags {
 	return Flags{Addr: *addrPtr, DB: *dbPtr, Config: *cfgPtr, Set: setFlags}
 }
 
-// resolves the config path and loads the yaml file, returning the parsed config, a boolean indicating whether the file was present, and an error for fatal parsing problems
+// loads config from file, returns config, found bool, and error
 func ParseConfigFile(flags Flags) (*Config, bool, error) {
 	cfgPath := ResolveConfigPath(flags.Config, flags.Set["config"])
 	cfg, err := LoadConfigFile(cfgPath)
@@ -66,7 +66,7 @@ func ParseConfigFile(flags Flags) (*Config, bool, error) {
 	return cfg, true, nil
 }
 
-// reads environment variables into a fresh Config and returns that env-only config plus an EnvResult describing keys present and whether envs were used. this function does not mutate any caller provided config
+// loads environment variables into a new Config and returns it with EnvResult; caller config is unchanged
 func ParseConfigEnvs() (*Config, EnvResult) {
 	// gather all relevant env variables
 	envs := map[string]string{

@@ -169,7 +169,7 @@ func (p *Processor) workerLoop(workerID int) {
 		}
 		drainTimer.Stop()
 
-		// --- quick decode pass to extract thread IDs for prefetch ---
+		// quick decode pass to extract thread IDs for prefetch
 		threadSet := make(map[string]struct{})
 		for _, it := range items {
 			if it.Op.Thread != "" {
