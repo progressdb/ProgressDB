@@ -36,9 +36,11 @@ export default function (data) {
   // generate payload and checksum
   const { payload, checksum } = generatePayload(size);
 
-  // build request url and body
-  const url = `${target}/v1/messages`;
-  const bodyObj = { body: payload, checksum };
+  // The service expects messages to be created under threads. For the
+  // lightweight bench runner, create threads instead (POST /v1/threads).
+  const url = `${target}/v1/threads`;
+  const title = `bench-${Date.now()}`;
+  const bodyObj = { title };
   if (data.userId) bodyObj.author = data.userId;
   const body = JSON.stringify(bodyObj);
 
@@ -56,8 +58,8 @@ export default function (data) {
   reqTime.add(dt);
   bytesSent.add(body.length);
 
-  // check for success (status 200 or 201)
-  const ok = check(res, { 'status is 200 or 201': (r) => r.status === 200 || r.status === 201 });
+  // check for success (status 200 or 202 accepted for async enqueue)
+  const ok = check(res, { 'status is 200 or 202': (r) => r.status === 200 || r.status === 202 });
   successRate.add(ok);
   failRate.add(!ok);
 

@@ -19,7 +19,7 @@ func TestHandlers_E2E_ThreadsMessagesCRUD(t *testing.T) {
 security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-    api_keys:
+  api_keys:
     backend: ["backend-secret"]
 logging:
   level: info
@@ -100,7 +100,7 @@ func TestHandlers_E2E_ValidationAndPagination(t *testing.T) {
 security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-    api_keys:
+  api_keys:
     backend: ["backend-secret"]
 logging:
   level: info

@@ -120,6 +120,7 @@ logging:
 		// list via admin and assert no KMS metadata
 		areq, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
 		areq.Header.Set("Authorization", "Bearer admin-secret")
+		// admin API key is sufficient for /admin routes
 		ares, err := http.DefaultClient.Do(areq)
 		if err != nil {
 			t.Fatalf("admin threads request failed: %v", err)

@@ -49,6 +49,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		q.Set("author", "alice")
 		req, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
 		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
+		// admin API key is sufficient for /admin routes
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)

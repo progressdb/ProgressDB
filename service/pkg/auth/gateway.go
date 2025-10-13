@@ -11,16 +11,12 @@ import (
 	"progressdb/pkg/utils"
 )
 
-// role and secconfig types are defined in identity.go
-
-// AuthenticateRequestMiddlewareFast is a fasthttp-native middleware equivalent
-// to AuthenticateRequestMiddleware. It returns a middleware that wraps a
-// fasthttp.RequestHandler.
+// entry way for all requests - authenticated & authorized
 func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	limiters := &limiterPool{cfg: cfg}
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return func(ctx *fasthttp.RequestCtx) {
-			// log request (redacts sensitive headers)
+			// log each req with redacted headers
 			logger.LogRequestFast(ctx)
 
 			// CORS preflight
@@ -38,7 +34,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				return
 			}
 
-			// IP whitelist
+			// ip whitelist
 			if len(cfg.IPWhitelist) > 0 {
 				ip := clientIPFast(ctx)
 				logger.Debug("ip_check", "ip", ip)
@@ -49,19 +45,20 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				}
 			}
 
-			// auth
+			// extract possible api_key info
 			authSpan := telemetry.StartSpanNoCtx("auth.authenticate")
 			role, key, hasAPIKey := authenticateFast(ctx, cfg)
 			authSpan()
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
-			// allow unauthenticated health checks for probes
+			// allow access to health & ready checkeers
 			if (string(ctx.Path()) == "/healthz" || string(ctx.Path()) == "/readyz") && string(ctx.Method()) == fasthttp.MethodGet {
 				ctx.Request.Header.Set("X-Role-Name", "unauth")
 				next(ctx)
 				return
 			}
 
+			// extract api_key <> role resolution
 			var roleName string
 			switch role {
 			case RoleFrontend:
@@ -74,6 +71,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				roleName = "unauth"
 			}
 
+			// enforce api_key required
 			if role == RoleUnauth || !hasAPIKey {
 				utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
@@ -82,13 +80,14 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ctx.Request.Header.Set("X-Role-Name", roleName)
 			}
 
+			// enforce frontend routes only
 			if role == RoleFrontend && !frontendAllowedFast(ctx) {
 				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
 				return
 			}
 
-			// Enforce admin-only route prefix: admin API keys may only access /admin/*
+			// enforce admin_key <> admin routes only
 			if role == RoleAdmin {
 				path := string(ctx.Path())
 				if !strings.HasPrefix(path, "/admin") {
@@ -98,6 +97,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				}
 			}
 
+			// enforce rate_limiting per api key
 			rlSpan := telemetry.StartSpanNoCtx("auth.rate_limit")
 			if !limiters.Allow(key) {
 				rlSpan()
@@ -107,8 +107,8 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 			}
 			rlSpan()
 
+			// allow request through
 			logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
-
 			next(ctx)
 		}
 	}

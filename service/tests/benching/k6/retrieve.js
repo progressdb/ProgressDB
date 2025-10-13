@@ -7,7 +7,8 @@ import { buildHeaders } from './lib/headers.js';
 export let options = k6Options;
 
 const DEFAULT_TARGET = 'http://192.168.0.132:8080';
-const DEFAULT_PATH = '/v1/messages';
+// Use thread-scoped messages endpoint
+const DEFAULT_PATH = '/v1/threads';
 const DEFAULT_THREAD = 't1';
 const DEFAULT_LIMIT = 10;
 
@@ -43,7 +44,8 @@ const bytesReceived = new Counter('bytes_received_total');
 const statusCodes = new Counter('status_codes');
 
 export default function (data) {
-  const url = `${TARGET}${PATH}?thread=${THREAD}&limit=${LIMIT}`;
+// thread-scoped messages endpoint: /v1/threads/{threadID}/messages
+const url = `${TARGET}${PATH}/${THREAD}/messages?limit=${LIMIT}`;
   const headers = buildHeaders();
   if (data.userId) headers['X-User-ID'] = data.userId;
   if (data.signature) headers['X-User-Signature'] = data.signature;

@@ -183,7 +183,7 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: []
+    backend: ["signsecret"]
     frontend: []
     admin: ["admin-secret"]
 logging:
@@ -195,6 +195,7 @@ logging:
 		// admin can access admin health
 		areq, _ := http.NewRequest("GET", sp.Addr+"/admin/health", nil)
 		areq.Header.Set("Authorization", "Bearer admin-secret")
+		// admin API key is sufficient for /admin routes
 		ares, err := http.DefaultClient.Do(areq)
 		if err != nil {
 			t.Fatalf("admin health failed: %v", err)

@@ -39,8 +39,9 @@ read -r -p "USER_ID [${DEFAULT_USER_ID}]: " USER_ID
 USER_ID=${USER_ID:-$DEFAULT_USER_ID}
 export USER_ID
 
-CREATE_PATH="/v1/messages"
-RETRIEVE_PATH="/v1/messages"
+# Use thread-scoped endpoints (messages are under threads)
+CREATE_PATH="/v1/threads"
+RETRIEVE_PATH="/v1/threads"
 
 # get user signature
 echo "Requesting signature for user '$USER_ID'"

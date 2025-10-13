@@ -111,9 +111,10 @@ retention:
 			t.Fatalf("SaveThread: %v", err)
 		}
 
-		// trigger retention via admin test endpoint
-		areq, _ := http.NewRequest("POST", sp.Addr+"/admin/test/retention-run", nil)
+		// trigger retention via admin test endpoint (registered path)
+		areq, _ := http.NewRequest("POST", sp.Addr+"/admin/test-retention-run", nil)
 		areq.Header.Set("Authorization", "Bearer admin-secret")
+		// admin API key is sufficient for /admin routes
 		ares, err := http.DefaultClient.Do(areq)
 		if err != nil {
 			t.Fatalf("trigger retention failed: %v", err)

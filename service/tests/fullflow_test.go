@@ -47,6 +47,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	rb, _ := json.Marshal(rreq)
 	areq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rotate-thread-dek", bytes.NewReader(rb))
 	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
+	// admin API key is sufficient for /admin routes
 	ares, err := http.DefaultClient.Do(areq)
 	if err != nil {
 		t.Fatalf("rotate request failed: %v", err)
