@@ -4,7 +4,7 @@ set -euo pipefail
 ###############################################################################
 # ProgressDB Build Script
 #
-# This script builds the ProgressDB server binary for one or more target
+# This script builds the ProgressDB service binary for one or more target
 # platforms. It supports embedding build metadata (version, commit, date)
 # and uses local build caches to avoid polluting global Go caches.
 #

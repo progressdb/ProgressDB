@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Running server tests..."
+echo "Running service tests..."
 cd "$(dirname "$0")/.."
 
 # Route all test artifacts into a shared root so logs and caches stay tidy
@@ -15,11 +15,11 @@ export TEST_ARTIFACTS_ROOT="$ARTIFACT_ROOT"
 export GOCACHE="$ARTIFACT_ROOT/cache/go"
 mkdir -p "$GOCACHE"
 
-# Run from the server directory so the module resolves correctly
-cd server
+# Run from the service directory so the module resolves correctly
+cd service
 
 # Log file for JSON output
-JSON_LOG="$ARTIFACT_ROOT/logs/server-tests.jsonl"
+JSON_LOG="$ARTIFACT_ROOT/logs/service-tests.jsonl"
 
 # Ensure the logs directory exists so `tee` can write to the JSON log
 mkdir -p "$(dirname "$JSON_LOG")"

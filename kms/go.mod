@@ -49,4 +49,4 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 )
 
-replace progressdb => ../server
+replace progressdb => ../service

@@ -14,7 +14,7 @@ fi
 set -euo pipefail
 
 # Interactive dev launcher. Prompts whether to enable encryption and which mode,
-# then delegates to the appropriate script under scripts/enc/ or runs plain server.
+# then delegates to the appropriate script under scripts/enc/ or runs plain service.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -41,19 +41,19 @@ while [ $# -gt 0 ]; do
     --)
       shift; break ;;
     -*)
-      # unknown flag: stop parsing and leave remaining args for the server
+      # unknown flag: stop parsing and leave remaining args for the service
       break ;;
     *)
-      # positional -> leave for server
+      # positional -> leave for service
       break ;;
   esac
 done
-# Remaining "$@" are forwarded to the server command
+# Remaining "$@" are forwarded to the service command
 
 if [[ $USE_ENC -eq 0 ]]; then
-  # If no flags provided and no forwarded server args, run interactive prompt
+  # If no flags provided and no forwarded service args, run interactive prompt
   if [[ $# -eq 0 && $USE_ENC -eq 0 ]]; then
-    echo "Start development server"
+    echo "Start development service"
     read -r -p "Enable encryption (y/N)? " ENC_ANS
     ENC_ANS="${ENC_ANS:-n}"
     if [[ "$ENC_ANS" =~ ^([yY][eE][sS]|[yY])$ ]]; then
@@ -125,7 +125,7 @@ if [[ $USE_ENC -eq 1 ]]; then
 else
   echo "Running plain (no encryption) dev..."
   CFG="$ROOT_DIR/scripts/config.yaml"
-  cd "$ROOT_DIR/server"
+  cd "$ROOT_DIR/service"
   mkdir -p .gopath/pkg/mod
   export GOPATH="$PWD/.gopath"
   export GOMODCACHE="$PWD/.gopath/pkg/mod"

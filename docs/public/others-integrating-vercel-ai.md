@@ -26,7 +26,7 @@ Example flow (high-level):
 - Frontend calls Vercel AI SDK to generate a response.
 - Save the AI response to ProgressDB as another message.
 
-Minimal curl example (frontend/server interaction):
+Minimal curl example (frontend/service interaction):
 
 ```sh
 # Backend: sign a user ID (server-side, using backend SDK / backend key)

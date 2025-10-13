@@ -6,8 +6,8 @@ FROM golang:1.21 AS builder
 WORKDIR /src
 
 # Copy only the server module into the build context to ensure go.mod is present
-COPY server /src/server
-WORKDIR /src/server
+COPY server /src/service
+WORKDIR /src/service
 ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILDDATE=unknown

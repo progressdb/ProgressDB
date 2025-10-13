@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT_DIR"
 
-# Simple health endpoint benchmark using k6. Assumes the ProgressDB server is
+# Simple health endpoint benchmark using k6. Assumes the ProgressDB service is
 # already running. Adjust TARGET or RATE env vars as needed.
 
 if ! command -v k6 >/dev/null 2>&1; then

@@ -12,10 +12,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-// HandlerID identifies the concrete handler the processor should invoke for
-// this Op. This is set by the enqueueing code (API layer) which has the
-// authoritative intent for the operation. Processor will use Handler when
-// present and will not probe payloads to determine dispatch.
+// HandlerID identifies which action the queue Op should perform.
 type HandlerID string
 
 const (
@@ -29,50 +26,31 @@ const (
 	HandlerThreadDelete   HandlerID = "thread.delete"
 )
 
-// Op is a lightweight in-memory representation of a create/update/delete
-// operation destined for the persistence pipeline. Payload may be backed by
-// a pooled ByteBuffer; consumers must call Item.Done() when finished.
+// Op describes a queue operation and its metadata.
 type Op struct {
-	// Handler is an explicit dispatch key set by enqueueing code.
-	// Processor MUST call the registered handler matching this value.
-	Handler HandlerID
-	Thread  string
-	ID      string
-	// Payload holds the raw bytes for the operation (may be nil).
-	Payload []byte
-	// TS is an optional client/server timestamp (nanoseconds).
-	TS int64
-	// EnqSeq is a monotonic enqueue sequence assigned when the op is
-	// accepted into the in-memory queue. It is used for deterministic
-	// ordering inside batches.
-	EnqSeq uint64
-	// WalOffset is the durable WAL sequence/offset assigned when this Op
-	// was persisted to the WAL. A value of -1 means the Op is not durably
-	// stored.
-	WalOffset int64
-	// Extras holds small metadata extracted from HTTP request headers
-	// (e.g. role, identity, request id). It is optional.
-	Extras map[string]string
+	Handler   HandlerID         // Which handler to invoke
+	Thread    string            // Thread identifier
+	ID        string            // Record identifier
+	Payload   []byte            // Payload data, may be nil
+	TS        int64             // Timestamp (nanoseconds)
+	EnqSeq    uint64            // Sequence assigned at enqueue
+	WalOffset int64             // WAL offset, -1 if not set
+	Extras    map[string]string // Optional metadata (e.g., user id, role)
 }
 
-// Item wraps an Op and owns a pooled ByteBuffer if one was used. Consumers
-// MUST call Done() exactly once after processing the item to return
-// pooled resources.
+// Item wraps an Op and manages pooled buffer and queue references.
 type Item struct {
-	Op *Op
-
-	// internal fields
+	Op   *Op
 	buf  *bytebufferpool.ByteBuffer
 	once sync.Once
 	q    *Queue
 }
 
-// Done releases internal pooled resources (buffer + op) back to the pool.
+// Done releases all item, buffer, and op resources back to pools.
 func (it *Item) Done() {
 	it.once.Do(func() {
 		if it.q != nil {
-			// Acknowledge WAL entry before releasing queue reference so
-			// truncation bookkeeping can run.
+			// Ack WAL offset if set, update in-flight count
 			if it.Op != nil && it.Op.WalOffset >= 0 {
 				it.q.ack(it.Op.WalOffset)
 			}
@@ -80,53 +58,39 @@ func (it *Item) Done() {
 			it.q = nil
 		}
 		if it.buf != nil {
-			// avoid retaining huge buffers in the pool
+			// Only pool reasonably sized buffers
 			if cap(it.buf.B) > maxPooledBuffer {
-				// drop the buffer so GC can reclaim the underlying array
 				it.buf = nil
 			} else {
 				bytebufferpool.Put(it.buf)
 				it.buf = nil
 			}
 		}
-		// clear slice header to avoid retention
 		if it.Op != nil {
 			it.Op.Payload = nil
 			it.Op.Extras = nil
 			opPool.Put(it.Op)
 			it.Op = nil
 		}
-		// return Item to pool
 		itemPool.Put(it)
 	})
 }
 
+// Pools for reusing Op and Item objects.
 var opPool = sync.Pool{New: func() any { return &Op{} }}
 var itemPool = sync.Pool{New: func() any { return &Item{} }}
 
-// maxPooledBuffer controls the largest buffer size that will be returned
-// to the pooled ByteBuffer. Buffers larger than this will be dropped to
-// avoid unbounded resident memory.
+// Maximum buffer size to pool, larger ones are dropped instead for GC.
 var maxPooledBuffer = 256 * 1024 // 256 KiB
 
 const opRecordVersion = 0x1
 
-// Custom binary framing (versioned) for Op serialization.
-// Format (big-endian):
-// 1 byte version (0x1)
-// HandlerLen uint16 + Handler bytes
-// ThreadLen uint16 + Thread bytes
-// IDLen uint16 + ID bytes
-// TS int64
-// EnqSeq uint64
-// ExtrasCount uint16; for each: KeyLen uint16 + Key, ValLen uint16 + Val
-// PayloadLen uint32 + Payload bytes
-
+// serializeOp encodes an Op into a custom binary format:
+// [version][handler][thread][id][ts][enqseq][extras][payload]
 func serializeOp(op *Op) ([]byte, error) {
 	var buf bytes.Buffer
-	// version
 	buf.WriteByte(opRecordVersion)
-	// helper
+
 	writeString := func(s string) error {
 		if len(s) > 0xFFFF {
 			return io.ErrShortBuffer
@@ -159,7 +123,6 @@ func serializeOp(op *Op) ([]byte, error) {
 		return nil, err
 	}
 
-	// extras
 	if op.Extras == nil {
 		if err := binary.Write(&buf, binary.BigEndian, uint16(0)); err != nil {
 			return nil, err
@@ -181,7 +144,6 @@ func serializeOp(op *Op) ([]byte, error) {
 		}
 	}
 
-	// payload
 	if op.Payload == nil {
 		if err := binary.Write(&buf, binary.BigEndian, uint32(0)); err != nil {
 			return nil, err
@@ -202,17 +164,17 @@ func serializeOp(op *Op) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// deserializeOp decodes a binary Op previously encoded by serializeOp.
 func deserializeOp(b []byte) (*Op, error) {
 	if len(b) == 0 {
 		return nil, io.ErrUnexpectedEOF
 	}
-	// Only support the custom framing format.
 	if b[0] != opRecordVersion {
 		return nil, fmt.Errorf("unsupported Op record version: 0x%02x", b[0])
 	}
 
 	r := bytes.NewReader(b)
-	// consume version
+	// Skip version
 	if _, err := r.ReadByte(); err != nil {
 		return nil, err
 	}
@@ -292,9 +254,8 @@ func deserializeOp(b []byte) (*Op, error) {
 	return op, nil
 }
 
-// ErrQueueFull is returned by TryEnqueue when the queue is at capacity.
-// Placed here so callers can reference it from the package.
+// ErrQueueFull is returned when queue is at capacity.
 var ErrQueueFull = errors.New("ingest queue full")
 
-// ErrQueueClosed is returned when enqueue operations are attempted after the queue has closed.
+// ErrQueueClosed is returned when enqueueing after queue is closed.
 var ErrQueueClosed = errors.New("ingest queue closed")

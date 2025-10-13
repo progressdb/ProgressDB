@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Dev helper for "embedded" encryption mode.
 # Starts a local KMS (via scripts/kms/dev.sh) in the background, waits
-# briefly for it to initialize, then runs the server in the foreground.
+# briefly for it to initialize, then runs the service in the foreground.
 # On exit the KMS background process is killed.
 
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -49,8 +49,8 @@ trap 'echo "[enc:embedded] Stopping KMS (pid=$KMS_PID)"; kill "$KMS_PID" 2>/dev/
 echo "[enc:embedded] Waiting for KMS to initialize..."
 sleep 2
 
-echo "[enc:embedded] Launching server (foreground)"
-cd "$ROOT_DIR/server"
+echo "[enc:embedded] Launching service (foreground)"
+cd "$ROOT_DIR/service"
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 exec go run ./cmd/progressdb --config "$CFG" "$@"

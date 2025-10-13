@@ -4,7 +4,7 @@ project_name: progressdb
 
 builds:
   - id: progressdb
-    dir: ./server
+    dir: ./service
     main: ./cmd/progressdb
     binary: progressdb
     goos:

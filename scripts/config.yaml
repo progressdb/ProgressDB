@@ -1,5 +1,5 @@
-server:
-  # Server listen address and TLS settings
+service:
+  # service listen address and TLS settings
   address: "0.0.0.0"
   port: 8080
   db_path: "./database"

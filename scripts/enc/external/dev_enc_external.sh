@@ -3,11 +3,11 @@ set -euo pipefail
 
 # Dev helper for "external" encryption mode.
 # Typical usage: this script is invoked by scripts/dev.sh and may be passed
-# the flags `--wait-kms` and `--wait-timeout N` followed by server args.
+# the flags `--wait-kms` and `--wait-timeout N` followed by service args.
 # Behavior:
 #  - If `--wait-kms` is provided, wait up to N seconds (default 30) for
 #    the KMS endpoint (127.0.0.1:6820) to accept TCP connections.
-#  - After waiting (or immediately if not requested), exec the server.
+#  - After waiting (or immediately if not requested), exec the service.
 
 if [ -z "${BASH_VERSION:-}" ]; then
   exec bash "$0" "$@"
@@ -21,7 +21,7 @@ WAIT_KMS=0
 WAIT_TIMEOUT=30
 ENDPOINT=${KMS_ENDPOINT:-127.0.0.1:6820}
 
-# Parse our limited flags; leave remaining args for the server
+# Parse our limited flags; leave remaining args for the service
 PARSED_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -59,8 +59,8 @@ if [[ $WAIT_KMS -eq 1 ]]; then
 fi
 
 CFG="$ROOT_DIR/scripts/config.yaml"
-echo "[enc:external] Launching server against external KMS endpoint $ENDPOINT"
-cd "$ROOT_DIR/server"
+echo "[enc:external] Launching service against external KMS endpoint $ENDPOINT"
+cd "$ROOT_DIR/service"
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
 exec go run ./cmd/progressdb --config "$CFG" "${PARSED_ARGS[@]}"
