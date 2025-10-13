@@ -39,35 +39,37 @@ type ctxAuthorKey struct{}
 // require signed hmac
 func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
+		// parse possible identifiers
 		role := strings.ToLower(string(ctx.Request.Header.Peek("X-Role-Name")))
 		userID := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-ID")))
 		sig := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-Signature")))
 
-		// For callers without a recognized role (healthz/readyz), bypass signature checks.
+		// allow no_role reqs - for allowed root middleware routes
 		if role != "frontend" && role != "backend" && role != "admin" {
 			next(ctx)
 			return
 		}
 
-		// backend may operate without signatures; nothing to attach.
+		// allow backend reqs - with no signature
 		if role == "backend" && sig == "" {
 			next(ctx)
 			return
 		}
 
-		// Allow admin API key requests to /admin routes without a user signature,
-		// since admin endpoints are for site-wide operations and don't require author context.
+		// allow admin reqs - enforce /admin route prefixes
 		if role == "admin" && strings.HasPrefix(string(ctx.Path()), "/admin") && sig == "" {
 			next(ctx)
 			return
 		}
 
+		// reject all reqs - if no signature and user details
 		if sig == "" || userID == "" {
 			logger.Warn("missing_signature_headers", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
 			utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing signature headers")
 			return
 		}
 
+		// reject if no signing keys
 		keys := config.GetSigningKeys()
 		if len(keys) == 0 {
 			logger.Error("no_signing_keys_configured")
@@ -75,6 +77,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 			return
 		}
 
+		// crypto verify the req: user_id <> hmac is not tampered
 		ok := false
 		for k := range keys {
 			mac := hmac.New(sha256.New, []byte(k))
@@ -91,6 +94,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 			return
 		}
 
+		// allow req to continue
 		logger.Info("signature_verified", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 		ctx.SetUserValue("author", userID)
 		next(ctx)

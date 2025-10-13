@@ -29,6 +29,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
 				ctx.Response.Header.Set("Access-Control-Expose-Headers", "X-Role-Name")
 			}
+			// - if method is not a standard method
 			if string(ctx.Method()) == fasthttp.MethodOptions {
 				ctx.SetStatusCode(fasthttp.StatusNoContent)
 				return
