@@ -20,11 +20,13 @@ import (
 	"progressdb/pkg/utils"
 )
 
-// SignHandler handles /_sign and /v1/_sign endpoints.
+// auth handlers
 func Sign(ctx *fasthttp.RequestCtx) {
+	// set response type and log the handler invocation
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 
+	// check caller role, only allow backend
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	if role != "backend" {
 		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", ctx.RemoteAddr().String())
@@ -32,20 +34,15 @@ func Sign(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	auth := string(ctx.Request.Header.Peek("Authorization"))
-	var key string
-	if len(auth) > 7 && (auth[:7] == "Bearer " || auth[:7] == "bearer ") {
-		key = auth[7:]
-	}
-	if key == "" {
-		key = string(ctx.Request.Header.Peek("X-API-Key"))
-	}
+	// extract api key from authorization or x-api-key header
+	key := getAPIKey(ctx)
 	if key == "" {
 		logger.Warn("missing api key in signHandler", "remote", ctx.RemoteAddr().String())
 		utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing api key")
 		return
 	}
 
+	// parse json payload (expects userid)
 	var payload struct {
 		UserID string `json:"userId"`
 	}
@@ -55,15 +52,19 @@ func Sign(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// sign the userid using hmac-sha256 with the api key
 	logger.Info("signing userId", "remote", ctx.RemoteAddr().String(), "role", role)
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(payload.UserID))
 	sig := hex.EncodeToString(mac.Sum(nil))
+
+	// write response (userid and signature), and log error if write fails
 	if err := json.NewEncoder(ctx).Encode(map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
 	}
 }
 
+// data handlers
 func AdminHealth(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
@@ -155,6 +156,7 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(val))
 }
 
+// encryption handlers
 func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
@@ -466,6 +468,7 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	return ids, nil
 }
 
+// helpers
 func auditSummary(event string, threads int, keys int, out map[string]map[string]string) {
 	okCount := 0
 	errCount := 0
@@ -501,4 +504,17 @@ func auditLog(event string, fields map[string]interface{}) {
 		attrs = append(attrs, k, v)
 	}
 	logger.Info(event, attrs...)
+}
+
+// returns the API key from Authorization or X-API-Key headers.
+func getAPIKey(ctx *fasthttp.RequestCtx) string {
+	auth := string(ctx.Request.Header.Peek("Authorization"))
+	var key string
+	if len(auth) > 7 && (auth[:7] == "Bearer " || auth[:7] == "bearer ") {
+		key = auth[7:]
+	}
+	if key == "" {
+		key = string(ctx.Request.Header.Peek("X-API-Key"))
+	}
+	return key
 }

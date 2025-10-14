@@ -127,35 +127,65 @@ func clientIPFast(ctx *fasthttp.RequestCtx) string {
 func authenticateFast(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool) {
 	auth := string(ctx.Request.Header.Peek("Authorization"))
 	var key string
-	if len(auth) > 7 && strings.ToLower(auth[:7]) == "bearer " {
+
+	// log raw Authorization and X-API-Key values
+	logger.Info("auth_headers_received",
+		"authorization_raw", auth,
+		"x_api_key_raw", string(ctx.Request.Header.Peek("X-API-Key")),
+		"remote", ctx.RemoteAddr().String(),
+		"path", string(ctx.Path()),
+	)
+
+	// accept both "Bearer " and "bearer " prefixes, case-insensitive
+	if len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ") {
 		key = strings.TrimSpace(auth[7:])
 	}
+
+	// fallback to x-api-key header if bearer is missing
 	if key == "" {
 		key = string(ctx.Request.Header.Peek("X-API-Key"))
 	}
+
+	// if still nothing, treat as unauthenticated (by ip)
 	if key == "" {
+		logger.Info("unauthenticated_request", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()), "reason", "no_api_key")
 		return RoleUnauth, clientIPFast(ctx), false
 	}
+
+	// admin keys take precedence
 	if cfg.AdminKeys != nil {
 		if _, ok := cfg.AdminKeys[key]; ok {
+			logger.Info("api_key_authenticated", "role", "admin", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 			return RoleAdmin, key, true
 		}
 	}
-	if _, ok := cfg.BackendKeys[key]; ok {
-		return RoleBackend, key, true
+	// backend keys
+	if cfg.BackendKeys != nil {
+		if _, ok := cfg.BackendKeys[key]; ok {
+			logger.Info("api_key_authenticated", "role", "backend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return RoleBackend, key, true
+		}
 	}
-	if _, ok := cfg.FrontendKeys[key]; ok {
-		return RoleFrontend, key, true
+	// frontend keys
+	if cfg.FrontendKeys != nil {
+		if _, ok := cfg.FrontendKeys[key]; ok {
+			logger.Info("api_key_authenticated", "role", "frontend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			return RoleFrontend, key, true
+		}
 	}
+	// unrecognized api key, but present
+	logger.Warn("unrecognized_api_key", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 	return RoleUnauth, key, true
 }
 
+// check if the request is allowed for frontend
 func frontendAllowedFast(ctx *fasthttp.RequestCtx) bool {
 	path := string(ctx.Path())
-	method := string(ctx.Method())
-	if path == "/v1/messages" && (method == fasthttp.MethodGet || method == fasthttp.MethodPost) {
+	// allow get or post on /v1/messages
+	if strings.HasPrefix(path, "/v1/messages") {
 		return true
 	}
+	// allow any method on /v1/threads and sub-paths
 	if strings.HasPrefix(path, "/v1/threads") {
 		return true
 	}

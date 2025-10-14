@@ -34,7 +34,7 @@ type SecConfig struct {
 	AdminKeys      map[string]struct{}
 }
 
-type ctxAuthorKey struct{}
+// type ctxAuthorKey struct{}
 
 // require signed hmac
 func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {

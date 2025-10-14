@@ -43,7 +43,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		var list struct {
 			Threads []map[string]interface{} `json:"threads"`
 		}
-        status = utils.AdminGetJSON(t, sp.Addr, "/admin/threads", &list)
+		status = utils.AdminGetJSON(t, sp.Addr, "/admin/threads", &list)
 		if status != 200 {
 			t.Fatalf("expected admin to access deleted thread; status=%d", status)
 		}
@@ -103,7 +103,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		}
 	})
 
-	// Subtest: Start server with strict rate limit and validate throttling behavior on quick successive requests.
+	// start server with strict rate limit and validate throttling behavior on quick successive requests.
 	t.Run("RateLimitBehavior", func(t *testing.T) {
 		// start server with strict rate limit: 1 rps, burst 1
 		cfg := `server:
@@ -143,6 +143,7 @@ logging:
 					req, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader(reqBody))
 					req.Header.Set("Authorization", "Bearer "+utils.BackendAPIKey)
 					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("X-ROLE-NAME", "admin")
 					res, err := client.Do(req)
 					if err != nil {
 						t.Errorf("sign request failed: %v", err)

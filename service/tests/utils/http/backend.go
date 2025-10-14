@@ -110,3 +110,35 @@ func BackendRawRequest(t *testing.T, baseURL, method, path string, raw []byte, u
 	resp.Body.Close()
 	return resp.StatusCode, bodyBytes
 }
+
+
+// CallSignUser makes a request to /v1/_sign with userId "u" and returns the JSON response map and status code.
+func CallSignUser(t *testing.T, baseURL, backendAPIKey string) (map[string]string, int) {
+	t.Helper()
+	reqBody := []byte(`{"userId":"u"}`)
+	req, err := nethttp.NewRequest("POST", baseURL+"/v1/_sign", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("failed to build sign request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+backendAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Role-Name", "backend") // Explicitly set X-Role-Name as per instruction
+
+	client := nethttp.DefaultClient
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("sign request failed: %v", err)
+	}
+	defer res.Body.Close()
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("failed to read sign response body: %v", err)
+	}
+
+	var out map[string]string
+	if err := json.Unmarshal(bodyBytes, &out); err != nil {
+		t.Fatalf("failed to unmarshal sign response: %v (body=%s)", err, string(bodyBytes))
+	}
+	return out, res.StatusCode
+}

@@ -38,13 +38,18 @@ func RegisterRoutes(r *router.Router) {
 	// r.POST("/v1/messages", CreateMessage)
 	// r.GET("/v1/messages", ListMessages)
 
-	// admin secure routes
+	// admin data routes
 	r.GET("/admin/health", AdminHealth)
 	r.GET("/admin/stats", AdminStats)
 	r.GET("/admin/threads", AdminListThreads)
 	r.GET("/admin/keys", AdminListKeys)
 	r.GET("/admin/keys/{key}", AdminGetKey)
+
+	// admin enc routes
 	r.POST("/admin/encryption/rotate-thread-dek", AdminEncryptionRotateThreadDEK)
+	r.POST("/admin/encryption/rewrap-deks", AdminEncryptionRewrapDEKs)
+	r.POST("/admin/encryption/encrypt-existing", AdminEncryptionEncryptExisting)
+	r.POST("/admin/encryption/generate-kek", AdminEncryptionGenerateKEK)
 }
 
 // Handler returns the fasthttp handler for the ProgressDB API.

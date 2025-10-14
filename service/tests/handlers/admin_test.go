@@ -51,7 +51,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	// admin encrypt-existing endpoint (which will back up plaintexts as
 	// keys with prefix "backup:encrypt:"), then list and fetch those keys
 	// via the admin endpoints.
-	cfg := fmt.Sprintf(`server:
+    cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -59,7 +59,7 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["%s"]
+    backend: ["%s", "%s"]
     frontend: ["%s"]
     admin: ["%s"]
   encryption:
@@ -67,7 +67,7 @@ security:
     fields: ["body"]
 logging:
   level: info
-`, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
+`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
@@ -172,7 +172,7 @@ logging:
 
 // checks encrypting existing thread messages via /admin/encryption/encrypt-existing
 func TestAdmin_EncryptExisting(t *testing.T) {
-	cfg := `server:
+    cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -180,6 +180,7 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
+    backend: ["` + utils.SigningSecret + `", "` + utils.BackendAPIKey + `"]
     frontend: ["` + utils.FrontendAPIKey + `"]
     admin: ["admin-secret"]
   encryption:

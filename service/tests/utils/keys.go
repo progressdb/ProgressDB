@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	BackendAPIKey  = "backend-test"
-	FrontendAPIKey = "frontend-test"
-	AdminAPIKey    = "admin-test"
+	BackendAPIKey  = "backend-secret"
+	FrontendAPIKey = "frontend-secret"
+	AdminAPIKey    = "admin-secret"
 	SigningSecret  = "signsecret"
 )
 
