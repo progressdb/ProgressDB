@@ -121,12 +121,12 @@ logging:
 	  kms:
 	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 	  api_keys:
-	    backend: ["%s", "%s"]
+	    backend: ["%s"]
 	    frontend: []
 	    admin: []
 	logging:
 	  level: info
-	`, utils.SigningSecret, utils.BackendAPIKey)
+	`, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 

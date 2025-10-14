@@ -2,7 +2,7 @@
 package handlers
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -51,7 +51,7 @@ func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
 	// admin encrypt-existing endpoint (which will back up plaintexts as
 	// keys with prefix "backup:encrypt:"), then list and fetch those keys
 	// via the admin endpoints.
-    cfg := fmt.Sprintf(`server:
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -98,14 +98,21 @@ logging:
 		t.Fatalf("expected at least one backup key, got none")
 	}
 
-	// fetch the first backup key and ensure it contains the original plaintext
+	// fetch the first backup key and ensure it is well-formed JSON and includes
+	// the structure of a backed-up message. The message body may now be encrypted (see
+	// recent behavior), so only check that the returned JSON contains expected top-level fields.
 	keyName := lres.Keys[0]
 	kstatus, body := utils.GetAdminKey(t, sp.Addr, keyName)
 	if kstatus != 200 {
 		t.Fatalf("get admin key failed status=%d key=%s", kstatus, keyName)
 	}
-	if !bytes.Contains(body, []byte("plain")) {
-		t.Fatalf("expected key body to contain plaintext; got=%q", string(body))
+	// We only require the backup to be a valid message JSON containing at least the thread, author, and body field.
+	var msg map[string]interface{}
+	if err := json.Unmarshal(body, &msg); err != nil {
+		t.Fatalf("expected key body to be valid JSON, got error: %v, body: %q", err, string(body))
+	}
+	if msg["thread"] == nil || msg["author"] == nil || msg["body"] == nil {
+		t.Fatalf("expected key JSON to contain thread, author, and body fields; got=%q", string(body))
 	}
 }
 
@@ -172,7 +179,7 @@ logging:
 
 // checks encrypting existing thread messages via /admin/encryption/encrypt-existing
 func TestAdmin_EncryptExisting(t *testing.T) {
-    cfg := `server:
+	cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db

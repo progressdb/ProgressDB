@@ -10,7 +10,7 @@ const (
 	BackendAPIKey  = "backend-secret"
 	FrontendAPIKey = "frontend-secret"
 	AdminAPIKey    = "admin-secret"
-	SigningSecret  = "signsecret"
+	SigningSecret  = "backend-secret"
 )
 
 // SignHMAC returns hex HMAC-SHA256 of user using key.
