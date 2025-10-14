@@ -12,6 +12,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,23 +53,23 @@ func TestRetention_Suite(t *testing.T) {
 		// Use public API only: create a thread, mark it deleted with an old
 		// DeletedTS via the update endpoint, then trigger retention run and
 		// assert the thread is removed.
-		cfg := `server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
-logging:
-  level: info
-retention:
-  enabled: true
-  period: 24h
-  dry_run: false
-`
+		cfg := fmt.Sprintf(`server:
+	  address: 127.0.0.1
+	  port: {{PORT}}
+	  db_path: {{WORKDIR}}/db
+	security:
+	  kms:
+	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+	  api_keys:
+	    backend: ["%s", "%s"]
+	    admin: ["%s"]
+	logging:
+	  level: info
+	retention:
+	  enabled: true
+	  period: 24h
+	  dry_run: false
+	`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
@@ -98,7 +99,7 @@ retention:
 
 		// trigger retention run via admin test endpoint
 		areq, _ := http.NewRequest("POST", sp.Addr+"/admin/test-retention-run", nil)
-		areq.Header.Set("Authorization", "Bearer admin-secret")
+		areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		ares, err := http.DefaultClient.Do(areq)
 		if err != nil {
 			t.Fatalf("trigger retention failed: %v", err)
@@ -148,7 +149,7 @@ retention:
 
 		// trigger retention via admin test endpoint (registered path)
 		areq, _ := http.NewRequest("POST", sp.Addr+"/admin/test-retention-run", nil)
-		areq.Header.Set("Authorization", "Bearer admin-secret")
+		areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 		// admin API key is sufficient for /admin routes
 		ares, err := http.DefaultClient.Do(areq)
 		if err != nil {

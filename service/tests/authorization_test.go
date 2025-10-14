@@ -9,6 +9,7 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,76 +32,56 @@ func TestAuthorization_Suite(t *testing.T) {
 		user := "alice"
 		tid, _ := utils.CreateThreadAPI(t, sp.Addr, user, "t")
 
-		// soft-delete as the author
-		sig := utils.SignHMAC(utils.SigningSecret, user)
-		dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid, nil)
-		dreq.Header.Set("X-User-ID", user)
-		dreq.Header.Set("X-User-Signature", sig)
-		dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-		dres, err := http.DefaultClient.Do(dreq)
-		if err != nil {
-			t.Fatalf("delete request failed: %v", err)
-		}
-		if dres.StatusCode != 202 {
-			t.Fatalf("expected delete to return 202; got %d", dres.StatusCode)
+		// soft-delete as the author (use helper to attach frontend key + signature)
+		status, _ := utils.FrontendRawRequest(t, sp.Addr, "DELETE", "/v1/threads/"+tid, nil, user)
+		if status != 202 {
+			t.Fatalf("expected delete to return 202; got %d", status)
 		}
 
 		q := url.Values{}
 		q.Set("author", "alice")
-		req, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
-		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
-
-		// admin API key is sufficient for /admin routes
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("request failed: %v", err)
+		var list struct {
+			Threads []map[string]interface{} `json:"threads"`
 		}
-		defer res.Body.Close()
-		if res.StatusCode != 200 {
-			t.Fatalf("expected admin to access deleted thread; status=%d", res.StatusCode)
+        status = utils.AdminGetJSON(t, sp.Addr, "/admin/threads", &list)
+		if status != 200 {
+			t.Fatalf("expected admin to access deleted thread; status=%d", status)
 		}
 
 		// admin visibility is via the admin key endpoint for the thread meta
 		utils.WaitForAdminKeyVisible(t, sp.Addr, "thread:"+tid+":meta", 5*time.Second)
-		sreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"", nil)
-		sreq.Header.Set("X-User-ID", "alice")
-		sreq.Header.Set("X-User-Signature", utils.SignHMAC(utils.SigningSecret, "alice"))
-		sreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-		sres, err := http.DefaultClient.Do(sreq)
-		if err != nil {
-			t.Fatalf("request failed: %v", err)
-		}
-		defer sres.Body.Close()
-		if sres.StatusCode == 200 {
+		var out map[string]interface{}
+		gstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid, "alice", &out)
+		if gstatus == 200 {
 			t.Fatalf("expected signed non-admin to not see deleted thread; got 200")
 		}
 	})
 
 	// Subtest: Verify CORS response headers only allow configured origins.
 	t.Run("CORSBehavior", func(t *testing.T) {
-		cfg := `server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  cors:
-    allowed_origins: ["https://allowed.example"]
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["backend-secret"]
-    frontend: ["frontend-secret"]
-    admin: ["admin-secret"]
-logging:
-  level: info
-`
+		cfg := fmt.Sprintf(`server:
+	  address: 127.0.0.1
+	  port: {{PORT}}
+	  db_path: {{WORKDIR}}/db
+	security:
+	  cors:
+	    allowed_origins: ["https://allowed.example"]
+	  kms:
+	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+	  api_keys:
+	    backend: ["%s", "%s"]
+	    frontend: ["frontend-secret"]
+	    admin: ["admin-secret"]
+	logging:
+	  level: info
+	`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
 		// request with allowed origin should include Access-Control-Allow-Origin
 		req, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req.Header.Set("Origin", "https://allowed.example")
-		req.Header.Set("Authorization", "Bearer frontend-secret")
+		req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -112,7 +93,7 @@ logging:
 		// request with disallowed origin should not set header
 		req2, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
 		req2.Header.Set("Origin", "https://evil.example")
-		req2.Header.Set("Authorization", "Bearer frontend-secret")
+		req2.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		res2, err := http.DefaultClient.Do(req2)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -160,7 +141,7 @@ logging:
 					// call POST /v1/_sign which accepts backend API keys
 					reqBody := []byte(`{"userId":"u"}`)
 					req, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader(reqBody))
-					req.Header.Set("Authorization", "Bearer backend-secret")
+					req.Header.Set("Authorization", "Bearer "+utils.BackendAPIKey)
 					req.Header.Set("Content-Type", "application/json")
 					res, err := client.Do(req)
 					if err != nil {
@@ -188,30 +169,30 @@ logging:
 	// Subtest: Verify signature-based author protection prevents tampering with X-User-ID and author fields.
 	t.Run("AuthorTamperingProtection", func(t *testing.T) {
 		// start server with backend key for signing
-		cfg := `server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["backend-secret"]
-    frontend: ["frontend-secret"]
-    admin: []
-logging:
-  level: info
-`
+		cfg := fmt.Sprintf(`server:
+	  address: 127.0.0.1
+	  port: {{PORT}}
+	  db_path: {{WORKDIR}}/db
+	security:
+	  kms:
+	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+	  api_keys:
+	    backend: ["%s", "%s"]
+	    frontend: ["frontend-secret"]
+	    admin: []
+	logging:
+	  level: info
+	`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
 		// create thread as alice using signature headers
-		sig := utils.SignHMAC("backend-secret", "alice")
+		sig := utils.SignHMAC(utils.SigningSecret, "alice")
 		thBody := []byte(`{"author":"alice","title":"t1"}`)
 		creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(thBody))
 		creq.Header.Set("X-User-ID", "alice")
 		creq.Header.Set("X-User-Signature", sig)
-		creq.Header.Set("Authorization", "Bearer frontend-secret")
+		creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		cres, err := http.DefaultClient.Do(creq)
 		if err != nil {
 			t.Fatalf("create thread failed: %v", err)
@@ -231,7 +212,7 @@ logging:
 		ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody))
 		ureq.Header.Set("X-User-ID", "bob")
 		ureq.Header.Set("X-User-Signature", sig)
-		ureq.Header.Set("Authorization", "Bearer frontend-secret")
+		ureq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		ures, err := http.DefaultClient.Do(ureq)
 		if err != nil {
 			t.Fatalf("update request failed: %v", err)
@@ -245,7 +226,7 @@ logging:
 		ureq2, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(upBody2))
 		ureq2.Header.Set("X-User-ID", "alice")
 		ureq2.Header.Set("X-User-Signature", sig)
-		ureq2.Header.Set("Authorization", "Bearer frontend-secret")
+		ureq2.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
 		ures2, err := http.DefaultClient.Do(ureq2)
 		if err != nil {
 			t.Fatalf("update2 request failed: %v", err)

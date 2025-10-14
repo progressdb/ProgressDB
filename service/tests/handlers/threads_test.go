@@ -1,9 +1,6 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
-	"net/http"
 	"testing"
 	"time"
 
@@ -16,19 +13,10 @@ func TestCreateThread(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "alice"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 	body := map[string]interface{}{"author": user, "title": "t1"}
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	req.Header.Set("X-User-ID", user)
-	req.Header.Set("X-User-Signature", sig)
-	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	if res.StatusCode != 200 && res.StatusCode != 202 {
-		t.Fatalf("expected 200 or 202 got %v", res.Status)
+	status := utils.FrontendPostJSON(t, sp.Addr, "/v1/threads", body, user, nil)
+	if status != 200 && status != 202 {
+		t.Fatalf("expected 200 or 202 got %d", status)
 	}
 }
 
@@ -36,29 +24,17 @@ func TestListThreads(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "list_alice"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
-
 	// create a thread then list
 	body := map[string]interface{}{"author": user, "title": "lt1"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	if _, err := http.DefaultClient.Do(creq); err != nil {
-		t.Fatalf("create thread request failed: %v", err)
+	status := utils.FrontendPostJSON(t, sp.Addr, "/v1/threads", body, user, nil)
+	if status != 200 && status != 201 && status != 202 {
+		t.Fatalf("create thread request failed: %d", status)
 	}
 
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads", nil)
-	lreq.Header.Set("X-User-ID", user)
-	lreq.Header.Set("X-User-Signature", sig)
-	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	lres, err := http.DefaultClient.Do(lreq)
-	if err != nil {
-		t.Fatalf("list request failed: %v", err)
-	}
-	if lres.StatusCode != 200 {
-		t.Fatalf("expected 200 got %v", lres.Status)
+	var out map[string]interface{}
+	lstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads", user, &out)
+	if lstatus != 200 {
+		t.Fatalf("expected 200 got %d", lstatus)
 	}
 }
 
@@ -66,35 +42,11 @@ func TestGetThread(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
-
-	body := map[string]interface{}{"author": user, "title": "orig"}
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	req.Header.Set("X-User-ID", user)
-	req.Header.Set("X-User-Signature", sig)
-	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer res.Body.Close()
-	var out map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
 	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "orig", 5*time.Second)
-	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid, nil)
-	greq.Header.Set("X-User-ID", user)
-	greq.Header.Set("X-User-Signature", sig)
-	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	gres, err := http.DefaultClient.Do(greq)
-	if err != nil {
-		t.Fatalf("get thread failed: %v", err)
-	}
-	defer gres.Body.Close()
-	if gres.StatusCode != 200 {
-		t.Fatalf("get thread failed: %v", gres.Status)
+	var out map[string]interface{}
+	gstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid, user, &out)
+	if gstatus != 200 {
+		t.Fatalf("get thread failed: %d", gstatus)
 	}
 }
 
@@ -102,38 +54,13 @@ func TestUpdateThread(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	body := map[string]interface{}{"author": user, "title": "orig"}
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	req.Header.Set("X-User-ID", user)
-	req.Header.Set("X-User-Signature", sig)
-	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer res.Body.Close()
-	var out map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := out["id"].(string)
-
+	// create thread and update via frontend helper
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "orig", 5*time.Second)
 	up := map[string]interface{}{"title": "updated"}
-	ub, _ := json.Marshal(up)
-	ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid, bytes.NewReader(ub))
-	ureq.Header.Set("X-User-ID", user)
-	ureq.Header.Set("X-User-Signature", sig)
-	ureq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	ures, err := http.DefaultClient.Do(ureq)
-	if err != nil {
-		t.Fatalf("update request failed: %v", err)
-	}
-	defer ures.Body.Close()
-	if ures.StatusCode != 200 && ures.StatusCode != 202 {
-		t.Fatalf("update failed: %v", ures.Status)
+	status := utils.FrontendPutJSON(t, sp.Addr, "/v1/threads/"+tid, up, user, nil)
+	if status != 200 && status != 202 {
+		t.Fatalf("update failed: %d", status)
 	}
 }
 
@@ -141,36 +68,11 @@ func TestDeleteThread(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "threaduser"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	body := map[string]interface{}{"author": user, "title": "orig"}
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	req.Header.Set("X-User-ID", user)
-	req.Header.Set("X-User-Signature", sig)
-	req.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer res.Body.Close()
-	var out map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := out["id"].(string)
-
-	dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid, nil)
-	dreq.Header.Set("X-User-ID", user)
-	dreq.Header.Set("X-User-Signature", sig)
-	dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	dres, err := http.DefaultClient.Do(dreq)
-	if err != nil {
-		t.Fatalf("delete request failed: %v", err)
-	}
-	defer dres.Body.Close()
-	if dres.StatusCode != 204 && dres.StatusCode != 202 {
-		t.Fatalf("delete failed: %v", dres.Status)
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "orig", 5*time.Second)
+	status, _ := utils.FrontendRawRequest(t, sp.Addr, "DELETE", "/v1/threads/"+tid, nil, user)
+	if status != 204 && status != 202 {
+		t.Fatalf("delete failed: %d", status)
 	}
 }
 
@@ -178,40 +80,13 @@ func TestCreateThreadMessage(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	// create thread
-	body := map[string]interface{}{"author": user, "title": "tm"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := cout["id"].(string)
-
-	// create message in thread
+	// create thread and message via helpers
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "tm", 5*time.Second)
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
-	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("X-User-ID", user)
-	mreq.Header.Set("X-User-Signature", sig)
-	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	mres, err := http.DefaultClient.Do(mreq)
-	if err != nil {
-		t.Fatalf("create thread message failed: %v", err)
-	}
-	defer mres.Body.Close()
-	if mres.StatusCode != 200 && mres.StatusCode != 202 {
-		t.Fatalf("create thread message failed: %v", mres.Status)
+	mstatus := utils.FrontendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", msg, user, nil)
+	if mstatus != 200 && mstatus != 202 {
+		t.Fatalf("create thread message failed: %d", mstatus)
 	}
 }
 
@@ -219,39 +94,16 @@ func TestListThreadMessages(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	body := map[string]interface{}{"author": user, "title": "tm2"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := cout["id"].(string)
-
-	// create message and wait until visible
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "tm2", 5*time.Second)
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
 	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-	lreq.Header.Set("X-User-ID", user)
-	lreq.Header.Set("X-User-Signature", sig)
-	lreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	lres, err := http.DefaultClient.Do(lreq)
-	if err != nil {
-		t.Fatalf("list thread messages failed: %v", err)
+	var lout struct {
+		Messages []map[string]interface{} `json:"messages"`
 	}
-	defer lres.Body.Close()
-	if lres.StatusCode != 200 {
-		t.Fatalf("list thread messages failed: %v", lres.Status)
+	status := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", user, &lout)
+	if status != 200 {
+		t.Fatalf("list thread messages failed: %d", status)
 	}
 }
 
@@ -259,55 +111,22 @@ func TestGetThreadMessage(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	body := map[string]interface{}{"author": user, "title": "tm3"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := cout["id"].(string)
-
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "tm4", 5*time.Second)
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
-	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("X-User-ID", user)
-	mreq.Header.Set("X-User-Signature", sig)
-	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	mres, err := http.DefaultClient.Do(mreq)
-	if err != nil {
-		t.Fatalf("create message failed: %v", err)
-	}
-	defer mres.Body.Close()
 	var mout map[string]interface{}
-	if err := json.NewDecoder(mres.Body).Decode(&mout); err != nil {
-		t.Fatalf("failed to decode create message response: %v", err)
+	mstatus := utils.FrontendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", msg, user, &mout)
+	if mstatus != 200 && mstatus != 201 && mstatus != 202 {
+		t.Fatalf("create message failed: %d", mstatus)
 	}
 	mid := mout["id"].(string)
 	// wait until message visible
 	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
 
-	greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
-	greq.Header.Set("X-User-ID", user)
-	greq.Header.Set("X-User-Signature", sig)
-	greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	gres, err := http.DefaultClient.Do(greq)
-	if err != nil {
-		t.Fatalf("get thread message failed: %v", err)
-	}
-	defer gres.Body.Close()
-	if gres.StatusCode != 200 {
-		t.Fatalf("get thread message failed: %v", gres.Status)
+	var out map[string]interface{}
+	gstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages/"+mid, user, &out)
+	if gstatus != 200 {
+		t.Fatalf("get thread message failed: %d", gstatus)
 	}
 }
 
@@ -315,41 +134,10 @@ func TestUpdateThreadMessage(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
 
-	body := map[string]interface{}{"author": user, "title": "tm4"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := cout["id"].(string)
-
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "tm4", 5*time.Second)
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
-	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("X-User-ID", user)
-	mreq.Header.Set("X-User-Signature", sig)
-	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	mres, err := http.DefaultClient.Do(mreq)
-	if err != nil {
-		t.Fatalf("create message failed: %v", err)
-	}
-	defer mres.Body.Close()
-	var mout map[string]interface{}
-	if err := json.NewDecoder(mres.Body).Decode(&mout); err != nil {
-		t.Fatalf("failed to decode create message response: %v", err)
-	}
-	mid := mout["id"].(string)
+	mid := utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
 
 	// Wait for the created message to be visible before attempting the update.
 	// Polling is preferred over a fixed small sleep to reduce flakiness on loaded
@@ -357,17 +145,11 @@ func TestUpdateThreadMessage(t *testing.T) {
 	visible := false
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		greq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
-		greq.Header.Set("X-User-ID", user)
-		greq.Header.Set("X-User-Signature", sig)
-		greq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-		gres, err := http.DefaultClient.Do(greq)
-		if err == nil {
-			_ = gres.Body.Close()
-			if gres.StatusCode == 200 {
-				visible = true
-				break
-			}
+		var out map[string]interface{}
+		gstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages/"+mid, user, &out)
+		if gstatus == 200 {
+			visible = true
+			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -375,18 +157,9 @@ func TestUpdateThreadMessage(t *testing.T) {
 		t.Fatalf("created message not visible for update after timeout")
 	}
 	up := map[string]interface{}{"author": user, "body": map[string]string{"text": "updated"}}
-	ub, _ := json.Marshal(up)
-	ureq, _ := http.NewRequest("PUT", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, bytes.NewReader(ub))
-	ureq.Header.Set("X-User-ID", user)
-	ureq.Header.Set("X-User-Signature", sig)
-	ureq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	ures, err := http.DefaultClient.Do(ureq)
-	if err != nil {
-		t.Fatalf("update request failed: %v", err)
-	}
-	defer ures.Body.Close()
-	if ures.StatusCode != 200 && ures.StatusCode != 202 {
-		t.Fatalf("update thread message failed: %v", ures.Status)
+	status := utils.FrontendPutJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages/"+mid, up, user, nil)
+	if status != 200 && status != 202 {
+		t.Fatalf("update thread message failed: %d", status)
 	}
 }
 
@@ -394,52 +167,16 @@ func TestDeleteThreadMessage(t *testing.T) {
 	sp := utils.StartTestServerProcess(t)
 	defer func() { _ = sp.Stop(t) }()
 	user := "tm_user"
-	sig := utils.SignHMAC(utils.SigningSecret, user)
-
-	body := map[string]interface{}{"author": user, "title": "tm5"}
-	b, _ := json.Marshal(body)
-	creq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(b))
-	creq.Header.Set("X-User-ID", user)
-	creq.Header.Set("X-User-Signature", sig)
-	creq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	cres, err := http.DefaultClient.Do(creq)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer cres.Body.Close()
-	var cout map[string]interface{}
-	if err := json.NewDecoder(cres.Body).Decode(&cout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
-	}
-	tid := cout["id"].(string)
-
-	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}
-	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("X-User-ID", user)
-	mreq.Header.Set("X-User-Signature", sig)
-	mreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	mres, err := http.DefaultClient.Do(mreq)
-	if err != nil {
-		t.Fatalf("create message failed: %v", err)
-	}
-	defer mres.Body.Close()
+	// create thread and message (no extra payload needed here)
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "tm5", 5*time.Second)
 	var mout map[string]interface{}
-	if err := json.NewDecoder(mres.Body).Decode(&mout); err != nil {
-		t.Fatalf("failed to decode create message response: %v", err)
+	mstatus := utils.FrontendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", map[string]interface{}{"author": user, "body": map[string]string{"text": "hi"}}, user, &mout)
+	if mstatus != 200 && mstatus != 201 && mstatus != 202 {
+		t.Fatalf("create message failed: %d", mstatus)
 	}
 	mid := mout["id"].(string)
-
-	dreq, _ := http.NewRequest("DELETE", sp.Addr+"/v1/threads/"+tid+"/messages/"+mid, nil)
-	dreq.Header.Set("X-User-ID", user)
-	dreq.Header.Set("X-User-Signature", sig)
-	dreq.Header.Set("Authorization", "Bearer "+utils.FrontendAPIKey)
-	dres, err := http.DefaultClient.Do(dreq)
-	if err != nil {
-		t.Fatalf("delete request failed: %v", err)
-	}
-	defer dres.Body.Close()
-	if dres.StatusCode != 204 && dres.StatusCode != 202 {
-		t.Fatalf("delete thread message failed: %v", dres.Status)
+	status, _ := utils.FrontendRawRequest(t, sp.Addr, "DELETE", "/v1/threads/"+tid+"/messages/"+mid, nil, user)
+	if status != 204 && status != 202 {
+		t.Fatalf("delete thread message failed: %d", status)
 	}
 }

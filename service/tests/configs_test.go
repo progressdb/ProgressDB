@@ -1,16 +1,7 @@
 package tests
 
-// Objectives (from docs/tests.md):
-// 1. Spawn the server with malformed config - does it fail fast?
-// 2. Spawn the server with malformed per-feature config - does it fail fast?
-// 3. Spawn the server with features toggled on/off and verify correct startup.
-// 4. Spawn the server with all features enabled and verify full surface.
-
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,7 +76,7 @@ func TestConfigs_Suite(t *testing.T) {
 	// Subtest: Start server with encryption disabled and ensure created threads do not include KMS metadata.
 	t.Run("FeatureToggleStartup", func(t *testing.T) {
 		// start server with encryption disabled and ensure thread creation does not provision KMS metadata
-		cfg := `server:
+		cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -93,49 +84,32 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
+    backend: ["%s", "%s"]
+    admin: ["%s"]
   encryption:
     use: false
 logging:
   level: info
-`
+`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
-		// create thread as admin
+		// create thread as backend
 		thBody := map[string]string{"author": "noenc", "title": "noenc-thread"}
-		tb, _ := json.Marshal(thBody)
-		req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-		req.Header.Set("Authorization", "Bearer backend-secret")
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("create thread failed: %v", err)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
-			t.Fatalf("unexpected create thread status: %d", res.StatusCode)
-		}
 		var tout map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&tout); err != nil {
-			t.Fatalf("failed to decode create thread response: %v", err)
+		status := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", thBody, "noenc", &tout)
+		if status != 200 && status != 201 && status != 202 {
+			t.Fatalf("unexpected create thread status: %d", status)
 		}
 		tid := tout["id"].(string)
 
 		// list via admin and assert no KMS metadata
-		areq, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
-		areq.Header.Set("Authorization", "Bearer admin-secret")
-		// admin API key is sufficient for /admin routes
-		ares, err := http.DefaultClient.Do(areq)
-		if err != nil {
-			t.Fatalf("admin threads request failed: %v", err)
-		}
-		defer ares.Body.Close()
 		var list struct {
 			Threads []map[string]interface{} `json:"threads"`
 		}
-		if err := json.NewDecoder(ares.Body).Decode(&list); err != nil {
-			t.Fatalf("failed to decode admin threads response: %v", err)
+		astatus := utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/threads", nil, &list)
+		if astatus != 200 {
+			t.Fatalf("admin threads request failed status=%d", astatus)
 		}
 		for _, titem := range list.Threads {
 			if titem["id"] == tid {

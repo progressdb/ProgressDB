@@ -8,6 +8,7 @@ package tests
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -98,131 +99,92 @@ logging:
 		defer func() { _ = sp.Stop(t) }()
 
 		// frontend key cannot access admin endpoints
-		req, _ := http.NewRequest("GET", sp.Addr+"/admin/health", nil)
-		req.Header.Set("Authorization", "Bearer frontend-secret")
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("admin health request failed: %v", err)
-		}
-		if res.StatusCode == 200 {
+		status := utils.FrontendGetJSON(t, sp.Addr, "/admin/health", "", nil)
+		if status == 200 {
 			t.Fatalf("expected frontend key to be forbidden for admin endpoints; got 200")
 		}
 
 		// frontend key cannot call sign endpoint (requires backend role)
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
-		sreq.Header.Set("Authorization", "Bearer frontend-secret")
-		sres, err := http.DefaultClient.Do(sreq)
-		if err != nil {
-			t.Fatalf("sign request failed: %v", err)
-		}
-		if sres.StatusCode == 200 {
+		sstatus := utils.FrontendPostJSON(t, sp.Addr, "/v1/_sign", map[string]string{"userId": "u"}, "", nil)
+		if sstatus == 200 {
 			t.Fatalf("expected frontend key to be forbidden for sign endpoint; got 200")
 		}
 	})
 
 	// Subtest: E2E - backend API key can call signing and create messages but not admin endpoints.
 	t.Run("E2E_BackendKey_Scopes", func(t *testing.T) {
-		cfg := `server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["backend-secret"]
-    frontend: []
-    admin: []
-logging:
-  level: info
-`
+		cfg := fmt.Sprintf(`server:
+	  address: 127.0.0.1
+	  port: {{PORT}}
+	  db_path: {{WORKDIR}}/db
+	security:
+	  kms:
+	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+	  api_keys:
+	    backend: ["%s", "%s"]
+	    frontend: []
+	    admin: []
+	logging:
+	  level: info
+	`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
 		// backend can call sign endpoint
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"bob"}`)))
-		sreq.Header.Set("Authorization", "Bearer backend-secret")
-		sres, err := http.DefaultClient.Do(sreq)
-		if err != nil {
-			t.Fatalf("sign request failed: %v", err)
-		}
-		if sres.StatusCode != 200 {
-			t.Fatalf("expected backend key to be allowed for sign endpoint; status=%d", sres.StatusCode)
+		var sOut map[string]string
+		sstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/_sign", map[string]string{"userId": "bob"}, "", &sOut)
+		if sstatus != 200 {
+			t.Fatalf("expected backend key to be allowed for sign endpoint; status=%d", sstatus)
 		}
 
 		// backend can create messages by supplying author in body
-		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"author":"bob","title":"t-bob"}`)))
-		mreq.Header.Set("Authorization", "Bearer backend-secret")
-		mres, err := http.DefaultClient.Do(mreq)
-		if err != nil {
-			t.Fatalf("create message failed: %v", err)
-		}
-		if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
-			t.Fatalf("expected backend to create message; status=%d", mres.StatusCode)
+		var tout map[string]interface{}
+		mstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", map[string]string{"author": "bob", "title": "t-bob"}, "bob", &tout)
+		if mstatus != 200 && mstatus != 201 && mstatus != 202 {
+			t.Fatalf("expected backend to create message; status=%d", mstatus)
 		}
 
 		// backend cannot access admin endpoints
-		areq, _ := http.NewRequest("GET", sp.Addr+"/admin/health", nil)
-		areq.Header.Set("Authorization", "Bearer backend-secret")
-		ares, err := http.DefaultClient.Do(areq)
-		if err != nil {
-			t.Fatalf("admin health request failed: %v", err)
-		}
-		if ares.StatusCode == 200 {
+		astatus := utils.BackendGetJSON(t, sp.Addr, "/admin/health", "", nil)
+		if astatus == 200 {
 			t.Fatalf("expected backend key to be forbidden for admin endpoints; got 200")
 		}
 	})
 
 	// Subtest: E2E - admin API key can access admin endpoints and create messages but cannot call sign endpoint.
 	t.Run("E2E_AdminKey_Scopes", func(t *testing.T) {
-		cfg := `server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["signsecret"]
-    frontend: []
-    admin: ["admin-secret"]
-logging:
-  level: info
-`
+		cfg := fmt.Sprintf(`server:
+	  address: 127.0.0.1
+	  port: {{PORT}}
+	  db_path: {{WORKDIR}}/db
+	security:
+	  kms:
+	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+	  api_keys:
+	    backend: ["%s"]
+	    frontend: []
+	    admin: ["admin-secret"]
+	logging:
+	  level: info
+	`, utils.SigningSecret)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
 		// admin can access admin health
-		areq, _ := http.NewRequest("GET", sp.Addr+"/admin/health", nil)
-		areq.Header.Set("Authorization", "Bearer admin-secret")
-		// admin API key is sufficient for /admin routes
-		ares, err := http.DefaultClient.Do(areq)
-		if err != nil {
-			t.Fatalf("admin health failed: %v", err)
-		}
-		if ares.StatusCode != 200 {
-			t.Fatalf("expected admin health 200; got %d", ares.StatusCode)
+		astatus := utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/health", nil, nil)
+		if astatus != 200 {
+			t.Fatalf("expected admin health 200; got %d", astatus)
 		}
 
 		// admin cannot call sign endpoint (requires backend role)
-		sreq, _ := http.NewRequest("POST", sp.Addr+"/v1/_sign", bytes.NewReader([]byte(`{"userId":"u"}`)))
-		sreq.Header.Set("Authorization", "Bearer admin-secret")
-		sres, err := http.DefaultClient.Do(sreq)
-		if err != nil {
-			t.Fatalf("sign request failed: %v", err)
-		}
-		if sres.StatusCode == 200 {
+		sstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/_sign", map[string]string{"userId": "u"}, "", nil)
+		if sstatus == 200 {
 			t.Fatalf("expected admin key to be forbidden for sign endpoint; got 200")
 		}
 
 		// admin should NOT be able to call non-/admin endpoints (enforce admin-only routes)
-		mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader([]byte(`{"author":"admin","title":"t-admin"}`)))
-		mreq.Header.Set("Authorization", "Bearer admin-secret")
-		mres, err := http.DefaultClient.Do(mreq)
-		if err != nil {
-			t.Fatalf("create message failed: %v", err)
-		}
-		if mres.StatusCode == 200 {
+		mstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", map[string]string{"author": "admin", "title": "t-admin"}, "admin", nil)
+		if mstatus == 200 {
 			t.Fatalf("expected admin key to be forbidden for non-admin endpoints; got 200")
 		}
 	})

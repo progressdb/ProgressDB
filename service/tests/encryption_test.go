@@ -1,16 +1,15 @@
 package tests
 
 import (
-	"bytes"
-	"encoding/json"
-	"net/http"
+	"fmt"
 	"testing"
 
 	utils "progressdb/tests/utils"
 )
 
+// Tests end-to-end encryption and decryption of message fields.
 func TestEncryption_E2E_EncryptRoundTrip(t *testing.T) {
-	cfg := `server:
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -18,60 +17,40 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
+    backend: ["%s", "%s"]
+    admin: ["%s"]
   encryption:
     use: true
     fields: ["body"]
 logging:
   level: info
-`
+`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
 	// create thread
 	thBody := map[string]string{"author": "enc", "title": "enc-thread"}
-	tb, _ := json.Marshal(thBody)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-	req.Header.Set("Authorization", "Bearer backend-secret")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer res.Body.Close()
 	var tout map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&tout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
+	status := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", thBody, "enc", &tout)
+	if status != 200 && status != 201 && status != 202 {
+		t.Fatalf("create thread failed status=%d", status)
 	}
 	tid := tout["id"].(string)
 
 	// create message
 	msg := map[string]interface{}{"author": "enc", "body": map[string]string{"text": "secret"}, "thread": tid}
-	mb, _ := json.Marshal(msg)
-	mreq, _ := http.NewRequest("POST", sp.Addr+"/v1/threads/"+tid+"/messages", bytes.NewReader(mb))
-	mreq.Header.Set("Authorization", "Bearer backend-secret")
-	mres, err := http.DefaultClient.Do(mreq)
-	if err != nil {
-		t.Fatalf("create message failed: %v", err)
-	}
-	defer mres.Body.Close()
-	if mres.StatusCode != 200 && mres.StatusCode != 201 && mres.StatusCode != 202 {
-		t.Fatalf("unexpected create message status: %d", mres.StatusCode)
+	mstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", msg, "enc", nil)
+	if mstatus != 200 && mstatus != 201 && mstatus != 202 {
+		t.Fatalf("unexpected create message status: %d", mstatus)
 	}
 
 	// read back via API and verify plaintext
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/v1/threads/"+tid+"/messages", nil)
-	lreq.Header.Set("Authorization", "Bearer backend-secret")
-	lres, err := http.DefaultClient.Do(lreq)
-	if err != nil {
-		t.Fatalf("list messages failed: %v", err)
-	}
-	defer lres.Body.Close()
 	var lout struct {
 		Messages []map[string]interface{} `json:"messages"`
 	}
-	if err := json.NewDecoder(lres.Body).Decode(&lout); err != nil {
-		t.Fatalf("failed to decode list messages response: %v", err)
+	lstatus := utils.BackendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", "enc", &lout)
+	if lstatus != 200 {
+		t.Fatalf("list messages failed status=%d", lstatus)
 	}
 	if len(lout.Messages) == 0 {
 		t.Fatalf("expected messages returned")
@@ -82,8 +61,9 @@ logging:
 	}
 }
 
+// Tests DEK provisioning and KMS metadata on thread creation with encryption enabled.
 func TestEncryption_E2E_ProvisionDEK(t *testing.T) {
-	cfg := `server:
+	cfg := fmt.Sprintf(`server:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
@@ -91,47 +71,32 @@ security:
   kms:
     master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
-    backend: ["backend-secret"]
-    admin: ["admin-secret"]
+    backend: ["%s", "%s"]
+    admin: ["%s"]
+  encryption:
+    use: true
 logging:
   level: info
-  `
+`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
-	// create thread as admin - encryption should provision KMS meta
+	// create thread as backend - encryption should provision KMS meta
 	thBody := map[string]string{"author": "enc", "title": "enc-thread"}
-	tb, _ := json.Marshal(thBody)
-	req, _ := http.NewRequest("POST", sp.Addr+"/v1/threads", bytes.NewReader(tb))
-	req.Header.Set("Authorization", "Bearer backend-secret")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("create thread failed: %v", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
-		t.Fatalf("unexpected create thread status: %d", res.StatusCode)
-	}
 	var tout map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&tout); err != nil {
-		t.Fatalf("failed to decode create thread response: %v", err)
+	status := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", thBody, "enc", &tout)
+	if status != 200 && status != 201 && status != 202 {
+		t.Fatalf("create thread failed status=%d", status)
 	}
 	tid := tout["id"].(string)
 
 	// get thread raw via admin list and inspect KMS metadata
-	areq, _ := http.NewRequest("GET", sp.Addr+"/admin/threads", nil)
-	areq.Header.Set("Authorization", "Bearer admin-secret")
-	// admin API key is sufficient for /admin routes
-	ares, err := http.DefaultClient.Do(areq)
-	if err != nil {
-		t.Fatalf("admin threads request failed: %v", err)
-	}
-	defer ares.Body.Close()
 	var list struct {
 		Threads []map[string]interface{} `json:"threads"`
 	}
-	if err := json.NewDecoder(ares.Body).Decode(&list); err != nil {
-		t.Fatalf("failed to decode admin threads response: %v", err)
+	astatus := utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/threads", nil, &list)
+	if astatus != 200 {
+		t.Fatalf("admin threads request failed status=%d", astatus)
 	}
 	found := false
 	for _, titem := range list.Threads {
