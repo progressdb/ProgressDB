@@ -3,10 +3,11 @@
 
 ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
 
-> **⚠️ ProgressDB is under active development and not yet recommended for production use.**  
-> The database is heavily tested and used internally at [Fathom4Sight](https://fathom4sight.com), but breaking changes may occur and some features may be incomplete.  
-> If you really want to run it in production, please proceed with caution!
-
+> ProgressDB is currently under active development and not yet recommended for production use or full capacity use. 
+> The database is heavily tested and actively used internally at [Fathom4Sight](https://fathom4sight.com), but breaking changes may still occur and some features remain incomplete.  
+> The next milestone release, v0.5.0, is expected around October 17, with another update planned by the end of the month.  
+> A built-in Progressor feature automatically performs necessary database migrations when model definitions change or new things needed. 
+> However, this currently applies only to the database layer itself, not the sdks etc.
 
 ## Why ProgressDB?
 
@@ -172,18 +173,17 @@ export default function App() {
 ## Features
 
 Implemented / Available
-- [x] Messages - append-only storage, basic versioning (edits), replies, soft-delete
+- [x] Messages - append-only storage, versioning (edits), replies, soft-delete
 - [x] Threads - metadata operations (create/update/list)
-- [x] Encryption & Key Management - basic encryption & key management (embedded KMS / in-process master key)
+- [x] Encryption & Key Management - (embedded KMS mode)
 - [x] Retention - policy-driven purge/run hooks
-- [x] Logging - structured logging and a logging subsystem - config file + env var support
 - [x] Backend SDKs - node & python sdks published for v0.1.0
 - [x] Frontend SDKs - typescript & react sdks published for v0.1.0
 
 Partially implemented / Experimental
 - [ ] Metrics - Prometheus metrics (hooks present - metrics coverage is incomplete)
-- [ ] Reliability - reliability primitives (WAL/buffering) are present in parts but not fully hardened for production
-- [ ] Performance - performance benchmarking tools are available - but SLO/alerting integrations are not complete
+- [ ] Reliability - (WAL/buffering) are present in parts but not fully hardened for production
+- [ ] Performance - performance benchmarking tools are available - but SLO/alerting integrations are incomplete
 
 Planned / Not implemented
 - [ ] Encryption - Cloud-backed KMS / HSM integration
