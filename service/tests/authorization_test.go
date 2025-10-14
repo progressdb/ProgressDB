@@ -60,21 +60,20 @@ func TestAuthorization_Suite(t *testing.T) {
 	// Subtest: Verify CORS response headers only allow configured origins.
 	t.Run("CORSBehavior", func(t *testing.T) {
 		cfg := fmt.Sprintf(`server:
-	  address: 127.0.0.1
-	  port: {{PORT}}
-	  db_path: {{WORKDIR}}/db
-	security:
-	  cors:
-	    allowed_origins: ["https://allowed.example"]
-	  kms:
-	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-	  api_keys:
-	    backend: ["%s", "%s"]
-	    frontend: ["frontend-secret"]
-	    admin: ["admin-secret"]
-	logging:
-	  level: info
-	`, utils.SigningSecret, utils.BackendAPIKey)
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  cors:
+    allowed_origins: ["https://allowed.example"]
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["%s", "%s"]
+    frontend: ["frontend-secret"]
+    admin: ["admin-secret"]
+logging:
+  level: info`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
@@ -171,18 +170,18 @@ logging:
 	t.Run("AuthorTamperingProtection", func(t *testing.T) {
 		// start server with backend key for signing
 		cfg := fmt.Sprintf(`server:
-	  address: 127.0.0.1
-	  port: {{PORT}}
-	  db_path: {{WORKDIR}}/db
-	security:
-	  kms:
-	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-	  api_keys:
-	    backend: ["%s", "%s"]
-	    frontend: ["frontend-secret"]
-	    admin: []
-	logging:
-	  level: info
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["%s", "%s"]
+    frontend: ["frontend-secret"]
+    admin: []
+logging:
+  level: info
 	`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()

@@ -50,8 +50,7 @@ security:
     frontend: []
     admin: []
 logging:
-  level: info
-`
+  level: info`
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
@@ -93,8 +92,7 @@ security:
     frontend: ["frontend-secret"]
     admin: []
 logging:
-  level: info
-`
+  level: info`
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
@@ -114,19 +112,18 @@ logging:
 	// Subtest: E2E - backend API key can call signing and create messages but not admin endpoints.
 	t.Run("E2E_BackendKey_Scopes", func(t *testing.T) {
 		cfg := fmt.Sprintf(`server:
-	  address: 127.0.0.1
-	  port: {{PORT}}
-	  db_path: {{WORKDIR}}/db
-	security:
-	  kms:
-	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-	  api_keys:
-	    backend: ["%s"]
-	    frontend: []
-	    admin: []
-	logging:
-	  level: info
-	`, utils.BackendAPIKey)
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["%s"]
+    frontend: []
+    admin: []
+logging:
+  level: info`, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
@@ -154,19 +151,18 @@ logging:
 	// Subtest: E2E - admin API key can access admin endpoints and create messages but cannot call sign endpoint.
 	t.Run("E2E_AdminKey_Scopes", func(t *testing.T) {
 		cfg := fmt.Sprintf(`server:
-	  address: 127.0.0.1
-	  port: {{PORT}}
-	  db_path: {{WORKDIR}}/db
-	security:
-	  kms:
-	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-	  api_keys:
-	    backend: ["%s"]
-	    frontend: []
-	    admin: ["admin-secret"]
-	logging:
-	  level: info
-	`, utils.SigningSecret)
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["%s"]
+    frontend: []
+    admin: ["admin-secret"]
+logging:
+  level: info`, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 

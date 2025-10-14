@@ -54,22 +54,22 @@ func TestRetention_Suite(t *testing.T) {
 		// DeletedTS via the update endpoint, then trigger retention run and
 		// assert the thread is removed.
 		cfg := fmt.Sprintf(`server:
-	  address: 127.0.0.1
-	  port: {{PORT}}
-	  db_path: {{WORKDIR}}/db
-	security:
-	  kms:
-	    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-	  api_keys:
-	    backend: ["%s", "%s"]
-	    admin: ["%s"]
-	logging:
-	  level: info
-	retention:
-	  enabled: true
-	  period: 24h
-	  dry_run: false
-	`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["%s", "%s"]
+    admin: ["%s"]
+logging:
+  level: info
+retention:
+  enabled: true
+  period: 24h
+  dry_run: false
+`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
