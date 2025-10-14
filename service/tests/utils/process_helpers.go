@@ -20,12 +20,9 @@ import (
 	"progressdb/pkg/store"
 )
 
-// StartTestServerProcess starts a full server process with sensible test
-// defaults (including test API keys and signing secret) and returns the
-// running ServerProcess. Use Stop(t) to stop the process.
+// StartTestServerProcess starts a test server with default config and test keys.
 func StartTestServerProcess(t *testing.T) *ServerProcess {
 	t.Helper()
-	// compose a minimal config that includes the test keys used by tests
 	cfg := `server:
   address: 127.0.0.1
   port: {{PORT}}
@@ -43,10 +40,7 @@ logging:
 	return StartServerProcess(t, ServerOpts{ConfigYAML: cfg})
 }
 
-// PreseedDB creates a test workdir, opens the Pebble store at <workdir>/db/store,
-// runs seedFn(storePath) to write initial data, then closes the store. It
-// returns the workdir path (useful to start the server pointing at the same
-// workdir afterwards).
+// PreseedDB creates a temp workdir, initializes the store, runs seedFn, returns workdir.
 func PreseedDB(t *testing.T, prefix string, seedFn func(storePath string)) string {
 	t.Helper()
 	workdir := NewArtifactsDir(t, prefix)
@@ -56,37 +50,33 @@ func PreseedDB(t *testing.T, prefix string, seedFn func(storePath string)) strin
 		t.Fatalf("create store dir: %v", err)
 	}
 
-	// initialize logger so store.Open has logging available
 	logger.Init()
 
-	// open store with Pebble WAL disabled for test seeding
+	// Open Pebble store with WAL disabled
 	if err := store.Open(storePath, true, false); err != nil {
 		t.Fatalf("store.Open failed: %v", err)
 	}
-	// ensure we close on return
 	defer func() {
 		if err := store.Close(); err != nil {
 			t.Fatalf("store.Close failed: %v", err)
 		}
 	}()
 
-	// run seed function (test-specific writes)
+	// Run test seed function
 	if seedFn != nil {
 		seedFn(storePath)
 	}
 	return workdir
 }
 
-// StartServerProcessWithWorkdir starts the server process but uses the
-// provided workdir instead of allocating a new artifacts directory. This is
-// intended to be used in conjunction with PreseedDB so the server opens the
-// pre-seeded DB at startup.
+// StartServerProcessWithWorkdir starts server using provided workdir.
+// For use with PreseedDB.
 func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts) *ServerProcess {
 	t.Helper()
 
 	artifactRoot := TestArtifactsRoot(t)
 
-	// allocate port if requested
+	// pick free port if not given
 	port := opts.Port
 	if port == 0 {
 		p, err := pickFreePort()
@@ -96,13 +86,10 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		port = p
 	}
 
-	// prepare minimal config if none provided
+	// Write config if not provided
 	cfgPath := filepath.Join(workdir, "config.yaml")
 	dbPath := filepath.Join(workdir, "db")
 	if opts.ConfigYAML == "" {
-		// Provide a default test config that includes the test API keys so
-		// that helpers which start the server against a pre-seeded workdir
-		// have the expected test credentials available.
 		mk := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 		cfg := fmt.Sprintf(
 			"server:\n  address: 127.0.0.1\n  port: %d\n  db_path: %s\nsecurity:\n  kms:\n    master_key_hex: %s\n  api_keys:\n    backend: [\"%s\", \"%s\"]\n    frontend: [\"%s\"]\n    admin: [\"%s\"]\nlogging:\n  level: info\n",
@@ -124,7 +111,7 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		}
 	}
 
-	// build binary if needed. Prefer prebuilt binary specified by opts.BinaryPath
+	// Build or use provided server binary
 	binPath := opts.BinaryPath
 	if binPath == "" {
 		if p := os.Getenv("PROGRESSDB_TEST_BINARY"); p != "" {
@@ -151,7 +138,7 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		}
 	}
 
-	// substitute placeholders in env values ({{WORKDIR}}, {{PORT}})
+	// Substitute placeholders in env
 	for k, v := range opts.Env {
 		if strings.Contains(v, "{{WORKDIR}}") {
 			opts.Env[k] = strings.ReplaceAll(v, "{{WORKDIR}}", workdir)
@@ -161,7 +148,7 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		}
 	}
 
-	// prepare stdout/stderr files
+	// Set up stdout/stderr files
 	stdoutPath := filepath.Join(workdir, "stdout.log")
 	stderrPath := filepath.Join(workdir, "stderr.log")
 	stdoutF, err := os.Create(stdoutPath)
@@ -173,7 +160,7 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		t.Fatalf("create stderr file: %v", err)
 	}
 
-	// start process
+	// Launch process
 	cmd := exec.Command(binPath, "--config", cfgPath)
 	cmd.Stdout = io.MultiWriter(stdoutF)
 	cmd.Stderr = io.MultiWriter(stderrF)
@@ -202,7 +189,7 @@ func StartServerProcessWithWorkdir(t *testing.T, workdir string, opts ServerOpts
 		exitCh:     make(chan error, 1),
 	}
 
-	// monitor child process
+	// Monitor process exit
 	go func(c *exec.Cmd, sp *ServerProcess, outF, errF *os.File) {
 		err := c.Wait()
 		if f, ferr := os.OpenFile(sp.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {

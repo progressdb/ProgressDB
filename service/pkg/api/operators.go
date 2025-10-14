@@ -417,7 +417,6 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
 }
 
-
 // helpers
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	if all {

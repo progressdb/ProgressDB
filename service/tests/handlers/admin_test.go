@@ -5,12 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"testing"
 	"time"
-
-	"progressdb/pkg/store"
 
 	utils "progressdb/tests/utils"
 )
@@ -97,51 +94,49 @@ func TestAdmin_Stats_ListThreads(t *testing.T) {
 
 // checks listing and retrieving keys via /admin/keys endpoints
 func TestAdmin_ListKeys_And_GetKey(t *testing.T) {
-	// pre-seed DB with a test key and start server with that workdir so
-	// the server can list and return the key via admin endpoints.
-	workdir := utils.PreseedDB(t, "admin-listkeys", func(storePath string) {
-		if err := store.SaveKey("testkey", []byte("val")); err != nil {
-			t.Fatalf("store.SaveKey failed: %v", err)
-		}
-	})
-	sp := utils.StartServerProcessWithWorkdir(t, workdir, utils.ServerOpts{})
+	// Use only public APIs: create a thread and a plaintext message, run the
+	// admin encrypt-existing endpoint (which will back up plaintexts as
+	// keys with prefix "backup:encrypt:"), then list and fetch those keys
+	// via the admin endpoints.
+	cfg := fmt.Sprintf(`server:\n  address: 127.0.0.1\n  port: {{PORT}}\n  db_path: {{WORKDIR}}/db\nsecurity:\n  kms:\n    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  api_keys:\n    backend: ["%s"]\n    frontend: ["%s"]\n    admin: ["%s"]\n  encryption:\n    use: true\n    fields: ["body"]\nlogging:\n  level: info\n`, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
+	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
-	// wait until admin key is visible (server may still be initializing)
-	utils.WaitForAdminKeyVisible(t, sp.Addr, "testkey", 5*time.Second)
+	user := "key_user"
+	// create thread and wait until visible
+	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "k1", 5*time.Second)
+	// create a plaintext message under the thread
+	msgBody := map[string]interface{}{"author": user, "body": map[string]string{"text": "plain"}}
+	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msgBody, 5*time.Second)
 
-	// list keys
-	lreq, _ := http.NewRequest("GET", sp.Addr+"/admin/keys?prefix=test", nil)
-	lreq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
-	// admin API key is sufficient for /admin routes
-	lres, err := http.DefaultClient.Do(lreq)
-	if err != nil {
-		t.Fatalf("list keys failed: %v", err)
-	}
-	if lres.StatusCode != 200 {
-		t.Fatalf("expected 200 got %v", lres.Status)
+	// call admin encrypt-existing to cause backup keys to be written
+	reqBody := map[string]interface{}{"thread_ids": []string{tid}}
+	var encOut map[string]map[string]string
+	status := utils.DoAdminJSON(t, sp.Addr, "POST", "/admin/encryption/encrypt-existing", reqBody, &encOut)
+	if status != 200 {
+		t.Fatalf("encrypt-existing failed status=%d out=%v", status, encOut)
 	}
 
-	// get specific key
-	gres, err := http.DefaultClient.Do(func() *http.Request {
-		req, _ := http.NewRequest("GET", sp.Addr+"/admin/keys/testkey", nil)
-		req.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
-		return req
-	}())
-	if err != nil {
-		t.Fatalf("get key failed: %v", err)
+	// list keys with backup prefix
+	var lres struct {
+		Keys []string `json:"keys"`
 	}
-	defer gres.Body.Close()
-	if gres.StatusCode != 200 {
-		t.Fatalf("expected 200 got %v", gres.Status)
+	status = utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/keys?prefix=backup:encrypt:", nil, &lres)
+	if status != 200 {
+		t.Fatalf("list keys failed status=%d", status)
 	}
-	// body should be raw bytes; read raw body and compare
-	b, err := io.ReadAll(gres.Body)
-	if err != nil {
-		t.Fatalf("failed to read get key body: %v", err)
+	if len(lres.Keys) == 0 {
+		t.Fatalf("expected at least one backup key, got none")
 	}
-	if string(b) != "val" {
-		t.Fatalf("unexpected key body; want 'val' got %q", string(b))
+
+	// fetch the first backup key and ensure it contains the original plaintext
+	keyName := lres.Keys[0]
+	kstatus, body := utils.GetAdminKey(t, sp.Addr, keyName)
+	if kstatus != 200 {
+		t.Fatalf("get admin key failed status=%d key=%s", kstatus, keyName)
+	}
+	if !bytes.Contains(body, []byte("plain")) {
+		t.Fatalf("expected key body to contain plaintext; got=%q", string(body))
 	}
 }
 
