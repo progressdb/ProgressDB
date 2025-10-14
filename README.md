@@ -166,25 +166,37 @@ export default function App() {
 
 ## Features
 
-Implemented (ready to use):
+Status summary (accurate to this repository):
 
-- [x] Message storage (append-only), versions, soft-delete, replies, reactions
-- [x] Thread metadata operations
-- [x] Structured logging, Prometheus metrics, config & security middleware
-- [x] Backend SDKs (Node, Python)
-- [x] Frontend SDKs (TypeScript, React)
-- [x] Simple data viewer
-- [x] Encryption & key management
-  - [ ] Cloud backed ksm ~ hsm option
-- [x] Retention policies & management
-- [x] Performance benchmarking & SLO/alerts
+- Implemented / Available
 
-Planned / In progress:
+  - [x] Core message model: append-only storage, basic versioning (edits), replies, soft-delete
+  - [x] Thread metadata operations (create/update/list)
+  - [x] Basic encryption & key management (embedded KMS / in-process master key)
+  - [x] Retention: policy-driven purge/run hooks for test environments
+  - [x] Structured logging and a logging subsystem; config file + env var support
+  - [x] Backend SDKs: examples and test helpers exist for Node/Python; published packages are experimental
+  - [x] Frontend SDKs: TypeScript/React helpers exist in examples; production readiness is limited
 
-- [ ] Backups & tested restores
-- [ ] Realtime subscriptions (WebSocket/SSE) & webhook delivery
-- [ ] Search experience - (api)
-- [ ] Realibility systems - WAL buffer etc
-- [ ] Scaling systems — shar, part, clus, repl
+
+- Partially implemented / Experimental
+
+  - [ ] Prometheus metrics (hooks present; metrics coverage is incomplete)
+  - [ ] Reliability primitives (WAL/buffering) are present in parts but not fully hardened for production
+  - [ ] Performance benchmarking tools are available, but SLO/alerting integrations are not complete
+
+- Planned / Not implemented
+
+  - [ ] Cloud-backed KMS / HSM integration
+  - [ ] Backups & tested restore workflows
+  - [ ] Realtime subscriptions (WebSocket / SSE) and webhook delivery
+  - [ ] Search API / indexed search experience
+  - [ ] Horizontal scaling features (sharding, partitioning, cluster replication)
+
+Notes:
+
+- The project contains working prototypes and test coverage for many core features, but several items listed previously as "ready to use" are still prototypes or partial implementations.
+- If you plan to run ProgressDB in production, treat the SDKs, metrics, reliability, and scaling items as under active development.
+- Contributions are welcome — see the `docs/` folder for design notes and the testing harness in `service/tests/` for examples of how features are exercised.
 
 [![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)

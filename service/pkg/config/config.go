@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/adhocore/gronx"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,6 +31,7 @@ const (
 	defaultQueueTruncateInterval = 30 * time.Second
 	// Retention defaults
 	defaultRetentionLockTTL = 300 * time.Second
+	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
 	// telemetry defaults
 	defaultTelemetrySampleRate = 0.001
 	defaultTelemetrySlowMs     = 200
@@ -222,9 +224,20 @@ func (c *Config) ValidateConfig() error {
 		c.Sensor.Monitor.RecoveryWindow = Duration(defaultSensorRecoveryWindow)
 	}
 
-	// Retention lock TTL default
+	// Retention defaults
+	// Retention lock TTL
 	if c.Retention.LockTTL.Duration() == 0 {
 		c.Retention.LockTTL = Duration(defaultRetentionLockTTL)
+	}
+	// Retention cron (if not set, default to daily at 02:00)
+	if c.Retention.Cron == "" {
+		c.Retention.Cron = defaultRetentionCron
+	}
+
+	// Validate user-passed retention cron for correctness.
+	// Only validate if the cron string is set (either set by user, or by the default above).
+	if !gronx.IsValid(c.Retention.Cron) {
+		return fmt.Errorf("invalid retention cron expression: %s", c.Retention.Cron)
 	}
 
 	return nil

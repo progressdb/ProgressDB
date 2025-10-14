@@ -111,7 +111,6 @@ func BackendRawRequest(t *testing.T, baseURL, method, path string, raw []byte, u
 	return resp.StatusCode, bodyBytes
 }
 
-
 // CallSignUser makes a request to /v1/_sign with userId "u" and returns the JSON response map and status code.
 func CallSignUser(t *testing.T, baseURL, backendAPIKey string) (map[string]string, int) {
 	t.Helper()
