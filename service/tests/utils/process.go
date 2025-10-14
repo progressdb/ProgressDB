@@ -151,18 +151,15 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	} else {
 		// Allow {{PORT}}, {{WORKDIR}} placeholders in ConfigYAML.
 		cfgContent := opts.ConfigYAML
+		if strings.Contains(cfgContent, "{{PORT}}") {
+			cfgContent = strings.ReplaceAll(cfgContent, "{{PORT}}", strconv.Itoa(port))
+		}
 		if strings.Contains(cfgContent, "{{WORKDIR}}") {
 			cfgContent = strings.ReplaceAll(cfgContent, "{{WORKDIR}}", workdir)
 		}
-
-		// Sanitize YAML to prevent indentation errors.
-		cfgContent = strings.ReplaceAll(cfgContent, "\t", "    ") // replace tabs with 4 spaces
-		cfgContent = strings.TrimSpace(cfgContent) + "\n"         // remove leading/trailing blank lines
-
 		if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
 			t.Fatalf("write config: %v", err)
 		}
-
 	}
 
 	// Build binary if needed. Prefer provided path, or TEST_BINARY/SERVER_BIN env vars.

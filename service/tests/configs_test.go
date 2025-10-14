@@ -89,8 +89,7 @@ security:
   encryption:
     use: false
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 

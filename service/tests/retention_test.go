@@ -11,7 +11,6 @@ package tests
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,8 +19,6 @@ import (
 	"time"
 
 	"progressdb/internal/retention"
-	"progressdb/pkg/models"
-	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 	testutils "progressdb/tests/utils"
 )
@@ -68,8 +65,7 @@ logging:
 retention:
   enabled: true
   period: 24h
-  dry_run: false
-`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
+  dry_run: false`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 

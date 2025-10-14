@@ -181,8 +181,7 @@ security:
     frontend: ["frontend-secret"]
     admin: []
 logging:
-  level: info
-	`, utils.SigningSecret, utils.BackendAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 

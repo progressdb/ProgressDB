@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	utils "progressdb/tests/utils"
 )
@@ -23,8 +24,7 @@ security:
     use: true
     fields: ["body"]
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
@@ -43,6 +43,8 @@ logging:
 	if mstatus != 200 && mstatus != 201 && mstatus != 202 {
 		t.Fatalf("unexpected create message status: %d", mstatus)
 	}
+
+	time.Sleep((2 * time.Millisecond))
 
 	// read back via API and verify plaintext
 	var lout struct {
@@ -76,8 +78,7 @@ security:
   encryption:
     use: true
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
@@ -89,6 +90,9 @@ logging:
 		t.Fatalf("create thread failed status=%d", status)
 	}
 	tid := tout["id"].(string)
+
+	// wait 2 seconds before calling to get the thread
+	time.Sleep(2 * time.Millisecond)
 
 	// get thread raw via admin list and inspect KMS metadata
 	var list struct {

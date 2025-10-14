@@ -66,8 +66,7 @@ security:
     use: true
     fields: ["body"]
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
@@ -132,8 +131,7 @@ security:
   encryption:
     use: true
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rot_user"
@@ -164,8 +162,7 @@ security:
   encryption:
     use: true
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.FrontendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 	user := "rw_user"

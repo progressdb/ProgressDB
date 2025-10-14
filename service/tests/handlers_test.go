@@ -20,8 +20,7 @@ security:
   api_keys:
     backend: ["%s", "%s"]
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
@@ -78,8 +77,7 @@ security:
   api_keys:
     backend: ["%s", "%s"]
 logging:
-  level: info
-`, utils.SigningSecret, utils.BackendAPIKey)
+  level: info`, utils.SigningSecret, utils.BackendAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 	defer func() { _ = sp.Stop(t) }()
 
