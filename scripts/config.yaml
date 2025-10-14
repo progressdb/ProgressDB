@@ -66,6 +66,7 @@ ingest:
       batch_interval: 0          # No batching interval, flush now
       enable_compress: false     # Don't compress, optimize for speed/durability
       compress_min_bytes: 0
+      compress_min_ratio: 0.95
       retention_bytes: 0
       retention_age: 0
 

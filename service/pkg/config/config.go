@@ -20,6 +20,7 @@ const (
 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
 	minWALBatchInterval     = 10 * time.Millisecond
 	defaultCompressMinBytes = 512
+	defaultCompressMinRatio = 0.95
 	// Ingest/processor defaults (kept small so zero can mean "use runtime.NumCPU()")
 	defaultProcessorMaxBatchMsgs = 1000
 	defaultProcessorFlushMS      = 1
@@ -157,6 +158,9 @@ func (c *Config) ValidateConfig() error {
 	}
 	if wc.CompressMinBytes == 0 {
 		wc.CompressMinBytes = defaultCompressMinBytes
+	}
+	if wc.CompressMinRatio == 0 {
+		wc.CompressMinRatio = defaultCompressMinRatio
 	}
 
 	// Default is to disable Pebble WAL.

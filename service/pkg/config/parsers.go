@@ -131,6 +131,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"QUEUE_WAL_BATCH_INTERVAL":     os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_INTERVAL"),
 		"QUEUE_WAL_COMPRESS":           os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS"),
 		"QUEUE_WAL_COMPRESS_MIN_BYTES": os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_BYTES"),
+		"QUEUE_WAL_COMPRESS_MIN_RATIO":  os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_RATIO"),
 		"QUEUE_WAL_RETENTION_BYTES":    os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_BYTES"),
 		"QUEUE_WAL_RETENTION_AGE":      os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_AGE"),
 	}
@@ -435,6 +436,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 	if v := envs["QUEUE_WAL_COMPRESS_MIN_BYTES"]; v != "" {
 		envCfg.Ingest.Queue.WAL.CompressMinBytes = parseInt64(v, 512)
+	}
+	if v := envs["QUEUE_WAL_COMPRESS_MIN_RATIO"]; v != "" {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			envCfg.Ingest.Queue.WAL.CompressMinRatio = f
+		}
 	}
 	if v := envs["QUEUE_WAL_RETENTION_BYTES"]; v != "" {
 		envCfg.Ingest.Queue.WAL.RetentionBytes = parseSizeBytes(v)

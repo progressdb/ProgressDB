@@ -43,12 +43,14 @@ type WALRecord struct {
 
 // Options configure the WAL.
 type Options struct {
-	Dir            string
-	MaxFileSize    int64
-	EnableBatch    bool          // Enable batched writes
-	BatchSize      int           // Max records per batch
-	BatchInterval  time.Duration // Max time before auto-flush
-	EnableCompress bool          // Enable gzip compression
+    Dir            string
+    MaxFileSize    int64
+    EnableBatch    bool          // Enable batched writes
+    BatchSize      int           // Max records per batch
+    BatchInterval  time.Duration // Max time before auto-flush
+    EnableCompress bool          // Enable gzip compression
+    CompressMinBytes int64      // Minimum size in bytes to consider compression
+    CompressMinRatio float64    // Minimum compression ratio (compressed <= orig * ratio) to accept
 }
 
 // walFile represents a single WAL file.
@@ -75,12 +77,14 @@ type batchEntry struct {
 
 // FileWAL implements WAL interface.
 type FileWAL struct {
-	dir            string
-	maxSize        int64
-	enableBatch    bool
-	batchSize      int
-	batchInterval  time.Duration
-	enableCompress bool
+    dir            string
+    maxSize        int64
+    enableBatch    bool
+    batchSize      int
+    batchInterval  time.Duration
+    enableCompress bool
+    compressMinBytes int64
+    compressMinRatio float64
 
 	mu       sync.Mutex
 	curr     *walFile
@@ -116,24 +120,26 @@ func New(opts Options) (*FileWAL, error) {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
-	w := &FileWAL{
-		dir:            opts.Dir,
-		maxSize:        opts.MaxFileSize,
-		enableBatch:    opts.EnableBatch,
-		batchSize:      opts.BatchSize,
-		batchInterval:  opts.BatchInterval,
-		enableCompress: opts.EnableCompress,
-		crcTable:       crc32.MakeTable(crc32.Castagnoli),
-		batch:          &batchBuffer{},
-	}
+    w := &FileWAL{
+        dir:            opts.Dir,
+        maxSize:        opts.MaxFileSize,
+        enableBatch:    opts.EnableBatch,
+        batchSize:      opts.BatchSize,
+        batchInterval:  opts.BatchInterval,
+        enableCompress: opts.EnableCompress,
+        compressMinBytes: opts.CompressMinBytes,
+        compressMinRatio: opts.CompressMinRatio,
+        crcTable:       crc32.MakeTable(crc32.Castagnoli),
+        batch:          &batchBuffer{},
+    }
 	w.flushCond = sync.NewCond(&w.mu)
 
-	// Recover existing WAL files on startup
-	maxSeq, err := w.recoverFiles()
-	if err != nil {
-		return nil, fmt.Errorf("failed to recover WAL files: %w", err)
-	}
-	w.seq = maxSeq + 1
+    // Recover existing WAL files on startup
+    maxSeq, err := w.recoverFiles()
+    if err != nil {
+        return nil, fmt.Errorf("failed to recover WAL files: %w", err)
+    }
+    w.seq = maxSeq + 1
 
 	// If no files exist, create first file
 	if w.curr == nil {
@@ -155,6 +161,14 @@ func New(opts Options) (*FileWAL, error) {
 	return w, nil
 }
 
+// reserveSeqLocked reserves a single sequence number and returns it.
+// Caller must hold w.mu.
+func (w *FileWAL) reserveSeqLocked() int64 {
+    s := w.seq
+    w.seq++
+    return s
+}
+
 // Append writes the entry to WAL (may buffer in batch mode)
 func (w *FileWAL) Append(data []byte) (int64, error) {
 	if !w.enableBatch {
@@ -168,9 +182,8 @@ func (w *FileWAL) Append(data []byte) (int64, error) {
 		return 0, errors.New("WAL is closed")
 	}
 
-	// Add to batch
-	offset := w.seq
-	w.seq++
+    // Reserve a sequence number for this entry
+    offset := w.reserveSeqLocked()
 
 	// Copy data to avoid external modification
 	dataCopy := make([]byte, len(data))
@@ -212,16 +225,30 @@ func (w *FileWAL) AppendSync(data []byte) (int64, error) {
 }
 
 func (w *FileWAL) appendSyncLocked(data []byte) (int64, error) {
-	// Compress if enabled
-	toWrite := data
-	flags := byte(0)
-	if w.enableCompress && len(data) > 512 { // Only compress larger records
-		compressed, err := compressData(data)
-		if err == nil && len(compressed) < len(data) {
-			toWrite = compressed
-			flags |= flagCompressed
-		}
-	}
+    // Compress if enabled
+    toWrite := data
+    flags := byte(0)
+    // Only compress if enabled and data size meets threshold.
+    minBytes := int64(512)
+    if w.compressMinBytes > 0 {
+        minBytes = w.compressMinBytes
+    }
+    if w.enableCompress && int64(len(data)) >= minBytes {
+        compressed, err := compressData(data)
+        if err == nil {
+            // Apply post-compression ratio check: only accept compressed
+            // data if it is smaller than original by configured ratio.
+            ratio := w.compressMinRatio
+            // If ratio is unset or invalid, default to 1.0 (accept any smaller)
+            if ratio <= 0 || ratio > 1 {
+                ratio = 1.0
+            }
+            if float64(len(compressed)) <= float64(len(data))*ratio {
+                toWrite = compressed
+                flags |= flagCompressed
+            }
+        }
+    }
 
 	recordSize := int64(recordHeaderSize + len(toWrite))
 	if w.curr.size+recordSize > w.maxSize {
@@ -230,13 +257,12 @@ func (w *FileWAL) appendSyncLocked(data []byte) (int64, error) {
 		}
 	}
 
-	offset := w.seq
-	if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
-		return 0, fmt.Errorf("failed to write record at offset %d: %w", offset, err)
-	}
+    offset := w.reserveSeqLocked()
+    if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
+        return 0, fmt.Errorf("failed to write record at offset %d: %w", offset, err)
+    }
 
-	w.curr.size += recordSize
-	w.seq++
+    w.curr.size += recordSize
 
 	// Update file sequence range
 	if w.curr.minSeq == -1 || offset < w.curr.minSeq {
@@ -266,22 +292,75 @@ func (w *FileWAL) Flush() error {
 }
 
 func (w *FileWAL) flushBatchLocked() error {
-	if len(w.batch.entries) == 0 {
-		return nil
-	}
+    if len(w.batch.entries) == 0 {
+        return nil
+    }
 
-	for _, entry := range w.batch.entries {
-		if _, err := w.appendSyncLocked(entry.data); err != nil {
-			return err
-		}
-	}
+    // Write all entries in the batch to disk, using the pre-assigned
+    // sequence numbers captured at enqueue time. Do not fsync per
+    // record — perform a single group fsync at the end (group commit).
+    for _, entry := range w.batch.entries {
+        data := entry.data
+        flags := byte(0)
+        toWrite := data
+        // Determine compression threshold; default to 512 if not configured.
+        minBytes := int64(512)
+        if w.compressMinBytes > 0 {
+            minBytes = w.compressMinBytes
+        }
+        if w.enableCompress && int64(len(data)) >= minBytes {
+            compressed, err := compressData(data)
+            if err == nil && len(compressed) < len(data) {
+                toWrite = compressed
+                flags |= flagCompressed
+            }
+        }
 
-	// Clear batch
-	w.batch.entries = w.batch.entries[:0]
-	w.batch.size = 0
+        recordSize := int64(recordHeaderSize + len(toWrite))
+        if w.curr.size+recordSize > w.maxSize {
+            if err := w.rotate(); err != nil {
+                return fmt.Errorf("failed to rotate WAL file: %w", err)
+            }
+        }
 
-	w.flushCond.Broadcast()
-	return nil
+        // Use the sequence that was assigned at enqueue time.
+        offset := entry.seq
+        if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
+            return fmt.Errorf("failed to write batch record at offset %d: %w", offset, err)
+        }
+
+        w.curr.size += recordSize
+        if w.curr.minSeq == -1 || offset < w.curr.minSeq {
+            w.curr.minSeq = offset
+        }
+        if offset > w.curr.maxSeq {
+            w.curr.maxSeq = offset
+        }
+    }
+
+    // Single fsync for the batch (group commit).
+    if err := w.curr.f.Sync(); err != nil {
+        return fmt.Errorf("failed to fsync WAL file: %w", err)
+    }
+
+    // Ensure global sequence counter is at least one past the highest
+    // sequence we just wrote. Append() pre-assigns sequence numbers by
+    // incrementing w.seq at enqueue time; however, guard here in case of
+    // any inconsistency or future code paths that might leave w.seq
+    // behind (defensive).
+    if len(w.batch.entries) > 0 {
+        last := w.batch.entries[len(w.batch.entries)-1].seq
+        if w.seq <= last {
+            w.seq = last + 1
+        }
+    }
+
+    // Clear batch
+    w.batch.entries = w.batch.entries[:0]
+    w.batch.size = 0
+
+    w.flushCond.Broadcast()
+    return nil
 }
 
 // batchFlusher periodically flushes batches

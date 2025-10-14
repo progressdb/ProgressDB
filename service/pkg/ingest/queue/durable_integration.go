@@ -9,16 +9,18 @@ var activeWAL *FileWAL
 // DurableEnableOptions provide a richer shape for enabling durable WAL and
 // constructing the canonical queue from configuration.
 type DurableEnableOptions struct {
-	Dir              string
-	Capacity         int
-	TruncateInterval time.Duration
+    Dir              string
+    Capacity         int
+    TruncateInterval time.Duration
 
-	// WAL tunables
-	WALMaxFileSize    int64
-	WALEnableBatch    bool
-	WALBatchSize      int
-	WALBatchInterval  time.Duration
-	WALEnableCompress bool
+    // WAL tunables
+    WALMaxFileSize    int64
+    WALEnableBatch    bool
+    WALBatchSize      int
+    WALBatchInterval  time.Duration
+    WALEnableCompress bool
+    WALCompressMinBytes int64
+    WALCompressMinRatio float64
 }
 
 // EnableDurable attempts to enable a FileWAL under the provided options
@@ -29,14 +31,16 @@ func EnableDurable(opts DurableEnableOptions) error {
 		return nil
 	}
 
-	wopts := Options{
-		Dir:            opts.Dir,
-		MaxFileSize:    opts.WALMaxFileSize,
-		EnableBatch:    opts.WALEnableBatch,
-		BatchSize:      opts.WALBatchSize,
-		BatchInterval:  opts.WALBatchInterval,
-		EnableCompress: opts.WALEnableCompress,
-	}
+    wopts := Options{
+        Dir:            opts.Dir,
+        MaxFileSize:    opts.WALMaxFileSize,
+        EnableBatch:    opts.WALEnableBatch,
+        BatchSize:      opts.WALBatchSize,
+        BatchInterval:  opts.WALBatchInterval,
+        EnableCompress: opts.WALEnableCompress,
+        CompressMinBytes: opts.WALCompressMinBytes,
+        CompressMinRatio: opts.WALCompressMinRatio,
+    }
 	w, err := New(wopts)
 	if err != nil {
 		return err

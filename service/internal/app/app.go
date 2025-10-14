@@ -185,6 +185,8 @@ func (a *App) Run(ctx context.Context) error {
 		WALBatchSize:      a.eff.Config.Ingest.Queue.WAL.BatchSize,
 		WALBatchInterval:  a.eff.Config.Ingest.Queue.WAL.BatchInterval.Duration(),
 		WALEnableCompress: a.eff.Config.Ingest.Queue.WAL.EnableCompress,
+		WALCompressMinBytes: a.eff.Config.Ingest.Queue.WAL.CompressMinBytes,
+		WALCompressMinRatio: a.eff.Config.Ingest.Queue.WAL.CompressMinRatio,
 	}
 	if err := queue.EnableDurable(deOpts); err != nil {
 		// fallback to in-memory queue constructed from config
