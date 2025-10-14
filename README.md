@@ -166,31 +166,29 @@ export default function App() {
 
 ## Features
 
-Status summary (accurate to this repository):
-
 - Implemented / Available
 
-  - [x] Core message model: append-only storage, basic versioning (edits), replies, soft-delete
-  - [x] Thread metadata operations (create/update/list)
-  - [x] Basic encryption & key management (embedded KMS / in-process master key)
-  - [x] Retention: policy-driven purge/run hooks
-  - [x] Structured logging and a logging subsystem; config file + env var support
-  - [x] Backend SDKs: node & python sdks published for v0.1.0
-  - [x] Frontend SDKs: typescript & react sdks published for v0.1.0
+- [x] Core message model: append-only storage, basic versioning (edits), replies, soft-delete
+- [x] Thread metadata operations (create/update/list)
+- [x] Basic encryption & key management (embedded KMS / in-process master key)
+- [x] Retention: policy-driven purge/run hooks
+- [x] Structured logging and a logging subsystem; config file + env var support
+- [x] Backend SDKs: node & python sdks published for v0.1.0
+- [x] Frontend SDKs: typescript & react sdks published for v0.1.0
 
 
 - Partially implemented / Experimental
 
-  - [ ] Prometheus metrics (hooks present; metrics coverage is incomplete)
-  - [ ] Reliability primitives (WAL/buffering) are present in parts but not fully hardened for production
-  - [ ] Performance benchmarking tools are available, but SLO/alerting integrations are not complete
+- [ ] Prometheus metrics (hooks present; metrics coverage is incomplete)
+- [ ] Reliability primitives (WAL/buffering) are present in parts but not fully hardened for production
+- [ ] Performance benchmarking tools are available, but SLO/alerting integrations are not complete
 
 - Planned / Not implemented
 
-  - [ ] Encryption - Cloud-backed KMS / HSM integration
-  - [ ] Backups & tested restore workflows
-  - [ ] Realtime subscriptions (WebSocket / SSE) and webhook delivery
-  - [ ] Search API / indexed search experience
-  - [ ] Horizontal scaling features (sharding, partitioning, cluster replication)
+- [ ] Encryption - Cloud-backed KMS / HSM integration
+- [ ] Backups & tested restore workflows
+- [ ] Realtime subscriptions (WebSocket / SSE) and webhook delivery
+- [ ] Search API / indexed search experience
+- [ ] Horizontal scaling features (sharding, partitioning, cluster replication)
 
 [![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)
