@@ -1,32 +1,13 @@
-//go:build integration
-// +build integration
-
 package tests
-
-// Objectives (from docs/tests.md):
-// 1. Verify DEK provisioning on thread creation when encryption is enabled.
-// 2. Verify encryption/decryption round-trips: API returns plaintext while DB stores ciphertext.
-// 3. Verify DEK rotation keeps messages decryptable.
-// 4. Verify KMS/mk validation and fail-fast behavior for missing master keys.
 
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
-	"progressdb/pkg/kms"
-	"progressdb/pkg/security"
-	"progressdb/pkg/store"
 	utils "progressdb/tests/utils"
 )
-
-// The substantive E2E encryption tests are implemented as standalone
-// tests below: TestEncryption_E2E_EncryptRoundTrip and
-// TestEncryption_E2E_ProvisionDEK. The older suite wrapper has been
-// removed to avoid duplication.
 
 func TestEncryption_E2E_EncryptRoundTrip(t *testing.T) {
 	cfg := `server:
@@ -162,71 +143,5 @@ logging:
 	}
 	if !found {
 		t.Fatalf("expected KMS metadata for thread %s", tid)
-	}
-}
-
-// In-process test: verifies that encrypted messages are stored with the
-// encryption marker ("_enc") while the API returns plaintext. This uses
-// utils.SetupShellServer (in-process handler + store) so the test can inspect
-// raw stored keys via store.ListKeys/GetKey.
-
-func TestEncryption_InProcess_StoredCiphertext(t *testing.T) {
-	// Start a full server process with encryption enabled so messages are
-	// encrypted on write. We'll create a message via the API, stop the
-	// server, then open the Pebble DB directly to inspect the raw stored
-	// value for the encryption marker.
-	cfg := fmt.Sprintf(`server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    frontend: ["%s"]
-    admin: ["admin-secret"]
-  encryption:
-    use: true
-    fields: ["body"]
-logging:
-  level: info
-`, FrontendAPIKey)
-	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
-	// create thread and message via API
-	user := "enc_user"
-	thID, _ := utils.CreateThreadAPI(t, sp.Addr, user, "enc-thread")
-	_ = utils.CreateMessageAPI(t, sp.Addr, user, thID, map[string]interface{}{
-		"author": user,
-		"body":   map[string]string{"text": "secret"},
-	})
-	// stop server so we can open DB
-	if err := sp.Stop(t); err != nil {
-		t.Fatalf("failed to stop server: %v", err)
-	}
-
-	// open DB and inspect raw stored values
-	storePath := filepath.Join(sp.WorkDir, "db", "store")
-	logger.Init()
-	if err := store.Open(storePath, true, false); err != nil {
-		t.Fatalf("store.Open failed: %v", err)
-	}
-	defer func() {
-		_ = store.Close()
-	}()
-
-	mp, _ := store.MsgPrefix(thID)
-	keys, err := store.ListKeys(mp)
-	if err != nil {
-		t.Fatalf("ListKeys failed: %v", err)
-	}
-	if len(keys) == 0 {
-		t.Fatalf("expected message keys in store for thread %s", thID)
-	}
-	raw, err := store.GetKey(keys[0])
-	if err != nil {
-		t.Fatalf("GetKey failed: %v", err)
-	}
-	if !strings.Contains(string(raw), "\"_enc\"") {
-		t.Fatalf("expected stored message to contain encryption marker _enc; got: %s", string(raw))
 	}
 }

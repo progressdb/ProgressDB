@@ -287,10 +287,13 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
+	// check admin permissions
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
+
+	// decode request body
 	var req struct {
 		ThreadIDs   []string `json:"thread_ids"`
 		All         bool     `json:"all"`
@@ -300,9 +303,13 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
 		return
 	}
+
+	// set default parallelism if not provided
 	if req.Parallelism <= 0 {
 		req.Parallelism = 4
 	}
+
+	// determine thread IDs to operate on
 	threads, err := determineThreadIDs(req.ThreadIDs, req.All)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
@@ -313,13 +320,17 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// setup concurrency controls and result channel
 	sem := make(chan struct{}, req.Parallelism)
 	type result struct{ Thread, Key, Err string }
 	resCh := make(chan result, len(threads))
+
+	// iterate over threads and process in parallel
 	for _, tid := range threads {
 		sem <- struct{}{}
 		go func(threadID string) {
 			defer func() { <-sem }()
+			// get thread metadata
 			stored, err := store.GetThread(threadID)
 			if err != nil {
 				resCh <- result{Thread: threadID, Err: "thread not found"}
@@ -330,6 +341,8 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				resCh <- result{Thread: threadID, Err: "invalid thread metadata"}
 				return
 			}
+
+			// create a DEK for the thread if missing
 			if th.KMS == nil || th.KMS.KeyID == "" {
 				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
 				if err != nil {
@@ -341,11 +354,15 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 					_ = store.SaveThread(th.ID, string(payload))
 				}
 			}
+
+			// get key prefix for thread messages
 			prefix, merr := store.MsgPrefix(threadID)
 			if merr != nil {
 				resCh <- result{Thread: threadID, Err: merr.Error()}
 				return
 			}
+
+			// create iterator for all message keys in the thread
 			iter, err := store.DBIter()
 			if err != nil {
 				resCh <- result{Thread: threadID, Err: err.Error()}
@@ -353,36 +370,47 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 			}
 			defer iter.Close()
 			pfx := []byte(prefix)
+
+			// iterate and encrypt messages
 			for iter.SeekGE(pfx); iter.Valid(); iter.Next() {
 				if !bytes.HasPrefix(iter.Key(), pfx) {
 					break
 				}
 				k := append([]byte(nil), iter.Key()...)
 				v := append([]byte(nil), iter.Value()...)
+				// process likely JSON values only
 				if store.LikelyJSON(v) {
+					// encrypt with the thread's DEK
 					ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
+					// backup the original value before overwriting
 					backupKey := append([]byte("backup:encrypt:"), k...)
 					if err := store.SaveKey(string(backupKey), v); err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
+					// overwrite with the encrypted ciphertext
 					if err := store.DBSet(k, ct); err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
 				}
 			}
+			// report success for this thread
 			resCh <- result{Thread: threadID, Key: th.KMS.KeyID}
 		}(tid)
 	}
+
+	// wait for all workers to finish
 	for i := 0; i < cap(sem); i++ {
 		sem <- struct{}{}
 	}
 	close(resCh)
+
+	// collect results for output
 	out := map[string]map[string]string{}
 	for res := range resCh {
 		if _, ok := out[res.Thread]; !ok {
@@ -396,6 +424,8 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 			out[res.Thread]["key_id"] = res.Key
 		}
 	}
+
+	// write response and audit log
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	_ = json.NewEncoder(ctx).Encode(out)
 	auditSummary("admin_encrypt_existing", len(threads), 0, out)

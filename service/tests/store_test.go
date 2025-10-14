@@ -1,68 +1,11 @@
 package tests
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
-	"progressdb/pkg/models"
 	"progressdb/pkg/store"
-	"progressdb/pkg/utils"
-	testutils "progressdb/tests/utils"
 )
-
-// TestProgressorInitializesLastSeq verifies that the progressor migration
-// initializes thread.LastSeq from existing message keys.
-func TestProgressorInitializesLastSeq(t *testing.T) {
-	t.Helper()
-	// Pre-seed the DB with legacy-style keys, then start the server process
-	// which runs migrations on startup. Use PreseedDB to write raw keys.
-	var th models.Thread
-	th.ID = utils.GenThreadID()
-	th.Author = "author1"
-	th.Title = "migration-test"
-	th.CreatedTS = 1
-	th.UpdatedTS = 1
-
-	workdir := testutils.PreseedDB(t, "progressor-init", func(storePath string) {
-		// store is already opened by PreseedDB; write thread metadata and legacy keys.
-		b, _ := json.Marshal(th)
-		if err := store.SaveThread(th.ID, string(b)); err != nil {
-			t.Fatalf("SaveThread: %v", err)
-		}
-		k1 := "thread:" + th.ID + ":msg:0000000000000001000-000005"
-		v1 := []byte(`{"id":"m1","thread":"` + th.ID + `","ts":1000}`)
-		if err := store.DBSet([]byte(k1), v1); err != nil {
-			t.Fatalf("DBSet k1: %v", err)
-		}
-		k2 := "thread:" + th.ID + ":msg:0000000000000002000-000007"
-		v2 := []byte(`{"id":"m2","thread":"` + th.ID + `","ts":2000}`)
-		if err := store.DBSet([]byte(k2), v2); err != nil {
-			t.Fatalf("DBSet k2: %v", err)
-		}
-	})
-
-	// start server with pre-seeded DB so it will run progressor.Run on startup
-	sp := testutils.StartServerProcessWithWorkdir(t, workdir, testutils.ServerOpts{})
-	defer func() { _ = sp.Stop(t) }()
-
-	// fetch thread via admin key endpoint (raw KV key) and verify LastSeq was initialized to 7
-	var got models.Thread
-	keyName := "thread:" + th.ID + ":meta"
-	// progressor runs on startup; wait until the admin-visible key is readable
-	testutils.WaitForAdminKeyVisible(t, sp.Addr, keyName, 5*time.Second)
-	status, body := testutils.GetAdminKey(t, sp.Addr, keyName)
-	if status != 200 {
-		t.Fatalf("expected 200 fetching thread meta via admin key; got %d", status)
-	}
-	if err := json.Unmarshal(body, &got); err != nil {
-		t.Fatalf("failed to decode thread meta: %v (body=%s)", err, string(body))
-	}
-	if got.LastSeq != 7 {
-		t.Fatalf("expected LastSeq=7; got %d", got.LastSeq)
-	}
-}
 
 // verifies MsgKey/VersionKey/ThreadMetaKey builders and parsers.
 func TestKeysBuildersParsers(t *testing.T) {

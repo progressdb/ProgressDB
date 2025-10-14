@@ -16,20 +16,19 @@ import (
 	"time"
 )
 
-// ServerOpts contains options for starting the server process in tests.
+// Options for test server process.
 type ServerOpts struct {
-	// ConfigYAML if non-empty will be written to the temporary config file.
-	// If empty a minimal config will be generated using Port and DBPath.
+	// If non-empty, write to config file, else generate minimal config.
 	ConfigYAML string
-	// Port 0 picks a free port.
+	// 0 picks a free port.
 	Port int
-	// Env additional environment variables to set for the server process.
+	// Extra environment variables.
 	Env map[string]string
-	// BinaryPath optional prebuilt binary to run. If empty the helper will build it.
+	// Optional binary to run, empty triggers build.
 	BinaryPath string
 }
 
-// ServerProcess represents a running test server process and related paths.
+// Running server process and paths.
 type ServerProcess struct {
 	Addr       string // http://host:port
 	Cmd        *exec.Cmd
@@ -40,7 +39,7 @@ type ServerProcess struct {
 	exitCh     chan error
 }
 
-// copyFile copies src to dst (overwrites dst if exists).
+// Copies src to dst (overwrites dst).
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -58,12 +57,10 @@ func copyFile(src, dst string) error {
 	return out.Sync()
 }
 
-// buildProgressdbBin attempts to build the progressdb binary into outPath.
-// It tries a few candidate directories: the module root (via 'go env GOMOD')
-// and a couple of sensible relatives to support running tests from different
-// working directories.
+// Attempt to build progressdb binary at outPath.
+// Tries module root (via 'go env GOMOD') and other candidate dirs.
 func buildProgressdbBin(outPath string) error {
-	// try to detect module root
+	// Try module root.
 	gomodCmd := exec.Command("go", "env", "GOMOD")
 	gomodCmd.Env = os.Environ()
 	if b, err := gomodCmd.Output(); err == nil {
@@ -83,11 +80,11 @@ func buildProgressdbBin(outPath string) error {
 		}
 	}
 
-	// fallback candidates relative to current working dir
+	// Fallback: paths relative to cwd.
 	cwd, _ := os.Getwd()
 	candidates := []string{
-		filepath.Join(cwd, ".."),       // when running from server/tests
-		filepath.Join(cwd, "..", ".."), // when running from deeper paths
+		filepath.Join(cwd, ".."),       // when run from server/tests
+		filepath.Join(cwd, "..", ".."), // from deeper paths
 		cwd,
 	}
 	var lastErr error
@@ -107,7 +104,7 @@ func buildProgressdbBin(outPath string) error {
 	if lastErr != nil {
 		return lastErr
 	}
-	// final attempt: build without setting Dir
+	// Final build attempt, no Dir set.
 	build := exec.Command("go", "build", "-o", outPath, "./cmd/progressdb")
 	build.Env = os.Environ()
 	if bout, err := build.CombinedOutput(); err != nil {
@@ -116,9 +113,8 @@ func buildProgressdbBin(outPath string) error {
 	return nil
 }
 
-// BuildProgressdb builds the progressdb test binary at outPath and fails the
-// test on error. This is a convenience wrapper used by tests outside the
-// utils package.
+// Builds test binary at outPath, fails test on error.
+// Convenience for tests outside utils package.
 func BuildProgressdb(t *testing.T, outPath string) {
 	t.Helper()
 	if err := buildProgressdbBin(outPath); err != nil {
@@ -126,15 +122,14 @@ func BuildProgressdb(t *testing.T, outPath string) {
 	}
 }
 
-// StartServerProcess builds (if needed) and starts the server process using opts.
-// It waits for readiness and fails the test on unrecoverable errors.
+// Builds (if needed) and starts the server. Waits for ready or fails on errors.
 func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	t.Helper()
 
 	workdir := NewArtifactsDir(t, "server-process")
 	artifactRoot := TestArtifactsRoot(t)
 
-	// allocate port if requested
+	// Allocate port if requested.
 	port := opts.Port
 	if port == 0 {
 		p, err := pickFreePort()
@@ -144,7 +139,7 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		port = p
 	}
 
-	// prepare minimal config if none provided
+	// Prepare config file.
 	cfgPath := filepath.Join(workdir, "config.yaml")
 	dbPath := filepath.Join(workdir, "db")
 	if opts.ConfigYAML == "" {
@@ -154,7 +149,7 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 			t.Fatalf("write config: %v", err)
 		}
 	} else {
-		// allow using {{PORT}} placeholder in provided ConfigYAML
+		// Allow {{PORT}}, {{WORKDIR}} placeholders in ConfigYAML.
 		cfgContent := opts.ConfigYAML
 		if strings.Contains(cfgContent, "{{PORT}}") {
 			cfgContent = strings.ReplaceAll(cfgContent, "{{PORT}}", strconv.Itoa(port))
@@ -167,14 +162,13 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		}
 	}
 
-	// build binary if needed. Prefer prebuilt binary specified by opts.BinaryPath
-	// or the PROGRESSDB_TEST_BINARY / PROGRESSDB_SERVER_BIN env var to speed up CI.
+	// Build binary if needed. Prefer provided path, or TEST_BINARY/SERVER_BIN env vars.
 	binPath := opts.BinaryPath
 	if binPath == "" {
-		// check env overrides first
+		// Check env overrides first.
 		if p := os.Getenv("PROGRESSDB_TEST_BINARY"); p != "" {
 			if _, err := os.Stat(p); err == nil {
-				// copy the provided binary into the workdir so we always have a local path
+				// Copy binary to local path.
 				dst := filepath.Join(workdir, "progressdb-bin")
 				if err := copyFile(p, dst); err == nil {
 					binPath = dst
@@ -193,16 +187,14 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		}
 		if binPath == "" {
 			binPath = filepath.Join(workdir, "progressdb-bin")
-			// try building the binary from a sensible repo root. Prefer using
-			// 'go env GOMOD' to detect module root, fall back to a couple of
-			// relative candidates when running tests from subdirectories.
+			// Build from sensible root (try go env GOMOD etc).
 			if err := buildProgressdbBin(binPath); err != nil {
 				t.Fatalf("failed to build server binary: %v", err)
 			}
 		}
 	}
 
-	// substitute placeholders in env values ({{WORKDIR}}, {{PORT}})
+	// Substitute placeholders in env values ({{WORKDIR}}, {{PORT}})
 	for k, v := range opts.Env {
 		if strings.Contains(v, "{{WORKDIR}}") {
 			opts.Env[k] = strings.ReplaceAll(v, "{{WORKDIR}}", workdir)
@@ -212,7 +204,7 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		}
 	}
 
-	// prepare stdout/stderr files
+	// Create stdout/stderr files.
 	stdoutPath := filepath.Join(workdir, "stdout.log")
 	stderrPath := filepath.Join(workdir, "stderr.log")
 	stdoutF, err := os.Create(stdoutPath)
@@ -224,7 +216,7 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		t.Fatalf("create stderr file: %v", err)
 	}
 
-	// start process
+	// Start process.
 	cmd := exec.Command(binPath, "--config", cfgPath)
 	cmd.Stdout = io.MultiWriter(stdoutF)
 	cmd.Stderr = io.MultiWriter(stderrF)
@@ -253,38 +245,37 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		exitCh:     make(chan error, 1),
 	}
 
-	// monitor the child process and record its exit status to stderr log so
-	// EOFs and unexpected terminations are easier to diagnose from test output.
+	// Monitor process; record exit status to stderr for easier diagnostics.
 	go func(c *exec.Cmd, sp *ServerProcess, outF, errF *os.File) {
 		err := c.Wait()
-		// try to append exit info to the stderr log file
+		// Write exit info to stderr log.
 		if f, ferr := os.OpenFile(sp.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {
 			_, _ = fmt.Fprintf(f, "\n[%s] PROCESS EXIT: %v\n", time.Now().Format(time.RFC3339Nano), err)
 			_ = f.Close()
 		}
-		// close parent-held file descriptors now that process exited
+		// Close files after process exits.
 		if outF != nil {
 			_ = outF.Close()
 		}
 		if errF != nil {
 			_ = errF.Close()
 		}
-		// deliver exit to channel for Stop
+		// Deliver exit to channel for Stop.
 		select {
 		case sp.exitCh <- err:
 		default:
 		}
 	}(cmd, sp, stdoutF, stderrF)
 
-	// wait for readiness (give the server up to 1 minute to become healthy)
+	// Wait for ready (up to 1 minute).
 	if err := waitForReady(sp.Addr, 1*time.Minute); err != nil {
-		// capture logs
+		// Capture logs.
 		stdout, _ := os.ReadFile(sp.StdoutPath)
 		stderr, _ := os.ReadFile(sp.StderrPath)
 		t.Fatalf("server failed to become ready: %v\nstdout:\n%s\nstderr:\n%s", err, string(stdout), string(stderr))
 	}
 
-	// perform an additional smoke check against /healthz to ensure handlers are responsive
+	// Smoke check /healthz for handler responsiveness.
 	healthOK := false
 	for i := 0; i < 10; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -308,10 +299,9 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 		t.Fatalf("server readiness probe passed but /healthz did not respond OK\nstdout:\n%s\nstderr:\n%s", string(stdout), string(stderr))
 	}
 
-	// do not close files here; monitor goroutine will close them when the
-	// child process exits to avoid races and "file already closed" errors.
+	// Files not closed here; goroutine closes on process exit.
 
-	// register cleanup that prints server logs on test failure to aid debugging
+	// On test failure, print server logs to aid debugging.
 	t.Cleanup(func() {
 		if t.Failed() {
 			if out, err := os.ReadFile(sp.StdoutPath); err == nil {
@@ -327,18 +317,15 @@ func StartServerProcess(t *testing.T, opts ServerOpts) *ServerProcess {
 	return sp
 }
 
-// Stop stops the server process, returning its exit error if any. It will
-// attempt graceful shutdown via SIGINT and fall back to SIGKILL.
+// Stops process, returns exit error. Tries SIGINT, falls back to SIGKILL.
 func (s *ServerProcess) Stop(t *testing.T) error {
 	t.Helper()
 	if s == nil || s.Cmd == nil || s.Cmd.Process == nil {
 		return nil
 	}
-	// send SIGINT
+	// Send SIGINT.
 	_ = s.Cmd.Process.Signal(syscall.SIGINT)
-	// Wait for the monitored exit result rather than calling Wait again to
-	// avoid double-Wait races. If the process doesn't exit within the
-	// timeout, attempt to kill it.
+	// Wait for monitored exit, fallback to kill on timeout.
 	select {
 	case err := <-s.exitCh:
 		if s != nil && s.StderrPath != "" {
@@ -349,9 +336,9 @@ func (s *ServerProcess) Stop(t *testing.T) error {
 		}
 		return err
 	case <-time.After(5 * time.Second):
-		// force kill
+		// Force kill.
 		_ = s.Cmd.Process.Kill()
-		// record forced kill
+		// Record forced kill.
 		if s != nil && s.StderrPath != "" {
 			if f, ferr := os.OpenFile(s.StderrPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600); ferr == nil {
 				_, _ = fmt.Fprintf(f, "\n[%s] PROCESS KILLED AFTER TIMEOUT\n", time.Now().Format(time.RFC3339Nano))

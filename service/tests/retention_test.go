@@ -49,34 +49,68 @@ func TestRetention_Suite(t *testing.T) {
 
 	// Subtest: Verify purge integration removes soft-deleted thread permanently.
 	t.Run("PurgeThreadIntegration", func(t *testing.T) {
-		dbdir := testutils.NewArtifactsDir(t, "retention-db")
-		storePath := filepath.Join(dbdir, "store")
-		if err := os.MkdirAll(storePath, 0o700); err != nil {
-			t.Fatalf("mkdir store path: %v", err)
-		}
-		if err := store.Open(storePath, true, false); err != nil {
-			t.Fatalf("store.Open: %v", err)
-		}
-		defer store.Close()
+		// Use public API only: create a thread, mark it deleted with an old
+		// DeletedTS via the update endpoint, then trigger retention run and
+		// assert the thread is removed.
+		cfg := `server:
+  address: 127.0.0.1
+  port: {{PORT}}
+  db_path: {{WORKDIR}}/db
+security:
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  api_keys:
+    backend: ["backend-secret"]
+    admin: ["admin-secret"]
+logging:
+  level: info
+retention:
+  enabled: true
+  period: 24h
+  dry_run: false
+`
+		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
+		defer func() { _ = sp.Stop(t) }()
 
-		th := models.Thread{
-			ID:        "thread-test-1",
-			Title:     "t",
-			Deleted:   true,
-			DeletedTS: time.Now().Add(-48 * time.Hour).UnixNano(),
+		// create thread
+		user := "purge_user"
+		tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "to-purge", 5*time.Second)
+
+		// mark deleted with an old DeletedTS via update API
+		old := time.Now().Add(-48 * time.Hour).UnixNano()
+		up := map[string]interface{}{"deleted": true, "deleted_ts": old}
+		status := utils.DoSignedJSON(t, sp.Addr, "PUT", "/v1/threads/"+tid, up, user, utils.FrontendAPIKey, nil)
+		if status != 202 {
+			t.Fatalf("unexpected update status: %d", status)
 		}
-		b, _ := json.Marshal(th)
-		if err := store.SaveThread(th.ID, string(b)); err != nil {
-			t.Fatalf("SaveThread: %v", err)
+
+		// wait until thread metadata reflects deletion
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			st, out := utils.GetThreadAPI(t, sp.Addr, user, tid)
+			if st == 200 {
+				if d, ok := out["deleted"].(bool); ok && d {
+					break
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
-		if s, err := store.GetThread(th.ID); err != nil || s == "" {
-			t.Fatalf("GetThread failed before purge: %v s=%q", err, s)
+
+		// trigger retention run via admin test endpoint
+		areq, _ := http.NewRequest("POST", sp.Addr+"/admin/test-retention-run", nil)
+		areq.Header.Set("Authorization", "Bearer admin-secret")
+		ares, err := http.DefaultClient.Do(areq)
+		if err != nil {
+			t.Fatalf("trigger retention failed: %v", err)
 		}
-		if err := store.PurgeThreadPermanently(th.ID); err != nil {
-			t.Fatalf("PurgeThreadPermanently: %v", err)
+		if ares.StatusCode != 200 {
+			t.Fatalf("expected retention run to return 200; got %d", ares.StatusCode)
 		}
-		if s, err := store.GetThread(th.ID); err == nil && s != "" {
-			t.Fatalf("expected thread to be removed; still present: %q", s)
+
+		// thread should be removed; GET thread should return non-200
+		st, _ := utils.GetThreadAPI(t, sp.Addr, user, tid)
+		if st == 200 {
+			t.Fatalf("expected thread to be purged; still visible")
 		}
 	})
 
@@ -102,17 +136,14 @@ retention:
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
 		defer func() { _ = sp.Stop(t) }()
 
-		// create a soft-deleted thread older than period
-		th := models.Thread{
-			ID:        "ret-test-1",
-			Title:     "t",
-			Deleted:   true,
-			DeletedTS: time.Now().Add(-48 * time.Hour).UnixNano(),
-		}
-		b, _ := json.Marshal(th)
-		// save via store directly - the store is safe to open separately for tests
-		if err := store.SaveThread(th.ID, string(b)); err != nil {
-			t.Fatalf("SaveThread: %v", err)
+		// create a soft-deleted thread via API and set DeletedTS to the past
+		user := "ret_user"
+		tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "ret-thread", 5*time.Second)
+		old := time.Now().Add(-48 * time.Hour).UnixNano()
+		up := map[string]interface{}{"deleted": true, "deleted_ts": old}
+		status := utils.DoSignedJSON(t, sp.Addr, "PUT", "/v1/threads/"+tid, up, user, utils.FrontendAPIKey, nil)
+		if status != 202 {
+			t.Fatalf("unexpected update status: %d", status)
 		}
 
 		// trigger retention via admin test endpoint (registered path)
@@ -145,8 +176,9 @@ retention:
 		}
 
 		// in dry-run, thread should still exist
-		if s, err := store.GetThread(th.ID); err != nil || s == "" {
-			t.Fatalf("expected thread to remain after dry-run; got err=%v s=%q", err, s)
+		st, _ := utils.GetThreadAPI(t, sp.Addr, user, tid)
+		if st != 200 {
+			t.Fatalf("expected thread to remain after dry-run; got status=%d", st)
 		}
 	})
 }
