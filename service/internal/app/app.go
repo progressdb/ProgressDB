@@ -55,14 +55,14 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// warn if both wals are disabled and summarize potential data loss window
-	appWALenabled := eff.Config.Ingest.Queue.WAL.Enabled
+	appWALenabled := eff.Config.Ingest.Queue.Durable.Recover
 	pebbleWALdisabled := true
-	if eff.Config.Ingest.Queue.WAL.DisablePebbleWAL != nil {
-		pebbleWALdisabled = *eff.Config.Ingest.Queue.WAL.DisablePebbleWAL
+	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
+		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
 	}
 	if !appWALenabled && pebbleWALdisabled {
-		procFlush := eff.Config.Ingest.Processor.FlushInterval.Duration()
-		truncate := eff.Config.Ingest.Queue.TruncateInterval.Duration()
+		procFlush := time.Duration(eff.Config.Ingest.Processor.FlushMs) * time.Millisecond
+		truncate := eff.Config.Ingest.Queue.Durable.TruncateInterval.Duration()
 		lossWindow := procFlush
 		if truncate > lossWindow {
 			lossWindow = truncate
@@ -113,8 +113,8 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 	disable := true
 	if aCfg := eff.Config; aCfg != nil {
-		if aCfg.Ingest.Queue.WAL.DisablePebbleWAL != nil {
-			disable = *aCfg.Ingest.Queue.WAL.DisablePebbleWAL
+		if aCfg.Ingest.Queue.Durable.DisablePebbleWAL != nil {
+			disable = *aCfg.Ingest.Queue.Durable.DisablePebbleWAL
 		}
 	}
 	if err := store.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
@@ -146,29 +146,8 @@ func (a *App) Run(ctx context.Context) error {
 	sensorObj.Start()
 	a.hwSensor = sensorObj
 
-	// try durable queue; fallback to in-memory queue
-	deOpts := queue.DurableEnableOptions{
-		Dir:                   state.WalPath(a.eff.DBPath),
-		Capacity:              a.eff.Config.Ingest.Queue.Capacity,
-		TruncateInterval:      a.eff.Config.Ingest.Queue.TruncateInterval.Duration(),
-		WALMaxFileSize:        a.eff.Config.Ingest.Queue.WAL.MaxFileSize.Int64(),
-		WALEnableBatch:        a.eff.Config.Ingest.Queue.WAL.EnableBatch,
-		WALBatchSize:          a.eff.Config.Ingest.Queue.WAL.BatchSize,
-		WALBatchInterval:      a.eff.Config.Ingest.Queue.WAL.BatchInterval.Duration(),
-		WALEnableCompress:     a.eff.Config.Ingest.Queue.WAL.EnableCompress,
-		WALCompressMinBytes:   a.eff.Config.Ingest.Queue.WAL.CompressMinBytes,
-		WALCompressMinRatio:   a.eff.Config.Ingest.Queue.WAL.CompressMinRatio,
-		WALMaxBufferedBytes:   a.eff.Config.Ingest.Queue.WAL.MaxBufferedBytes.Int64(),
-		WALMaxBufferedEntries: a.eff.Config.Ingest.Queue.WAL.MaxBufferedEntries,
-		WALBufferWaitTimeout:  a.eff.Config.Ingest.Queue.WAL.BufferWaitTimeout.Duration(),
-	}
-	if err := queue.EnableDurable(deOpts); err != nil {
-		q := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue)
-		queue.SetDefaultQueue(q)
-	}
-
 	// ensure defaultqueue is set (either durable or in-memory)
-	p := ingest.NewProcessor(queue.DefaultQueue, a.eff.Config.Ingest.Processor)
+	p := ingest.NewProcessor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Processor)
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
 	a.ingestProc = p
@@ -193,8 +172,8 @@ func (a *App) Run(ctx context.Context) error {
 		if a.ingestMonitorCancel != nil {
 			a.ingestMonitorCancel()
 		}
-		if queue.DefaultQueue != nil {
-			queue.DefaultQueue.Close()
+		if queue.DefaultBackend() != nil {
+			queue.DefaultBackend().Close()
 		}
 		_ = queue.CloseDurable()
 

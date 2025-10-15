@@ -119,24 +119,25 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		// logging
 		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
 
-		// queue with tunable wal envs
-		"QUEUE_CAPACITY":                 os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
-		"QUEUE_RECOVER":                  os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
-		"QUEUE_TRUNCATE_INTERVAL":        os.Getenv("PROGRESSDB_QUEUE_TRUNCATE_INTERVAL"),
-		"QUEUE_WAL_ENABLED":              os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
-		"QUEUE_WAL_MODE":                 os.Getenv("PROGRESSDB_QUEUE_WAL_MODE"),
-		"QUEUE_WAL_MAX_FILE_SIZE":        os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_FILE_SIZE"),
-		"QUEUE_WAL_BATCH_ENABLED":        os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_ENABLED"),
-		"QUEUE_WAL_BATCH_SIZE":           os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_SIZE"),
-		"QUEUE_WAL_BATCH_INTERVAL":       os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_INTERVAL"),
-		"QUEUE_WAL_COMPRESS":             os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS"),
-		"QUEUE_WAL_COMPRESS_MIN_BYTES":   os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_BYTES"),
-		"QUEUE_WAL_MAX_BUFFERED_BYTES":   os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_BUFFERED_BYTES"),
-		"QUEUE_WAL_MAX_BUFFERED_ENTRIES": os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_BUFFERED_ENTRIES"),
-		"QUEUE_WAL_BUFFER_WAIT_TIMEOUT":  os.Getenv("PROGRESSDB_QUEUE_WAL_BUFFER_WAIT_TIMEOUT"),
-		"QUEUE_WAL_COMPRESS_MIN_RATIO":   os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_RATIO"),
-		"QUEUE_WAL_RETENTION_BYTES":      os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_BYTES"),
-		"QUEUE_WAL_RETENTION_AGE":        os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_AGE"),
+		// queue with tunable durable and memory envs
+		"QUEUE_MODE":                       os.Getenv("PROGRESSDB_QUEUE_MODE"),
+		"QUEUE_CAPACITY":                   os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
+		"QUEUE_BATCH_SIZE":                 os.Getenv("PROGRESSDB_QUEUE_BATCH_SIZE"),
+		"QUEUE_DRAIN_POLL_INTERVAL":        os.Getenv("PROGRESSDB_QUEUE_DRAIN_POLL_INTERVAL"),
+		"QUEUE_MAX_POOLED_BUFFER_BYTES":    os.Getenv("PROGRESSDB_QUEUE_MAX_POOLED_BUFFER_BYTES"),
+		"QUEUE_MEMORY_RECOVER":             os.Getenv("PROGRESSDB_QUEUE_MEMORY_RECOVER"),
+		"QUEUE_MEMORY_TRUNCATE_INTERVAL":   os.Getenv("PROGRESSDB_QUEUE_MEMORY_TRUNCATE_INTERVAL"),
+		"QUEUE_DURABLE_RECOVER":            os.Getenv("PROGRESSDB_QUEUE_DURABLE_RECOVER"),
+		"QUEUE_DURABLE_TRUNCATE_INTERVAL":  os.Getenv("PROGRESSDB_QUEUE_DURABLE_TRUNCATE_INTERVAL"),
+		"QUEUE_DURABLE_MODE":               os.Getenv("PROGRESSDB_QUEUE_DURABLE_MODE"),
+		"QUEUE_DURABLE_MAX_FILE_SIZE":      os.Getenv("PROGRESSDB_QUEUE_DURABLE_MAX_FILE_SIZE"),
+		"QUEUE_DURABLE_ENABLE_BATCH":       os.Getenv("PROGRESSDB_QUEUE_DURABLE_ENABLE_BATCH"),
+		"QUEUE_DURABLE_BATCH_SIZE":         os.Getenv("PROGRESSDB_QUEUE_DURABLE_BATCH_SIZE"),
+		"QUEUE_DURABLE_BATCH_INTERVAL":     os.Getenv("PROGRESSDB_QUEUE_DURABLE_BATCH_INTERVAL"),
+		"QUEUE_DURABLE_ENABLE_COMPRESS":    os.Getenv("PROGRESSDB_QUEUE_DURABLE_ENABLE_COMPRESS"),
+		"QUEUE_DURABLE_COMPRESS_MIN_BYTES": os.Getenv("PROGRESSDB_QUEUE_DURABLE_COMPRESS_MIN_BYTES"),
+		"QUEUE_DURABLE_RETENTION_BYTES":    os.Getenv("PROGRESSDB_QUEUE_DURABLE_RETENTION_BYTES"),
+		"QUEUE_DURABLE_RETENTION_AGE":      os.Getenv("PROGRESSDB_QUEUE_DURABLE_RETENTION_AGE"),
 	}
 
 	// check if any env was set
@@ -401,66 +402,66 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Logging.Level = strings.TrimSpace(v)
 	}
 
-	// queue / wal env overrides
+	// queue env overrides
+	if v := envs["QUEUE_MODE"]; v != "" {
+		envCfg.Ingest.Queue.Mode = strings.ToLower(strings.TrimSpace(v))
+	}
 	if v := envs["QUEUE_CAPACITY"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 			envCfg.Ingest.Queue.Capacity = n
 		}
 	}
-	if v := envs["QUEUE_RECOVER"]; v != "" {
-		envCfg.Ingest.Queue.Recover = parseBool(v, true)
-	}
-	if v := envs["QUEUE_TRUNCATE_INTERVAL"]; v != "" {
-		envCfg.Ingest.Queue.TruncateInterval = parseDuration(v)
-	}
-
-	if v := envs["QUEUE_WAL_ENABLED"]; v != "" {
-		envCfg.Ingest.Queue.WAL.Enabled = parseBool(v, true)
-	}
-	if v := envs["QUEUE_WAL_MODE"]; v != "" {
-		envCfg.Ingest.Queue.WAL.Mode = strings.ToLower(strings.TrimSpace(v))
-	}
-	if v := envs["QUEUE_WAL_MAX_FILE_SIZE"]; v != "" {
-		envCfg.Ingest.Queue.WAL.MaxFileSize = parseSizeBytes(v)
-	}
-	if v := envs["QUEUE_WAL_BATCH_ENABLED"]; v != "" {
-		envCfg.Ingest.Queue.WAL.EnableBatch = parseBool(v, true)
-	}
-	if v := envs["QUEUE_WAL_BATCH_SIZE"]; v != "" {
+	if v := envs["QUEUE_BATCH_SIZE"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.WAL.BatchSize = n
+			envCfg.Ingest.Queue.BatchSize = n
 		}
 	}
-	if v := envs["QUEUE_WAL_BATCH_INTERVAL"]; v != "" {
-		envCfg.Ingest.Queue.WAL.BatchInterval = parseDuration(v)
+	if v := envs["QUEUE_DRAIN_POLL_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.DrainPollInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_WAL_COMPRESS"]; v != "" {
-		envCfg.Ingest.Queue.WAL.EnableCompress = parseBool(v, false)
+	if v := envs["QUEUE_MAX_POOLED_BUFFER_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.MaxPooledBufferBytes = parseSizeBytes(v)
 	}
-	if v := envs["QUEUE_WAL_COMPRESS_MIN_BYTES"]; v != "" {
-		envCfg.Ingest.Queue.WAL.CompressMinBytes = parseInt64(v, 512)
+	if v := envs["QUEUE_MEMORY_RECOVER"]; v != "" {
+		envCfg.Ingest.Queue.Memory.Recover = parseBool(v, false)
 	}
-	if v := envs["QUEUE_WAL_MAX_BUFFERED_BYTES"]; v != "" {
-		envCfg.Ingest.Queue.WAL.MaxBufferedBytes = parseSizeBytes(v)
+	if v := envs["QUEUE_MEMORY_TRUNCATE_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.Memory.TruncateInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_WAL_MAX_BUFFERED_ENTRIES"]; v != "" {
+	if v := envs["QUEUE_DURABLE_RECOVER"]; v != "" {
+		envCfg.Ingest.Queue.Durable.Recover = parseBool(v, true)
+	}
+	if v := envs["QUEUE_DURABLE_TRUNCATE_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.Durable.TruncateInterval = parseDuration(v)
+	}
+	if v := envs["QUEUE_DURABLE_MODE"]; v != "" {
+		envCfg.Ingest.Queue.Durable.Mode = strings.ToLower(strings.TrimSpace(v))
+	}
+	if v := envs["QUEUE_DURABLE_MAX_FILE_SIZE"]; v != "" {
+		envCfg.Ingest.Queue.Durable.MaxFileSize = parseSizeBytes(v)
+	}
+	if v := envs["QUEUE_DURABLE_ENABLE_BATCH"]; v != "" {
+		envCfg.Ingest.Queue.Durable.EnableBatch = parseBool(v, true)
+	}
+	if v := envs["QUEUE_DURABLE_BATCH_SIZE"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.WAL.MaxBufferedEntries = n
+			envCfg.Ingest.Queue.Durable.BatchSize = n
 		}
 	}
-	if v := envs["QUEUE_WAL_BUFFER_WAIT_TIMEOUT"]; v != "" {
-		envCfg.Ingest.Queue.WAL.BufferWaitTimeout = parseDuration(v)
+	if v := envs["QUEUE_DURABLE_BATCH_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.Durable.BatchInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_WAL_COMPRESS_MIN_RATIO"]; v != "" {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			envCfg.Ingest.Queue.WAL.CompressMinRatio = f
-		}
+	if v := envs["QUEUE_DURABLE_ENABLE_COMPRESS"]; v != "" {
+		envCfg.Ingest.Queue.Durable.EnableCompress = parseBool(v, true)
 	}
-	if v := envs["QUEUE_WAL_RETENTION_BYTES"]; v != "" {
-		envCfg.Ingest.Queue.WAL.RetentionBytes = parseSizeBytes(v)
+	if v := envs["QUEUE_DURABLE_COMPRESS_MIN_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.Durable.CompressMinBytes = parseInt64(v, 512)
 	}
-	if v := envs["QUEUE_WAL_RETENTION_AGE"]; v != "" {
-		envCfg.Ingest.Queue.WAL.RetentionAge = parseDuration(v)
+	if v := envs["QUEUE_DURABLE_RETENTION_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.Durable.RetentionBytes = parseSizeBytes(v)
+	}
+	if v := envs["QUEUE_DURABLE_RETENTION_AGE"]; v != "" {
+		envCfg.Ingest.Queue.Durable.RetentionAge = parseDuration(v)
 	}
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }

@@ -98,41 +98,43 @@ type IngestConfig struct {
 
 // ProcessorConfig controls worker concurrency and batching.
 type ProcessorConfig struct {
-	Workers       int      `yaml:"workers"`
-	MaxBatchMsgs  int      `yaml:"max_batch_msgs"`
-	FlushInterval Duration `yaml:"flush_ms"`
+	Workers      int `yaml:"workers"`
+	MaxBatchMsgs int `yaml:"max_batch_msgs"`
+	FlushMs      int `yaml:"flush_ms"`
 }
 
-// QueueConfig holds in-memory queue and WAL embedding.
+// QueueConfig holds queue settings with mode selection.
 type QueueConfig struct {
-	Capacity             int       `yaml:"capacity"`
-	BatchSize            int       `yaml:"batch_size"`
-	DrainPollInterval    Duration  `yaml:"drain_poll_interval"`
-	MaxPooledBufferBytes SizeBytes `yaml:"max_pooled_buffer_bytes"`
-	Recover              bool      `yaml:"recover"`
-	TruncateInterval     Duration  `yaml:"truncate_interval"`
-	WAL                  WALConfig `yaml:"wal"`
+	Mode                 string             `yaml:"mode"` // "durable" or "memory"
+	Capacity             int                `yaml:"capacity"`
+	BatchSize            int                `yaml:"batch_size"`
+	DrainPollInterval    Duration           `yaml:"drain_poll_interval"`
+	MaxPooledBufferBytes SizeBytes          `yaml:"max_pooled_buffer_bytes"`
+	Memory               MemoryQueueConfig  `yaml:"memory"`
+	Durable              DurableQueueConfig `yaml:"durable"`
 }
 
-// WALConfig represents write-ahead log tunables.
-type WALConfig struct {
-	Enabled          bool      `yaml:"enabled"`
-	Mode             string    `yaml:"mode"` // none | batch | sync
+// MemoryQueueConfig holds settings for in-memory queue.
+type MemoryQueueConfig struct {
+	Recover          bool     `yaml:"recover"`
+	TruncateInterval Duration `yaml:"truncate_interval"`
+}
+
+// DurableQueueConfig holds settings for durable queue with WAL.
+type DurableQueueConfig struct {
+	Recover          bool      `yaml:"recover"`
+	TruncateInterval Duration  `yaml:"truncate_interval"`
+	Mode             string    `yaml:"mode"` // batch | sync
 	MaxFileSize      SizeBytes `yaml:"max_file_size"`
 	EnableBatch      bool      `yaml:"enable_batch"`
 	BatchSize        int       `yaml:"batch_size"`
 	BatchInterval    Duration  `yaml:"batch_interval"`
 	EnableCompress   bool      `yaml:"enable_compress"`
 	CompressMinBytes int64     `yaml:"compress_min_bytes"`
-	CompressMinRatio float64   `yaml:"compress_min_ratio"`
-	// WAL buffering/backpressure
-	MaxBufferedBytes   SizeBytes `yaml:"max_buffered_bytes"`
-	MaxBufferedEntries int       `yaml:"max_buffered_entries"`
-	BufferWaitTimeout  Duration  `yaml:"buffer_wait_timeout"`
-	RetentionBytes     SizeBytes `yaml:"retention_bytes"`
-	RetentionAge       Duration  `yaml:"retention_age"`
+	RetentionBytes   SizeBytes `yaml:"retention_bytes"`
+	RetentionAge     Duration  `yaml:"retention_age"`
 	// DisablePebbleWAL controls the underlying Pebble DB's WAL setting.
-	// Default is true - given application level WAl
+	// Default is true - given application level WAL
 	// This is here for configuration access
 	// NOTE that enabling 2 wals can decrease performance.
 	DisablePebbleWAL *bool `yaml:"disable_pebble_wal"`

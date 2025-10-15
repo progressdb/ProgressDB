@@ -47,7 +47,7 @@ func NewProcessor(q *queue.IngestQueue, pc config.ProcessorConfig) *Processor {
 		stop:       make(chan struct{}),
 		handlers:   make(map[queue.HandlerID]ProcessorFunc),
 		maxBatch:   pc.MaxBatchMsgs,
-		flushDur:   pc.FlushInterval.Duration(),
+		flushDur:   time.Duration(pc.FlushMs) * time.Millisecond,
 		nextCommit: 1,
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)

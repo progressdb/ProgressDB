@@ -13,23 +13,23 @@ import (
 
 // Defaults and limits for queue/WAL configuration
 const (
-	defaultQueueCapacity    = 64 * 1024
-	defaultWALMaxFileSize   = 64 * 1024 * 1024 // 64 MiB
-	defaultWALBatchInterval = 1 * time.Millisecond
-	defaultWALBatchSize     = 100
+	defaultQueueCapacity    = 1048576                // 1M as per new config
+	defaultWALMaxFileSize   = 2 * 1024 * 1024 * 1024 // 2 GiB
+	defaultWALBatchInterval = 10 * time.Millisecond
+	defaultWALBatchSize     = 4096
 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
 	minWALBatchInterval     = 1 * time.Millisecond
 	defaultCompressMinBytes = 512
-	defaultCompressMinRatio = 0.95
-	// Ingest/processor defaults (kept small so zero can mean "use runtime.NumCPU()")
-	defaultProcessorMaxBatchMsgs = 1000
-	defaultProcessorFlushMS      = 1
+	// Ingest/processor defaults
+	defaultProcessorWorkers      = 48
+	defaultProcessorMaxBatchMsgs = 10000
+	defaultProcessorFlushMs      = 1
 
 	// Queue defaults
-	defaultQueueBatchSize        = 256
-	defaultDrainPollInterval     = 10 * time.Millisecond
-	defaultMaxPooledBufferBytes  = 256 * 1024 // 256 KiB
-	defaultQueueTruncateInterval = 30 * time.Second
+	defaultQueueBatchSize        = 131072
+	defaultDrainPollInterval     = 250 * time.Microsecond
+	defaultMaxPooledBufferBytes  = 3 * 1024 * 1024 * 1024 // 3 GiB
+	defaultQueueTruncateInterval = 60 * time.Second
 	// Retention defaults
 	defaultRetentionLockTTL = 300 * time.Second
 	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
@@ -37,15 +37,12 @@ const (
 	defaultTelemetrySampleRate = 0.001
 	defaultTelemetrySlowMs     = 200
 	// sensor defaults
-	defaultSensorPollInterval    = 500 * time.Millisecond
-	defaultSensorWALHighBytes    = 1 << 30 // 1 GiB
-	defaultSensorWALLowBytes     = 700 << 20
-	defaultSensorDiskHighPct     = 80
-	defaultSensorDiskLowPct      = 60
-	defaultSensorRecoveryWindow  = 5 * time.Second
-	defaultWALMaxBufferedBytes   = 32 * 1024 * 1024 // 32 MiB
-	defaultWALMaxBufferedEntries = 0
-	defaultWALBufferWaitTimeout  = 0
+	defaultSensorPollInterval   = 500 * time.Millisecond
+	defaultSensorWALHighBytes   = 1 << 30 // 1 GiB
+	defaultSensorWALLowBytes    = 700 << 20
+	defaultSensorDiskHighPct    = 80
+	defaultSensorDiskLowPct     = 60
+	defaultSensorRecoveryWindow = 5 * time.Second
 )
 
 var (
@@ -137,44 +134,25 @@ func (c *Config) ValidateConfig() error {
 	if c.Ingest.Queue.MaxPooledBufferBytes.Int64() == 0 {
 		c.Ingest.Queue.MaxPooledBufferBytes = SizeBytes(defaultMaxPooledBufferBytes)
 	}
-	// truncate interval: zero means disabled; default to reasonable value if unset
-	if c.Ingest.Queue.TruncateInterval.Duration() == 0 {
-		c.Ingest.Queue.TruncateInterval = Duration(defaultQueueTruncateInterval)
-	}
-
 	// WAL defaults and validation
-	wc := &c.Ingest.Queue.WAL
+	wc := &c.Ingest.Queue.Durable
 	if wc.MaxFileSize.Int64() == 0 {
 		wc.MaxFileSize = SizeBytes(defaultWALMaxFileSize)
 	}
 	if wc.MaxFileSize.Int64() < minWALFileSize {
-		return fmt.Errorf("wal.max_file_size must be >= %d bytes", minWALFileSize)
+		return fmt.Errorf("durable.max_file_size must be >= %d bytes", minWALFileSize)
 	}
 	if wc.BatchInterval.Duration() == 0 {
 		wc.BatchInterval = Duration(defaultWALBatchInterval)
 	}
 	if wc.BatchInterval.Duration() < minWALBatchInterval {
-		return fmt.Errorf("wal.batch_interval must be >= %s", minWALBatchInterval)
+		return fmt.Errorf("durable.batch_interval must be >= %s", minWALBatchInterval)
 	}
 	if wc.BatchSize <= 0 {
 		wc.BatchSize = defaultWALBatchSize
 	}
 	if wc.CompressMinBytes == 0 {
 		wc.CompressMinBytes = defaultCompressMinBytes
-	}
-	if wc.CompressMinRatio == 0 {
-		wc.CompressMinRatio = defaultCompressMinRatio
-	}
-
-	// WAL buffering defaults
-	if wc.MaxBufferedBytes.Int64() == 0 {
-		wc.MaxBufferedBytes = SizeBytes(defaultWALMaxBufferedBytes)
-	}
-	if wc.MaxBufferedEntries == 0 {
-		wc.MaxBufferedEntries = defaultWALMaxBufferedEntries
-	}
-	if wc.BufferWaitTimeout.Duration() == 0 {
-		wc.BufferWaitTimeout = Duration(defaultWALBufferWaitTimeout)
 	}
 
 	// Default is to disable Pebble WAL.
@@ -188,10 +166,7 @@ func (c *Config) ValidateConfig() error {
 	case "", "batch", "sync", "none":
 		// ok
 	default:
-		return fmt.Errorf("wal.mode must be one of: none, batch, sync")
-	}
-	if !wc.Enabled {
-		wc.Mode = "none"
+		return fmt.Errorf("durable.mode must be one of: none, batch, sync")
 	}
 
 	// Processor defaults
@@ -202,8 +177,8 @@ func (c *Config) ValidateConfig() error {
 	if pc.MaxBatchMsgs <= 0 {
 		pc.MaxBatchMsgs = defaultProcessorMaxBatchMsgs
 	}
-	if pc.FlushInterval.Duration() == 0 {
-		pc.FlushInterval = Duration(time.Duration(defaultProcessorFlushMS) * time.Millisecond)
+	if pc.FlushMs <= 0 {
+		pc.FlushMs = defaultProcessorFlushMs
 	}
 
 	// Telemetry defaults
