@@ -81,8 +81,8 @@ func (r *RemoteClient) HealthCheck() error {
 
 func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
 	// create a short-lived root telemetry so we get timings for remote KMS ops
-	end := telemetry.WithRootNoCtx("kms.remote.create_dek_for_thread")
-	defer end()
+	tr := telemetry.Track("kms.remote.create_dek_for_thread")
+	defer tr.Finish()
 
 	req := map[string]string{"thread_id": threadID}
 	b, _ := json.Marshal(req)
@@ -138,8 +138,8 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 // ciphertext blob (nonce||ct) decoded from base64, plus an optional
 // keyVersion string.
 func (r *RemoteClient) EncryptWithDEK(keyID string, plaintext, aad []byte) ([]byte, string, error) {
-	end := telemetry.WithRootNoCtx("kms.remote.encrypt_with_dek")
-	defer end()
+	tr := telemetry.Track("kms.remote.encrypt_with_dek")
+	defer tr.Finish()
 
 	req := map[string]string{"key_id": keyID, "plaintext": base64.StdEncoding.EncodeToString(plaintext)}
 	if aad != nil {
@@ -175,8 +175,8 @@ func (r *RemoteClient) EncryptWithDEK(keyID string, plaintext, aad []byte) ([]by
 // KMS. The ciphertext is supplied as raw bytes and will be base64-encoded
 // at the wire boundary.
 func (r *RemoteClient) DecryptWithDEK(keyID string, ciphertext, aad []byte) ([]byte, error) {
-	end := telemetry.WithRootNoCtx("kms.remote.decrypt_with_dek")
-	defer end()
+	tr := telemetry.Track("kms.remote.decrypt_with_dek")
+	defer tr.Finish()
 
 	req := map[string]string{"key_id": keyID, "ciphertext": base64.StdEncoding.EncodeToString(ciphertext)}
 	if aad != nil {

@@ -12,6 +12,7 @@ type Paths struct {
 	Retention string
 	KMS       string
 	Tmp       string
+	Tel       string
 }
 
 // PathsFor returns the canonical Paths for the provided DB path.
@@ -26,6 +27,7 @@ func PathsFor(dbPath string) Paths {
 		Retention: filepath.Join(statePath, "retention"),
 		KMS:       filepath.Join(statePath, "kms"),
 		Tmp:       filepath.Join(statePath, "tmp"),
+		Tel:       filepath.Join(statePath, "tel"),
 	}
 }
 
@@ -37,3 +39,4 @@ func AuditPath(dbPath string) string     { return PathsFor(dbPath).Audit }
 func RetentionPath(dbPath string) string { return PathsFor(dbPath).Retention }
 func KMSPath(dbPath string) string       { return PathsFor(dbPath).KMS }
 func TmpPath(dbPath string) string       { return PathsFor(dbPath).Tmp }
+func TelPath(dbPath string) string       { return PathsFor(dbPath).Tel }

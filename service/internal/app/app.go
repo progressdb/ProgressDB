@@ -90,9 +90,8 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		logger.LogConfigSummary("config_durability_summary", summaryItems)
 	}
 
-	// telemetry defaults
-	telemetry.SetSampleRate(eff.Config.Telemetry.SampleRate)
-	telemetry.SetSlowThreshold(eff.Config.Telemetry.SlowThreshold.Duration())
+	// telemetry setup
+	telemetry.Init(state.PathsVar.Tel)
 
 	// setup runtime keys
 	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
@@ -187,6 +186,7 @@ func (a *App) Run(ctx context.Context) error {
 		if a.hwSensor != nil {
 			a.hwSensor.Stop()
 		}
+		telemetry.Close()
 		return nil
 	case err := <-errCh:
 		return err

@@ -16,6 +16,9 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 	limiters := &limiterPool{cfg: cfg}
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return func(ctx *fasthttp.RequestCtx) {
+			tr := telemetry.Track("auth.middleware")
+			defer tr.Finish()
+
 			// log each req with redacted headers
 			logger.LogRequestFast(ctx)
 
@@ -25,6 +28,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
 				ctx.Response.Header.Set("Vary", "Origin")
 				ctx.Response.Header.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
+				ctx.Response.Header.Set("Vary", "Origin")
 				ctx.Response.Header.Set("Access-Control-Max-Age", "600")
 				ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
 				ctx.Response.Header.Set("Access-Control-Expose-Headers", "X-Role-Name")
@@ -46,10 +50,9 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				}
 			}
 
+			tr.Mark("authenticate")
 			// extract possible api_key info
-			authSpan := telemetry.StartSpanNoCtx("auth.authenticate")
 			role, key, hasAPIKey := authenticateFast(ctx, cfg)
-			authSpan()
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			// allow access to health & ready checkeers
@@ -98,15 +101,13 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				}
 			}
 
+			tr.Mark("rate_limit")
 			// enforce rate_limiting per api key
-			rlSpan := telemetry.StartSpanNoCtx("auth.rate_limit")
 			if !limiters.Allow(key) {
-				rlSpan()
 				utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
 				return
 			}
-			rlSpan()
 
 			// allow request through
 			logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))

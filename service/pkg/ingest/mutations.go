@@ -200,15 +200,14 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	}
 
 	// If encryption is enabled, provision a DEK for the thread using KMS.
-	encSpan := telemetry.StartSpanNoCtx("ingest.thread.enc_check")
+	tr := telemetry.Track("ingest.thread_encryption")
+	defer tr.Finish()
 	if security.EncryptionEnabled() {
 		if kms.IsProviderEnabled() {
 			logger.Info("ingest_provisioning_thread_kms", "thread", th.ID)
-			kmsSpan := telemetry.StartSpanNoCtx("ingest.kms.create_dek_for_thread")
+			tr.Mark("kms_create_dek")
 			keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(th.ID)
-			kmsSpan()
 			if err != nil {
-				encSpan()
 				return nil, fmt.Errorf("kms provision failed: %w", err)
 			}
 			th.KMS = &models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
@@ -216,7 +215,6 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 			logger.Info("encryption_enabled_but_no_kms_provider", "thread", th.ID)
 		}
 	}
-	encSpan()
 
 	payload, _ := json.Marshal(th)
 	be := BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq}

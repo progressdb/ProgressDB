@@ -199,11 +199,13 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	tr := telemetry.Track("store.save_message")
+	defer tr.Finish()
+
 	// handle encryption if enabled
 	if security.EncryptionEnabled() {
-		getThreadSpan := telemetry.StartSpanNoCtx("store.get_thread")
+		tr.Mark("get_thread")
 		sthr, terr := GetThread(threadID)
-		getThreadSpan()
 		if terr != nil {
 			return fmt.Errorf("encryption enabled but thread metadata missing: %w", terr)
 		}
@@ -211,9 +213,8 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		if err := json.Unmarshal([]byte(sthr), &th); err != nil {
 			return fmt.Errorf("invalid thread metadata: %w", err)
 		}
-		encSpan := telemetry.StartSpanNoCtx("store.encrypt_message")
+		tr.Mark("encrypt_message")
 		encBody, err := security.EncryptMessageBody(&msg, th)
-		encSpan()
 		if err != nil {
 			return fmt.Errorf("encryption failed: %w", err)
 		}
@@ -238,11 +239,10 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		_ = json.Unmarshal([]byte(sthr2), &th)
 	}
 	if th.LastSeq == 0 {
-		compSpan := telemetry.StartSpanNoCtx("store.compute_max_seq")
+		tr.Mark("compute_max_seq")
 		if max, err := computeMaxSeq(threadID); err == nil {
 			th.LastSeq = max
 		}
-		compSpan()
 	}
 	th.LastSeq++
 
@@ -275,13 +275,11 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 		batch.Set([]byte(ik), data, writeOpt(true))
 	}
-	dbSpan := telemetry.StartSpanNoCtx("store.db_apply")
+	tr.Mark("db_apply")
 	if err := db.Apply(batch, writeOpt(true)); err != nil {
-		dbSpan()
 		logger.Error("save_message_failed", "thread", threadID, "key", key, "error", err)
 		return err
 	}
-	dbSpan()
 	logger.Info("message_saved", "thread", threadID, "key", key, "msg_id", msgID)
 	return nil
 }

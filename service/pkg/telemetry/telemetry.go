@@ -36,6 +36,26 @@ type Telemetry struct {
 	flushInt time.Duration
 }
 
+var tel *Telemetry
+
+// Init initializes the global telemetry instance.
+func Init(dir string) {
+	tel, _ = New(dir)
+}
+
+// Track starts a new trace using the global telemetry instance.
+func Track(name string) *Trace {
+	return tel.Track(name)
+}
+
+// Close stops the global telemetry instance.
+func Close() {
+	if tel != nil {
+		tel.Close()
+		tel = nil
+	}
+}
+
 // New creates a new telemetry subsystem with async background writer.
 func New(dir string) (*Telemetry, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
