@@ -16,8 +16,8 @@ func RunWorker(q *IngestQueue, stop <-chan struct{}, handler func(*QueueOp) erro
 			func(it *QueueItem) {
 				defer it.Done()
 				tr := telemetry.Track("ingest.worker_process")
-				tr.Mark("handler")
 				_ = handler(it.Op)
+				tr.Mark("handler")
 				tr.Finish()
 			}(it)
 		case <-stop:
@@ -75,8 +75,8 @@ func RunBatchWorker(q *IngestQueue, stop <-chan struct{}, batchSize int, handler
 				ops[i] = it.Op
 			}
 			tr := telemetry.Track("ingest.batch_process")
-			tr.Mark("handler")
 			_ = handler(ops)
+			tr.Mark("handler")
 			tr.Finish()
 		}(items)
 	}

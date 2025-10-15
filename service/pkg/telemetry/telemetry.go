@@ -26,14 +26,15 @@ type Trace struct {
 
 // Telemetry manages async writing of traces to per-op files.
 type Telemetry struct {
-	dir      string
-	mu       sync.Mutex
-	files    map[string]*os.File
-	buffers  map[string]*bufio.Writer
-	traces   chan *Trace
-	stopCh   chan struct{}
-	wg       sync.WaitGroup
-	flushInt time.Duration
+	dir       string
+	mu        sync.Mutex
+	files     map[string]*os.File
+	buffers   map[string]*bufio.Writer
+	traces    chan *Trace
+	stopCh    chan struct{}
+	wg        sync.WaitGroup
+	flushInt  time.Duration
+	maxSizeMB int64
 }
 
 var tel *Telemetry
@@ -62,12 +63,13 @@ func New(dir string) (*Telemetry, error) {
 		return nil, err
 	}
 	t := &Telemetry{
-		dir:      dir,
-		files:    make(map[string]*os.File),
-		buffers:  make(map[string]*bufio.Writer),
-		traces:   make(chan *Trace, 2048),
-		stopCh:   make(chan struct{}),
-		flushInt: 2 * time.Second,
+		dir:       dir,
+		files:     make(map[string]*os.File),
+		buffers:   make(map[string]*bufio.Writer),
+		traces:    make(chan *Trace, 2048),
+		stopCh:    make(chan struct{}),
+		flushInt:  2 * time.Second,
+		maxSizeMB: 10, // keep each file ≤ 10MB
 	}
 	t.wg.Add(1)
 	go t.writerLoop()
@@ -101,7 +103,17 @@ func (tr *Trace) Finish() {
 	}
 	tr.TotalMS = time.Since(tr.Start).Seconds() * 1000
 
-	// Optional quick stdout feedback (tweak threshold if needed)
+	// Calculate remaining time not captured in marks
+	var sum float64
+	for _, s := range tr.Steps {
+		sum += s.Duration
+	}
+	remaining := tr.TotalMS - sum
+	if remaining > 0.001 { // threshold to avoid noise
+		tr.Steps = append(tr.Steps, Step{Name: "unmarked", Duration: remaining})
+	}
+
+	// Optional quick stdout feedback
 	fmt.Printf("Trace: %s (%.2fms)\n", tr.Name, tr.TotalMS)
 	for _, s := range tr.Steps {
 		fmt.Printf("  ↳ %-25s %.2fms\n", s.Name, s.Duration)
@@ -138,8 +150,19 @@ func (t *Telemetry) writerLoop() {
 
 		case <-ticker.C:
 			t.mu.Lock()
-			for _, b := range t.buffers {
+			for name, b := range t.buffers {
 				b.Flush()
+				f := t.files[name]
+				const bytesPerMB = 1024 * 1024
+				if fi, err := f.Stat(); err == nil && fi.Size() > t.maxSizeMB*bytesPerMB {
+					// truncate and recreate file when > max size
+					f.Close()
+					os.Remove(f.Name())
+					newF, _ := os.OpenFile(f.Name(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+					t.files[name] = newF
+					t.buffers[name] = bufio.NewWriterSize(newF, 64*1024)
+					fmt.Fprintf(os.Stderr, "telemetry: truncated %s (size exceeded %dMB)\n", name, t.maxSizeMB)
+				}
 			}
 			t.mu.Unlock()
 

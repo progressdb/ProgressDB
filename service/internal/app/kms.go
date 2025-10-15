@@ -11,7 +11,7 @@ import (
 	"progressdb/pkg/kms"
 )
 
-// setupKMS starts and registers KMS when encryption is enabled.
+// Registers and starts KMS if encryption is enabled.
 func (a *App) setupKMS(ctx context.Context) error {
 	kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
 	// dataDir is unused in embedded/external modes; kept for legacy configs.
@@ -30,7 +30,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return nil
 	}
 
-	// master key selection
+	// Select master key from file or hex config.
 	var mk string
 	switch {
 	case strings.TrimSpace(a.eff.Config.Security.KMS.MasterKeyFile) != "":
@@ -52,10 +52,9 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return fmt.Errorf("invalid master_key_hex: must be 64-hex (32 bytes)")
 	}
 
-	// Decide KMS mode: embedded (default) or external. Embedded mode uses a
-	// local master key (provided in server config) and keeps key material in
-	// process memory. External mode assumes an already-running `progressdb-kms` and
-	// communicates over the configured endpoint.
+	// Determine mode: embedded (default) or external.
+	// Embedded: local master key in process memory.
+	// External: connects to `progressdb-kms` at endpoint.
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MODE")))
 	if mode == "" {
 		mode = "embedded"
@@ -63,9 +62,6 @@ func (a *App) setupKMS(ctx context.Context) error {
 
 	switch mode {
 	case "embedded":
-		// Construct an embedded HashiCorp AEAD provider and register it with
-		// the server's security layer so the rest of the code uses the
-		// KMS abstraction rather than direct key material handling.
 		if err := kms.RegisterHashicorpEmbeddedProvider(ctx, mk); err != nil {
 			return fmt.Errorf("failed to initialize embedded KMS provider: %w", err)
 		}
@@ -73,7 +69,7 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return nil
 	case "external":
 		if kms_endpoint == "" {
-			// default to localhost TCP HTTP for external KMS
+			// Use localhost if not specified
 			kms_endpoint = "127.0.0.1:6820"
 		}
 		a.rc = kms.NewRemoteClient(kms_endpoint)

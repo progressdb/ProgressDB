@@ -27,7 +27,7 @@ func PathsFor(dbPath string) Paths {
 		Retention: filepath.Join(statePath, "retention"),
 		KMS:       filepath.Join(statePath, "kms"),
 		Tmp:       filepath.Join(statePath, "tmp"),
-		Tel:       filepath.Join(statePath, "tel"),
+		Tel:       filepath.Join(statePath, "telemetry"),
 	}
 }
 

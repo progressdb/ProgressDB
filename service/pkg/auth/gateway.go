@@ -21,6 +21,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// log each req with redacted headers
 			logger.LogRequestFast(ctx)
+			tr.Mark("log_request")
 
 			// CORS preflight
 			origin := string(ctx.Request.Header.Peek("Origin"))
@@ -33,6 +34,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
 				ctx.Response.Header.Set("Access-Control-Expose-Headers", "X-Role-Name")
 			}
+			tr.Mark("cors")
 			// - if method is not a standard method
 			if string(ctx.Method()) == fasthttp.MethodOptions {
 				ctx.SetStatusCode(fasthttp.StatusNoContent)
@@ -49,16 +51,18 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 					return
 				}
 			}
+			tr.Mark("ip_check")
 
-			tr.Mark("authenticate")
 			// extract possible api_key info
 			role, key, hasAPIKey := authenticateFast(ctx, cfg)
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
+			tr.Mark("authenticate")
 
 			// allow access to health & ready checkeers
 			if (string(ctx.Path()) == "/healthz" || string(ctx.Path()) == "/readyz") && string(ctx.Method()) == fasthttp.MethodGet {
 				ctx.Request.Header.Set("X-Role-Name", "unauth")
 				next(ctx)
+				tr.Mark("health_check")
 				return
 			}
 
@@ -74,22 +78,27 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 			default:
 				roleName = "unauth"
 			}
+			tr.Mark("role_resolution")
 
 			// enforce api_key required
 			if role == RoleUnauth || !hasAPIKey {
 				utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+				tr.Mark("api_key_validation")
 				return
 			} else {
 				ctx.Request.Header.Set("X-Role-Name", roleName)
 			}
+			tr.Mark("api_key_validation")
 
 			// enforce frontend routes only
 			if role == RoleFrontend && !frontendAllowedFast(ctx) {
 				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
+				tr.Mark("frontend_check")
 				return
 			}
+			tr.Mark("frontend_check")
 
 			// enforce admin_key <> admin routes only
 			if role == RoleAdmin {
@@ -97,21 +106,25 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				if !strings.HasPrefix(path, "/admin") {
 					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
 					logger.Warn("admin_route_violation", "path", path, "remote", ctx.RemoteAddr().String())
+					tr.Mark("admin_check")
 					return
 				}
 			}
+			tr.Mark("admin_check")
 
-			tr.Mark("rate_limit")
 			// enforce rate_limiting per api key
 			if !limiters.Allow(key) {
 				utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
+				tr.Mark("rate_limit")
 				return
 			}
+			tr.Mark("rate_limit")
 
 			// allow request through
 			logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
 			next(ctx)
+			tr.Mark("allow_request")
 		}
 	}
 }

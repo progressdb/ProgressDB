@@ -46,7 +46,6 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
-	tr.Mark("clone_op")
 	// clone operation from pool
 	newOp := queueOpPool.Get().(*QueueOp)
 	*newOp = *op
@@ -60,10 +59,10 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 	}
 	// assign unique sequence
 	newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
+	tr.Mark("clone_op")
 
 	if q != nil && q.wal != nil {
 		if q.walBacked {
-			tr.Mark("serialize")
 			bb := bytebufferpool.Get()
 			payloadSlice, err := serializeOpToBB(newOp, bb)
 			if err != nil {
@@ -74,8 +73,8 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			}
 			newOp.Payload = payloadSlice
 			sb := newSharedBuf(bb, 2)
+			tr.Mark("serialize")
 
-			tr.Mark("wal_append")
 			// append to wal
 			var offset int64
 			var walErr error
@@ -95,13 +94,14 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			q.outstanding[offset] = struct{}{}
 			heap.Push(&q.outstandingH, offset)
 			q.ackMu.Unlock()
+			tr.Mark("wal_append")
 
-			tr.Mark("enqueue_channel")
 			// send to channel or drop
 			it := &QueueItem{Op: newOp, Sb: sb, Buf: bb, Q: q}
 			select {
 			case q.ch <- it:
 				atomic.AddInt64(&q.inFlight, 1)
+				tr.Mark("enqueue_channel")
 				return nil
 			default:
 				sb.release()
@@ -112,7 +112,6 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			}
 		}
 
-		tr.Mark("serialize")
 		// serialize operation
 		data, err := serializeOp(newOp)
 		if err != nil {
@@ -120,7 +119,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			atomic.AddUint64(&enqueueFailTotal, 1)
 			return err
 		}
-		tr.Mark("wal_append")
+		tr.Mark("serialize")
 		// append based on mode
 		var offset int64
 		if q.walMode == WalModeSync {
@@ -149,11 +148,13 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		q.outstanding[offset] = struct{}{}
 		heap.Push(&q.outstandingH, offset)
 		q.ackMu.Unlock()
+		tr.Mark("wal_append")
 	}
 
-	tr.Mark("enqueue_memory")
 	// fallback to in-memory enqueue
-	return q.tryEnqueueInMemory(newOp)
+	err := q.tryEnqueueInMemory(newOp)
+	tr.Mark("enqueue_memory")
+	return err
 }
 
 // blocking enqueue with context
@@ -296,11 +297,10 @@ func (q *IngestQueue) ack(offset int64) {
 	if q == nil || q.wal == nil {
 		return
 	}
-	tr.Mark("update_outstanding")
 	q.ackMu.Lock()
 	delete(q.outstanding, offset)
+	tr.Mark("update_outstanding")
 
-	tr.Mark("clean_heap")
 	// clean heap of processed offsets
 	for q.outstandingH.Len() > 0 {
 		top := q.outstandingH[0]
@@ -309,6 +309,7 @@ func (q *IngestQueue) ack(offset int64) {
 		}
 		heap.Pop(&q.outstandingH)
 	}
+	tr.Mark("clean_heap")
 
 	// calculate new minimum
 	var newMin int64
@@ -324,8 +325,8 @@ func (q *IngestQueue) ack(offset int64) {
 	q.ackMu.Unlock()
 
 	if shouldTruncate {
-		tr.Mark("wal_truncate")
 		_ = q.wal.TruncateBefore(newMin)
+		tr.Mark("wal_truncate")
 	}
 }
 
