@@ -125,8 +125,12 @@ type WALConfig struct {
 	EnableCompress   bool      `yaml:"enable_compress"`
 	CompressMinBytes int64     `yaml:"compress_min_bytes"`
 	CompressMinRatio float64   `yaml:"compress_min_ratio"`
-	RetentionBytes   SizeBytes `yaml:"retention_bytes"`
-	RetentionAge     Duration  `yaml:"retention_age"`
+	// WAL buffering/backpressure
+	MaxBufferedBytes   SizeBytes `yaml:"max_buffered_bytes"`
+	MaxBufferedEntries int       `yaml:"max_buffered_entries"`
+	BufferWaitTimeout  Duration  `yaml:"buffer_wait_timeout"`
+	RetentionBytes     SizeBytes `yaml:"retention_bytes"`
+	RetentionAge       Duration  `yaml:"retention_age"`
 	// DisablePebbleWAL controls the underlying Pebble DB's WAL setting.
 	// Default is true - given application level WAl
 	// This is here for configuration access

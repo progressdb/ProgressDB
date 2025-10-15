@@ -11,7 +11,7 @@ import (
 )
 
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
-	q := qpkg.NewQueue(2)
+	q := qpkg.NewIngestQueue(2)
 
 	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -29,10 +29,10 @@ func TestQueueTryEnqueueAndDrop(t *testing.T) {
 }
 
 func TestQueueEnqueueBlockingAndOut(t *testing.T) {
-	q := qpkg.NewQueue(2)
+	q := qpkg.NewIngestQueue(2)
 
 	// start consumer
-	recv := make(chan *qpkg.Item, 4)
+	recv := make(chan *qpkg.QueueItem, 4)
 	go func() {
 		for it := range q.Out() {
 			recv <- it
@@ -61,7 +61,7 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 }
 
 func TestEnqueueWithContextCancel(t *testing.T) {
-	q := qpkg.NewQueue(1)
+	q := qpkg.NewIngestQueue(1)
 	// fill queue
 	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -76,12 +76,12 @@ func TestEnqueueWithContextCancel(t *testing.T) {
 }
 
 func TestCloseAndDrain(t *testing.T) {
-	q := qpkg.NewQueue(4)
+	q := qpkg.NewIngestQueue(4)
 	// enqueue some items
 	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
 	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
 
-	q.CloseAndDrain()
+	q.Close()
 
 	if q.Len() != 0 {
 		t.Fatalf("expected queue drained, got len=%d", q.Len())
@@ -89,10 +89,10 @@ func TestCloseAndDrain(t *testing.T) {
 }
 
 func TestRunWorkerEnsuresDone(t *testing.T) {
-	q := qpkg.NewQueue(4)
+	q := qpkg.NewIngestQueue(4)
 	stop := make(chan struct{})
 	processed := make(chan string, 4)
-	go q.RunWorker(stop, func(op *qpkg.Op) error {
+	go q.RunWorker(stop, func(op *qpkg.QueueOp) error {
 		processed <- op.ID
 		return nil
 	})
@@ -114,11 +114,11 @@ func TestRunWorkerEnsuresDone(t *testing.T) {
 }
 
 func TestQueueCloseWaitsForDrain(t *testing.T) {
-	q := qpkg.NewQueue(8)
+	q := qpkg.NewIngestQueue(8)
 	stop := make(chan struct{})
 	var processed int32
 
-	go q.RunWorker(stop, func(op *qpkg.Op) error {
+	go q.RunWorker(stop, func(op *qpkg.QueueOp) error {
 		time.Sleep(5 * time.Millisecond)
 		atomic.AddInt32(&processed, 1)
 		return nil
@@ -155,11 +155,11 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 }
 
 func TestRunBatchWorkerBatches(t *testing.T) {
-	q := qpkg.NewQueue(16)
+	q := qpkg.NewIngestQueue(16)
 	stop := make(chan struct{})
 	batchCh := make(chan []string, 4)
 
-	go q.RunBatchWorker(stop, 3, func(ops []*qpkg.Op) error {
+	go q.RunBatchWorker(stop, 3, func(ops []*qpkg.QueueOp) error {
 		ids := make([]string, len(ops))
 		for i, op := range ops {
 			ids[i] = op.ID

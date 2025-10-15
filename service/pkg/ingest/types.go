@@ -6,10 +6,10 @@ import (
 	"progressdb/pkg/ingest/queue"
 )
 
-// ProcessorFunc handles an Op, returning batch entries or an error for retry.
-type ProcessorFunc func(ctx context.Context, op *queue.Op) ([]BatchEntry, error)
+// handles an Op, returning batch entries or an error for retry.
+type ProcessorFunc func(ctx context.Context, op *queue.QueueOp) ([]BatchEntry, error)
 
-// BatchEntry represents a single operation prepared for batch apply.
+// represents a single operation prepared for batch apply.
 type BatchEntry struct {
 	// Handler identifies the originating handler for this batch entry.
 	Handler queue.HandlerID

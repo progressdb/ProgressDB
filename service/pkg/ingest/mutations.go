@@ -18,7 +18,7 @@ import (
 )
 
 // message op methods
-func MutMessageCreate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
@@ -56,7 +56,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 	be := BatchEntry{Handler: qpkg.HandlerMessageCreate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
-func MutMessageUpdate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
@@ -78,7 +78,7 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 	be := BatchEntry{Handler: qpkg.HandlerMessageUpdate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
-func MutMessageDelete(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	var m models.Message
 	if len(op.Payload) > 0 {
 		_ = json.Unmarshal(op.Payload, &m)
@@ -98,7 +98,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 }
 
 // reactions op methods
-func MutReactionAdd(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	if op.ID == "" {
 		return nil, fmt.Errorf("missing message id for reaction")
 	}
@@ -138,7 +138,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 	be := BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
-func MutReactionDelete(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	if op.ID == "" {
 		return nil, fmt.Errorf("missing message id for reaction delete")
 	}
@@ -178,7 +178,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 }
 
 // thread meta op methods
-func MutThreadCreate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	var th models.Thread
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for thread create")
@@ -222,7 +222,7 @@ func MutThreadCreate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 	be := BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
-func MutThreadUpdate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	var th models.Thread
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
 		// best-effort: fall back to op.Thread
@@ -243,7 +243,7 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
 	be := BatchEntry{Handler: qpkg.HandlerThreadUpdate, Thread: th.ID, Payload: payloadCopy, TS: th.UpdatedTS}
 	return []BatchEntry{be}, nil
 }
-func MutThreadDelete(ctx context.Context, op *qpkg.Op) ([]BatchEntry, error) {
+func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
 	var th models.Thread
 	if len(op.Payload) > 0 {
 		_ = json.Unmarshal(op.Payload, &th)

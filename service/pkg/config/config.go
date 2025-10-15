@@ -15,10 +15,10 @@ import (
 const (
 	defaultQueueCapacity    = 64 * 1024
 	defaultWALMaxFileSize   = 64 * 1024 * 1024 // 64 MiB
-	defaultWALBatchInterval = 100 * time.Millisecond
+	defaultWALBatchInterval = 1 * time.Millisecond
 	defaultWALBatchSize     = 100
 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
-	minWALBatchInterval     = 10 * time.Millisecond
+	minWALBatchInterval     = 1 * time.Millisecond
 	defaultCompressMinBytes = 512
 	defaultCompressMinRatio = 0.95
 	// Ingest/processor defaults (kept small so zero can mean "use runtime.NumCPU()")
@@ -37,12 +37,15 @@ const (
 	defaultTelemetrySampleRate = 0.001
 	defaultTelemetrySlowMs     = 200
 	// sensor defaults
-	defaultSensorPollInterval   = 500 * time.Millisecond
-	defaultSensorWALHighBytes   = 1 << 30 // 1 GiB
-	defaultSensorWALLowBytes    = 700 << 20
-	defaultSensorDiskHighPct    = 80
-	defaultSensorDiskLowPct     = 60
-	defaultSensorRecoveryWindow = 5 * time.Second
+	defaultSensorPollInterval    = 500 * time.Millisecond
+	defaultSensorWALHighBytes    = 1 << 30 // 1 GiB
+	defaultSensorWALLowBytes     = 700 << 20
+	defaultSensorDiskHighPct     = 80
+	defaultSensorDiskLowPct      = 60
+	defaultSensorRecoveryWindow  = 5 * time.Second
+	defaultWALMaxBufferedBytes   = 32 * 1024 * 1024 // 32 MiB
+	defaultWALMaxBufferedEntries = 0
+	defaultWALBufferWaitTimeout  = 0
 )
 
 var (
@@ -161,6 +164,17 @@ func (c *Config) ValidateConfig() error {
 	}
 	if wc.CompressMinRatio == 0 {
 		wc.CompressMinRatio = defaultCompressMinRatio
+	}
+
+	// WAL buffering defaults
+	if wc.MaxBufferedBytes.Int64() == 0 {
+		wc.MaxBufferedBytes = SizeBytes(defaultWALMaxBufferedBytes)
+	}
+	if wc.MaxBufferedEntries == 0 {
+		wc.MaxBufferedEntries = defaultWALMaxBufferedEntries
+	}
+	if wc.BufferWaitTimeout.Duration() == 0 {
+		wc.BufferWaitTimeout = Duration(defaultWALBufferWaitTimeout)
 	}
 
 	// Default is to disable Pebble WAL.

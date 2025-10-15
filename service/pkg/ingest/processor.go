@@ -16,7 +16,7 @@ import (
 // Processor orchestrates workers that consume from the API queue, invoke
 // registered handlers and ensure items are released back to the pool.
 type Processor struct {
-	q        *queue.Queue
+	q        *queue.IngestQueue
 	workers  int
 	stop     chan struct{}
 	wg       sync.WaitGroup
@@ -37,7 +37,7 @@ type Processor struct {
 
 // NewProcessor creates a new Processor attached to the provided queue.
 // It expects a validated ProcessorConfig (defaults applied by config.ValidateConfig()).
-func NewProcessor(q *queue.Queue, pc config.ProcessorConfig) *Processor {
+func NewProcessor(q *queue.IngestQueue, pc config.ProcessorConfig) *Processor {
 	if pc.Workers <= 0 {
 		panic("processor.NewProcessor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
@@ -133,7 +133,7 @@ func (p *Processor) workerLoop(workerID int) {
 		}
 
 		// Batch collect
-		var items []*queue.Item
+		var items []*queue.QueueItem
 		// block for first item or stop
 		select {
 		case it, ok := <-p.q.Out():

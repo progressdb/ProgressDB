@@ -36,7 +36,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -57,7 +57,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -77,7 +77,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -101,7 +101,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -124,7 +124,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -144,7 +144,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -168,7 +168,7 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -190,7 +190,7 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
-	if err := queue.DefaultQueue.TryEnqueue(&queue.Op{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}

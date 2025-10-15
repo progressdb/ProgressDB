@@ -120,20 +120,23 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
 
 		// queue with tunable wal envs
-		"QUEUE_CAPACITY":               os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
-		"QUEUE_RECOVER":                os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
-		"QUEUE_TRUNCATE_INTERVAL":      os.Getenv("PROGRESSDB_QUEUE_TRUNCATE_INTERVAL"),
-		"QUEUE_WAL_ENABLED":            os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
-		"QUEUE_WAL_MODE":               os.Getenv("PROGRESSDB_QUEUE_WAL_MODE"),
-		"QUEUE_WAL_MAX_FILE_SIZE":      os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_FILE_SIZE"),
-		"QUEUE_WAL_BATCH_ENABLED":      os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_ENABLED"),
-		"QUEUE_WAL_BATCH_SIZE":         os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_SIZE"),
-		"QUEUE_WAL_BATCH_INTERVAL":     os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_INTERVAL"),
-		"QUEUE_WAL_COMPRESS":           os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS"),
-		"QUEUE_WAL_COMPRESS_MIN_BYTES": os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_BYTES"),
-		"QUEUE_WAL_COMPRESS_MIN_RATIO":  os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_RATIO"),
-		"QUEUE_WAL_RETENTION_BYTES":    os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_BYTES"),
-		"QUEUE_WAL_RETENTION_AGE":      os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_AGE"),
+		"QUEUE_CAPACITY":                 os.Getenv("PROGRESSDB_QUEUE_CAPACITY"),
+		"QUEUE_RECOVER":                  os.Getenv("PROGRESSDB_QUEUE_RECOVER"),
+		"QUEUE_TRUNCATE_INTERVAL":        os.Getenv("PROGRESSDB_QUEUE_TRUNCATE_INTERVAL"),
+		"QUEUE_WAL_ENABLED":              os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
+		"QUEUE_WAL_MODE":                 os.Getenv("PROGRESSDB_QUEUE_WAL_MODE"),
+		"QUEUE_WAL_MAX_FILE_SIZE":        os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_FILE_SIZE"),
+		"QUEUE_WAL_BATCH_ENABLED":        os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_ENABLED"),
+		"QUEUE_WAL_BATCH_SIZE":           os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_SIZE"),
+		"QUEUE_WAL_BATCH_INTERVAL":       os.Getenv("PROGRESSDB_QUEUE_WAL_BATCH_INTERVAL"),
+		"QUEUE_WAL_COMPRESS":             os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS"),
+		"QUEUE_WAL_COMPRESS_MIN_BYTES":   os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_BYTES"),
+		"QUEUE_WAL_MAX_BUFFERED_BYTES":   os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_BUFFERED_BYTES"),
+		"QUEUE_WAL_MAX_BUFFERED_ENTRIES": os.Getenv("PROGRESSDB_QUEUE_WAL_MAX_BUFFERED_ENTRIES"),
+		"QUEUE_WAL_BUFFER_WAIT_TIMEOUT":  os.Getenv("PROGRESSDB_QUEUE_WAL_BUFFER_WAIT_TIMEOUT"),
+		"QUEUE_WAL_COMPRESS_MIN_RATIO":   os.Getenv("PROGRESSDB_QUEUE_WAL_COMPRESS_MIN_RATIO"),
+		"QUEUE_WAL_RETENTION_BYTES":      os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_BYTES"),
+		"QUEUE_WAL_RETENTION_AGE":        os.Getenv("PROGRESSDB_QUEUE_WAL_RETENTION_AGE"),
 	}
 
 	// check if any env was set
@@ -436,6 +439,17 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 	if v := envs["QUEUE_WAL_COMPRESS_MIN_BYTES"]; v != "" {
 		envCfg.Ingest.Queue.WAL.CompressMinBytes = parseInt64(v, 512)
+	}
+	if v := envs["QUEUE_WAL_MAX_BUFFERED_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.WAL.MaxBufferedBytes = parseSizeBytes(v)
+	}
+	if v := envs["QUEUE_WAL_MAX_BUFFERED_ENTRIES"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Queue.WAL.MaxBufferedEntries = n
+		}
+	}
+	if v := envs["QUEUE_WAL_BUFFER_WAIT_TIMEOUT"]; v != "" {
+		envCfg.Ingest.Queue.WAL.BufferWaitTimeout = parseDuration(v)
 	}
 	if v := envs["QUEUE_WAL_COMPRESS_MIN_RATIO"]; v != "" {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {

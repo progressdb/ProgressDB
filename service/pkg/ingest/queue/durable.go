@@ -2,7 +2,8 @@ package queue
 
 import (
 	"bytes"
-	"compress/gzip"
+	"container/heap"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -12,7 +13,10 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/valyala/bytebufferpool"
 )
 
 const (
@@ -24,347 +28,110 @@ const (
 	flagCompressed = 1 << 0
 )
 
-// WAL is the write-ahead log interface.
-type WAL interface {
-	Append([]byte) (int64, error)              // append entry (buffered in batch mode)
-	AppendSync([]byte) (int64, error)          // append + fsync immediately
-	Flush() error                              // flush pending batch
-	Recover() ([]WALRecord, error)             // replay all entries with offsets
-	RecoverStream(func(WALRecord) error) error // stream records via callback
-	TruncateBefore(int64) error                // delete files with all offsets < N
-	Close() error                              // close WAL safely
-}
+// (WAL, WALRecord, Options, and DurableEnableOptions types are defined in types.go)
 
-// WALRecord represents a recovered WAL entry with its sequence offset and data.
-type WALRecord struct {
-	Offset int64
-	Data   []byte
-}
-
-// Options configure the WAL.
-type Options struct {
-    Dir            string
-    MaxFileSize    int64
-    EnableBatch    bool          // Enable batched writes
-    BatchSize      int           // Max records per batch
-    BatchInterval  time.Duration // Max time before auto-flush
-    EnableCompress bool          // Enable gzip compression
-    CompressMinBytes int64      // Minimum size in bytes to consider compression
-    CompressMinRatio float64    // Minimum compression ratio (compressed <= orig * ratio) to accept
-}
-
-// walFile represents a single WAL file.
-type walFile struct {
-	f            *os.File
-	num          int
-	offset       int64
-	size         int64
-	minSeq       int64 // Minimum sequence in this file
-	maxSeq       int64 // Maximum sequence in this file
-	fileChecksum uint32
-}
-
-// batchBuffer holds pending writes
-type batchBuffer struct {
-	entries []batchEntry
-	size    int64
-}
-
-type batchEntry struct {
-	seq  int64
-	data []byte
-}
-
-// FileWAL implements WAL interface.
-type FileWAL struct {
-    dir            string
-    maxSize        int64
-    enableBatch    bool
-    batchSize      int
-    batchInterval  time.Duration
-    enableCompress bool
-    compressMinBytes int64
-    compressMinRatio float64
-
-	mu       sync.Mutex
-	curr     *walFile
-	files    []*walFile
-	nextNum  int
-	seq      int64
-	crcTable *crc32.Table
-
-	// Batch mode
-	batch      *batchBuffer
-	batchTimer *time.Timer
-	flushCond  *sync.Cond
-	closed     bool
-}
-
-func New(opts Options) (*FileWAL, error) {
-	// Expect callers (startup path) to provide canonical defaults via
-	// configuration. If absent, return an error so the caller can abort
-	// startup with a helpful message.
-	if opts.MaxFileSize == 0 {
-		return nil, fmt.Errorf("wal options missing max_file_size; ensure config.ValidateConfig() applied defaults")
-	}
-	if opts.EnableBatch {
-		if opts.BatchSize == 0 {
-			return nil, fmt.Errorf("wal options missing batch_size; ensure config.ValidateConfig() applied defaults")
-		}
-		if opts.BatchInterval == 0 {
-			return nil, fmt.Errorf("wal options missing batch_interval; ensure config.ValidateConfig() applied defaults")
-		}
-	}
-
-	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
-	}
-
-    w := &FileWAL{
-        dir:            opts.Dir,
-        maxSize:        opts.MaxFileSize,
-        enableBatch:    opts.EnableBatch,
-        batchSize:      opts.BatchSize,
-        batchInterval:  opts.BatchInterval,
-        enableCompress: opts.EnableCompress,
-        compressMinBytes: opts.CompressMinBytes,
-        compressMinRatio: opts.CompressMinRatio,
-        crcTable:       crc32.MakeTable(crc32.Castagnoli),
-        batch:          &batchBuffer{},
-    }
-	w.flushCond = sync.NewCond(&w.mu)
-
-    // Recover existing WAL files on startup
-    maxSeq, err := w.recoverFiles()
-    if err != nil {
-        return nil, fmt.Errorf("failed to recover WAL files: %w", err)
-    }
-    w.seq = maxSeq + 1
-
-	// If no files exist, create first file
-	if w.curr == nil {
-		if err := w.createNewFile(); err != nil {
-			return nil, fmt.Errorf("failed to create initial WAL file: %w", err)
-		}
-	} else {
-		// Seek to end of current file for appending
-		if _, err := w.curr.f.Seek(0, io.SeekEnd); err != nil {
-			return nil, fmt.Errorf("failed to seek to end of current WAL file: %w", err)
-		}
-	}
-
-	// Start batch flusher if enabled
-	if w.enableBatch {
-		go w.batchFlusher()
-	}
-
-	return w, nil
-}
-
-// reserveSeqLocked reserves a single sequence number and returns it.
-// Caller must hold w.mu.
-func (w *FileWAL) reserveSeqLocked() int64 {
-    s := w.seq
-    w.seq++
-    return s
-}
-
-// Append writes the entry to WAL (may buffer in batch mode)
-func (w *FileWAL) Append(data []byte) (int64, error) {
-	if !w.enableBatch {
-		return w.AppendSync(data)
-	}
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.closed {
-		return 0, errors.New("WAL is closed")
-	}
-
-    // Reserve a sequence number for this entry
-    offset := w.reserveSeqLocked()
-
-	// Copy data to avoid external modification
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
-
-	w.batch.entries = append(w.batch.entries, batchEntry{
-		seq:  offset,
-		data: dataCopy,
-	})
-	w.batch.size += int64(recordHeaderSize + len(data))
-
-	// Flush if batch is full
-	if len(w.batch.entries) >= w.batchSize {
-		if err := w.flushBatchLocked(); err != nil {
-			return 0, err
-		}
-	}
-
-	return offset, nil
-}
-
-// AppendSync writes the entry and fsyncs immediately
-func (w *FileWAL) AppendSync(data []byte) (int64, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.closed {
-		return 0, errors.New("WAL is closed")
-	}
-
-	// Flush any pending batch first
-	if w.enableBatch && len(w.batch.entries) > 0 {
-		if err := w.flushBatchLocked(); err != nil {
-			return 0, err
-		}
-	}
-
-	return w.appendSyncLocked(data)
-}
-
-func (w *FileWAL) appendSyncLocked(data []byte) (int64, error) {
-    // Compress if enabled
-    toWrite := data
-    flags := byte(0)
-    // Only compress if enabled and data size meets threshold.
-    minBytes := int64(512)
-    if w.compressMinBytes > 0 {
-        minBytes = w.compressMinBytes
-    }
-    if w.enableCompress && int64(len(data)) >= minBytes {
-        compressed, err := compressData(data)
-        if err == nil {
-            // Apply post-compression ratio check: only accept compressed
-            // data if it is smaller than original by configured ratio.
-            ratio := w.compressMinRatio
-            // If ratio is unset or invalid, default to 1.0 (accept any smaller)
-            if ratio <= 0 || ratio > 1 {
-                ratio = 1.0
-            }
-            if float64(len(compressed)) <= float64(len(data))*ratio {
-                toWrite = compressed
-                flags |= flagCompressed
-            }
-        }
-    }
-
-	recordSize := int64(recordHeaderSize + len(toWrite))
-	if w.curr.size+recordSize > w.maxSize {
-		if err := w.rotate(); err != nil {
-			return 0, fmt.Errorf("failed to rotate WAL file: %w", err)
-		}
-	}
-
-    offset := w.reserveSeqLocked()
-    if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
-        return 0, fmt.Errorf("failed to write record at offset %d: %w", offset, err)
-    }
-
-    w.curr.size += recordSize
-
-	// Update file sequence range
-	if w.curr.minSeq == -1 || offset < w.curr.minSeq {
-		w.curr.minSeq = offset
-	}
-	if offset > w.curr.maxSeq {
-		w.curr.maxSeq = offset
-	}
-
-	if err := w.curr.f.Sync(); err != nil {
-		return 0, fmt.Errorf("failed to fsync WAL file: %w", err)
-	}
-
-	return offset, nil
-}
-
-// Flush forces pending batch to disk
-func (w *FileWAL) Flush() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if !w.enableBatch || len(w.batch.entries) == 0 {
+func (w *DurableFile) flushBatchLocked() error {
+	if len(w.batch.entries) == 0 {
 		return nil
 	}
 
-	return w.flushBatchLocked()
-}
+	// Write all entries in the batch to disk, using the pre-assigned
+	// sequence numbers captured at enqueue time. Do not fsync per
+	// record — perform a single group fsync at the end (group commit).
+	for _, entry := range w.batch.entries {
+		var data []byte
+		if entry.sb != nil && entry.sb.bb != nil {
+			data = entry.sb.bb.B
+		} else {
+			data = entry.data
+		}
+		flags := byte(0)
+		toWrite := data
+		// Determine compression threshold; default to 512 if not configured.
+		minBytes := int64(512)
+		if w.compressMinBytes > 0 {
+			minBytes = w.compressMinBytes
+		}
+		if w.enableCompress && int64(len(data)) >= minBytes {
+			compressed, err := compressData(data)
+			if err == nil {
+				// Apply post-compression ratio check
+				ratio := w.compressMinRatio
+				if ratio <= 0 || ratio > 1 {
+					ratio = 1.0
+				}
+				if float64(len(compressed)) <= float64(len(data))*ratio {
+					toWrite = compressed
+					flags |= flagCompressed
+				}
+			}
+		}
 
-func (w *FileWAL) flushBatchLocked() error {
-    if len(w.batch.entries) == 0 {
-        return nil
-    }
+		recordSize := int64(recordHeaderSize + len(toWrite))
+		if w.curr.size+recordSize > w.maxSize {
+			if err := w.rotate(); err != nil {
+				return fmt.Errorf("failed to rotate WAL file: %w", err)
+			}
+		}
 
-    // Write all entries in the batch to disk, using the pre-assigned
-    // sequence numbers captured at enqueue time. Do not fsync per
-    // record — perform a single group fsync at the end (group commit).
-    for _, entry := range w.batch.entries {
-        data := entry.data
-        flags := byte(0)
-        toWrite := data
-        // Determine compression threshold; default to 512 if not configured.
-        minBytes := int64(512)
-        if w.compressMinBytes > 0 {
-            minBytes = w.compressMinBytes
-        }
-        if w.enableCompress && int64(len(data)) >= minBytes {
-            compressed, err := compressData(data)
-            if err == nil && len(compressed) < len(data) {
-                toWrite = compressed
-                flags |= flagCompressed
-            }
-        }
+		// Use the sequence that was assigned at enqueue time.
+		offset := entry.seq
+		if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
+			return fmt.Errorf("failed to write batch record at offset %d: %w", offset, err)
+		}
 
-        recordSize := int64(recordHeaderSize + len(toWrite))
-        if w.curr.size+recordSize > w.maxSize {
-            if err := w.rotate(); err != nil {
-                return fmt.Errorf("failed to rotate WAL file: %w", err)
-            }
-        }
+		w.curr.size += recordSize
+		if w.curr.minSeq == -1 || offset < w.curr.minSeq {
+			w.curr.minSeq = offset
+		}
+		if offset > w.curr.maxSeq {
+			w.curr.maxSeq = offset
+		}
+	}
 
-        // Use the sequence that was assigned at enqueue time.
-        offset := entry.seq
-        if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
-            return fmt.Errorf("failed to write batch record at offset %d: %w", offset, err)
-        }
+	// Single fsync for the batch (group commit).
+	if err := w.curr.f.Sync(); err != nil {
+		return fmt.Errorf("failed to fsync WAL file: %w", err)
+	}
 
-        w.curr.size += recordSize
-        if w.curr.minSeq == -1 || offset < w.curr.minSeq {
-            w.curr.minSeq = offset
-        }
-        if offset > w.curr.maxSeq {
-            w.curr.maxSeq = offset
-        }
-    }
+	// Ensure global sequence counter is at least one past the highest
+	// sequence we just wrote. Append() pre-assigns sequence numbers by
+	// incrementing w.seq at enqueue time; however, guard here in case of
+	// any inconsistency or future code paths that might leave w.seq
+	// behind (defensive).
+	if len(w.batch.entries) > 0 {
+		last := w.batch.entries[len(w.batch.entries)-1].seq
+		if w.seq <= last {
+			w.seq = last + 1
+		}
+	}
 
-    // Single fsync for the batch (group commit).
-    if err := w.curr.f.Sync(); err != nil {
-        return fmt.Errorf("failed to fsync WAL file: %w", err)
-    }
+	// After durable persistence, release WAL-side references for any
+	// pooled buffers that were used for the batch entries. Consumers may
+	// still hold references; the SharedBuf release logic will keep the
+	// pooled buffer until all references are done.
+	for _, entry := range w.batch.entries {
+		if entry.sb != nil {
+			// decrement WAL-side reference
+			entry.sb.release()
+		}
+	}
 
-    // Ensure global sequence counter is at least one past the highest
-    // sequence we just wrote. Append() pre-assigns sequence numbers by
-    // incrementing w.seq at enqueue time; however, guard here in case of
-    // any inconsistency or future code paths that might leave w.seq
-    // behind (defensive).
-    if len(w.batch.entries) > 0 {
-        last := w.batch.entries[len(w.batch.entries)-1].seq
-        if w.seq <= last {
-            w.seq = last + 1
-        }
-    }
+	// Clear batch
+	w.batch.entries = w.batch.entries[:0]
+	w.batch.size = 0
 
-    // Clear batch
-    w.batch.entries = w.batch.entries[:0]
-    w.batch.size = 0
-
-    w.flushCond.Broadcast()
-    return nil
+	// Notify waiters via channel (non-blocking) and cond var
+	select {
+	case w.spaceCh <- struct{}{}:
+	default:
+	}
+	w.flushCond.Broadcast()
+	return nil
 }
 
 // batchFlusher periodically flushes batches
-func (w *FileWAL) batchFlusher() {
+func (w *DurableFile) batchFlusher() {
 	ticker := time.NewTicker(w.batchInterval)
 	defer ticker.Stop()
 
@@ -385,7 +152,7 @@ func (w *FileWAL) batchFlusher() {
 }
 
 // Recover reads all WAL entries from files in order and returns records with offsets.
-func (w *FileWAL) Recover() ([]WALRecord, error) {
+func (w *DurableFile) Recover() ([]WALRecord, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -406,7 +173,7 @@ func (w *FileWAL) Recover() ([]WALRecord, error) {
 
 // RecoverStream streams WAL records via callback in file order. If the
 // callback returns an error streaming stops and the error is returned.
-func (w *FileWAL) RecoverStream(cb func(WALRecord) error) error {
+func (w *DurableFile) RecoverStream(cb func(WALRecord) error) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -428,12 +195,12 @@ func (w *FileWAL) RecoverStream(cb func(WALRecord) error) error {
 }
 
 // TruncateBefore deletes all WAL files where maxSeq < minOffset
-func (w *FileWAL) TruncateBefore(minOffset int64) error {
+func (w *DurableFile) TruncateBefore(minOffset int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var toDelete []*walFile
-	var toKeep []*walFile
+	var toDelete []*DurableFileSegment
+	var toKeep []*DurableFileSegment
 
 	for _, wf := range w.files {
 		if wf.maxSeq < minOffset && wf != w.curr {
@@ -468,7 +235,7 @@ func (w *FileWAL) TruncateBefore(minOffset int64) error {
 }
 
 // Close closes all WAL files safely
-func (w *FileWAL) Close() error {
+func (w *DurableFile) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -503,9 +270,8 @@ func (w *FileWAL) Close() error {
 	return firstErr
 }
 
-// --- internal helpers ---
-
-func (w *FileWAL) recoverFiles() (int64, error) {
+// helpers
+func (w *DurableFile) recoverFiles() (int64, error) {
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
 		return 0, err
@@ -557,7 +323,7 @@ func (w *FileWAL) recoverFiles() (int64, error) {
 			return 0, fmt.Errorf("failed to validate file %s: %w", fi.name, err)
 		}
 
-		wf := &walFile{
+		wf := &DurableFileSegment{
 			f:      f,
 			num:    fi.num,
 			offset: 0,
@@ -602,7 +368,7 @@ func (w *FileWAL) recoverFiles() (int64, error) {
 	return maxSeq, nil
 }
 
-func (w *FileWAL) validateFileHeader(f *os.File) error {
+func (w *DurableFile) validateFileHeader(f *os.File) error {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -629,7 +395,7 @@ func (w *FileWAL) validateFileHeader(f *os.File) error {
 	return nil
 }
 
-func (w *FileWAL) writeFileHeader(f *os.File) error {
+func (w *DurableFile) writeFileHeader(f *os.File) error {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -643,7 +409,7 @@ func (w *FileWAL) writeFileHeader(f *os.File) error {
 	return nil
 }
 
-func (w *FileWAL) scanFile(f *os.File, fileNum int) ([]int64, int64, error) {
+func (w *DurableFile) scanFile(f *os.File, fileNum int) ([]int64, int64, error) {
 	if _, err := f.Seek(fileHeaderSize, io.SeekStart); err != nil {
 		return nil, 0, err
 	}
@@ -695,7 +461,7 @@ func (w *FileWAL) scanFile(f *os.File, fileNum int) ([]int64, int64, error) {
 	return seqs, validSize, nil
 }
 
-func (w *FileWAL) createNewFile() error {
+func (w *DurableFile) createNewFile() error {
 	name := fmt.Sprintf("%06d.wal", w.nextNum)
 	w.nextNum++
 	path := filepath.Join(w.dir, name)
@@ -715,7 +481,7 @@ func (w *FileWAL) createNewFile() error {
 		return fmt.Errorf("failed to sync directory: %w", err)
 	}
 
-	wf := &walFile{
+	wf := &DurableFileSegment{
 		f:      f,
 		num:    w.nextNum - 1,
 		offset: 0,
@@ -728,7 +494,7 @@ func (w *FileWAL) createNewFile() error {
 	return nil
 }
 
-func (w *FileWAL) rotate() error {
+func (w *DurableFile) rotate() error {
 	if err := w.finalizeFile(w.curr); err != nil {
 		return err
 	}
@@ -738,7 +504,7 @@ func (w *FileWAL) rotate() error {
 	return w.createNewFile()
 }
 
-func (w *FileWAL) finalizeFile(wf *walFile) error {
+func (w *DurableFile) finalizeFile(wf *DurableFileSegment) error {
 	// Calculate checksum of entire file content (excluding header)
 	if _, err := wf.f.Seek(fileHeaderSize, io.SeekStart); err != nil {
 		return err
@@ -762,7 +528,7 @@ func (w *FileWAL) finalizeFile(wf *walFile) error {
 	return wf.f.Sync()
 }
 
-func (w *FileWAL) writeRecord(f *os.File, offset int64, data []byte, flags byte) error {
+func (w *DurableFile) writeRecord(f *os.File, offset int64, data []byte, flags byte) error {
 	var buf bytes.Buffer
 	if err := binary.Write(&buf, binary.BigEndian, offset); err != nil {
 		return err
@@ -786,7 +552,126 @@ func (w *FileWAL) writeRecord(f *os.File, offset int64, data []byte, flags byte)
 	return nil
 }
 
-func (w *FileWAL) readRecords(f *os.File, fileNum int) ([]WALRecord, error) {
+// NewIngestQueueWithOptions constructs a IngestQueue configured to use the WAL for
+// durability features (replay, truncation). This was previously in a
+// separate file; consolidated here for clarity.
+func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
+	if opts == nil || opts.Capacity <= 0 {
+		panic("queue.NewIngestQueueWithOptions: opts and opts.Capacity must be provided; ensure config.ValidateConfig() applied defaults")
+	}
+	cap := opts.Capacity
+	q := &IngestQueue{ch: make(chan *QueueItem, cap), capacity: cap, outstanding: make(map[int64]struct{}), outstandingH: offsetHeap{}, lastTruncated: -1}
+	q.walBacked = opts.WalBacked
+	if opts != nil && opts.WAL != nil {
+		q.wal = opts.WAL
+		switch opts.Mode {
+		case "sync":
+			q.walMode = WalModeSync
+		case "batch":
+			q.walMode = WalModeBatch
+		default:
+			q.walMode = WalModeBatch
+		}
+
+		if opts.Recover {
+			// stream WAL records into the queue (do not re-append)
+			_ = q.wal.RecoverStream(func(r WALRecord) error {
+				op, err := deserializeOp(r.Data)
+				if err != nil {
+					// skip malformed records
+					return nil
+				}
+				op.WalOffset = r.Offset
+				// mark outstanding
+				q.ackMu.Lock()
+				if q.outstanding == nil {
+					q.outstanding = make(map[int64]struct{})
+				}
+				q.outstanding[r.Offset] = struct{}{}
+				heap.Push(&q.outstandingH, r.Offset)
+				q.ackMu.Unlock()
+				// push into channel non-blocking (assume capacity sufficient on startup)
+				if q.walBacked {
+					bb := bytebufferpool.Get()
+					bb.B = append(bb.B[:0], r.Data...)
+					sb := newSharedBuf(bb, 1) // consumer holds single reference
+					it := &QueueItem{Op: op, Sb: sb, Buf: bb, Q: q}
+					q.ch <- it
+					atomic.AddInt64(&q.inFlight, 1)
+				} else {
+					it := &QueueItem{Op: op, Buf: nil, Q: q}
+					q.ch <- it
+					atomic.AddInt64(&q.inFlight, 1)
+				}
+				return nil
+			})
+		}
+	}
+	// start background truncation if requested
+	if opts != nil && opts.TruncateInterval > 0 && q.wal != nil {
+		go func() {
+			ticker := time.NewTicker(opts.TruncateInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				q.doTruncate()
+			}
+		}()
+	}
+	return q
+}
+
+var activeDurable *DurableFile
+
+// EnableDurable attempts to enable a DurableFile under the provided options
+// and replaces the package DefaultIngestQueue with a durable-backed queue. Best
+// effort: callers may ignore errors and continue with the in-memory queue.
+func EnableDurable(opts DurableEnableOptions) error {
+	if opts.Dir == "" {
+		return nil
+	}
+
+	wopts := DurableWALConfigOptions{
+		Dir:                opts.Dir,
+		MaxFileSize:        opts.WALMaxFileSize,
+		EnableBatch:        opts.WALEnableBatch,
+		BatchSize:          opts.WALBatchSize,
+		BatchInterval:      opts.WALBatchInterval,
+		EnableCompress:     opts.WALEnableCompress,
+		CompressMinBytes:   opts.WALCompressMinBytes,
+		CompressMinRatio:   opts.WALCompressMinRatio,
+		MaxBufferedBytes:   opts.WALMaxBufferedBytes,
+		MaxBufferedEntries: opts.WALMaxBufferedEntries,
+		BufferWaitTimeout:  opts.WALBufferWaitTimeout,
+	}
+	w, err := New(wopts)
+	if err != nil {
+		return err
+	}
+	activeDurable = w
+	qopts := &IngestQueueOptions{
+		Capacity:         opts.Capacity,
+		WAL:              w,
+		Mode:             "batch",
+		Recover:          true,
+		TruncateInterval: opts.TruncateInterval,
+		WalBacked:        true,
+	}
+	q := NewIngestQueueWithOptions(qopts)
+	SetDefaultIngestQueue(q)
+	return nil
+}
+
+// CloseDurable closes the active WAL if any.
+func CloseDurable() error {
+	if activeDurable == nil {
+		return nil
+	}
+	err := activeDurable.Close()
+	activeDurable = nil
+	return err
+}
+
+func (w *DurableFile) readRecords(f *os.File, fileNum int) ([]WALRecord, error) {
 	var result []WALRecord
 	for {
 		var offset int64
@@ -837,27 +722,6 @@ func (w *FileWAL) readRecords(f *os.File, fileNum int) ([]WALRecord, error) {
 	return result, nil
 }
 
-func compressData(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	if _, err := w.Write(data); err != nil {
-		return nil, err
-	}
-	if err := w.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func decompressData(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return io.ReadAll(r)
-}
-
 func syncDir(path string) error {
 	d, err := os.Open(path)
 	if err != nil {
@@ -865,4 +729,389 @@ func syncDir(path string) error {
 	}
 	defer d.Close()
 	return d.Sync()
+}
+
+func New(opts DurableWALConfigOptions) (*DurableFile, error) {
+	// Expect callers (startup path) to provide canonical defaults via
+	// configuration. If absent, return an error so the caller can abort
+	// startup with a helpful message.
+	if opts.MaxFileSize == 0 {
+		return nil, fmt.Errorf("wal options missing max_file_size; ensure config.ValidateConfig() applied defaults")
+	}
+	if opts.EnableBatch {
+		if opts.BatchSize == 0 {
+			return nil, fmt.Errorf("wal options missing batch_size; ensure config.ValidateConfig() applied defaults")
+		}
+		if opts.BatchInterval == 0 {
+			return nil, fmt.Errorf("wal options missing batch_interval; ensure config.ValidateConfig() applied defaults")
+		}
+	}
+
+	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
+	}
+
+	w := &DurableFile{
+		dir:                opts.Dir,
+		maxSize:            opts.MaxFileSize,
+		enableBatch:        opts.EnableBatch,
+		batchSize:          opts.BatchSize,
+		batchInterval:      opts.BatchInterval,
+		enableCompress:     opts.EnableCompress,
+		compressMinBytes:   opts.CompressMinBytes,
+		compressMinRatio:   opts.CompressMinRatio,
+		maxBufferedBytes:   opts.MaxBufferedBytes,
+		maxBufferedEntries: opts.MaxBufferedEntries,
+		bufferWaitTimeout:  opts.BufferWaitTimeout,
+		crcTable:           crc32.MakeTable(crc32.Castagnoli),
+		batch:              &DurableBatchBuffer{},
+	}
+	w.flushCond = sync.NewCond(&w.mu)
+	w.spaceCh = make(chan struct{}, 1)
+
+	// Recover existing WAL files on startup
+	maxSeq, err := w.recoverFiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover WAL files: %w", err)
+	}
+	w.seq = maxSeq + 1
+
+	// If no files exist, create first file
+	if w.curr == nil {
+		if err := w.createNewFile(); err != nil {
+			return nil, fmt.Errorf("failed to create initial WAL file: %w", err)
+		}
+	} else {
+		// Seek to end of current file for appending
+		if _, err := w.curr.f.Seek(0, io.SeekEnd); err != nil {
+			return nil, fmt.Errorf("failed to seek to end of current WAL file: %w", err)
+		}
+	}
+
+	// Start batch flusher if enabled
+	if w.enableBatch {
+		go w.batchFlusher()
+	}
+
+	return w, nil
+}
+
+// reserveSeqLocked reserves a single sequence number and returns it.
+// Caller must hold w.mu.
+func (w *DurableFile) reserveSeqLocked() int64 {
+	s := w.seq
+	w.seq++
+	return s
+}
+
+// Append writes the entry to WAL (may buffer in batch mode)
+func (w *DurableFile) Append(data []byte) (int64, error) {
+	return w.AppendCtx(data, context.Background())
+}
+
+// AppendCtx is like Append but respects ctx cancellation while waiting for
+// buffer space.
+func (w *DurableFile) AppendCtx(data []byte, ctx context.Context) (int64, error) {
+	if !w.enableBatch {
+		return w.AppendSync(data)
+	}
+
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return 0, errors.New("WAL is closed")
+	}
+
+	// Reserve a sequence number for this entry
+	offset := w.reserveSeqLocked()
+
+	// Copy data to avoid external modification
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+
+	// Wait for buffer space if configured limits would be exceeded.
+	for {
+		if (w.maxBufferedBytes == 0 || w.batch.size+int64(recordHeaderSize+len(dataCopy)) <= w.maxBufferedBytes) &&
+			(w.maxBufferedEntries == 0 || len(w.batch.entries)+1 <= w.maxBufferedEntries) {
+			break
+		}
+		// release lock and wait for space notification or ctx cancel
+		w.mu.Unlock()
+		if w.bufferWaitTimeout == 0 {
+			select {
+			case <-w.spaceCh:
+			case <-ctx.Done():
+				w.mu.Lock()
+				return 0, ctx.Err()
+			}
+		} else {
+			timer := time.NewTimer(w.bufferWaitTimeout)
+			select {
+			case <-w.spaceCh:
+				if !timer.Stop() {
+					<-timer.C
+				}
+			case <-timer.C:
+				w.mu.Lock()
+				return 0, fmt.Errorf("WAL buffer wait timeout")
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				w.mu.Lock()
+				return 0, ctx.Err()
+			}
+		}
+		w.mu.Lock()
+		if w.closed {
+			w.mu.Unlock()
+			return 0, errors.New("WAL is closed")
+		}
+	}
+
+	// Append into batch
+	w.batch.entries = append(w.batch.entries, DurableBatchEntry{seq: offset, data: dataCopy})
+	w.batch.size += int64(recordHeaderSize + len(dataCopy))
+
+	// Flush if batch is full
+	if len(w.batch.entries) >= w.batchSize {
+		if err := w.flushBatchLocked(); err != nil {
+			w.mu.Unlock()
+			return 0, err
+		}
+	}
+	w.mu.Unlock()
+
+	return offset, nil
+}
+
+// AppendPooled accepts ownership of a SharedBuf and appends it to the WAL
+// without copying. The SharedBuf should have at least one reference for the
+// WAL; callers typically create one with refs=2 (WAL + consumer).
+func (w *DurableFile) AppendPooled(sb *SharedBuf) (int64, error) {
+	return w.AppendPooledCtx(sb, context.Background())
+}
+
+// AppendPooledCtx appends a pooled buffer to WAL but respects ctx while
+// waiting for buffer space.
+func (w *DurableFile) AppendPooledCtx(sb *SharedBuf, ctx context.Context) (int64, error) {
+	if !w.enableBatch {
+		return w.appendPooledSyncLocked(sb)
+	}
+
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return 0, errors.New("WAL is closed")
+	}
+
+	// Reserve offset
+	offset := w.reserveSeqLocked()
+
+	// Record size based on buffer length
+	dataLen := 0
+	if sb != nil && sb.bb != nil {
+		dataLen = len(sb.bb.B)
+	}
+
+	// Wait for buffer space if configured limits would be exceeded.
+	for {
+		if (w.maxBufferedBytes == 0 || w.batch.size+int64(recordHeaderSize+dataLen) <= w.maxBufferedBytes) &&
+			(w.maxBufferedEntries == 0 || len(w.batch.entries)+1 <= w.maxBufferedEntries) {
+			break
+		}
+		w.mu.Unlock()
+		if w.bufferWaitTimeout == 0 {
+			select {
+			case <-w.spaceCh:
+			case <-ctx.Done():
+				w.mu.Lock()
+				return 0, ctx.Err()
+			}
+		} else {
+			timer := time.NewTimer(w.bufferWaitTimeout)
+			select {
+			case <-w.spaceCh:
+				if !timer.Stop() {
+					<-timer.C
+				}
+			case <-timer.C:
+				w.mu.Lock()
+				return 0, fmt.Errorf("WAL buffer wait timeout")
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				w.mu.Lock()
+				return 0, ctx.Err()
+			}
+		}
+		w.mu.Lock()
+		if w.closed {
+			w.mu.Unlock()
+			return 0, errors.New("WAL is closed")
+		}
+	}
+
+	w.batch.entries = append(w.batch.entries, DurableBatchEntry{seq: offset, sb: sb})
+	w.batch.size += int64(recordHeaderSize + dataLen)
+
+	// Flush if batch is full
+	if len(w.batch.entries) >= w.batchSize {
+		if err := w.flushBatchLocked(); err != nil {
+			w.mu.Unlock()
+			return 0, err
+		}
+	}
+	w.mu.Unlock()
+
+	return offset, nil
+}
+
+func (w *DurableFile) appendPooledSyncLocked(sb *SharedBuf) (int64, error) {
+	// synchronous write path for pooled buffer
+	// Compress if enabled
+	var toWrite []byte
+	if sb != nil && sb.bb != nil {
+		toWrite = sb.bb.B
+	} else {
+		toWrite = nil
+	}
+	flags := byte(0)
+	minBytes := int64(512)
+	if w.compressMinBytes > 0 {
+		minBytes = w.compressMinBytes
+	}
+	if w.enableCompress && int64(len(toWrite)) >= minBytes {
+		compressed, err := compressData(toWrite)
+		if err == nil {
+			ratio := w.compressMinRatio
+			if ratio <= 0 || ratio > 1 {
+				ratio = 1.0
+			}
+			if float64(len(compressed)) <= float64(len(toWrite))*ratio {
+				toWrite = compressed
+				flags |= flagCompressed
+			}
+		}
+	}
+
+	recordSize := int64(recordHeaderSize + len(toWrite))
+	if w.curr.size+recordSize > w.maxSize {
+		if err := w.rotate(); err != nil {
+			return 0, fmt.Errorf("failed to rotate WAL file: %w", err)
+		}
+	}
+
+	offset := w.reserveSeqLocked()
+	if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
+		return 0, fmt.Errorf("failed to write record at offset %d: %w", offset, err)
+	}
+
+	w.curr.size += recordSize
+
+	// Update file sequence range
+	if w.curr.minSeq == -1 || offset < w.curr.minSeq {
+		w.curr.minSeq = offset
+	}
+	if offset > w.curr.maxSeq {
+		w.curr.maxSeq = offset
+	}
+
+	if err := w.curr.f.Sync(); err != nil {
+		return 0, fmt.Errorf("failed to fsync WAL file: %w", err)
+	}
+
+	// WAL-side reference released after sync
+	if sb != nil {
+		sb.release()
+	}
+
+	return offset, nil
+}
+
+// AppendSync writes the entry and fsyncs immediately
+func (w *DurableFile) AppendSync(data []byte) (int64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.closed {
+		return 0, errors.New("WAL is closed")
+	}
+
+	// Flush any pending batch first
+	if w.enableBatch && len(w.batch.entries) > 0 {
+		if err := w.flushBatchLocked(); err != nil {
+			return 0, err
+		}
+	}
+
+	return w.appendSyncLocked(data)
+}
+
+func (w *DurableFile) appendSyncLocked(data []byte) (int64, error) {
+	// Compress if enabled
+	toWrite := data
+	flags := byte(0)
+	// Only compress if enabled and data size meets threshold.
+	minBytes := int64(512)
+	if w.compressMinBytes > 0 {
+		minBytes = w.compressMinBytes
+	}
+	if w.enableCompress && int64(len(data)) >= minBytes {
+		compressed, err := compressData(data)
+		if err == nil {
+			// Apply post-compression ratio check: only accept compressed
+			// data if it is smaller than original by configured ratio.
+			ratio := w.compressMinRatio
+			// If ratio is unset or invalid, default to 1.0 (accept any smaller)
+			if ratio <= 0 || ratio > 1 {
+				ratio = 1.0
+			}
+			if float64(len(compressed)) <= float64(len(data))*ratio {
+				toWrite = compressed
+				flags |= flagCompressed
+			}
+		}
+	}
+
+	recordSize := int64(recordHeaderSize + len(toWrite))
+	if w.curr.size+recordSize > w.maxSize {
+		if err := w.rotate(); err != nil {
+			return 0, fmt.Errorf("failed to rotate WAL file: %w", err)
+		}
+	}
+
+	offset := w.reserveSeqLocked()
+	if err := w.writeRecord(w.curr.f, offset, toWrite, flags); err != nil {
+		return 0, fmt.Errorf("failed to write record at offset %d: %w", offset, err)
+	}
+
+	w.curr.size += recordSize
+
+	// Update file sequence range
+	if w.curr.minSeq == -1 || offset < w.curr.minSeq {
+		w.curr.minSeq = offset
+	}
+	if offset > w.curr.maxSeq {
+		w.curr.maxSeq = offset
+	}
+
+	if err := w.curr.f.Sync(); err != nil {
+		return 0, fmt.Errorf("failed to fsync WAL file: %w", err)
+	}
+
+	return offset, nil
+}
+
+// Flush forces pending batch to disk
+func (w *DurableFile) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.enableBatch || len(w.batch.entries) == 0 {
+		return nil
+	}
+
+	return w.flushBatchLocked()
 }
