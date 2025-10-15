@@ -1,5 +1,7 @@
 package queue
 
+import "progressdb/pkg/telemetry"
+
 // Worker loops are moved into their own file to separate runtime worker
 // orchestration from core queue responsibilities.
 
@@ -13,7 +15,10 @@ func RunWorker(q *IngestQueue, stop <-chan struct{}, handler func(*QueueOp) erro
 			}
 			func(it *QueueItem) {
 				defer it.Done()
+				tr := telemetry.Track("ingest.worker_process")
+				tr.Mark("handler")
 				_ = handler(it.Op)
+				tr.Finish()
 			}(it)
 		case <-stop:
 			return
@@ -69,7 +74,10 @@ func RunBatchWorker(q *IngestQueue, stop <-chan struct{}, batchSize int, handler
 			for i, it := range batch {
 				ops[i] = it.Op
 			}
+			tr := telemetry.Track("ingest.batch_process")
+			tr.Mark("handler")
 			_ = handler(ops)
+			tr.Finish()
 		}(items)
 	}
 }

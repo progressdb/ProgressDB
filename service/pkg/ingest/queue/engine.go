@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/valyala/bytebufferpool"
+	"progressdb/pkg/telemetry"
 )
 
 // TODO: queue full - drop strategy
@@ -23,6 +24,9 @@ var (
 
 // attempt enqueue without blocking
 func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
+	tr := telemetry.Track("ingest.queue_try_enqueue")
+	defer tr.Finish()
+
 	// increment total enqueues attempted
 	atomic.AddUint64(&enqueueTotal, 1)
 
@@ -42,6 +46,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
+	tr.Mark("clone_op")
 	// clone operation from pool
 	newOp := queueOpPool.Get().(*QueueOp)
 	*newOp = *op
@@ -58,6 +63,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 
 	if q != nil && q.wal != nil {
 		if q.walBacked {
+			tr.Mark("serialize")
 			bb := bytebufferpool.Get()
 			payloadSlice, err := serializeOpToBB(newOp, bb)
 			if err != nil {
@@ -69,6 +75,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			newOp.Payload = payloadSlice
 			sb := newSharedBuf(bb, 2)
 
+			tr.Mark("wal_append")
 			// append to wal
 			var offset int64
 			var walErr error
@@ -89,6 +96,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			heap.Push(&q.outstandingH, offset)
 			q.ackMu.Unlock()
 
+			tr.Mark("enqueue_channel")
 			// send to channel or drop
 			it := &QueueItem{Op: newOp, Sb: sb, Buf: bb, Q: q}
 			select {
@@ -104,6 +112,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			}
 		}
 
+		tr.Mark("serialize")
 		// serialize operation
 		data, err := serializeOp(newOp)
 		if err != nil {
@@ -111,6 +120,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			atomic.AddUint64(&enqueueFailTotal, 1)
 			return err
 		}
+		tr.Mark("wal_append")
 		// append based on mode
 		var offset int64
 		if q.walMode == WalModeSync {
@@ -141,12 +151,16 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		q.ackMu.Unlock()
 	}
 
+	tr.Mark("enqueue_memory")
 	// fallback to in-memory enqueue
 	return q.tryEnqueueInMemory(newOp)
 }
 
 // blocking enqueue with context
 func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
+	tr := telemetry.Track("ingest.queue_enqueue")
+	defer tr.Finish()
+
 	atomic.AddUint64(&enqueueTotal, 1)
 
 	if atomic.LoadInt32(&q.closed) == 1 {
@@ -162,6 +176,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
+	tr.Mark("clone_op")
 	// clone from pool
 	newOp := queueOpPool.Get().(*QueueOp)
 	*newOp = *op
@@ -178,6 +193,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 	// wal-backed with context
 	if q != nil && q.wal != nil {
 		if q.walBacked {
+			tr.Mark("serialize")
 			// serialize to buffer
 			bb := bytebufferpool.Get()
 			payloadSlice, err := serializeOpToBB(newOp, bb)
@@ -189,6 +205,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			}
 			newOp.Payload = payloadSlice
 			sb := newSharedBuf(bb, 2)
+			tr.Mark("wal_append")
 			// append with context
 			var offset int64
 			var walErr error
@@ -213,6 +230,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			heap.Push(&q.outstandingH, offset)
 			q.ackMu.Unlock()
 
+			tr.Mark("enqueue_channel")
 			// send or cancel
 			it := &QueueItem{Op: newOp, Sb: sb, Buf: bb, Q: q}
 			select {
@@ -228,6 +246,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			}
 		}
 
+		tr.Mark("serialize")
 		// serialize
 		data, err := serializeOp(newOp)
 		if err != nil {
@@ -235,6 +254,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			atomic.AddUint64(&enqueueFailTotal, 1)
 			return err
 		}
+		tr.Mark("wal_append")
 		// append with context
 		var offset int64
 		if q.walMode == WalModeSync {
@@ -258,6 +278,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 		q.ackMu.Unlock()
 	}
 
+	tr.Mark("enqueue_memory")
 	// in-memory enqueue
 	return q.enqueueInMemory(ctx, newOp)
 }
@@ -269,12 +290,17 @@ func (q *IngestQueue) RunWorker(stop <-chan struct{}, handler func(*QueueOp) err
 
 // acknowledge processed offset
 func (q *IngestQueue) ack(offset int64) {
+	tr := telemetry.Track("ingest.queue_ack")
+	defer tr.Finish()
+
 	if q == nil || q.wal == nil {
 		return
 	}
+	tr.Mark("update_outstanding")
 	q.ackMu.Lock()
 	delete(q.outstanding, offset)
 
+	tr.Mark("clean_heap")
 	// clean heap of processed offsets
 	for q.outstandingH.Len() > 0 {
 		top := q.outstandingH[0]
@@ -298,6 +324,7 @@ func (q *IngestQueue) ack(offset int64) {
 	q.ackMu.Unlock()
 
 	if shouldTruncate {
+		tr.Mark("wal_truncate")
 		_ = q.wal.TruncateBefore(newMin)
 	}
 }

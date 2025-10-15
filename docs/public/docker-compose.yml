@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  progressdb-kms:
+    image: docker.io/progressdb/progressdb-kms:latest
+    restart: unless-stopped
+    volumes:
+      - ./kms-data:/var/lib/progressdb/kms
+    command: ["/usr/local/bin/progressdb-kms", "--endpoint", "0.0.0.0:6820", "--data-dir", "/var/lib/progressdb/kms"]
+    networks:
+      - progressdb_net
+
+  progressdb:
+    image: docker.io/progressdb/progressdb:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PROGRESSDB_USE_ENCRYPTION: "true"
+      PROGRESSDB_KMS_MODE: "external"
+      PROGRESSDB_KMS_ENDPOINT: "progressdb-kms:6820"
+      # server connects to the KMS over TCP at the endpoint in PROGRESSDB_KMS_ENDPOINT
+    depends_on:
+      - progressdb-kms
+    networks:
+      - progressdb_net
+
+networks:
+  progressdb_net:
+    driver: bridge

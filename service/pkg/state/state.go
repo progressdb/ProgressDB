@@ -8,9 +8,7 @@ import (
 	"sync"
 )
 
-// EnsureStateDirs ensures the canonical runtime folder layout exists under
-// the provided DB path. It verifies paths are not symlinks and have
-// restrictive permissions, and that they are writable by the process.
+// ensure canonical runtime folder layout exists under db path, not symlink, restrictive perms, writable
 func EnsureStateDirs(dbPath string) error {
 	storePath := filepath.Join(dbPath, "store")
 	walPath := filepath.Join(dbPath, "wal")
@@ -19,7 +17,7 @@ func EnsureStateDirs(dbPath string) error {
 	retentionPath := filepath.Join(statePath, "retention")
 	kmsPath := filepath.Join(statePath, "kms")
 	tmpPath := filepath.Join(statePath, "tmp")
-	telPath := filepath.Join(statePath, "tel")
+	telPath := filepath.Join(statePath, "telemetry")
 
 	paths := []string{storePath, walPath, auditPath, retentionPath, kmsPath, tmpPath, telPath}
 
@@ -29,11 +27,7 @@ func EnsureStateDirs(dbPath string) error {
 			return fmt.Errorf("cannot create parent for %s: %w", p, err)
 		}
 
-		// if path exists, ensure it's a directory. We intentionally do not
-		// enforce strict POSIX permission bits here so tests and developer
-		// workflows on diverse platforms (Windows, shared mounts) are not
-		// blocked. The primary requirement is that the process can write to
-		// the directory; writability is validated below.
+		// must be directory and not symlink if exists
 		if fi, err := os.Lstat(p); err == nil {
 			if fi.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("path is a symlink: %s", p)
@@ -43,19 +37,19 @@ func EnsureStateDirs(dbPath string) error {
 			}
 		}
 
-		// create directory if missing
+		// create if missing
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			return fmt.Errorf("cannot create path %s: %w", p, err)
 		}
 
-		// double-check no symlink after creation
+		// check not symlink after creation
 		if fi2, err := os.Lstat(p); err == nil {
 			if fi2.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("path is a symlink after creation: %s", p)
 			}
 		}
 
-		// writability check: create and remove a temp file
+		// check writable by creating and deleting temp file
 		tmp, err := os.CreateTemp(p, ".validate-*")
 		if err != nil {
 			return fmt.Errorf("path not writable: %s: %w", p, err)
@@ -67,25 +61,16 @@ func EnsureStateDirs(dbPath string) error {
 	return nil
 }
 
-// Paths and helpers are defined in types.go
-
-// package-level cached paths after Init
+// paths and helpers are defined in types.go
 var (
-	// Paths is the canonical layout for the running process. Call Init once
-	// at startup to populate it.
 	PathsVar Paths
 	initOnce sync.Once
 )
 
-// Init initializes the package-level Paths for the running process. Safe to
-// call multiple times; initialization happens only once.
+// cached paths after init
 var initErr error
 
-// Init initializes the package-level Paths for the running process. Safe to
-// call multiple times; initialization happens only once. It also ensures the
-// filesystem layout exists by calling EnsureStateDirs and returns any error
-// encountered.
-
+// safe to call multiple times; initialization happens once. ensures filesystem layout exists and returns error if any
 func Init(dbPath string) error {
 	initOnce.Do(func() {
 		path := strings.TrimSpace(dbPath)

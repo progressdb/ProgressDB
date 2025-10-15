@@ -1,0 +1,86 @@
+server:
+  # Server listen address and TLS settings
+  address: "0.0.0.0"
+  port: 8080
+  db_path: "./database"
+  tls:
+    cert_file: ""
+    key_file: ""
+
+security:
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  rate_limit:
+    rps: 1000_0000
+    burst: 2000_0000
+  ip_whitelist:
+    # - "127.0.0.1"
+  api_keys:
+    backend: ["sk_example"]
+    frontend: ["pk_example"]
+    admin: ["admin_example"]
+  encryption:
+    use: false
+    fields: []
+  kms:
+    endpoint: "127.0.0.1:6820"
+    data_dir: "./kms-data"
+    binary: "/usr/local/bin/progressdb-kms"
+    master_key_file: ""
+    master_key_hex: ""
+
+logging:
+  level: "info"
+
+retention:
+  enabled: false
+  cron: ""
+  period: "24h"
+  batch_size: 1000
+  batch_sleep_ms: 0
+  dry_run: false
+  paused: false
+  min_period: "1h"
+  lock_ttl: 300s
+
+ingest:
+  processor:
+    workers: 2
+    max_batch_msgs: 512
+    flush_ms: 5
+  queue:
+    mode: durable
+    capacity: 8192
+    batch_size: 128
+    drain_poll_interval: 2ms
+    max_pooled_buffer_bytes: 64MB
+    memory:
+      recover: false
+      truncate_interval: 0s
+    durable:
+      recover: true
+      truncate_interval: 120s
+      mode: batch
+      max_file_size: 256MB
+      enable_batch: true
+      batch_size: 32
+      batch_interval: 50ms
+      enable_compress: true
+      compress_min_bytes: 1024
+      retention_bytes: 0
+      retention_age: 0
+
+telemetry:
+  sample_rate: 0.001
+  slow_threshold: 200ms
+
+sensor:
+  monitor:
+    poll_interval: 500ms
+    wal_high_bytes: 1GiB
+    wal_low_bytes: 700MiB
+    disk_high_pct: 80
+    disk_low_pct: 60
+    recovery_window: 5s
