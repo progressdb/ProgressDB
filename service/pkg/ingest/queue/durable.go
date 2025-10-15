@@ -20,15 +20,22 @@ import (
 )
 
 const (
-	recordHeaderSize = 17         // 8 (offset) + 4 (crc) + 4 (length) + 1 (flags)
-	fileHeaderSize   = 8          // 4 (magic) + 4 (file checksum placeholder)
-	fileMagic        = 0x57414C46 // "WALF"
+	recordHeaderSize = 17                 // 8 (offset) + 4 (crc) + 4 (length) + 1 (flags)
+	fileHeaderSize   = 8                  // 4 (magic) + 4 (file checksum placeholder)
+	fileMagic        = uint32(0x57414C46) // "WALF"
 
 	// Flags
 	flagCompressed = 1 << 0
 )
 
-// (WAL, WALRecord, Options, and DurableEnableOptions types are defined in types.go)
+func sync_directory(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
 
 func (w *DurableFile) flushBatchLocked() error {
 	if len(w.batch.entries) == 0 {
@@ -226,7 +233,7 @@ func (w *DurableFile) TruncateBefore(minOffset int64) error {
 
 	// Sync directory
 	if len(toDelete) > 0 {
-		if err := syncDir(w.dir); err != nil {
+		if err := sync_directory(w.dir); err != nil {
 			return fmt.Errorf("failed to sync directory: %w", err)
 		}
 	}
@@ -476,7 +483,7 @@ func (w *DurableFile) createNewFile() error {
 		return err
 	}
 
-	if err := syncDir(w.dir); err != nil {
+	if err := sync_directory(w.dir); err != nil {
 		f.Close()
 		return fmt.Errorf("failed to sync directory: %w", err)
 	}
@@ -631,17 +638,13 @@ func EnableDurable(opts DurableEnableOptions) error {
 	}
 
 	wopts := DurableWALConfigOptions{
-		Dir:                opts.Dir,
-		MaxFileSize:        opts.WALMaxFileSize,
-		EnableBatch:        opts.WALEnableBatch,
-		BatchSize:          opts.WALBatchSize,
-		BatchInterval:      opts.WALBatchInterval,
-		EnableCompress:     opts.WALEnableCompress,
-		CompressMinBytes:   opts.WALCompressMinBytes,
-		CompressMinRatio:   opts.WALCompressMinRatio,
-		MaxBufferedBytes:   opts.WALMaxBufferedBytes,
-		MaxBufferedEntries: opts.WALMaxBufferedEntries,
-		BufferWaitTimeout:  opts.WALBufferWaitTimeout,
+		Dir:              opts.Dir,
+		MaxFileSize:      opts.WALMaxFileSize,
+		EnableBatch:      opts.WALEnableBatch,
+		BatchSize:        opts.WALBatchSize,
+		BatchInterval:    opts.WALBatchInterval,
+		EnableCompress:   opts.WALEnableCompress,
+		CompressMinBytes: opts.WALCompressMinBytes,
 	}
 	w, err := New(wopts)
 	if err != nil {
@@ -722,15 +725,6 @@ func (w *DurableFile) readRecords(f *os.File, fileNum int) ([]WALRecord, error) 
 	return result, nil
 }
 
-func syncDir(path string) error {
-	d, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
-}
-
 func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 	// Expect callers (startup path) to provide canonical defaults via
 	// configuration. If absent, return an error so the caller can abort
@@ -752,22 +746,17 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 	}
 
 	w := &DurableFile{
-		dir:                opts.Dir,
-		maxSize:            opts.MaxFileSize,
-		enableBatch:        opts.EnableBatch,
-		batchSize:          opts.BatchSize,
-		batchInterval:      opts.BatchInterval,
-		enableCompress:     opts.EnableCompress,
-		compressMinBytes:   opts.CompressMinBytes,
-		compressMinRatio:   opts.CompressMinRatio,
-		maxBufferedBytes:   opts.MaxBufferedBytes,
-		maxBufferedEntries: opts.MaxBufferedEntries,
-		bufferWaitTimeout:  opts.BufferWaitTimeout,
-		crcTable:           crc32.MakeTable(crc32.Castagnoli),
-		batch:              &DurableBatchBuffer{},
+		dir:              opts.Dir,
+		maxSize:          opts.MaxFileSize,
+		enableBatch:      opts.EnableBatch,
+		batchSize:        opts.BatchSize,
+		batchInterval:    opts.BatchInterval,
+		enableCompress:   opts.EnableCompress,
+		compressMinBytes: opts.CompressMinBytes,
+		crcTable:         crc32.MakeTable(crc32.Castagnoli),
+		batch:            &DurableBatchBuffer{},
 	}
 	w.flushCond = sync.NewCond(&w.mu)
-	w.spaceCh = make(chan struct{}, 1)
 
 	// Recover existing WAL files on startup
 	maxSeq, err := w.recoverFiles()

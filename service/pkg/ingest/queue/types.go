@@ -136,17 +136,13 @@ type WALRecord struct {
 // Options configures WAL behavior when creating WAL instances.
 // DurableWALConfigOptions configures WAL behavior when creating WAL instances.
 type DurableWALConfigOptions struct {
-	Dir                string
-	MaxFileSize        int64
-	EnableBatch        bool
-	BatchSize          int
-	BatchInterval      time.Duration
-	EnableCompress     bool
-	CompressMinBytes   int64
-	CompressMinRatio   float64
-	MaxBufferedBytes   int64
-	MaxBufferedEntries int
-	BufferWaitTimeout  time.Duration
+	Dir              string
+	MaxFileSize      int64
+	EnableBatch      bool
+	BatchSize        int
+	BatchInterval    time.Duration
+	EnableCompress   bool
+	CompressMinBytes int64
 }
 
 // DurableEnableOptions is used for configuring a WAL-backed queue.
@@ -156,16 +152,12 @@ type DurableEnableOptions struct {
 	TruncateInterval time.Duration
 
 	// WAL configuration
-	WALMaxFileSize        int64
-	WALEnableBatch        bool
-	WALBatchSize          int
-	WALBatchInterval      time.Duration
-	WALEnableCompress     bool
-	WALCompressMinBytes   int64
-	WALCompressMinRatio   float64
-	WALMaxBufferedBytes   int64
-	WALMaxBufferedEntries int
-	WALBufferWaitTimeout  time.Duration
+	WALMaxFileSize      int64
+	WALEnableBatch      bool
+	WALBatchSize        int
+	WALBatchInterval    time.Duration
+	WALEnableCompress   bool
+	WALCompressMinBytes int64
 }
 
 // walFile holds file info for WAL segments.
