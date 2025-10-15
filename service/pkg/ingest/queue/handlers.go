@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-const drainPollInterval = 10 * time.Millisecond
-
 // tryenqueuebytes: copies payload into a pooled buffer and enqueues a new op using the given fields
 func (q *IngestQueue) TryEnqueueBytes(handler HandlerID, thread, id string, payload []byte, ts int64) error {
 	return q.TryEnqueue(&QueueOp{Handler: handler, Thread: thread, ID: id, Payload: payload, TS: ts})
@@ -45,7 +43,7 @@ func (q *IngestQueue) closeInternal(drain bool) {
 		}
 		return
 	}
-
+	const drainPollInterval = 10 * time.Millisecond
 	ticker := time.NewTicker(drainPollInterval)
 	defer ticker.Stop()
 	for {
