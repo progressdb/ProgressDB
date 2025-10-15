@@ -2,7 +2,6 @@ package ingest
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,7 +9,6 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
-	"progressdb/pkg/store"
 )
 
 // Processor orchestrates workers that consume from the API queue, invoke
@@ -162,45 +160,15 @@ func (p *Processor) workerLoop(workerID int) {
 			case <-p.stop:
 				drainTimer.Stop()
 				return
-			default:
-				// no immediate item; yield briefly to avoid busy-loop
-				time.Sleep(50 * time.Microsecond)
 			}
 		}
 		drainTimer.Stop()
 
-		// quick decode pass to extract thread IDs for prefetch
-		threadSet := make(map[string]struct{})
-		for _, it := range items {
-			if it.Op.Thread != "" {
-				threadSet[it.Op.Thread] = struct{}{}
-				continue
-			}
-			// try light-weight JSON probe to find thread field
-			var probe struct {
-				Thread string `json:"thread"`
-			}
-			_ = json.Unmarshal(it.Op.Payload, &probe)
-			if probe.Thread != "" {
-				threadSet[probe.Thread] = struct{}{}
-			}
-		}
-
-		// prefetch thread metadata in bulk
-		threadMeta := make(map[string]string)
-		for tid := range threadSet {
-			if s, err := store.GetThread(tid); err == nil {
-				threadMeta[tid] = s
-			}
-		}
-
 		// process collected items in order: ask handlers for BatchEntries
 		var batchEntries []BatchEntry
 		for _, it := range items {
-			// create handler context including prefetched thread metadata map
-			hctx := context.WithValue(context.Background(), threadMetaKey, threadMeta)
 			if fn, ok := p.handlers[it.Op.Handler]; ok && fn != nil {
-				entries, err := fn(hctx, it.Op)
+				entries, err := fn(context.Background(), it.Op)
 				if err != nil {
 					logger.Error("ingest_handler_error", "handler", it.Op.Handler, "error", err)
 					it.Done()

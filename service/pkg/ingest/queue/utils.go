@@ -14,6 +14,13 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+// ---- Size and limit constants ----
+const (
+	maxStringLen  = 0xFFFF     // 65535
+	maxExtrasLen  = 0xFFFF     // 65535
+	maxPayloadLen = 0xFFFFFFFF // 4294967295
+)
+
 // offsetHeap is a min-heap of int64 values (WAL offsets).
 type offsetHeap []int64
 
@@ -67,7 +74,7 @@ func serializeOp(op *QueueOp) ([]byte, error) {
 	buf.WriteByte(opRecordVersion)
 
 	writeString := func(s string) error {
-		if len(s) > 0xFFFF {
+		if len(s) > maxStringLen {
 			return io.ErrShortBuffer
 		}
 		l := uint16(len(s))
@@ -103,7 +110,7 @@ func serializeOp(op *QueueOp) ([]byte, error) {
 			return nil, err
 		}
 	} else {
-		if len(op.Extras) > 0xFFFF {
+		if len(op.Extras) > maxExtrasLen {
 			return nil, io.ErrShortBuffer
 		}
 		if err := binary.Write(&buf, binary.BigEndian, uint16(len(op.Extras))); err != nil {
@@ -124,7 +131,7 @@ func serializeOp(op *QueueOp) ([]byte, error) {
 			return nil, err
 		}
 	} else {
-		if len(op.Payload) > 0xFFFFFFFF {
+		if len(op.Payload) > maxPayloadLen {
 			return nil, io.ErrShortBuffer
 		}
 		if err := binary.Write(&buf, binary.BigEndian, uint32(len(op.Payload))); err != nil {
@@ -151,7 +158,7 @@ func serializeOpToBB(op *QueueOp, bb *bytebufferpool.ByteBuffer) ([]byte, error)
 	bb.WriteByte(opRecordVersion)
 
 	writeString := func(s string) error {
-		if len(s) > 0xFFFF {
+		if len(s) > maxStringLen {
 			return io.ErrShortBuffer
 		}
 		l := uint16(len(s))
@@ -187,7 +194,7 @@ func serializeOpToBB(op *QueueOp, bb *bytebufferpool.ByteBuffer) ([]byte, error)
 			return nil, err
 		}
 	} else {
-		if len(op.Extras) > 0xFFFF {
+		if len(op.Extras) > maxExtrasLen {
 			return nil, io.ErrShortBuffer
 		}
 		if err := binary.Write(bb, binary.BigEndian, uint16(len(op.Extras))); err != nil {
@@ -210,7 +217,7 @@ func serializeOpToBB(op *QueueOp, bb *bytebufferpool.ByteBuffer) ([]byte, error)
 			return nil, err
 		}
 	} else {
-		if len(op.Payload) > 0xFFFFFFFF {
+		if len(op.Payload) > maxPayloadLen {
 			return nil, io.ErrShortBuffer
 		}
 		// write length

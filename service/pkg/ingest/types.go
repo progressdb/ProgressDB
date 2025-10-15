@@ -19,8 +19,3 @@ type BatchEntry struct {
 	TS      int64
 	Enq     uint64 // enqueue sequence for ordering
 }
-
-// context key for thread metadata prefetch map
-type threadMetaKeyType struct{}
-
-var threadMetaKey threadMetaKeyType

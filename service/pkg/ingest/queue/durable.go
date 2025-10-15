@@ -613,11 +613,18 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 					bb := bytebufferpool.Get()
 					bb.B = append(bb.B[:0], r.Data...)
 					sb := newSharedBuf(bb, 1) // consumer holds single reference
-					it := &QueueItem{Op: op, Sb: sb, Buf: bb, Q: q}
+					it := queueItemPool.Get().(*QueueItem)
+					it.Op = op
+					it.Sb = sb
+					it.Buf = bb
+					it.Q = q
 					q.ch <- it
 					atomic.AddInt64(&q.inFlight, 1)
 				} else {
-					it := &QueueItem{Op: op, Buf: nil, Q: q}
+					it := queueItemPool.Get().(*QueueItem)
+					it.Op = op
+					it.Buf = nil
+					it.Q = q
 					q.ch <- it
 					atomic.AddInt64(&q.inFlight, 1)
 				}
