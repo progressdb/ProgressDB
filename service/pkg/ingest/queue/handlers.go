@@ -43,8 +43,7 @@ func (q *IngestQueue) closeInternal(drain bool) {
 		}
 		return
 	}
-	const drainPollInterval = 10 * time.Millisecond
-	ticker := time.NewTicker(drainPollInterval)
+	ticker := time.NewTicker(q.drainPollInterval)
 	defer ticker.Stop()
 	for {
 		if atomic.LoadInt64(&q.inFlight) == 0 {

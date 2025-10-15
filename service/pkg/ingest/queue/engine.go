@@ -13,33 +13,39 @@ import (
 // TODO: handler error - handlng strategy
 
 var (
-	enqueueTotal     uint64
+	// total enqueues attempted
+	enqueueTotal uint64
+	// total failed enqueues
 	enqueueFailTotal uint64
-	enqSeq           uint64
-	defaultBackend   QueueBackend
+	// enqueue sequence number
+	enqSeq uint64
 )
 
-// Core types relocated to types.go
-
-// TryEnqueue enqueues an Op without blocking; returns ErrQueueFull if full.
+// attempt enqueue without blocking
 func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
+	// increment total enqueues attempted
 	atomic.AddUint64(&enqueueTotal, 1)
 
+	// check if queue is closed
 	if atomic.LoadInt32(&q.closed) == 1 {
 		atomic.AddUint64(&enqueueFailTotal, 1)
 		return ErrQueueClosed
 	}
 
+	// mark this enqueue in the wait group
 	q.enqWg.Add(1)
 	defer q.enqWg.Done()
 
+	// bouble-check if queue is closed
 	if atomic.LoadInt32(&q.closed) == 1 {
 		atomic.AddUint64(&enqueueFailTotal, 1)
 		return ErrQueueClosed
 	}
 
+	// clone operation from pool
 	newOp := queueOpPool.Get().(*QueueOp)
 	*newOp = *op
+	// copy extras map if present
 	if op.Extras != nil {
 		newMap := make(map[string]string, len(op.Extras))
 		for k, v := range op.Extras {
@@ -47,6 +53,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		}
 		newOp.Extras = newMap
 	}
+	// assign unique sequence
 	newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
 
 	if q != nil && q.wal != nil {
@@ -61,10 +68,8 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			}
 			newOp.Payload = payloadSlice
 			sb := newSharedBuf(bb, 2)
-			// Use the non-context pooled-append in the non-blocking path.
-			// `TryEnqueue` does not have a caller-provided context, so
-			// we must use the non-context variants to avoid referencing
-			// an undefined `ctx` variable.
+
+			// append to wal
 			var offset int64
 			var walErr error
 			offset, walErr = q.wal.AppendPooled(sb)
@@ -75,6 +80,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 				return walErr
 			}
 			newOp.WalOffset = offset
+			// track outstanding operations
 			q.ackMu.Lock()
 			if q.outstanding == nil {
 				q.outstanding = make(map[int64]struct{})
@@ -83,6 +89,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			heap.Push(&q.outstandingH, offset)
 			q.ackMu.Unlock()
 
+			// send to channel or drop
 			it := &QueueItem{Op: newOp, Sb: sb, Buf: bb, Q: q}
 			select {
 			case q.ch <- it:
@@ -97,17 +104,19 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			}
 		}
 
+		// serialize operation
 		data, err := serializeOp(newOp)
 		if err != nil {
 			queueOpPool.Put(newOp)
 			atomic.AddUint64(&enqueueFailTotal, 1)
 			return err
 		}
+		// append based on mode
 		var offset int64
 		if q.walMode == WalModeSync {
 			offset, err = q.wal.AppendSync(data)
 		} else {
-			// Non-blocking path: use Append (non-context) variant.
+			// non-blocking append
 			var walErr error
 			offset, walErr = q.wal.Append(data)
 			if walErr != nil {
@@ -122,6 +131,7 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 			return err
 		}
 		newOp.WalOffset = offset
+		// track outstanding
 		q.ackMu.Lock()
 		if q.outstanding == nil {
 			q.outstanding = make(map[int64]struct{})
@@ -131,11 +141,11 @@ func (q *IngestQueue) TryEnqueue(op *QueueOp) error {
 		q.ackMu.Unlock()
 	}
 
-	// Non-WAL (in-memory) path handled by memory.go helper.
+	// fallback to in-memory enqueue
 	return q.tryEnqueueInMemory(newOp)
 }
 
-// Enqueue blocks until op is enqueued or ctx is cancelled.
+// blocking enqueue with context
 func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 	atomic.AddUint64(&enqueueTotal, 1)
 
@@ -152,9 +162,11 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
+	// clone from pool
 	newOp := queueOpPool.Get().(*QueueOp)
 	*newOp = *op
 	newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
+	// copy extras
 	if op.Extras != nil {
 		newMap := make(map[string]string, len(op.Extras))
 		for k, v := range op.Extras {
@@ -163,8 +175,10 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 		newOp.Extras = newMap
 	}
 
+	// wal-backed with context
 	if q != nil && q.wal != nil {
 		if q.walBacked {
+			// serialize to buffer
 			bb := bytebufferpool.Get()
 			payloadSlice, err := serializeOpToBB(newOp, bb)
 			if err != nil {
@@ -175,6 +189,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			}
 			newOp.Payload = payloadSlice
 			sb := newSharedBuf(bb, 2)
+			// append with context
 			var offset int64
 			var walErr error
 			if q.walMode == WalModeSync {
@@ -189,6 +204,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 				return walErr
 			}
 			newOp.WalOffset = offset
+			// track outstanding
 			q.ackMu.Lock()
 			if q.outstanding == nil {
 				q.outstanding = make(map[int64]struct{})
@@ -197,6 +213,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			heap.Push(&q.outstandingH, offset)
 			q.ackMu.Unlock()
 
+			// send or cancel
 			it := &QueueItem{Op: newOp, Sb: sb, Buf: bb, Q: q}
 			select {
 			case q.ch <- it:
@@ -211,12 +228,14 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			}
 		}
 
+		// serialize
 		data, err := serializeOp(newOp)
 		if err != nil {
 			queueOpPool.Put(newOp)
 			atomic.AddUint64(&enqueueFailTotal, 1)
 			return err
 		}
+		// append with context
 		var offset int64
 		if q.walMode == WalModeSync {
 			offset, err = q.wal.AppendSync(data)
@@ -229,6 +248,7 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 			return err
 		}
 		newOp.WalOffset = offset
+		// track outstanding
 		q.ackMu.Lock()
 		if q.outstanding == nil {
 			q.outstanding = make(map[int64]struct{})
@@ -238,14 +258,16 @@ func (q *IngestQueue) Enqueue(ctx context.Context, op *QueueOp) error {
 		q.ackMu.Unlock()
 	}
 
-	// Non-WAL (in-memory) path handled by memory.go helper.
+	// in-memory enqueue
 	return q.enqueueInMemory(ctx, newOp)
 }
 
+// start single operation worker
 func (q *IngestQueue) RunWorker(stop <-chan struct{}, handler func(*QueueOp) error) {
 	RunWorker(q, stop, handler)
 }
 
+// acknowledge processed offset
 func (q *IngestQueue) ack(offset int64) {
 	if q == nil || q.wal == nil {
 		return
@@ -253,6 +275,7 @@ func (q *IngestQueue) ack(offset int64) {
 	q.ackMu.Lock()
 	delete(q.outstanding, offset)
 
+	// clean heap of processed offsets
 	for q.outstandingH.Len() > 0 {
 		top := q.outstandingH[0]
 		if _, ok := q.outstanding[top]; ok {
@@ -261,6 +284,7 @@ func (q *IngestQueue) ack(offset int64) {
 		heap.Pop(&q.outstandingH)
 	}
 
+	// calculate new minimum
 	var newMin int64
 	if q.outstandingH.Len() == 0 {
 		newMin = math.MaxInt64
@@ -278,11 +302,13 @@ func (q *IngestQueue) ack(offset int64) {
 	}
 }
 
+// perform wal truncation
 func (q *IngestQueue) doTruncate() {
 	if q == nil || q.wal == nil {
 		return
 	}
 	q.ackMu.Lock()
+	// clean processed offsets
 	for q.outstandingH.Len() > 0 {
 		top := q.outstandingH[0]
 		if _, ok := q.outstanding[top]; ok {
@@ -290,6 +316,7 @@ func (q *IngestQueue) doTruncate() {
 		}
 		heap.Pop(&q.outstandingH)
 	}
+	// find new minimum
 	var newMin int64
 	if q.outstandingH.Len() == 0 {
 		newMin = math.MaxInt64
@@ -307,10 +334,12 @@ func (q *IngestQueue) doTruncate() {
 	}
 }
 
+// start batch operation worker
 func (q *IngestQueue) RunBatchWorker(stop <-chan struct{}, batchSize int, handler func([]*QueueOp) error) {
 	RunBatchWorker(q, stop, batchSize, handler)
 }
 
+// shutdown queue
 func (q *IngestQueue) Close() error {
 	if atomic.LoadInt32(&q.closed) == 1 {
 		return nil
@@ -326,11 +355,14 @@ func (q *IngestQueue) Close() error {
 	return nil
 }
 
+// get output channel
 func (q *IngestQueue) Out() <-chan *QueueItem {
 	return q.ch
 }
 
+// non-blocking in-memory enqueue
 func (q *IngestQueue) tryEnqueueInMemory(newOp *QueueOp) error {
+	// handle payload buffer
 	var bb *bytebufferpool.ByteBuffer
 	if len(newOp.Payload) > 0 {
 		bb = bytebufferpool.Get()
@@ -355,7 +387,9 @@ func (q *IngestQueue) tryEnqueueInMemory(newOp *QueueOp) error {
 	}
 }
 
+// blocking in-memory enqueue
 func (q *IngestQueue) enqueueInMemory(ctx context.Context, newOp *QueueOp) error {
+	// prepare buffer
 	var bb *bytebufferpool.ByteBuffer
 	if len(newOp.Payload) > 0 {
 		bb = bytebufferpool.Get()
@@ -380,22 +414,16 @@ func (q *IngestQueue) enqueueInMemory(ctx context.Context, newOp *QueueOp) error
 	}
 }
 
-// Package-level dispatcher: prefer the configured backend if present,
-// otherwise fall back to the legacy DefaultIngestQueue pointer.
+// global non-blocking enqueue
 func TryEnqueue(op *QueueOp) error {
-	if defaultBackend != nil {
-		return defaultBackend.TryEnqueue(op)
-	}
 	if DefaultIngestQueue != nil {
 		return DefaultIngestQueue.TryEnqueue(op)
 	}
 	return ErrQueueClosed
 }
 
+// global blocking enqueue
 func Enqueue(ctx context.Context, op *QueueOp) error {
-	if defaultBackend != nil {
-		return defaultBackend.Enqueue(ctx, op)
-	}
 	if DefaultIngestQueue != nil {
 		return DefaultIngestQueue.Enqueue(ctx, op)
 	}

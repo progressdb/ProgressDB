@@ -146,29 +146,12 @@ func (a *App) Run(ctx context.Context) error {
 	sensorObj.Start()
 	a.hwSensor = sensorObj
 
-	// ensure defaultqueue is set (either durable or in-memory)
-	var q *queue.IngestQueue
-	if a.eff.Config.Ingest.Queue.Mode == "durable" {
-		deOpts := queue.DurableEnableOptions{
-			Dir:                 state.WalPath(a.eff.DBPath),
-			Capacity:            a.eff.Config.Ingest.Queue.Capacity,
-			TruncateInterval:    a.eff.Config.Ingest.Queue.Durable.TruncateInterval.Duration(),
-			WALMaxFileSize:      a.eff.Config.Ingest.Queue.Durable.MaxFileSize.Int64(),
-			WALEnableBatch:      a.eff.Config.Ingest.Queue.Durable.EnableBatch,
-			WALBatchSize:        a.eff.Config.Ingest.Queue.Durable.BatchSize,
-			WALBatchInterval:    a.eff.Config.Ingest.Queue.Durable.BatchInterval.Duration(),
-			WALEnableCompress:   a.eff.Config.Ingest.Queue.Durable.EnableCompress,
-			WALCompressMinBytes: a.eff.Config.Ingest.Queue.Durable.CompressMinBytes,
-		}
-		if err := queue.EnableDurable(deOpts); err != nil {
-			logger.Error("failed to enable durable queue, falling back to memory", "error", err)
-			q = queue.NewIngestQueueFromConfig(a.eff.Config.Ingest.Queue)
-			queue.SetDefaultIngestQueue(q)
-		}
-	} else {
-		q = queue.NewIngestQueueFromConfig(a.eff.Config.Ingest.Queue)
-		queue.SetDefaultIngestQueue(q)
+	// create queue based on configuration
+	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue, a.eff.DBPath)
+	if err != nil {
+		return fmt.Errorf("failed to create queue: %w", err)
 	}
+	queue.SetDefaultIngestQueue(q)
 	p := ingest.NewProcessor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Processor)
 	ingest.RegisterDefaultHandlers(p)
 	p.Start()
@@ -194,10 +177,9 @@ func (a *App) Run(ctx context.Context) error {
 		if a.ingestMonitorCancel != nil {
 			a.ingestMonitorCancel()
 		}
-		if queue.DefaultBackend() != nil {
-			queue.DefaultBackend().Close()
+		if queue.DefaultIngestQueue != nil {
+			_ = queue.DefaultIngestQueue.Close()
 		}
-		_ = queue.CloseDurable()
 
 		if a.ingestProc != nil {
 			a.ingestProc.Stop(context.Background())

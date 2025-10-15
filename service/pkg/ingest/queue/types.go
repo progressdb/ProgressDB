@@ -46,15 +46,6 @@ type QueueItem struct {
 	Q    *IngestQueue
 }
 
-// QueueBackend is a pluggable queue backend (memory or WAL-backed).
-type QueueBackend interface {
-	Enqueue(ctx context.Context, op *QueueOp) error
-	TryEnqueue(op *QueueOp) error
-	Out() <-chan *QueueItem
-	Close() error
-	ack(offset int64)
-}
-
 // Max buffer size for pooling. Larger ones are not pooled.
 var maxPooledBuffer = 256 * 1024 // 256 KiB
 
@@ -62,12 +53,11 @@ const opRecordVersion = 0x1
 
 // Queue is the core queue/engine type used package-wide.
 type IngestQueue struct {
-	backend QueueBackend
-
-	ch       chan *QueueItem
-	capacity int
-	dropped  uint64
-	closed   int32
+	ch                chan *QueueItem
+	capacity          int
+	dropped           uint64
+	closed            int32
+	drainPollInterval time.Duration
 
 	enqWg     sync.WaitGroup
 	closeOnce sync.Once
@@ -90,17 +80,13 @@ const (
 )
 
 type IngestQueueOptions struct {
-	Capacity         int
-	WAL              WAL
-	Mode             string
-	Recover          bool
-	TruncateInterval time.Duration
-	WalBacked        bool
-}
-
-// memoryBackend implements QueueBackend using an in-memory queue.
-type InMemoryBackend struct {
-	q *IngestQueue
+	Capacity          int
+	WAL               WAL
+	Mode              string
+	Recover           bool
+	TruncateInterval  time.Duration
+	WalBacked         bool
+	DrainPollInterval time.Duration
 }
 
 // SharedBuf is a ByteBuffer with atomic refcounting, to share between WAL and consumers.
@@ -143,21 +129,6 @@ type DurableWALConfigOptions struct {
 	BatchInterval    time.Duration
 	EnableCompress   bool
 	CompressMinBytes int64
-}
-
-// DurableEnableOptions is used for configuring a WAL-backed queue.
-type DurableEnableOptions struct {
-	Dir              string
-	Capacity         int
-	TruncateInterval time.Duration
-
-	// WAL configuration
-	WALMaxFileSize      int64
-	WALEnableBatch      bool
-	WALBatchSize        int
-	WALBatchInterval    time.Duration
-	WALEnableCompress   bool
-	WALCompressMinBytes int64
 }
 
 // walFile holds file info for WAL segments.

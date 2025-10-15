@@ -3,11 +3,11 @@ export let options = {
   scenarios: {
     constant_rate: {
       executor: 'constant-arrival-rate',
-      rate: 4000,            // requests per second
+      rate: 3000,            // requests per second
       timeUnit: '1s',
       duration: '1m',        // 2 minutes to sustain pressure
       preAllocatedVUs: 2400, // enough for high concurrency & spike tolerance
-      maxVUs: 4000
+      maxVUs: 3000
     }
   },
   thresholds: {

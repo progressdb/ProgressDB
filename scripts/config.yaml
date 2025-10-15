@@ -22,7 +22,7 @@ security:
     frontend: ["pk_example"]
     admin: ["admin_example"]
   encryption:
-    use: true
+    use: false
     fields: ["body"]
   kms:
     endpoint: "127.0.0.1:6820"

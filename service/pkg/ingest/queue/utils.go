@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"container/heap"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -324,11 +323,8 @@ func deserializeOp(b []byte) (*QueueOp, error) {
 var queueOpPool = sync.Pool{New: func() any { return &QueueOp{} }}
 var queueItemPool = sync.Pool{New: func() any { return &QueueItem{} }}
 
-// DefaultIngestQueue and backend vars/functions
+// DefaultIngestQueue
 var DefaultIngestQueue *IngestQueue
-var defaultQueueBackend QueueBackend
-
-func DefaultBackend() QueueBackend { return defaultQueueBackend }
 
 // Item helpers moved from types.go
 func (it *QueueItem) Done() {
@@ -376,14 +372,6 @@ func (it *QueueItem) CopyPayload() []byte {
 	}
 	return nil
 }
-
-// memoryBackend methods
-func (m *InMemoryBackend) Enqueue(ctx context.Context, op *QueueOp) error {
-	return m.q.Enqueue(ctx, op)
-}
-func (m *InMemoryBackend) TryEnqueue(op *QueueOp) error { return m.q.TryEnqueue(op) }
-func (m *InMemoryBackend) Out() <-chan *QueueItem       { return m.q.Out() }
-func (m *InMemoryBackend) Close() error                 { m.q.Close(); return nil }
 
 // sharedBuf methods
 func (s *SharedBuf) inc() { atomic.AddInt32(&s.refs, 1) }

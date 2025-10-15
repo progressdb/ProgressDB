@@ -567,7 +567,18 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 		panic("queue.NewIngestQueueWithOptions: opts and opts.Capacity must be provided; ensure config.ValidateConfig() applied defaults")
 	}
 	cap := opts.Capacity
-	q := &IngestQueue{ch: make(chan *QueueItem, cap), capacity: cap, outstanding: make(map[int64]struct{}), outstandingH: offsetHeap{}, lastTruncated: -1}
+	drainInterval := opts.DrainPollInterval
+	if drainInterval == 0 {
+		drainInterval = 250 * time.Microsecond // default
+	}
+	q := &IngestQueue{
+		ch:                make(chan *QueueItem, cap),
+		capacity:          cap,
+		drainPollInterval: drainInterval,
+		outstanding:       make(map[int64]struct{}),
+		outstandingH:      offsetHeap{},
+		lastTruncated:     -1,
+	}
 	q.walBacked = opts.WalBacked
 	if opts != nil && opts.WAL != nil {
 		q.wal = opts.WAL
@@ -625,53 +636,6 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 		}()
 	}
 	return q
-}
-
-var activeDurable *DurableFile
-
-// EnableDurable attempts to enable a DurableFile under the provided options
-// and replaces the package DefaultIngestQueue with a durable-backed queue. Best
-// effort: callers may ignore errors and continue with the in-memory queue.
-func EnableDurable(opts DurableEnableOptions) error {
-	if opts.Dir == "" {
-		return nil
-	}
-
-	wopts := DurableWALConfigOptions{
-		Dir:              opts.Dir,
-		MaxFileSize:      opts.WALMaxFileSize,
-		EnableBatch:      opts.WALEnableBatch,
-		BatchSize:        opts.WALBatchSize,
-		BatchInterval:    opts.WALBatchInterval,
-		EnableCompress:   opts.WALEnableCompress,
-		CompressMinBytes: opts.WALCompressMinBytes,
-	}
-	w, err := New(wopts)
-	if err != nil {
-		return err
-	}
-	activeDurable = w
-	qopts := &IngestQueueOptions{
-		Capacity:         opts.Capacity,
-		WAL:              w,
-		Mode:             "batch",
-		Recover:          true,
-		TruncateInterval: opts.TruncateInterval,
-		WalBacked:        true,
-	}
-	q := NewIngestQueueWithOptions(qopts)
-	SetDefaultIngestQueue(q)
-	return nil
-}
-
-// CloseDurable closes the active WAL if any.
-func CloseDurable() error {
-	if activeDurable == nil {
-		return nil
-	}
-	err := activeDurable.Close()
-	activeDurable = nil
-	return err
 }
 
 func (w *DurableFile) readRecords(f *os.File, fileNum int) ([]WALRecord, error) {
