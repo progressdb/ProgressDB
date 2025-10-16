@@ -59,7 +59,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
 		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
 	}
-	if !appWALenabled && pebbleWALdisabled && eff.Config.Ingest.Queue.Durable.RecoverOnStartup {
+	if !appWALenabled && pebbleWALdisabled {
 		var flushMs int
 		if eff.Config.Ingest.Queue.Mode == "memory" {
 			flushMs = eff.Config.Ingest.Queue.Memory.FlushIntervalMs

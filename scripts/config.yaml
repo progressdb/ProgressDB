@@ -35,14 +35,14 @@ retention:
 
 ingest:
   ingestor:
-    worker_count: 12
+    worker_count: 16
   queue:
     mode: memory
     buffer_capacity: 1_000_000
     shutdown_poll_interval: 5ms
     memory:
-      flush_batch_size: 1
-      flush_interval_ms: 1
+      flush_batch_size: 10_000
+      flush_interval_ms: 50
     durable:
       recover_on_startup: true
       flush_batch_size: 1_000

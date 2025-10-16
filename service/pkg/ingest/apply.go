@@ -11,10 +11,10 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// applyBatchToDB persists a list of BatchEntry items to the store.
+// ApplyBatchToDB persists a list of BatchEntry items to the store.
 // Message entries are saved via store.SaveMessage (handles encryption and sequencing).
 // Thread entries are processed with SaveThread or SoftDeleteThread as appropriate.
-func applyBatchToDB(entries []BatchEntry) error {
+func ApplyBatchToDB(entries []BatchEntry) error {
 	tr := telemetry.Track("ingest.apply_batch")
 	defer tr.Finish()
 

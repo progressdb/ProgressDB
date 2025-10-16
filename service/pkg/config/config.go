@@ -13,7 +13,7 @@ import (
 
 // Defaults and limits for queue/WAL configuration
 const (
-	defaultQueueCapacity    = 1048576                // 1M as per new config
+	defaultQueueCapacity    = 4 * 1024 * 1024        // 4M for higher buffer
 	defaultWALMaxFileSize   = 2 * 1024 * 1024 * 1024 // 2 GiB
 	defaultWALBatchInterval = 10 * time.Millisecond
 	defaultWALBatchSize     = 4096

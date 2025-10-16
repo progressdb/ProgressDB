@@ -118,17 +118,13 @@ func (tr *Trace) Finish() {
 	}
 
 	// Optional quick stdout feedback
-	fmt.Printf("Trace: %s (%.2fms)\n", tr.Name, tr.TotalMS)
-	for _, s := range tr.Steps {
-		fmt.Printf("  ↳ %-25s %.2fms\n", s.Name, s.Duration)
-	}
+	// fmt.Printf("Trace: %s (%.2fms)\n", tr.Name, tr.TotalMS)
+	// for _, s := range tr.Steps {
+	// 	fmt.Printf("  ↳ %-25s %.2fms\n", s.Name, s.Duration)
+	// }
 
-	select {
-	case tr.tel.traces <- tr:
-	default:
-		// drop if queue full
-	}
-	tr.tel = nil // prevent re-send on multiple Finish() calls
+	tr.tel.traces <- tr // block if queue full
+	tr.tel = nil        // prevent re-send on multiple Finish() calls
 }
 
 func (t *Telemetry) writerLoop() {

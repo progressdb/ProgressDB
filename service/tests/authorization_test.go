@@ -63,15 +63,15 @@ func TestAuthorization_Suite(t *testing.T) {
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
-security:
-  cors:
-    allowed_origins: ["https://allowed.example"]
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["%s", "%s"]
-    frontend: ["frontend-secret"]
-    admin: ["admin-secret"]
+  security:
+    cors:
+      allowed_origins: ["https://allowed.example"]
+    kms:
+      master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    api_keys:
+      backend: ["%s", "%s"]
+      frontend: ["frontend-secret"]
+      admin: ["admin-secret"]
 logging:
   level: info`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
@@ -173,13 +173,13 @@ logging:
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["%s", "%s"]
-    frontend: ["frontend-secret"]
-    admin: []
+  security:
+    kms:
+      master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    api_keys:
+      backend: ["%s", "%s"]
+      frontend: ["frontend-secret"]
+      admin: []
 logging:
   level: info`, utils.SigningSecret, utils.BackendAPIKey)
 		sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})

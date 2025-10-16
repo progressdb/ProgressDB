@@ -1,11 +1,14 @@
 package logger
 
 import (
+	"bufio"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 var Log *slog.Logger
@@ -15,7 +18,27 @@ var Log *slog.Logger
 // should fall back to the main logger.
 var Audit *slog.Logger
 
-// Init initializes the global slog logger with a simple text handler at Info level.
+type asyncWriter struct {
+	ch chan []byte
+}
+
+func (a *asyncWriter) Write(p []byte) (n int, err error) {
+	cp := make([]byte, len(p))
+	copy(cp, p)
+	select {
+	case a.ch <- cp:
+		return len(p), nil
+	default:
+		// drop if queue full to avoid blocking
+		return len(p), nil
+	}
+}
+
+var logCh chan []byte
+var logStopCh chan struct{}
+var logWG sync.WaitGroup
+
+// Init initializes the global slog logger with async buffered text handler at Info level.
 func Init() {
 	// Allow overriding sink and level via env vars for tests and production
 	sink := os.Getenv("PROGRESSDB_LOG_SINK") // e.g. "file:/path/to/log"
@@ -34,18 +57,46 @@ func Init() {
 		level = slog.LevelInfo
 	}
 
-	if strings.HasPrefix(sink, "file:") {
-		// write logs to file
-		path := strings.TrimPrefix(sink, "file:")
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-		if err == nil {
-			Log = slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: level}))
-			return
+	logCh = make(chan []byte, 10000)
+	logStopCh = make(chan struct{})
+	aw := &asyncWriter{ch: logCh}
+	Log = slog.New(slog.NewTextHandler(aw, &slog.HandlerOptions{Level: level}))
+
+	logWG.Add(1)
+	go func() {
+		defer logWG.Done()
+		var buf *bufio.Writer
+		var f *os.File
+		if strings.HasPrefix(sink, "file:") {
+			path := strings.TrimPrefix(sink, "file:")
+			var err error
+			f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
+				buf = bufio.NewWriterSize(os.Stdout, 8192)
+			} else {
+				buf = bufio.NewWriterSize(f, 8192)
+			}
+		} else {
+			buf = bufio.NewWriterSize(os.Stdout, 8192)
 		}
-		// fallback to stdout
-		fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
-	}
-	Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case b := <-logCh:
+				buf.Write(b)
+			case <-ticker.C:
+				buf.Flush()
+			case <-logStopCh:
+				buf.Flush()
+				if f != nil {
+					f.Close()
+				}
+				return
+			}
+		}
+	}()
 }
 
 // InitWithLevel initializes the global logger but honors the provided
@@ -72,18 +123,46 @@ func InitWithLevel(level string) {
 		lv = slog.LevelInfo
 	}
 
-	if strings.HasPrefix(sink, "file:") {
-		// write logs to file
-		path := strings.TrimPrefix(sink, "file:")
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-		if err == nil {
-			Log = slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv}))
-			return
+	logCh = make(chan []byte, 10000)
+	logStopCh = make(chan struct{})
+	aw := &asyncWriter{ch: logCh}
+	Log = slog.New(slog.NewTextHandler(aw, &slog.HandlerOptions{Level: lv}))
+
+	logWG.Add(1)
+	go func() {
+		defer logWG.Done()
+		var buf *bufio.Writer
+		var f *os.File
+		if strings.HasPrefix(sink, "file:") {
+			path := strings.TrimPrefix(sink, "file:")
+			var err error
+			f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
+				buf = bufio.NewWriterSize(os.Stdout, 8192)
+			} else {
+				buf = bufio.NewWriterSize(f, 8192)
+			}
+		} else {
+			buf = bufio.NewWriterSize(os.Stdout, 8192)
 		}
-		// fallback to stdout
-		fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
-	}
-	Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lv}))
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case b := <-logCh:
+				buf.Write(b)
+			case <-ticker.C:
+				buf.Flush()
+			case <-logStopCh:
+				buf.Flush()
+				if f != nil {
+					f.Close()
+				}
+				return
+			}
+		}
+	}()
 }
 
 // AttachAuditFileSink configures a simple JSON-file audit logger writing to
@@ -138,8 +217,13 @@ func AttachAuditFileSink(auditDir string) error {
 	return nil
 }
 
-// Sync is a no-op for slog handlers used here.
-func Sync() {}
+// Sync flushes any buffered logs.
+func Sync() {
+	if logStopCh != nil {
+		close(logStopCh)
+		logWG.Wait()
+	}
+}
 
 // Debug logs with slog-style key/value pairs.
 func Debug(msg string, args ...any) {

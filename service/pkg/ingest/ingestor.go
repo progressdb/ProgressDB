@@ -30,6 +30,7 @@ type Ingestor struct {
 	// pause state
 	paused int32
 
+	isMemory   bool
 	seqCounter uint64
 	nextCommit uint64
 	commitMu   sync.Mutex
@@ -57,6 +58,7 @@ func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig, qc config.Queue
 		handlers:   make(map[queue.HandlerID]IngestorFunc),
 		maxBatch:   maxBatch,
 		flushDur:   time.Duration(flushMs) * time.Millisecond,
+		isMemory:   qc.Mode == "memory",
 		nextCommit: 1,
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
@@ -134,7 +136,6 @@ func (p *Ingestor) Stop(ctx context.Context) {
 func (p *Ingestor) workerLoop(workerID int) {
 	for {
 		tr := telemetry.Track("ingest.worker_loop")
-		defer tr.Finish()
 		// if paused, wait briefly and re-check
 		if atomic.LoadInt32(&p.paused) == 1 {
 			select {
@@ -151,10 +152,12 @@ func (p *Ingestor) workerLoop(workerID int) {
 		select {
 		case it, ok := <-p.q.Out():
 			if !ok {
+				tr.Finish()
 				return
 			}
 			items = append(items, it)
 		case <-p.stop:
+			tr.Finish()
 			return
 		}
 
@@ -204,11 +207,13 @@ func (p *Ingestor) workerLoop(workerID int) {
 			}
 		}
 
-		// apply accumulated batch entries in commit order
-		p.waitForCommit(seqID)
+		// apply accumulated batch entries in commit order (skip for memory mode)
+		if !p.isMemory {
+			p.waitForCommit(seqID)
+		}
 		if len(batchEntries) > 0 {
 			tr := telemetry.Track("ingest.worker_batch_apply")
-			if err := applyBatchToDB(batchEntries); err != nil {
+			if err := ApplyBatchToDB(batchEntries); err != nil {
 				logger.Error("apply_batch_failed", "err", err)
 				// TODO: retry / DLQ
 			} else {
@@ -219,7 +224,10 @@ func (p *Ingestor) workerLoop(workerID int) {
 			}
 			tr.Finish()
 		}
-		p.markCommitted(seqID)
+		if !p.isMemory {
+			p.markCommitted(seqID)
+		}
+		tr.Finish()
 	}
 }
 

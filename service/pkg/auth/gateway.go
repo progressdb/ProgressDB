@@ -7,7 +7,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/logger"
-	"progressdb/pkg/telemetry"
+	// "progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 )
 
@@ -16,12 +16,12 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 	limiters := &limiterPool{cfg: cfg}
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return func(ctx *fasthttp.RequestCtx) {
-			tr := telemetry.Track("auth.middleware")
-			defer tr.Finish()
+			// tr := telemetry.Track("auth.middleware")
+			// defer tr.Finish()
 
 			// log each req with redacted headers
-			logger.LogRequestFast(ctx)
-			tr.Mark("log_request")
+			// logger.LogRequestFast(ctx)
+			// tr.Mark("log_request")
 
 			// CORS preflight
 			origin := string(ctx.Request.Header.Peek("Origin"))
@@ -34,7 +34,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-API-Key,X-User-ID,X-User-Signature")
 				ctx.Response.Header.Set("Access-Control-Expose-Headers", "X-Role-Name")
 			}
-			tr.Mark("cors")
+			// tr.Mark("cors")
 			// - if method is not a standard method
 			if string(ctx.Method()) == fasthttp.MethodOptions {
 				ctx.SetStatusCode(fasthttp.StatusNoContent)
@@ -51,18 +51,18 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 					return
 				}
 			}
-			tr.Mark("ip_check")
+			// tr.Mark("ip_check")
 
 			// extract possible api_key info
 			role, key, hasAPIKey := authenticateFast(ctx, cfg)
 			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
-			tr.Mark("authenticate")
+			// tr.Mark("authenticate")
 
 			// allow access to health & ready checkeers
-			if (string(ctx.Path()) == "/healthz" || string(ctx.Path()) == "/readyz") && string(ctx.Method()) == fasthttp.MethodGet {
+			if publicAllowedPath(ctx) {
 				ctx.Request.Header.Set("X-Role-Name", "unauth")
 				next(ctx)
-				tr.Mark("health_check")
+				// tr.Mark("health_check")
 				return
 			}
 
@@ -78,27 +78,27 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 			default:
 				roleName = "unauth"
 			}
-			tr.Mark("role_resolution")
+			// tr.Mark("role_resolution")
 
 			// enforce api_key required
 			if role == RoleUnauth || !hasAPIKey {
 				utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
-				tr.Mark("api_key_validation")
+				// tr.Mark("api_key_validation")
 				return
 			} else {
 				ctx.Request.Header.Set("X-Role-Name", roleName)
 			}
-			tr.Mark("api_key_validation")
+			// tr.Mark("api_key_validation")
 
 			// enforce frontend routes only
 			if role == RoleFrontend && !frontendAllowedFast(ctx) {
 				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
-				tr.Mark("frontend_check")
+				// tr.Mark("frontend_check")
 				return
 			}
-			tr.Mark("frontend_check")
+			// tr.Mark("frontend_check")
 
 			// enforce admin_key <> admin routes only
 			if role == RoleAdmin {
@@ -106,25 +106,25 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				if !strings.HasPrefix(path, "/admin") {
 					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
 					logger.Warn("admin_route_violation", "path", path, "remote", ctx.RemoteAddr().String())
-					tr.Mark("admin_check")
+					// tr.Mark("admin_check")
 					return
 				}
 			}
-			tr.Mark("admin_check")
+			// tr.Mark("admin_check")
 
 			// enforce rate_limiting per api key
 			if !limiters.Allow(key) {
 				utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
-				tr.Mark("rate_limit")
+				// tr.Mark("rate_limit")
 				return
 			}
-			tr.Mark("rate_limit")
+			// tr.Mark("rate_limit")
 
 			// allow request through
-			logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
+			// logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
 			next(ctx)
-			tr.Mark("allow_request")
+			// tr.Mark("allow_request")
 		}
 	}
 }
@@ -143,12 +143,12 @@ func authenticateFast(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bo
 	var key string
 
 	// log raw Authorization and X-API-Key values
-	logger.Info("auth_headers_received",
-		"authorization_raw", auth,
-		"x_api_key_raw", string(ctx.Request.Header.Peek("X-API-Key")),
-		"remote", ctx.RemoteAddr().String(),
-		"path", string(ctx.Path()),
-	)
+	// logger.Info("auth_headers_received",
+	// 	"authorization_raw", auth,
+	// 	"x_api_key_raw", string(ctx.Request.Header.Peek("X-API-Key")),
+	// 	"remote", ctx.RemoteAddr().String(),
+	// 	"path", string(ctx.Path()),
+	// )
 
 	// accept both "Bearer " and "bearer " prefixes, case-insensitive
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ") {
@@ -162,33 +162,33 @@ func authenticateFast(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bo
 
 	// if still nothing, treat as unauthenticated (by ip)
 	if key == "" {
-		logger.Info("unauthenticated_request", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()), "reason", "no_api_key")
+		// logger.Info("unauthenticated_request", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()), "reason", "no_api_key")
 		return RoleUnauth, clientIPFast(ctx), false
 	}
 
 	// admin keys take precedence
 	if cfg.AdminKeys != nil {
 		if _, ok := cfg.AdminKeys[key]; ok {
-			logger.Info("api_key_authenticated", "role", "admin", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			// logger.Info("api_key_authenticated", "role", "admin", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 			return RoleAdmin, key, true
 		}
 	}
 	// backend keys
 	if cfg.BackendKeys != nil {
 		if _, ok := cfg.BackendKeys[key]; ok {
-			logger.Info("api_key_authenticated", "role", "backend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			// logger.Info("api_key_authenticated", "role", "backend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 			return RoleBackend, key, true
 		}
 	}
 	// frontend keys
 	if cfg.FrontendKeys != nil {
 		if _, ok := cfg.FrontendKeys[key]; ok {
-			logger.Info("api_key_authenticated", "role", "frontend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			// logger.Info("api_key_authenticated", "role", "frontend", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 			return RoleFrontend, key, true
 		}
 	}
 	// unrecognized api key, but present
-	logger.Warn("unrecognized_api_key", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+	// logger.Warn("unrecognized_api_key", "key_raw", key, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 	return RoleUnauth, key, true
 }
 
@@ -224,5 +224,24 @@ func ipWhitelisted(ip string, list []string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// standard or not auth paths
+func publicAllowedPath(ctx *fasthttp.RequestCtx) bool {
+	path := string(ctx.Path())
+	method := string(ctx.Method())
+
+	// Allow health and ready checks (GET only)
+	if (path == "/healthz" || path == "/readyz") && method == fasthttp.MethodGet {
+		return true
+	}
+
+	// Allow /admin/debug/pprof and subpaths (GET only)
+	if strings.HasPrefix(path, "/admin/debug/pprof") && method == fasthttp.MethodGet {
+		return true
+	}
+
+	// Add other public endpoints as needed
 	return false
 }
