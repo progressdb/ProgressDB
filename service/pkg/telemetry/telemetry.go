@@ -153,7 +153,7 @@ func (t *Telemetry) writerLoop() {
 			for name, b := range t.buffers {
 				b.Flush()
 				f := t.files[name]
-				const bytesPerMB = 1024 * 1024
+				const bytesPerMB = 40 * 1024 * 1024
 				if fi, err := f.Stat(); err == nil && fi.Size() > t.maxSizeMB*bytesPerMB {
 					// truncate and recreate file when > max size
 					f.Close()

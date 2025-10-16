@@ -80,8 +80,7 @@ telemetry:
 sensor:
   monitor:
     poll_interval: 500ms
-    wal_high_bytes: 1GiB
-    wal_low_bytes: 700MiB
     disk_high_pct: 80
     disk_low_pct: 60
+    mem_high_pct: 80
     recovery_window: 5s

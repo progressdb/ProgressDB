@@ -39,9 +39,8 @@ type App struct {
 	srvFast *fasthttp.Server
 	state   string
 
-	ingestProc          *ingest.Processor
-	ingestMonitorCancel context.CancelFunc
-	hwSensor            *sensor.Sensor
+	ingestProc *ingest.Processor
+	hwSensor   *sensor.Sensor
 }
 
 // new sets up resources that don't need a running context (db, validation, runtime keys, etc).
@@ -129,7 +128,6 @@ func (a *App) Run(ctx context.Context) error {
 	if err := a.setupKMS(ctx); err != nil {
 		return err
 	}
-
 	a.printBanner()
 
 	// start retention scheduler if enabled
@@ -140,12 +138,7 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
-	// start hardware sensor
-	sensorObj := sensor.NewSensor(500 * time.Millisecond)
-	sensorObj.Start()
-	a.hwSensor = sensorObj
-
-	// create queue based on configuration
+	// config based basqueue
 	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue, a.eff.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)
@@ -156,36 +149,38 @@ func (a *App) Run(ctx context.Context) error {
 	p.Start()
 	a.ingestProc = p
 
-	// start pebble monitor
+	// start hardware sensor
 	mon := sensor.MonitorConfig{
 		PollInterval:   a.eff.Config.Sensor.Monitor.PollInterval.Duration(),
-		WALHighBytes:   uint64(a.eff.Config.Sensor.Monitor.WALHighBytes.Int64()),
-		WALLowBytes:    uint64(a.eff.Config.Sensor.Monitor.WALLowBytes.Int64()),
 		DiskHighPct:    a.eff.Config.Sensor.Monitor.DiskHighPct,
 		DiskLowPct:     a.eff.Config.Sensor.Monitor.DiskLowPct,
+		MemHighPct:     a.eff.Config.Sensor.Monitor.MemHighPct,
 		RecoveryWindow: a.eff.Config.Sensor.Monitor.RecoveryWindow.Duration(),
 	}
-	cancelMonitor := sensor.StartPebbleMonitor(ctx, p, sensorObj, mon)
-	a.ingestMonitorCancel = cancelMonitor
+	sensorObj := sensor.NewSensor(mon)
+	sensorObj.Start()
+	a.hwSensor = sensorObj
 
 	errCh := a.startHTTP(ctx)
 
 	select {
 	case <-ctx.Done():
 		// shutdown ingest and sensor
-		if a.ingestMonitorCancel != nil {
-			a.ingestMonitorCancel()
-		}
 		if queue.DefaultIngestQueue != nil {
 			_ = queue.DefaultIngestQueue.Close()
 		}
 
+		// stop processor
 		if a.ingestProc != nil {
 			a.ingestProc.Stop(context.Background())
 		}
+
+		// stop sensor
 		if a.hwSensor != nil {
 			a.hwSensor.Stop()
 		}
+
+		// close tel
 		telemetry.Close()
 		return nil
 	case err := <-errCh:

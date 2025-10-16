@@ -202,11 +202,10 @@ type TelemetryConfig struct {
 // SensorConfig holds sensor related tuning knobs.
 type SensorConfig struct {
 	Monitor struct {
-		PollInterval   Duration  `yaml:"poll_interval"`
-		WALHighBytes   SizeBytes `yaml:"wal_high_bytes"`
-		WALLowBytes    SizeBytes `yaml:"wal_low_bytes"`
-		DiskHighPct    int       `yaml:"disk_high_pct"`
-		DiskLowPct     int       `yaml:"disk_low_pct"`
-		RecoveryWindow Duration  `yaml:"recovery_window"`
+		PollInterval   Duration `yaml:"poll_interval"`
+		DiskHighPct    int      `yaml:"disk_high_pct"`
+		DiskLowPct     int      `yaml:"disk_low_pct"`
+		MemHighPct     int      `yaml:"mem_high_pct"`
+		RecoveryWindow Duration `yaml:"recovery_window"`
 	} `yaml:"monitor"`
 }

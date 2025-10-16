@@ -38,10 +38,9 @@ const (
 	defaultTelemetrySlowMs     = 200
 	// sensor defaults
 	defaultSensorPollInterval   = 500 * time.Millisecond
-	defaultSensorWALHighBytes   = 1 << 30 // 1 GiB
-	defaultSensorWALLowBytes    = 700 << 20
 	defaultSensorDiskHighPct    = 80
 	defaultSensorDiskLowPct     = 60
+	defaultSensorMemHighPct     = 80
 	defaultSensorRecoveryWindow = 5 * time.Second
 )
 
@@ -201,17 +200,14 @@ func (c *Config) ValidateConfig() error {
 	if c.Sensor.Monitor.PollInterval.Duration() == 0 {
 		c.Sensor.Monitor.PollInterval = Duration(defaultSensorPollInterval)
 	}
-	if c.Sensor.Monitor.WALHighBytes.Int64() == 0 {
-		c.Sensor.Monitor.WALHighBytes = SizeBytes(defaultSensorWALHighBytes)
-	}
-	if c.Sensor.Monitor.WALLowBytes.Int64() == 0 {
-		c.Sensor.Monitor.WALLowBytes = SizeBytes(defaultSensorWALLowBytes)
-	}
 	if c.Sensor.Monitor.DiskHighPct == 0 {
 		c.Sensor.Monitor.DiskHighPct = defaultSensorDiskHighPct
 	}
 	if c.Sensor.Monitor.DiskLowPct == 0 {
 		c.Sensor.Monitor.DiskLowPct = defaultSensorDiskLowPct
+	}
+	if c.Sensor.Monitor.MemHighPct == 0 {
+		c.Sensor.Monitor.MemHighPct = defaultSensorMemHighPct
 	}
 	if c.Sensor.Monitor.RecoveryWindow.Duration() == 0 {
 		c.Sensor.Monitor.RecoveryWindow = Duration(defaultSensorRecoveryWindow)

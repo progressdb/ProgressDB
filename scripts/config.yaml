@@ -51,11 +51,11 @@ ingest:
     max_batch_msgs: 512
     flush_ms: 5
   queue:
-    mode: durable
-    capacity: 8192
-    batch_size: 128
-    drain_poll_interval: 2ms
-    max_pooled_buffer_bytes: 64MB
+    mode: memory
+    capacity: 10_000
+    batch_size: 1_000
+    drain_poll_interval: 10ms
+    max_pooled_buffer_bytes: 512MB
     memory:
       recover: false
       truncate_interval: 0s
@@ -78,9 +78,8 @@ telemetry:
 
 sensor:
   monitor:
-    poll_interval: 500ms
-    wal_high_bytes: 1GiB
-    wal_low_bytes: 700MiB
+    poll_interval: 60s
     disk_high_pct: 80
-    disk_low_pct: 60
+    # disk_low_pct: 60
+    mem_high_pct: 80
     recovery_window: 5s

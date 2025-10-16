@@ -110,10 +110,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 
 		// sensor.monitor
 		"SENSOR_MONITOR_POLL_INTERVAL":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_POLL_INTERVAL"),
-		"SENSOR_MONITOR_WAL_HIGH_BYTES":  os.Getenv("PROGRESSDB_SENSOR_MONITOR_WAL_HIGH_BYTES"),
-		"SENSOR_MONITOR_WAL_LOW_BYTES":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_WAL_LOW_BYTES"),
 		"SENSOR_MONITOR_DISK_HIGH_PCT":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_HIGH_PCT"),
 		"SENSOR_MONITOR_DISK_LOW_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_LOW_PCT"),
+		"SENSOR_MONITOR_MEM_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_MEM_HIGH_PCT"),
 		"SENSOR_MONITOR_RECOVERY_WINDOW": os.Getenv("PROGRESSDB_SENSOR_MONITOR_RECOVERY_WINDOW"),
 
 		// logging
@@ -377,12 +376,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["SENSOR_MONITOR_POLL_INTERVAL"]; v != "" {
 		envCfg.Sensor.Monitor.PollInterval = parseDuration(v)
 	}
-	if v := envs["SENSOR_MONITOR_WAL_HIGH_BYTES"]; v != "" {
-		envCfg.Sensor.Monitor.WALHighBytes = parseSizeBytes(v)
-	}
-	if v := envs["SENSOR_MONITOR_WAL_LOW_BYTES"]; v != "" {
-		envCfg.Sensor.Monitor.WALLowBytes = parseSizeBytes(v)
-	}
 	if v := envs["SENSOR_MONITOR_DISK_HIGH_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 			envCfg.Sensor.Monitor.DiskHighPct = n
@@ -391,6 +384,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["SENSOR_MONITOR_DISK_LOW_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 			envCfg.Sensor.Monitor.DiskLowPct = n
+		}
+	}
+	if v := envs["SENSOR_MONITOR_MEM_HIGH_PCT"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Sensor.Monitor.MemHighPct = n
 		}
 	}
 	if v := envs["SENSOR_MONITOR_RECOVERY_WINDOW"]; v != "" {
