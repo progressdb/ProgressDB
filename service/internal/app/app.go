@@ -39,8 +39,8 @@ type App struct {
 	srvFast *fasthttp.Server
 	state   string
 
-	ingestProc *ingest.Processor
-	hwSensor   *sensor.Sensor
+	ingestIngestor *ingest.Ingestor
+	hwSensor       *sensor.Sensor
 }
 
 // new sets up resources that don't need a running context (db, validation, runtime keys, etc).
@@ -60,15 +60,15 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
 	}
 	if !appWALenabled && pebbleWALdisabled {
-		procFlush := time.Duration(eff.Config.Ingest.Processor.FlushMs) * time.Millisecond
+		procFlush := time.Duration(eff.Config.Ingest.Ingestor.FlushMs) * time.Millisecond
 		truncate := eff.Config.Ingest.Queue.Durable.TruncateInterval.Duration()
 		lossWindow := procFlush
 		if truncate > lossWindow {
 			lossWindow = truncate
 		}
 		queueCapacity := eff.Config.Ingest.Queue.Capacity
-		procWorkers := eff.Config.Ingest.Processor.Workers
-		procBatch := eff.Config.Ingest.Processor.MaxBatchMsgs
+		procWorkers := eff.Config.Ingest.Ingestor.Workers
+		procBatch := eff.Config.Ingest.Ingestor.MaxBatchMsgs
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
 		lossWindowHuman := lossWindow.String()
@@ -90,11 +90,17 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// telemetry setup
-	telemetry.Init(state.PathsVar.Tel)
+	telemetry.Init(
+		state.PathsVar.Tel,
+		int(eff.Config.Telemetry.BufferSize.Int64()),
+		eff.Config.Telemetry.QueueCapacity,
+		eff.Config.Telemetry.FlushInterval.Duration(),
+		eff.Config.Telemetry.FileMaxSize.Int64(),
+	)
 
 	// setup runtime keys
 	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-	for _, k := range eff.Config.Security.APIKeys.Backend {
+	for _, k := range eff.Config.Server.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}
@@ -144,10 +150,9 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 	queue.SetDefaultIngestQueue(q)
-	p := ingest.NewProcessor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Processor)
-	ingest.RegisterDefaultHandlers(p)
-	p.Start()
-	a.ingestProc = p
+	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor)
+	ingestor.Start()
+	a.ingestIngestor = ingestor
 
 	// start hardware sensor
 	mon := sensor.MonitorConfig{
@@ -155,6 +160,7 @@ func (a *App) Run(ctx context.Context) error {
 		DiskHighPct:    a.eff.Config.Sensor.Monitor.DiskHighPct,
 		DiskLowPct:     a.eff.Config.Sensor.Monitor.DiskLowPct,
 		MemHighPct:     a.eff.Config.Sensor.Monitor.MemHighPct,
+		CPUHighPct:     a.eff.Config.Sensor.Monitor.CPUHighPct,
 		RecoveryWindow: a.eff.Config.Sensor.Monitor.RecoveryWindow.Duration(),
 	}
 	sensorObj := sensor.NewSensor(mon)
@@ -170,9 +176,9 @@ func (a *App) Run(ctx context.Context) error {
 			_ = queue.DefaultIngestQueue.Close()
 		}
 
-		// stop processor
-		if a.ingestProc != nil {
-			a.ingestProc.Stop(context.Background())
+		// stop ingestor
+		if a.ingestIngestor != nil {
+			a.ingestIngestor.Stop(context.Background())
 		}
 
 		// stop sensor
@@ -190,7 +196,7 @@ func (a *App) Run(ctx context.Context) error {
 
 // initFieldPolicy installs the encryption field policy from the effective config
 func initFieldPolicy(eff config.EffectiveConfigResult) error {
-	fieldPaths := eff.Config.Security.Encryption.Fields
+	fieldPaths := eff.Config.Encryption.Fields
 	if len(fieldPaths) == 0 {
 		return nil
 	}

@@ -36,8 +36,8 @@ func validateConfig(eff config.EffectiveConfigResult) error {
 	}
 
 	// If encryption is enabled (either in config or via env), ensure a master key is provided
-	useEnc := eff.Config.Security.Encryption.Use
-	if ev := os.Getenv("PROGRESSDB_USE_ENCRYPTION"); ev != "" {
+	useEnc := eff.Config.Encryption.Enabled
+	if ev := os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"); ev != "" {
 		switch ev := ev; ev {
 		case "1", "true", "yes", "True", "TRUE":
 			useEnc = true
@@ -46,8 +46,8 @@ func validateConfig(eff config.EffectiveConfigResult) error {
 		}
 	}
 	if useEnc {
-		mkFile := eff.Config.Security.KMS.MasterKeyFile
-		mkHex := eff.Config.Security.KMS.MasterKeyHex
+		mkFile := eff.Config.Encryption.KMS.MasterKeyFile
+		mkHex := eff.Config.Encryption.KMS.MasterKeyHex
 		if mkFile == "" && mkHex == "" {
 			return fmt.Errorf("encryption enabled but no master key provided: set security.kms.master_key_file or security.kms.master_key_hex")
 		}

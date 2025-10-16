@@ -1,38 +1,37 @@
 server:
-  # Server listen address and TLS settings
-  address: "0.0.0.0"
-  port: 8080
-  db_path: "./database"
-  tls:
-    cert_file: ""
-    key_file: ""
+   address: "0.0.0.0"
+   port: 8080
+   db_path: "./database"
+   tls:
+     cert_file: ""
+     key_file: ""
+   cors:
+     allowed_origins:
+       - "http://localhost:3000"
+       - "http://127.0.0.1:3000"
+   rate_limit:
+     rps: 1000_0000
+     burst: 2000_0000
+   ip_whitelist:
+     # - "127.0.0.1"
+   api_keys:
+     backend: ["sk_example"]
+     frontend: ["pk_example"]
+     admin: ["admin_example"]
 
-security:
-  cors:
-    allowed_origins:
-      - "http://localhost:3000"
-      - "http://127.0.0.1:3000"
-  rate_limit:
-    rps: 1000_0000
-    burst: 2000_0000
-  ip_whitelist:
-    # - "127.0.0.1"
-  api_keys:
-    backend: ["sk_example"]
-    frontend: ["pk_example"]
-    admin: ["admin_example"]
-  encryption:
-    use: false
-    fields: []
+logging:
+  level: "info"
+
+encryption:
+  enabled: false
+  fields: []
   kms:
+    mode: "embedded"
     endpoint: "127.0.0.1:6820"
     data_dir: "./kms-data"
     binary: "/usr/local/bin/progressdb-kms"
     master_key_file: ""
     master_key_hex: ""
-
-logging:
-  level: "info"
 
 retention:
   enabled: false
@@ -76,6 +75,10 @@ ingest:
 telemetry:
   sample_rate: 0.001
   slow_threshold: 200ms
+  buffer_size: 60MB
+  file_max_size: 40MB
+  flush_interval: 2s
+  queue_capacity: 2048
 
 sensor:
   monitor:
@@ -83,4 +86,6 @@ sensor:
     disk_high_pct: 80
     disk_low_pct: 60
     mem_high_pct: 80
+    cpu_high_pct: 90
     recovery_window: 5s
+

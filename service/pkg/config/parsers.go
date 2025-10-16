@@ -84,11 +84,12 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"API_BACKEND_KEYS":    os.Getenv("PROGRESSDB_API_BACKEND_KEYS"),
 		"API_FRONTEND_KEYS":   os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"),
 		"API_ADMIN_KEYS":      os.Getenv("PROGRESSDB_API_ADMIN_KEYS"),
+		"KMS_MODE":            os.Getenv("PROGRESSDB_KMS_MODE"),
 		"KMS_ENDPOINT":        os.Getenv("PROGRESSDB_KMS_ENDPOINT"),
 		"KMS_DATA_DIR":        os.Getenv("PROGRESSDB_KMS_DATA_DIR"),
 		"KMS_MASTER_KEY_FILE": os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"),
 		"KMS_MASTER_KEY_HEX":  os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
-		"USE_ENCRYPTION":      os.Getenv("PROGRESSDB_USE_ENCRYPTION"),
+		"ENCRYPTION_ENABLED":  os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"),
 		"TLS_CERT":            os.Getenv("PROGRESSDB_TLS_CERT"),
 		"TLS_KEY":             os.Getenv("PROGRESSDB_TLS_KEY"),
 
@@ -107,12 +108,17 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		// telemetry
 		"TELEMETRY_SAMPLE_RATE":    os.Getenv("PROGRESSDB_TELEMETRY_SAMPLE_RATE"),
 		"TELEMETRY_SLOW_THRESHOLD": os.Getenv("PROGRESSDB_TELEMETRY_SLOW_THRESHOLD"),
+		"TELEMETRY_BUFFER_SIZE":    os.Getenv("PROGRESSDB_TELEMETRY_BUFFER_SIZE"),
+		"TELEMETRY_FILE_MAX_SIZE":  os.Getenv("PROGRESSDB_TELEMETRY_FILE_MAX_SIZE"),
+		"TELEMETRY_FLUSH_INTERVAL": os.Getenv("PROGRESSDB_TELEMETRY_FLUSH_INTERVAL"),
+		"TELEMETRY_QUEUE_CAPACITY": os.Getenv("PROGRESSDB_TELEMETRY_QUEUE_CAPACITY"),
 
 		// sensor.monitor
 		"SENSOR_MONITOR_POLL_INTERVAL":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_POLL_INTERVAL"),
 		"SENSOR_MONITOR_DISK_HIGH_PCT":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_HIGH_PCT"),
 		"SENSOR_MONITOR_DISK_LOW_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_LOW_PCT"),
 		"SENSOR_MONITOR_MEM_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_MEM_HIGH_PCT"),
+		"SENSOR_MONITOR_CPU_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_CPU_HIGH_PCT"),
 		"SENSOR_MONITOR_RECOVERY_WINDOW": os.Getenv("PROGRESSDB_SENSOR_MONITOR_RECOVERY_WINDOW"),
 
 		// logging
@@ -250,56 +256,59 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 
 	// encryption fields ([]string)
 	if v := envs["ENCRYPTION_FIELDS"]; v != "" {
-		envCfg.Security.Encryption.Fields = parseList(v)
+		envCfg.Encryption.Fields = parseList(v)
 	}
 
 	if v := envs["CORS_ORIGINS"]; v != "" {
-		envCfg.Security.CORS.AllowedOrigins = parseList(v)
+		envCfg.Server.CORS.AllowedOrigins = parseList(v)
 	}
 	if v := envs["RATE_RPS"]; v != "" {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			envCfg.Security.RateLimit.RPS = f
+			envCfg.Server.RateLimit.RPS = f
 		}
 	}
 	if v := envs["RATE_BURST"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Security.RateLimit.Burst = n
+			envCfg.Server.RateLimit.Burst = n
 		}
 	}
 	if v := envs["IP_WHITELIST"]; v != "" {
-		envCfg.Security.IPWhitelist = parseList(v)
+		envCfg.Server.IPWhitelist = parseList(v)
 	}
 	if v := envs["API_BACKEND_KEYS"]; v != "" {
-		envCfg.Security.APIKeys.Backend = parseList(v)
+		envCfg.Server.APIKeys.Backend = parseList(v)
 	}
 	if v := envs["API_FRONTEND_KEYS"]; v != "" {
-		envCfg.Security.APIKeys.Frontend = parseList(v)
+		envCfg.Server.APIKeys.Frontend = parseList(v)
 	}
 	if v := envs["API_ADMIN_KEYS"]; v != "" {
-		envCfg.Security.APIKeys.Admin = parseList(v)
+		envCfg.Server.APIKeys.Admin = parseList(v)
 	}
 
 	// kms related env overrides
+	if v := envs["KMS_MODE"]; v != "" {
+		envCfg.Encryption.KMS.Mode = v
+	}
 	if v := envs["KMS_ENDPOINT"]; v != "" {
-		envCfg.Security.KMS.Endpoint = v
+		envCfg.Encryption.KMS.Endpoint = v
 	}
 	if v := envs["KMS_DATA_DIR"]; v != "" {
-		envCfg.Security.KMS.DataDir = v
+		envCfg.Encryption.KMS.DataDir = v
 	}
 	if v := envs["KMS_MASTER_KEY_FILE"]; v != "" {
-		envCfg.Security.KMS.MasterKeyFile = v
+		envCfg.Encryption.KMS.MasterKeyFile = v
 	}
 	if v := envs["KMS_MASTER_KEY_HEX"]; v != "" {
-		envCfg.Security.KMS.MasterKeyHex = v
+		envCfg.Encryption.KMS.MasterKeyHex = v
 	}
 
-	// encryption use flag
-	if v := envs["USE_ENCRYPTION"]; v != "" {
+	// encryption enabled flag
+	if v := envs["ENCRYPTION_ENABLED"]; v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes":
-			envCfg.Security.Encryption.Use = true
+			envCfg.Encryption.Enabled = true
 		default:
-			envCfg.Security.Encryption.Use = false
+			envCfg.Encryption.Enabled = false
 		}
 	}
 
@@ -312,7 +321,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 
 	backendKeys := make(map[string]struct{})
-	for _, k := range envCfg.Security.APIKeys.Backend {
+	for _, k := range envCfg.Server.APIKeys.Backend {
 		backendKeys[k] = struct{}{}
 	}
 	signingKeys := make(map[string]struct{})

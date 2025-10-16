@@ -20,10 +20,10 @@ const (
 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
 	minWALBatchInterval     = 1 * time.Millisecond
 	defaultCompressMinBytes = 512
-	// Ingest/processor defaults
-	defaultProcessorWorkers      = 48
-	defaultProcessorMaxBatchMsgs = 10000
-	defaultProcessorFlushMs      = 1
+	// Ingest/ingestor defaults
+	defaultIngestorWorkers      = 48
+	defaultIngestorMaxBatchMsgs = 10000
+	defaultIngestorFlushMs      = 1
 
 	// Queue defaults
 	defaultQueueBatchSize        = 131072
@@ -34,13 +34,18 @@ const (
 	defaultRetentionLockTTL = 300 * time.Second
 	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
 	// telemetry defaults
-	defaultTelemetrySampleRate = 0.001
-	defaultTelemetrySlowMs     = 200
+	defaultTelemetrySampleRate    = 0.001
+	defaultTelemetrySlowMs        = 200
+	defaultTelemetryBufferSize    = 60 * 1024 * 1024 // 60MB
+	defaultTelemetryFileMaxSize   = 40 * 1024 * 1024 // 40MB
+	defaultTelemetryFlushMs       = 2000             // 2 seconds
+	defaultTelemetryQueueCapacity = 2048
 	// sensor defaults
 	defaultSensorPollInterval   = 500 * time.Millisecond
 	defaultSensorDiskHighPct    = 80
 	defaultSensorDiskLowPct     = 60
 	defaultSensorMemHighPct     = 80
+	defaultSensorCPUHighPct     = 90
 	defaultSensorRecoveryWindow = 5 * time.Second
 )
 
@@ -168,16 +173,16 @@ func (c *Config) ValidateConfig() error {
 		return fmt.Errorf("durable.mode must be one of: none, batch, sync")
 	}
 
-	// Processor defaults
-	pc := &c.Ingest.Processor
+	// Ingestor defaults
+	pc := &c.Ingest.Ingestor
 	if pc.Workers <= 0 {
 		pc.Workers = runtime.NumCPU()
 	}
 	if pc.MaxBatchMsgs <= 0 {
-		pc.MaxBatchMsgs = defaultProcessorMaxBatchMsgs
+		pc.MaxBatchMsgs = defaultIngestorMaxBatchMsgs
 	}
 	if pc.FlushMs <= 0 {
-		pc.FlushMs = defaultProcessorFlushMs
+		pc.FlushMs = defaultIngestorFlushMs
 	}
 
 	// Telemetry defaults
@@ -187,13 +192,25 @@ func (c *Config) ValidateConfig() error {
 	if c.Telemetry.SlowThreshold.Duration() == 0 {
 		c.Telemetry.SlowThreshold = Duration(time.Duration(defaultTelemetrySlowMs) * time.Millisecond)
 	}
+	if c.Telemetry.BufferSize.Int64() == 0 {
+		c.Telemetry.BufferSize = SizeBytes(defaultTelemetryBufferSize)
+	}
+	if c.Telemetry.FileMaxSize.Int64() == 0 {
+		c.Telemetry.FileMaxSize = SizeBytes(defaultTelemetryFileMaxSize)
+	}
+	if c.Telemetry.FlushInterval.Duration() == 0 {
+		c.Telemetry.FlushInterval = Duration(time.Duration(defaultTelemetryFlushMs) * time.Millisecond)
+	}
+	if c.Telemetry.QueueCapacity <= 0 {
+		c.Telemetry.QueueCapacity = defaultTelemetryQueueCapacity
+	}
 
 	// Security defaults: rate limiting
-	if c.Security.RateLimit.RPS <= 0 {
-		c.Security.RateLimit.RPS = 1000
+	if c.Server.RateLimit.RPS <= 0 {
+		c.Server.RateLimit.RPS = 1000
 	}
-	if c.Security.RateLimit.Burst <= 0 {
-		c.Security.RateLimit.Burst = 1000
+	if c.Server.RateLimit.Burst <= 0 {
+		c.Server.RateLimit.Burst = 1000
 	}
 
 	// Sensor monitor defaults
@@ -208,6 +225,9 @@ func (c *Config) ValidateConfig() error {
 	}
 	if c.Sensor.Monitor.MemHighPct == 0 {
 		c.Sensor.Monitor.MemHighPct = defaultSensorMemHighPct
+	}
+	if c.Sensor.Monitor.CPUHighPct == 0 {
+		c.Sensor.Monitor.CPUHighPct = defaultSensorCPUHighPct
 	}
 	if c.Sensor.Monitor.RecoveryWindow.Duration() == 0 {
 		c.Sensor.Monitor.RecoveryWindow = Duration(defaultSensorRecoveryWindow)

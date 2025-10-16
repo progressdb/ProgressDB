@@ -1,13 +1,10 @@
 server:
-  # Server listen address and TLS settings
   address: "0.0.0.0"
   port: 8080
   db_path: "./database"
   tls:
     cert_file: ""
     key_file: ""
-
-security:
   cors:
     allowed_origins:
       - "http://localhost:3000"
@@ -16,20 +13,11 @@ security:
     rps: 1000_0000
     burst: 2000_0000
   ip_whitelist:
-    # - "127.0.0.1"
+    - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
     admin: ["admin_example"]
-  encryption:
-    use: false
-    fields: []
-  kms:
-    endpoint: "127.0.0.1:6820"
-    data_dir: "./kms-data"
-    binary: "/usr/local/bin/progressdb-kms"
-    master_key_file: ""
-    master_key_hex: ""
 
 logging:
   level: "info"
@@ -83,3 +71,14 @@ sensor:
     # disk_low_pct: 60
     mem_high_pct: 80
     recovery_window: 5s
+
+encryption:
+  enabled: false
+  fields: []
+  kms:
+    mode: "embedded"
+    endpoint: "127.0.0.1:6820"
+    data_dir: "./kms-data"
+    binary: "/usr/local/bin/progressdb-kms"
+    master_key_file: ""
+    master_key_hex: ""

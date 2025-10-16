@@ -21,32 +21,28 @@ Example `config.yaml` (complete)
 
 ```yaml
 server:
-  address: "0.0.0.0"
-  port: 8080
-  db_path: "./data"
-  tls:
-    cert_file: ""      # path to TLS cert file (enable TLS when set)
-    key_file: ""       # path to TLS key file
+   address: "0.0.0.0"
+   port: 8080
+   db_path: "./data"
+   tls:
+     cert_file: ""      # path to TLS cert file (enable TLS when set)
+     key_file: ""       # path to TLS key file
+   cors:
+     allowed_origins:
+       - "http://localhost:3000"
+       - "https://example.com"
+   rate_limit:
+     rps: 10
+     burst: 20
+   ip_whitelist: []
+   api_keys:
+     backend: ["sk_example"]
+     frontend: ["pk_example"]
+     admin: ["admin_example"]
 
-storage:
-  db_path: "./data/store"   # Pebble DB directory
-
-security:
-  cors:
-    allowed_origins:
-      - "http://localhost:3000"
-      - "https://example.com"
-  rate_limit:
-    rps: 10
-    burst: 20
-  ip_whitelist: []
-  api_keys:
-    backend: ["sk_example"]
-    frontend: ["pk_example"]
-    admin: ["admin_example"]
-  encryption:
-    use: false
-    fields: []
+encryption:
+  enabled: false
+  fields: []
   kms:
     mode: "external"     # embedded | external
     endpoint: "127.0.0.1:6820"
@@ -92,34 +88,35 @@ Configuration reference (option → explanation → env var)
   - What it does: when both are set the server enables TLS. Provide full filesystem paths to the cert and key.
   - Env vars: `PROGRESSDB_TLS_CERT`, `PROGRESSDB_TLS_KEY`.
 
-- `security.cors.allowed_origins`
+- `server.cors.allowed_origins`
   - What it does: list of allowed origins for browser CORS. Wildcards are not recommended in production.
   - Env var: `PROGRESSDB_CORS_ORIGINS` (comma-separated).
 
-- `security.rate_limit.rps`, `security.rate_limit.burst`
+- `server.rate_limit.rps`, `server.rate_limit.burst`
   - What it does: enables per-key or per-IP rate limiting (requests per second and burst).
   - Env vars: `PROGRESSDB_RATE_RPS`, `PROGRESSDB_RATE_BURST`.
 
-- `security.ip_whitelist`
+- `server.ip_whitelist`
   - What it does: if non-empty, only requests from listed IPs are permitted.
 
-- `security.api_keys.backend`, `security.api_keys.frontend`, `security.api_keys.admin`
+- `server.api_keys.backend`, `server.api_keys.frontend`, `server.api_keys.admin`
   - What it does: lists of API keys by scope. Backend keys (`sk_...`) are privileged and may call `/v1/_sign` and admin routes. Frontend keys (`pk_...`) are limited (typically to message endpoints and health).
   - Env vars: `PROGRESSDB_API_BACKEND_KEYS`, `PROGRESSDB_API_FRONTEND_KEYS`, `PROGRESSDB_API_ADMIN_KEYS` (comma-separated).
 
-- `security.encryption.use`, `security.encryption.fields`
-  - What it does: enable field-level encryption and list JSON paths to encrypt (e.g., `body.credit_card`). When `use: true` the server will attempt decryption on reads.
+- `encryption.enabled`, `encryption.fields`
+  - What it does: enable field-level encryption and list JSON paths to encrypt (e.g., `body.credit_card`). When `enabled: true` the server will attempt decryption on reads.
+  - Env vars: `PROGRESSDB_ENCRYPTION_ENABLED`, `PROGRESSDB_ENCRYPTION_FIELDS` (comma-separated).
   - Note: full-message encryption vs field-level: configuration defines behavior; see `service/docs/encryption.md`.
 
-- `security.kms.mode` (embedded|external)
+- `encryption.kms.mode` (embedded|external)
   - What it does: selects the KMS provider mode. `embedded` runs an in-process KMS (dev/test). `external` makes HTTP calls to a separate `progressdb-kms` service (recommended for production).
   - Env var: `PROGRESSDB_KMS_MODE`.
 
-- `security.kms.endpoint`
+- `encryption.kms.endpoint`
   - What it does: network address (host:port or URL) of the external KMS service.
   - Env var: `PROGRESSDB_KMS_ENDPOINT`.
 
-- `security.kms.data_dir`, `security.kms.binary`, `master_key_file`, `master_key_hex`
+- `encryption.kms.data_dir`, `encryption.kms.binary`, `encryption.kms.master_key_file`, `encryption.kms.master_key_hex`
   - What they do: KMS runtime and storage options. `data_dir` is where KMS metadata and wrapped keys are stored. `binary` is the external KMS executable path used in some deployments. `master_key_file` / `master_key_hex` are for embedded KMS master key provisioning only.
 
 - `logging.level`

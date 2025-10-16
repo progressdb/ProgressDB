@@ -76,9 +76,9 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 	fe := 0
 	ak := 0
 	if eff.Config != nil {
-		be = len(eff.Config.Security.APIKeys.Backend)
-		fe = len(eff.Config.Security.APIKeys.Frontend)
-		ak = len(eff.Config.Security.APIKeys.Admin)
+		be = len(eff.Config.Server.APIKeys.Backend)
+		fe = len(eff.Config.Server.APIKeys.Frontend)
+		ak = len(eff.Config.Server.APIKeys.Admin)
 	}
 	if be > 0 {
 		fmt.Printf("- Backend API keys: OK (%d)\n", be)
@@ -116,7 +116,7 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 
 	// Encryption / KMS
 	enc := false
-	if eff.Config != nil && eff.Config.Security.Encryption.Use {
+	if eff.Config != nil && eff.Config.Encryption.Enabled {
 		enc = true
 	}
 	if enc {
@@ -124,10 +124,10 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 		hasMaster := false
 		hasEndpoint := false
 		if eff.Config != nil {
-			if strings.TrimSpace(eff.Config.Security.KMS.MasterKeyFile) != "" || strings.TrimSpace(eff.Config.Security.KMS.MasterKeyHex) != "" {
+			if strings.TrimSpace(eff.Config.Encryption.KMS.MasterKeyFile) != "" || strings.TrimSpace(eff.Config.Encryption.KMS.MasterKeyHex) != "" {
 				hasMaster = true
 			}
-			if strings.TrimSpace(eff.Config.Security.KMS.Endpoint) != "" {
+			if strings.TrimSpace(eff.Config.Encryption.KMS.Endpoint) != "" {
 				hasEndpoint = true
 			}
 		}

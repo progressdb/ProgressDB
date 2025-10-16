@@ -172,7 +172,7 @@ export default function App() {
 
 ## Features
 
-Implemented / Available
+Available
 - [x] Messages - append-only storage, versioning (edits), replies, soft-delete
 - [x] Threads - metadata operations (create/update/list)
 - [x] Encryption & Key Management - (embedded KMS mode)
@@ -180,12 +180,12 @@ Implemented / Available
 - [x] Backend SDKs - node & python sdks published for v0.1.0
 - [x] Frontend SDKs - typescript & react sdks published for v0.1.0
 
-Partially implemented / Experimental
+Partial
 - [ ] Metrics - Prometheus metrics (hooks present - metrics coverage is incomplete)
 - [ ] Reliability - (WAL/buffering) are present in parts but not fully hardened for production
 - [ ] Performance - performance benchmarking tools are available - but SLO/alerting integrations are incomplete
 
-Planned / Not implemented
+Planned
 - [ ] Encryption - Cloud-backed KMS / HSM integration
 - [ ] Backups - backups & tested restore workflows
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery

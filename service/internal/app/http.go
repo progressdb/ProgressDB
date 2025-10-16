@@ -73,30 +73,30 @@ func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 func (a *App) startHTTP(_ context.Context) <-chan error {
 	// build security config for auth middleware
 	secCfg := auth.SecConfig{
-		AllowedOrigins: append([]string{}, a.eff.Config.Security.CORS.AllowedOrigins...),
-		RPS:            a.eff.Config.Security.RateLimit.RPS,
-		Burst:          a.eff.Config.Security.RateLimit.Burst,
-		IPWhitelist:    append([]string{}, a.eff.Config.Security.IPWhitelist...),
+		AllowedOrigins: append([]string{}, a.eff.Config.Server.CORS.AllowedOrigins...),
+		RPS:            a.eff.Config.Server.RateLimit.RPS,
+		Burst:          a.eff.Config.Server.RateLimit.Burst,
+		IPWhitelist:    append([]string{}, a.eff.Config.Server.IPWhitelist...),
 		BackendKeys:    map[string]struct{}{},
 		FrontendKeys:   map[string]struct{}{},
 		AdminKeys:      map[string]struct{}{},
 	}
 	// fill backend keys
-	for _, k := range a.eff.Config.Security.APIKeys.Backend {
+	for _, k := range a.eff.Config.Server.APIKeys.Backend {
 		secCfg.BackendKeys[k] = struct{}{}
 	}
 	// fill frontend keys
-	for _, k := range a.eff.Config.Security.APIKeys.Frontend {
+	for _, k := range a.eff.Config.Server.APIKeys.Frontend {
 		secCfg.FrontendKeys[k] = struct{}{}
 	}
 	// fill admin keys
-	for _, k := range a.eff.Config.Security.APIKeys.Admin {
+	for _, k := range a.eff.Config.Server.APIKeys.Admin {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
 	// set runtime config for global use
 	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-	for _, k := range a.eff.Config.Security.APIKeys.Backend {
+	for _, k := range a.eff.Config.Server.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}

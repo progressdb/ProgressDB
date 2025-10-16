@@ -12,54 +12,34 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// Processor orchestrates workers that consume from the API queue, invoke
-// registered handlers and ensure items are released back to the pool.
-type Processor struct {
-	q        *queue.IngestQueue
-	workers  int
-	stop     chan struct{}
-	wg       sync.WaitGroup
-	running  int32
-	handlers map[queue.HandlerID]ProcessorFunc
+// TODO: retry / DLQ
 
-	// batch knobs (future)
-	maxBatch int
-	flushDur time.Duration
-	// pause state
-	paused int32
-
-	seqCounter uint64
-	nextCommit uint64
-	commitMu   sync.Mutex
-	commitCond *sync.Cond
-}
-
-// NewProcessor creates a new Processor attached to the provided queue.
-// It expects a validated ProcessorConfig (defaults applied by config.ValidateConfig()).
-func NewProcessor(q *queue.IngestQueue, pc config.ProcessorConfig) *Processor {
+// attach ingestor to queue
+func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig) *Ingestor {
 	if pc.Workers <= 0 {
-		panic("processor.NewProcessor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
+		panic("ingestor.NewIngestor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
-	p := &Processor{
+	p := &Ingestor{
 		q:          q,
 		workers:    pc.Workers,
 		stop:       make(chan struct{}),
-		handlers:   make(map[queue.HandlerID]ProcessorFunc),
+		handlers:   make(map[queue.HandlerID]IngestorFunc),
 		maxBatch:   pc.MaxBatchMsgs,
 		flushDur:   time.Duration(pc.FlushMs) * time.Millisecond,
 		nextCommit: 1,
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
+	registerDefaultHandlers(p)
 	return p
 }
 
-// RegisterHandler registers a ProcessorFunc for a given HandlerID.
-func (p *Processor) RegisterHandler(h queue.HandlerID, fn ProcessorFunc) {
+// RegisterHandler registers a IngestorFunc for a given HandlerID.
+func (p *Ingestor) RegisterHandler(h queue.HandlerID, fn IngestorFunc) {
 	p.handlers[h] = fn
 }
 
 // SetBatchParams adjusts the batch parameters at runtime.
-func (p *Processor) SetBatchParams(maxMsgs int, flush time.Duration) {
+func (p *Ingestor) SetBatchParams(maxMsgs int, flush time.Duration) {
 	if maxMsgs > 0 {
 		p.maxBatch = maxMsgs
 	}
@@ -69,22 +49,22 @@ func (p *Processor) SetBatchParams(maxMsgs int, flush time.Duration) {
 }
 
 // GetBatchParams returns the current batch parameters (max messages and flush duration).
-func (p *Processor) GetBatchParams() (int, time.Duration) {
+func (p *Ingestor) GetBatchParams() (int, time.Duration) {
 	return p.maxBatch, p.flushDur
 }
 
 // Pause stops processing new items until Resume is called.
-func (p *Processor) Pause() {
+func (p *Ingestor) Pause() {
 	atomic.StoreInt32(&p.paused, 1)
 }
 
 // Resume resumes processing after a Pause.
-func (p *Processor) Resume() {
+func (p *Ingestor) Resume() {
 	atomic.StoreInt32(&p.paused, 0)
 }
 
 // Start launches the worker pool.
-func (p *Processor) Start() {
+func (p *Ingestor) Start() {
 	if !atomic.CompareAndSwapInt32(&p.running, 0, 1) {
 		return
 	}
@@ -95,11 +75,11 @@ func (p *Processor) Start() {
 			p.workerLoop(workerID)
 		}(i)
 	}
-	logger.Info("ingest_processor_started", "workers", p.workers)
+	logger.Info("ingestor_started", "workers", p.workers)
 }
 
 // Stop signals workers to exit and waits for them to finish.
-func (p *Processor) Stop(ctx context.Context) {
+func (p *Ingestor) Stop(ctx context.Context) {
 	if !atomic.CompareAndSwapInt32(&p.running, 1, 0) {
 		return
 	}
@@ -111,15 +91,15 @@ func (p *Processor) Stop(ctx context.Context) {
 	}()
 	select {
 	case <-done:
-		logger.Info("ingest_processor_stopped")
+		logger.Info("ingestor_stopped")
 	case <-ctx.Done():
-		logger.Warn("ingest_processor_stop_timeout")
+		logger.Warn("ingestor_stop_timeout")
 	}
 }
 
 // workerLoop consumes items and dispatches to handlers. It ensures Item.Done()
 // is always called to return pooled resources.
-func (p *Processor) workerLoop(workerID int) {
+func (p *Ingestor) workerLoop(workerID int) {
 	for {
 		tr := telemetry.Track("ingest.worker_loop")
 		defer tr.Finish()
@@ -206,7 +186,7 @@ func (p *Processor) workerLoop(workerID int) {
 	}
 }
 
-func (p *Processor) waitForCommit(seq uint64) {
+func (p *Ingestor) waitForCommit(seq uint64) {
 	p.commitMu.Lock()
 	for seq != p.nextCommit {
 		p.commitCond.Wait()
@@ -214,7 +194,7 @@ func (p *Processor) waitForCommit(seq uint64) {
 	p.commitMu.Unlock()
 }
 
-func (p *Processor) markCommitted(seq uint64) {
+func (p *Ingestor) markCommitted(seq uint64) {
 	p.commitMu.Lock()
 	if seq == p.nextCommit {
 		p.nextCommit++
@@ -225,4 +205,16 @@ func (p *Processor) markCommitted(seq uint64) {
 		p.commitCond.Broadcast()
 	}
 	p.commitMu.Unlock()
+}
+
+// wires handlers per ops
+func registerDefaultHandlers(p *Ingestor) {
+	p.RegisterHandler(queue.HandlerMessageCreate, MutMessageCreate)
+	p.RegisterHandler(queue.HandlerMessageUpdate, MutMessageUpdate)
+	p.RegisterHandler(queue.HandlerMessageDelete, MutMessageDelete)
+	p.RegisterHandler(queue.HandlerReactionAdd, MutReactionAdd)
+	p.RegisterHandler(queue.HandlerReactionDelete, MutReactionDelete)
+	p.RegisterHandler(queue.HandlerThreadCreate, MutThreadCreate)
+	p.RegisterHandler(queue.HandlerThreadUpdate, MutThreadUpdate)
+	p.RegisterHandler(queue.HandlerThreadDelete, MutThreadDelete)
 }

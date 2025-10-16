@@ -14,15 +14,14 @@ func TestEncryption_E2E_EncryptRoundTrip(t *testing.T) {
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
     backend: ["%s", "%s"]
     admin: ["%s"]
-  encryption:
-    use: true
-    fields: ["body"]
+encryption:
+  enabled: true
+  fields: ["body"]
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 logging:
   level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
@@ -69,14 +68,13 @@ func TestEncryption_E2E_ProvisionDEK(t *testing.T) {
   address: 127.0.0.1
   port: {{PORT}}
   db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   api_keys:
     backend: ["%s", "%s"]
     admin: ["%s"]
-  encryption:
-    use: true
+encryption:
+  enabled: true
+  kms:
+    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 logging:
   level: info`, utils.SigningSecret, utils.BackendAPIKey, utils.AdminAPIKey)
 	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})

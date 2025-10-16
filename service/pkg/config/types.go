@@ -18,21 +18,25 @@ type RuntimeConfig struct {
 
 // Config is the main configuration struct.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Security  SecurityConfig  `yaml:"security"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Retention RetentionConfig `yaml:"retention"`
-	Ingest    IngestConfig    `yaml:"ingest"`
-	Telemetry TelemetryConfig `yaml:"telemetry"`
-	Sensor    SensorConfig    `yaml:"sensor"`
+	Server     ServerConfig     `yaml:"server"`
+	Logging    LoggingConfig    `yaml:"logging"`
+	Retention  RetentionConfig  `yaml:"retention"`
+	Ingest     IngestConfig     `yaml:"ingest"`
+	Telemetry  TelemetryConfig  `yaml:"telemetry"`
+	Sensor     SensorConfig     `yaml:"sensor"`
+	Encryption EncryptionConfig `yaml:"encryption"`
 }
 
-// ServerConfig holds http and tls settings.
+// ServerConfig holds http, tls, and security settings.
 type ServerConfig struct {
-	Address string    `yaml:"address"`
-	Port    int       `yaml:"port"`
-	DBPath  string    `yaml:"db_path"`
-	TLS     TLSConfig `yaml:"tls"`
+	Address     string       `yaml:"address"`
+	Port        int          `yaml:"port"`
+	DBPath      string       `yaml:"db_path"`
+	TLS         TLSConfig    `yaml:"tls"`
+	CORS        CORSConfig   `yaml:"cors"`
+	RateLimit   RateConfig   `yaml:"rate_limit"`
+	IPWhitelist []string     `yaml:"ip_whitelist"`
+	APIKeys     APIKeyConfig `yaml:"api_keys"`
 }
 
 // TLSConfig holds TLS certificate configuration.
@@ -41,32 +45,22 @@ type TLSConfig struct {
 	KeyFile  string `yaml:"key_file"`
 }
 
-// SecurityConfig holds security related settings.
-type SecurityConfig struct {
-	CORS struct {
-		AllowedOrigins []string `yaml:"allowed_origins"`
-	} `yaml:"cors"`
-	RateLimit struct {
-		RPS   float64 `yaml:"rps"`
-		Burst int     `yaml:"burst"`
-	} `yaml:"rate_limit"`
-	IPWhitelist []string `yaml:"ip_whitelist"`
-	APIKeys     struct {
-		Backend  []string `yaml:"backend"`
-		Frontend []string `yaml:"frontend"`
-		Admin    []string `yaml:"admin"`
-	} `yaml:"api_keys"`
-	Encryption struct {
-		Use    bool     `yaml:"use"`
-		Fields []string `yaml:"fields"`
-	} `yaml:"encryption"`
-	KMS struct {
-		Endpoint      string `yaml:"endpoint"`
-		DataDir       string `yaml:"data_dir"`
-		Binary        string `yaml:"binary"`
-		MasterKeyFile string `yaml:"master_key_file"`
-		MasterKeyHex  string `yaml:"master_key_hex"`
-	} `yaml:"kms"`
+// CORSConfig holds CORS settings.
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
+}
+
+// RateConfig holds rate limiting settings.
+type RateConfig struct {
+	RPS   float64 `yaml:"rps"`
+	Burst int     `yaml:"burst"`
+}
+
+// APIKeyConfig holds API key settings.
+type APIKeyConfig struct {
+	Backend  []string `yaml:"backend"`
+	Frontend []string `yaml:"frontend"`
+	Admin    []string `yaml:"admin"`
 }
 
 // LoggingConfig holds logging configuration.
@@ -92,12 +86,12 @@ type RetentionConfig struct {
 
 // IngestConfig holds queueing and processing configuration.
 type IngestConfig struct {
-	Processor ProcessorConfig `yaml:"processor"`
-	Queue     QueueConfig     `yaml:"queue"`
+	Ingestor IngestorConfig `yaml:"processor"`
+	Queue    QueueConfig    `yaml:"queue"`
 }
 
-// ProcessorConfig controls worker concurrency and batching.
-type ProcessorConfig struct {
+// IngestorConfig controls worker concurrency and batching.
+type IngestorConfig struct {
 	Workers      int `yaml:"workers"`
 	MaxBatchMsgs int `yaml:"max_batch_msgs"`
 	FlushMs      int `yaml:"flush_ms"`
@@ -193,10 +187,14 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 
 func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
-// TelemetryConfig controls sampling and slow-request thresholds.
+// TelemetryConfig controls telemetry collection and storage settings.
 type TelemetryConfig struct {
-	SampleRate    float64  `yaml:"sample_rate"`
-	SlowThreshold Duration `yaml:"slow_threshold"`
+	SampleRate    float64   `yaml:"sample_rate"`
+	SlowThreshold Duration  `yaml:"slow_threshold"`
+	BufferSize    SizeBytes `yaml:"buffer_size"`
+	FileMaxSize   SizeBytes `yaml:"file_max_size"`
+	FlushInterval Duration  `yaml:"flush_interval"`
+	QueueCapacity int       `yaml:"queue_capacity"`
 }
 
 // SensorConfig holds sensor related tuning knobs.
@@ -206,6 +204,21 @@ type SensorConfig struct {
 		DiskHighPct    int      `yaml:"disk_high_pct"`
 		DiskLowPct     int      `yaml:"disk_low_pct"`
 		MemHighPct     int      `yaml:"mem_high_pct"`
+		CPUHighPct     int      `yaml:"cpu_high_pct"`
 		RecoveryWindow Duration `yaml:"recovery_window"`
 	} `yaml:"monitor"`
+}
+
+// EncryptionConfig holds encryption related settings.
+type EncryptionConfig struct {
+	Enabled bool     `yaml:"enabled"`
+	Fields  []string `yaml:"fields"`
+	KMS     struct {
+		Mode          string `yaml:"mode"`
+		Endpoint      string `yaml:"endpoint"`
+		DataDir       string `yaml:"data_dir"`
+		Binary        string `yaml:"binary"`
+		MasterKeyFile string `yaml:"master_key_file"`
+		MasterKeyHex  string `yaml:"master_key_hex"`
+	} `yaml:"kms"`
 }

@@ -15,8 +15,8 @@ import (
 func (a *App) setupKMS(ctx context.Context) error {
 	kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
 	// dataDir is unused in embedded/external modes; kept for legacy configs.
-	useEnc := a.eff.Config.Security.Encryption.Use
-	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_USE_ENCRYPTION")); ev != "" {
+	useEnc := a.eff.Config.Encryption.Enabled
+	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED")); ev != "" {
 		switch strings.ToLower(ev) {
 		case "1", "true", "yes":
 			useEnc = true
@@ -33,15 +33,15 @@ func (a *App) setupKMS(ctx context.Context) error {
 	// Select master key from file or hex config.
 	var mk string
 	switch {
-	case strings.TrimSpace(a.eff.Config.Security.KMS.MasterKeyFile) != "":
-		mkFile := strings.TrimSpace(a.eff.Config.Security.KMS.MasterKeyFile)
+	case strings.TrimSpace(a.eff.Config.Encryption.KMS.MasterKeyFile) != "":
+		mkFile := strings.TrimSpace(a.eff.Config.Encryption.KMS.MasterKeyFile)
 		keyb, err := os.ReadFile(mkFile)
 		if err != nil {
 			return fmt.Errorf("failed to read master key file %s: %w", mkFile, err)
 		}
 		mk = strings.TrimSpace(string(keyb))
-	case strings.TrimSpace(a.eff.Config.Security.KMS.MasterKeyHex) != "":
-		mk = strings.TrimSpace(a.eff.Config.Security.KMS.MasterKeyHex)
+	case strings.TrimSpace(a.eff.Config.Encryption.KMS.MasterKeyHex) != "":
+		mk = strings.TrimSpace(a.eff.Config.Encryption.KMS.MasterKeyHex)
 	default:
 		return fmt.Errorf("PROGRESSDB_USE_ENCRYPTION=true but no master key provided in server config. Set security.kms.master_key_file or security.kms.master_key_hex")
 	}

@@ -26,22 +26,24 @@ type Trace struct {
 
 // Telemetry manages async writing of traces to per-op files.
 type Telemetry struct {
-	dir       string
-	mu        sync.Mutex
-	files     map[string]*os.File
-	buffers   map[string]*bufio.Writer
-	traces    chan *Trace
-	stopCh    chan struct{}
-	wg        sync.WaitGroup
-	flushInt  time.Duration
-	maxSizeMB int64
+	dir              string
+	mu               sync.Mutex
+	files            map[string]*os.File
+	buffers          map[string]*bufio.Writer
+	traces           chan *Trace
+	stopCh           chan struct{}
+	wg               sync.WaitGroup
+	flushInt         time.Duration
+	maxFileSizeBytes int64
+	bufferSize       int
+	queueCap         int
 }
 
 var tel *Telemetry
 
 // Init initializes the global telemetry instance.
-func Init(dir string) {
-	tel, _ = New(dir)
+func Init(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64) {
+	tel, _ = New(dir, bufferSize, queueCapacity, flushInterval, maxFileSize)
 }
 
 // Track starts a new trace using the global telemetry instance.
@@ -58,18 +60,20 @@ func Close() {
 }
 
 // New creates a new telemetry subsystem with async background writer.
-func New(dir string) (*Telemetry, error) {
+func New(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64) (*Telemetry, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 	t := &Telemetry{
-		dir:       dir,
-		files:     make(map[string]*os.File),
-		buffers:   make(map[string]*bufio.Writer),
-		traces:    make(chan *Trace, 2048),
-		stopCh:    make(chan struct{}),
-		flushInt:  2 * time.Second,
-		maxSizeMB: 10, // keep each file ≤ 10MB
+		dir:              dir,
+		files:            make(map[string]*os.File),
+		buffers:          make(map[string]*bufio.Writer),
+		traces:           make(chan *Trace, queueCapacity),
+		stopCh:           make(chan struct{}),
+		flushInt:         flushInterval,
+		maxFileSizeBytes: maxFileSize, // max file size in bytes
+		bufferSize:       bufferSize,
+		queueCap:         queueCapacity,
 	}
 	t.wg.Add(1)
 	go t.writerLoop()
@@ -153,15 +157,14 @@ func (t *Telemetry) writerLoop() {
 			for name, b := range t.buffers {
 				b.Flush()
 				f := t.files[name]
-				const bytesPerMB = 40 * 1024 * 1024
-				if fi, err := f.Stat(); err == nil && fi.Size() > t.maxSizeMB*bytesPerMB {
+				if fi, err := f.Stat(); err == nil && fi.Size() > t.maxFileSizeBytes {
 					// truncate and recreate file when > max size
 					f.Close()
 					os.Remove(f.Name())
 					newF, _ := os.OpenFile(f.Name(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 					t.files[name] = newF
-					t.buffers[name] = bufio.NewWriterSize(newF, 64*1024)
-					fmt.Fprintf(os.Stderr, "telemetry: truncated %s (size exceeded %dMB)\n", name, t.maxSizeMB)
+					t.buffers[name] = bufio.NewWriterSize(newF, t.bufferSize)
+					fmt.Fprintf(os.Stderr, "telemetry: truncated %s (size exceeded %d bytes)\n", name, t.maxFileSizeBytes)
 				}
 			}
 			t.mu.Unlock()
@@ -191,7 +194,7 @@ func (t *Telemetry) getBufferFor(op string) *bufio.Writer {
 		fmt.Fprintf(os.Stderr, "telemetry: failed to open %s: %v\n", path, err)
 		return bufio.NewWriter(os.Stdout)
 	}
-	b := bufio.NewWriterSize(f, 64*1024)
+	b := bufio.NewWriterSize(f, t.bufferSize)
 	t.files[op] = f
 	t.buffers[op] = b
 	return b
