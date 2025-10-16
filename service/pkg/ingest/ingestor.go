@@ -37,18 +37,26 @@ type Ingestor struct {
 }
 
 // NewIngestor creates a new Ingestor attached to the provided queue.
-// It expects a validated IngestorConfig (defaults applied by config.ValidateConfig()).
-func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig) *Ingestor {
+// It expects a validated IngestorConfig and QueueConfig (defaults applied by config.ValidateConfig()).
+func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig, qc config.QueueConfig) *Ingestor {
 	if pc.WorkerCount <= 0 {
 		panic("ingestor.NewIngestor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
+	}
+	var flushMs, maxBatch int
+	if qc.Mode == "memory" {
+		flushMs = qc.Memory.FlushIntervalMs
+		maxBatch = qc.Memory.FlushBatchSize
+	} else {
+		flushMs = qc.Durable.FlushIntervalMs
+		maxBatch = qc.Durable.FlushBatchSize
 	}
 	p := &Ingestor{
 		q:          q,
 		workers:    pc.WorkerCount,
 		stop:       make(chan struct{}),
 		handlers:   make(map[queue.HandlerID]IngestorFunc),
-		maxBatch:   pc.MaxBatchSize,
-		flushDur:   time.Duration(pc.FlushIntervalMs) * time.Millisecond,
+		maxBatch:   maxBatch,
+		flushDur:   time.Duration(flushMs) * time.Millisecond,
 		nextCommit: 1,
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
@@ -206,6 +214,8 @@ func (p *Ingestor) workerLoop(workerID int) {
 			} else {
 				// Checkpoint successful apply
 				p.q.Checkpoint(seqID)
+				// Truncate WAL immediately after successful batch
+				p.q.TruncateNow()
 			}
 			tr.Finish()
 		}

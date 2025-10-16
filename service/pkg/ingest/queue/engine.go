@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/valyala/bytebufferpool"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/telemetry"
 )
 
@@ -331,7 +332,12 @@ func (q *IngestQueue) ack(offset int64) {
 }
 
 // perform wal truncation
-func (q *IngestQueue) doTruncate() {
+// TruncateNow truncates processed WAL entries immediately.
+func (q *IngestQueue) TruncateNow() {
+	doTruncate(q)
+}
+
+func doTruncate(q *IngestQueue) {
 	if q == nil || q.wal == nil {
 		return
 	}
@@ -358,7 +364,9 @@ func (q *IngestQueue) doTruncate() {
 	q.ackMu.Unlock()
 
 	if shouldTruncate {
-		_ = q.wal.TruncateBefore(newMin)
+		if err := q.wal.TruncateBefore(newMin); err != nil {
+			logger.Error("wal_truncate_failed", "offset", newMin, "error", err)
+		}
 	}
 }
 

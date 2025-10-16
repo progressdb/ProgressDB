@@ -126,37 +126,38 @@ func (c *Config) ValidateConfig() error {
 	if c.Ingest.Queue.BufferCapacity <= 0 {
 		c.Ingest.Queue.BufferCapacity = defaultQueueCapacity
 	}
-	// Queue batch size (used by batch consumers)
-	if c.Ingest.Queue.FlushBatchSize <= 0 {
-		c.Ingest.Queue.FlushBatchSize = defaultQueueBatchSize
+	// Shutdown poll interval
+	if c.Ingest.Queue.ShutdownPollInterval.Duration() == 0 {
+		c.Ingest.Queue.ShutdownPollInterval = Duration(defaultDrainPollInterval)
 	}
-	// Poll interval for memory mode
-	if c.Ingest.Queue.Memory.PollInterval.Duration() == 0 {
-		c.Ingest.Queue.Memory.PollInterval = Duration(defaultDrainPollInterval)
+	// Memory batch size
+	if c.Ingest.Queue.Memory.FlushBatchSize <= 0 {
+		c.Ingest.Queue.Memory.FlushBatchSize = defaultQueueBatchSize
 	}
-	// max pooled buffer size
-	if c.Ingest.Queue.MaxBufferBytes.Int64() == 0 {
-		c.Ingest.Queue.MaxBufferBytes = SizeBytes(defaultMaxPooledBufferBytes)
+	// Memory flush interval
+	if c.Ingest.Queue.Memory.FlushIntervalMs <= 0 {
+		c.Ingest.Queue.Memory.FlushIntervalMs = defaultIngestorFlushIntervalMs
 	}
 	// WAL defaults and validation
 	wc := &c.Ingest.Queue.Durable
-	if wc.MaxFileSize.Int64() == 0 {
-		wc.MaxFileSize = SizeBytes(defaultWALMaxFileSize)
+	if wc.SizePerWalFile.Int64() == 0 {
+		wc.SizePerWalFile = SizeBytes(defaultWALMaxFileSize)
 	}
-	if wc.MaxFileSize.Int64() < minWALFileSize {
-		return fmt.Errorf("durable.max_file_size must be >= %d bytes", minWALFileSize)
+	if wc.SizePerWalFile.Int64() < minWALFileSize {
+		return fmt.Errorf("durable.size_per_wal_file must be >= %d bytes", minWALFileSize)
 	}
-	if wc.BatchInterval.Duration() == 0 {
-		wc.BatchInterval = Duration(defaultWALBatchInterval)
-	}
-	if wc.BatchInterval.Duration() < minWALBatchInterval {
-		return fmt.Errorf("durable.batch_interval must be >= %s", minWALBatchInterval)
-	}
+
 	if wc.FlushBatchSize <= 0 {
 		wc.FlushBatchSize = defaultWALBatchSize
 	}
-	if wc.MinCompressionBytes == 0 {
-		wc.MinCompressionBytes = defaultCompressMinBytes
+	if wc.WriteBufferSize.Int64() == 0 {
+		wc.WriteBufferSize = SizeBytes(defaultMaxPooledBufferBytes)
+	}
+	if wc.FlushIntervalMs <= 0 {
+		wc.FlushIntervalMs = defaultIngestorFlushIntervalMs
+	}
+	if wc.MinCompressSize == 0 {
+		wc.MinCompressSize = defaultCompressMinBytes
 	}
 
 	// Compute derived fields
@@ -179,12 +180,6 @@ func (c *Config) ValidateConfig() error {
 	pc := &c.Ingest.Ingestor
 	if pc.WorkerCount <= 0 {
 		pc.WorkerCount = runtime.NumCPU()
-	}
-	if pc.MaxBatchSize <= 0 {
-		pc.MaxBatchSize = defaultIngestorMaxBatchSize
-	}
-	if pc.FlushIntervalMs <= 0 {
-		pc.FlushIntervalMs = defaultIngestorFlushIntervalMs
 	}
 
 	// Telemetry defaults

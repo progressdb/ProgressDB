@@ -36,26 +36,20 @@ retention:
 ingest:
   ingestor:
     worker_count: 12
-    max_batch_size: 1_000
-    flush_interval_ms: 30
   queue:
     mode: memory
-    buffer_capacity: 10_000
-    flush_batch_size: 1_000
-    max_buffer_bytes: 1gb
+    buffer_capacity: 1_000_000
+    shutdown_poll_interval: 5ms
     memory:
-      enable_recovery: false
-      truncate_interval: 0s
-      poll_interval: 5ms
+      flush_batch_size: 1
+      flush_interval_ms: 1
     durable:
-      enable_recovery: true
-      truncate_interval: 120s
-      max_file_size: 256MB
-      flush_batch_size: 32
-      batch_interval: 50ms
-      min_compression_bytes: 1024
-      retention_bytes: 0
-      retention_age: 0
+      recover_on_startup: true
+      flush_batch_size: 1_000
+      flush_interval_ms: 30
+      size_per_wal_file: 256MB
+      min_compress_size: 1024
+      write_buffer_size: 1gb
 
 telemetry:
   sample_rate: 0.001

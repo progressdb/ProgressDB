@@ -54,33 +54,38 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// warn if both wals are disabled and summarize potential data loss window
-	appWALenabled := eff.Config.Ingest.Queue.Durable.EnableRecovery
+	appWALenabled := eff.Config.Ingest.Queue.Durable.RecoverOnStartup
 	pebbleWALdisabled := true
 	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
 		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
 	}
-	if !appWALenabled && pebbleWALdisabled {
-		procFlush := time.Duration(eff.Config.Ingest.Ingestor.FlushIntervalMs) * time.Millisecond
-		truncate := eff.Config.Ingest.Queue.Durable.TruncateInterval.Duration()
-		lossWindow := procFlush
-		if truncate > lossWindow {
-			lossWindow = truncate
+	if !appWALenabled && pebbleWALdisabled && eff.Config.Ingest.Queue.Durable.RecoverOnStartup {
+		var flushMs int
+		if eff.Config.Ingest.Queue.Mode == "memory" {
+			flushMs = eff.Config.Ingest.Queue.Memory.FlushIntervalMs
+		} else {
+			flushMs = eff.Config.Ingest.Queue.Durable.FlushIntervalMs
 		}
+		procFlush := time.Duration(flushMs) * time.Millisecond
+		lossWindow := procFlush
 		queueCapacity := eff.Config.Ingest.Queue.BufferCapacity
 		procWorkers := eff.Config.Ingest.Ingestor.WorkerCount
-		procBatch := eff.Config.Ingest.Ingestor.MaxBatchSize
+		var procBatch int
+		if eff.Config.Ingest.Queue.Mode == "memory" {
+			procBatch = eff.Config.Ingest.Queue.Memory.FlushBatchSize
+		} else {
+			procBatch = eff.Config.Ingest.Queue.Durable.FlushBatchSize
+		}
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
 		lossWindowHuman := lossWindow.String()
 		processorFlushHuman := procFlush.String()
-		truncateHuman := truncate.String()
 		queueCapacityHuman := humanize.Comma(int64(queueCapacity))
 		messagesAtRiskHuman := humanize.Comma(int64(messagesAtRisk))
 
 		summaryItems := []string{
 			fmt.Sprintf("loss_window: %s", lossWindowHuman),
 			fmt.Sprintf("processor_flush: %s", processorFlushHuman),
-			fmt.Sprintf("queue_truncate: %s", truncateHuman),
 			fmt.Sprintf("queue_capacity: %s", queueCapacityHuman),
 			fmt.Sprintf("processor_workers: %d", procWorkers),
 			fmt.Sprintf("processor_max_batch_msgs: %s", humanize.Comma(int64(procBatch))),
@@ -150,7 +155,7 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 	queue.SetDefaultIngestQueue(q)
-	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor)
+	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor, a.eff.Config.Ingest.Queue)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 

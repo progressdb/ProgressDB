@@ -643,16 +643,7 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 			})
 		}
 	}
-	// start background truncation if requested
-	if opts != nil && opts.TruncateInterval > 0 && q.wal != nil {
-		go func() {
-			ticker := time.NewTicker(opts.TruncateInterval)
-			defer ticker.Stop()
-			for range ticker.C {
-				q.doTruncate()
-			}
-		}()
-	}
+
 	return q
 }
 
@@ -735,6 +726,7 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 		batchInterval:       opts.BatchInterval,
 		enableCompression:   opts.EnableCompression,
 		minCompressionBytes: opts.MinCompressionBytes,
+		maxBufferedBytes:    opts.MaxBufferBytes,
 	}
 	w.flushCond = sync.NewCond(&w.mu)
 

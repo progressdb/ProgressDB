@@ -11,6 +11,13 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+// opPool pools QueueOp instances to reduce allocations.
+var opPool = sync.Pool{
+	New: func() interface{} {
+		return &QueueOp{}
+	},
+}
+
 // HandlerID specifies the operation to perform for a queue Op.
 type HandlerID string
 
@@ -129,6 +136,7 @@ type DurableWALConfigOptions struct {
 	BatchInterval       time.Duration
 	EnableCompression   bool
 	MinCompressionBytes int64
+	MaxBufferBytes      int64
 }
 
 // walFile holds file info for WAL segments.

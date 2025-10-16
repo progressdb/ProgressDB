@@ -90,40 +90,34 @@ type IngestConfig struct {
 	Queue    QueueConfig    `yaml:"queue"`
 }
 
-// IngestorConfig controls worker concurrency and batching.
+// IngestorConfig controls worker concurrency.
 type IngestorConfig struct {
-	WorkerCount     int `yaml:"worker_count"`
-	MaxBatchSize    int `yaml:"max_batch_size"`
-	FlushIntervalMs int `yaml:"flush_interval_ms"`
+	WorkerCount int `yaml:"worker_count"`
 }
 
 // QueueConfig holds queue settings with mode selection.
 type QueueConfig struct {
-	Mode           string             `yaml:"mode"` // "durable" or "memory"
-	BufferCapacity int                `yaml:"buffer_capacity"`
-	FlushBatchSize int                `yaml:"flush_batch_size"`
-	MaxBufferBytes SizeBytes          `yaml:"max_buffer_bytes"`
-	Memory         MemoryQueueConfig  `yaml:"memory"`
-	Durable        DurableQueueConfig `yaml:"durable"`
+	Mode                 string             `yaml:"mode"` // "durable" or "memory"
+	BufferCapacity       int                `yaml:"buffer_capacity"`
+	ShutdownPollInterval Duration           `yaml:"shutdown_poll_interval"`
+	Memory               MemoryQueueConfig  `yaml:"memory"`
+	Durable              DurableQueueConfig `yaml:"durable"`
 }
 
 // MemoryQueueConfig holds settings for in-memory queue.
 type MemoryQueueConfig struct {
-	EnableRecovery   bool     `yaml:"enable_recovery"`
-	TruncateInterval Duration `yaml:"truncate_interval"`
-	PollInterval     Duration `yaml:"poll_interval"`
+	FlushBatchSize  int `yaml:"flush_batch_size"`
+	FlushIntervalMs int `yaml:"flush_interval_ms"`
 }
 
 // DurableQueueConfig holds settings for durable queue with WAL.
 type DurableQueueConfig struct {
-	EnableRecovery      bool      `yaml:"enable_recovery"`
-	TruncateInterval    Duration  `yaml:"truncate_interval"`
-	MaxFileSize         SizeBytes `yaml:"max_file_size"`
-	FlushBatchSize      int       `yaml:"flush_batch_size"`
-	BatchInterval       Duration  `yaml:"batch_interval"`
-	MinCompressionBytes int64     `yaml:"min_compression_bytes"`
-	RetentionBytes      SizeBytes `yaml:"retention_bytes"`
-	RetentionAge        Duration  `yaml:"retention_age"`
+	RecoverOnStartup bool      `yaml:"recover_on_startup"`
+	SizePerWalFile   SizeBytes `yaml:"size_per_wal_file"`
+	FlushBatchSize   int       `yaml:"flush_batch_size"`
+	MinCompressSize  int64     `yaml:"min_compress_size"`
+	WriteBufferSize  SizeBytes `yaml:"write_buffer_size"`
+	FlushIntervalMs  int       `yaml:"flush_interval_ms"`
 	// Computed fields (not in YAML)
 	WriteMode         string
 	EnableBatching    bool

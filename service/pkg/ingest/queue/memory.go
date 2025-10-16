@@ -30,12 +30,13 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 		// Create WAL config from durable config
 		walOpts := DurableWALConfigOptions{
 			Dir:                 walDir,
-			MaxFileSize:         qc.Durable.MaxFileSize.Int64(),
+			MaxFileSize:         qc.Durable.SizePerWalFile.Int64(),
 			EnableBatching:      qc.Durable.EnableBatching,
 			BatchSize:           qc.Durable.FlushBatchSize,
-			BatchInterval:       qc.Durable.BatchInterval.Duration(),
+			BatchInterval:       time.Duration(qc.Durable.FlushIntervalMs) * time.Millisecond,
 			EnableCompression:   qc.Durable.EnableCompression,
-			MinCompressionBytes: qc.Durable.MinCompressionBytes,
+			MinCompressionBytes: qc.Durable.MinCompressSize,
+			MaxBufferBytes:      qc.Durable.WriteBufferSize.Int64(),
 		}
 
 		wal, err := New(walOpts)
@@ -48,29 +49,21 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 			BufferCapacity:    qc.BufferCapacity,
 			WAL:               wal,
 			WriteMode:         qc.Durable.WriteMode,
-			EnableRecovery:    qc.Durable.EnableRecovery,
-			TruncateInterval:  qc.Durable.TruncateInterval.Duration(),
+			EnableRecovery:    qc.Durable.RecoverOnStartup,
 			WalBacked:         true,
-			DrainPollInterval: qc.Memory.PollInterval.Duration(),
+			DrainPollInterval: qc.ShutdownPollInterval.Duration(),
 		}
 
 		queue := NewIngestQueueWithOptions(qOpts)
 
-		// Start background truncation if enabled
-		if qc.Durable.TruncateInterval.Duration() > 0 {
-			go func() {
-				ticker := time.NewTicker(qc.Durable.TruncateInterval.Duration())
-				defer ticker.Stop()
-				for range ticker.C {
-					queue.doTruncate()
-				}
-			}()
-		}
-
 		return queue, nil
 	} else {
 		// Memory mode
-		return NewIngestQueue(qc.BufferCapacity), nil
+		qOpts := &IngestQueueOptions{
+			BufferCapacity:    qc.BufferCapacity,
+			DrainPollInterval: qc.ShutdownPollInterval.Duration(),
+		}
+		return NewIngestQueueWithOptions(qOpts), nil
 	}
 }
 
