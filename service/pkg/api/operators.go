@@ -17,11 +17,15 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 )
 
 // auth handlers
 func Sign(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.sign")
+	defer tr.Finish()
+
 	// set response type and log the handler invocation
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
@@ -58,6 +62,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	mac.Write([]byte(payload.UserID))
 	sig := hex.EncodeToString(mac.Sum(nil))
 
+	tr.Mark("encode_response")
 	// write response (userid and signature), and log error if write fails
 	if err := json.NewEncoder(ctx).Encode(map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
@@ -66,6 +71,9 @@ func Sign(ctx *fasthttp.RequestCtx) {
 
 // data handlers
 func AdminHealth(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_health")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -75,13 +83,19 @@ func AdminHealth(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminStats(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_stats")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
+
+	tr.Mark("list_threads")
 	threads, _ := store.ListThreads()
 	var msgCount int64
+	tr.Mark("count_messages")
 	for _, raw := range threads {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(raw), &th); err != nil {
@@ -93,6 +107,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 		}
 		msgCount += int64(len(msgs))
 	}
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads  int   `json:"threads"`
 		Messages int64 `json:"messages"`
@@ -100,39 +115,54 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminListThreads(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_list_threads")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
+
+	tr.Mark("list_threads")
 	vals, err := store.ListThreads()
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads []json.RawMessage `json:"threads"`
 	}{Threads: utils.ToRawMessages(vals)})
 }
 
 func AdminListKeys(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_list_keys")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
+
+	tr.Mark("list_keys")
 	keys, err := store.ListKeys(prefix)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		Keys []string `json:"keys"`
 	}{Keys: keys})
 }
 
 func AdminGetKey(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_get_key")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -147,17 +177,22 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
 		return
 	}
+	tr.Mark("get_key")
 	val, err := store.GetKey(key)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/octet-stream")
+	tr.Mark("write_response")
 	_, _ = ctx.Write([]byte(val))
 }
 
 // encryption handlers
 func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_rotate_thread_dek")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
@@ -175,17 +210,20 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "missing thread_id"})
 		return
 	}
+	tr.Mark("create_dek")
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "status": "error", "error": err.Error()})
 		return
 	}
+	tr.Mark("rotate_dek")
 	if err := store.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "error", "error": err.Error()})
 		return
 	}
+	tr.Mark("update_thread")
 	if s, err := store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
@@ -195,6 +233,7 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 			}
 		}
 	}
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
 	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
 }
@@ -434,10 +473,14 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_generate_kek")
+	defer tr.Finish()
+
 	if !isAdminFast(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
+	tr.Mark("generate_key")
 	buf := make([]byte, 32)
 	if _, err := crand.Read(buf); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to generate key")
@@ -445,6 +488,7 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	}
 	kek := hex.EncodeToString(buf)
 	ctx.Response.Header.Set("Content-Type", "application/json")
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"kek_hex": kek})
 	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
 }

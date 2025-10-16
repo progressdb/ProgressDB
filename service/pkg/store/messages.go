@@ -123,6 +123,9 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 
 // lists all messages for thread, ordered by insertion
 func ListMessages(threadID string, limit ...int) ([]string, error) {
+	tr := telemetry.Track("store.list_messages")
+	defer tr.Finish()
+
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -315,6 +318,10 @@ func ListMessageVersions(msgID string) ([]string, error) {
 
 // returns latest version for message, error if not found
 func GetLatestMessage(msgID string) (string, error) {
+	tr := telemetry.Track("store.get_latest_message")
+	defer tr.Finish()
+
+	tr.Mark("list_versions")
 	vers, err := ListMessageVersions(msgID)
 	if err != nil {
 		return "", err

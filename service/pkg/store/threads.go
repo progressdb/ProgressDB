@@ -10,6 +10,7 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
 	"github.com/cockroachdb/pebble"
@@ -17,6 +18,9 @@ import (
 
 // saves thread metadata as JSON
 func SaveThread(threadID, data string) error {
+	tr := telemetry.Track("store.save_thread")
+	defer tr.Finish()
+
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -24,6 +28,7 @@ func SaveThread(threadID, data string) error {
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}
+	tr.Mark("set")
 	if err := db.Set([]byte(tk), []byte(data), writeOpt(true)); err != nil {
 		logger.Error("save_thread_failed", "thread", threadID, "error", err)
 		return err
@@ -34,6 +39,9 @@ func SaveThread(threadID, data string) error {
 
 // gets thread metadata JSON for id
 func GetThread(threadID string) (string, error) {
+	tr := telemetry.Track("store.get_thread")
+	defer tr.Finish()
+
 	if db == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -41,6 +49,7 @@ func GetThread(threadID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid thread id: %w", err)
 	}
+	tr.Mark("get")
 	v, closer, err := db.Get([]byte(tk))
 	if err != nil {
 		return "", err
@@ -53,6 +62,9 @@ func GetThread(threadID string) (string, error) {
 
 // deletes thread metadata
 func DeleteThread(threadID string) error {
+	tr := telemetry.Track("store.delete_thread")
+	defer tr.Finish()
+
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -60,6 +72,7 @@ func DeleteThread(threadID string) error {
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}
+	tr.Mark("delete")
 	if err := db.Delete([]byte(tk), writeOpt(true)); err != nil {
 		logger.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
@@ -70,6 +83,9 @@ func DeleteThread(threadID string) error {
 
 // marks thread as deleted and adds a tombstone message
 func SoftDeleteThread(threadID, actor string) error {
+	tr := telemetry.Track("store.soft_delete_thread")
+	defer tr.Finish()
+
 	if db == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
@@ -78,6 +94,7 @@ func SoftDeleteThread(threadID, actor string) error {
 		return terr
 	}
 	key := []byte(tk)
+	tr.Mark("get_thread")
 	v, closer, err := db.Get(key)
 	if err != nil {
 		logger.Error("soft_delete_load_failed", "thread", threadID, "error", err)
@@ -94,6 +111,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	th.Deleted = true
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
+	tr.Mark("update_thread")
 	if err := db.Set(key, nb, writeOpt(true)); err != nil {
 		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
@@ -107,6 +125,7 @@ func SoftDeleteThread(threadID, actor string) error {
 		Deleted: true,
 	}
 	// use background context
+	tr.Mark("save_tombstone")
 	if err := SaveMessage(context.Background(), threadID, tomb.ID, tomb); err != nil {
 		logger.Error("soft_delete_append_tombstone_failed", "thread", threadID, "error", err)
 		return err
@@ -117,16 +136,21 @@ func SoftDeleteThread(threadID, actor string) error {
 
 // lists all saved thread metadata as JSON
 func ListThreads() ([]string, error) {
+	tr := telemetry.Track("store.list_threads")
+	defer tr.Finish()
+
 	if db == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	prefix := []byte("thread:")
+	tr.Mark("new_iter")
 	iter, err := db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Close()
 	var out []string
+	tr.Mark("iterate")
 	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), prefix) {
 			break

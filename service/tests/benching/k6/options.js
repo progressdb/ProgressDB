@@ -3,16 +3,16 @@ export let options = {
   scenarios: {
     constant_rate: {
       executor: 'constant-arrival-rate',
-      rate: 1000,            // requests per second
+      rate: 2000,            // requests per second
       timeUnit: '1s',
       duration: '1m',        // 2 minutes to sustain pressure
-      preAllocatedVUs: 500, // enough for high concurrency & spike tolerance
-      maxVUs: 1000
+      preAllocatedVUs: 1500, // enough for high concurrency & spike tolerance
+      maxVUs: 2000
     }
   },
   thresholds: {
     'http_req_duration': [
-      'p(95)<25',   // 95% of requests below 25ms
+      'p(95)<10',   // 95% of requests below 25ms
       'p(99)<50'    // 99% of requests below 50ms
     ],
     'http_req_failed': [

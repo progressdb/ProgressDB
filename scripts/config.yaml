@@ -47,15 +47,15 @@ retention:
 
 ingest:
   processor:
-    workers: 2
-    max_batch_msgs: 512
-    flush_ms: 5
+    workers: 12
+    max_batch_msgs: 1_000
+    flush_ms: 30
   queue:
     mode: memory
     capacity: 10_000
     batch_size: 1_000
-    drain_poll_interval: 10ms
-    max_pooled_buffer_bytes: 512MB
+    drain_poll_interval: 5ms
+    max_pooled_buffer_bytes: 1gb
     memory:
       recover: false
       truncate_interval: 0s

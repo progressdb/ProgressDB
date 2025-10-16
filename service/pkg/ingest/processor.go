@@ -9,6 +9,7 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/telemetry"
 )
 
 // Processor orchestrates workers that consume from the API queue, invoke
@@ -120,6 +121,8 @@ func (p *Processor) Stop(ctx context.Context) {
 // is always called to return pooled resources.
 func (p *Processor) workerLoop(workerID int) {
 	for {
+		tr := telemetry.Track("ingest.worker_loop")
+		defer tr.Finish()
 		// if paused, wait briefly and re-check
 		if atomic.LoadInt32(&p.paused) == 1 {
 			select {
@@ -192,10 +195,12 @@ func (p *Processor) workerLoop(workerID int) {
 		// apply accumulated batch entries in commit order
 		p.waitForCommit(seqID)
 		if len(batchEntries) > 0 {
+			tr := telemetry.Track("ingest.worker_batch_apply")
 			if err := applyBatchToDB(batchEntries); err != nil {
 				logger.Error("apply_batch_failed", "err", err)
 				// TODO: retry / DLQ
 			}
+			tr.Finish()
 		}
 		p.markCommitted(seqID)
 	}

@@ -12,6 +12,7 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/telemetry"
 )
 
 var key []byte
@@ -159,6 +160,9 @@ func encryptBodyPath(bodyNode interface{}, segments []string, keyID string) inte
 
 // EncryptMessageBody encrypts the message body or fields according to the policy.
 func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, error) {
+	tr := telemetry.Track("security.encrypt_message_body")
+	defer tr.Finish()
+
 	// If the message is nil, return an error.
 	if m == nil {
 		return nil, errors.New("nil message")
@@ -177,6 +181,7 @@ func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, e
 
 	// If there is a field policy, encrypt only the specified fields.
 	if EncryptionHasFieldPolicy() {
+		tr.Mark("encrypt_fields")
 		// Marshal the message to JSON.
 		b, err := json.Marshal(m)
 		if err != nil {
@@ -217,6 +222,7 @@ func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, e
 
 	// If no field policy, encrypt the entire body.
 	if m.Body != nil {
+		tr.Mark("encrypt_body")
 		// Marshal the body to JSON.
 		bodyBytes, err := json.Marshal(m.Body)
 		if err != nil {
@@ -326,6 +332,9 @@ func decryptBodyPath(value interface{}, segments []string, keyID string) (interf
 // DecryptMessageBody decrypts the message body or fields according to the policy.
 // Returns the decrypted message body (or the original body if not encrypted or not enabled).
 func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, error) {
+	tr := telemetry.Track("security.decrypt_message_body")
+	defer tr.Finish()
+
 	// If the message is nil, return an error.
 	if m == nil {
 		return nil, errors.New("nil message")
@@ -343,6 +352,7 @@ func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, err
 
 	// If there is a field policy, decrypt only the specified fields.
 	if EncryptionHasFieldPolicy() {
+		tr.Mark("decrypt_fields")
 		// Marshal the message to JSON.
 		b, err := json.Marshal(m)
 		if err != nil {
@@ -383,6 +393,7 @@ func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, err
 
 	// If no field policy, decrypt the entire body if it is encrypted.
 	if m.Body != nil {
+		tr.Mark("decrypt_body")
 		// If the body is an encrypted object, try to decrypt it.
 		if mMap, ok := m.Body.(map[string]interface{}); ok {
 			if encType, ok := mMap["_enc"].(string); ok && encType == "gcm" {

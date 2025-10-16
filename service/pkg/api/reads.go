@@ -9,12 +9,16 @@ import (
 	"progressdb/pkg/auth"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.read_threads_list")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
@@ -26,12 +30,14 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	titleQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("title")))
 	slugQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("slug")))
 
+	tr.Mark("list_threads")
 	vals, err := store.ListThreads()
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
+	tr.Mark("filter_threads")
 	out := make([]models.Thread, 0, len(vals))
 	for _, raw := range vals {
 		var th models.Thread
@@ -53,12 +59,16 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 		out = append(out, th)
 	}
 
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		Threads []models.Thread `json:"threads"`
 	}{Threads: out})
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.read_thread_item")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	id := pathParam(ctx, "id")
@@ -73,12 +83,14 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("get_thread")
 	stored, err := store.GetThread(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 
+	tr.Mark("parse_thread")
 	var th models.Thread
 	if err := json.Unmarshal([]byte(stored), &th); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
@@ -93,10 +105,14 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("write_response")
 	_, _ = ctx.WriteString(stored)
 }
 
 func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.read_thread_messages")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
@@ -107,6 +123,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	threadID := pathParam(ctx, "threadID")
 
+	tr.Mark("check_thread")
 	if stored, err := store.GetThread(threadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(stored), &th); err == nil {
@@ -117,6 +134,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	tr.Mark("list_messages")
 	msgs, err := store.ListMessages(threadID)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
@@ -131,6 +149,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	includeDeleted := string(ctx.QueryArgs().Peek("include_deleted")) == "true"
 
+	tr.Mark("process_messages")
 	latest := make(map[string]models.Message)
 	authorFound := false
 	for _, encoded := range msgs {
@@ -158,6 +177,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
 
 	if len(out) == 0 {
+		tr.Mark("encode_empty_response")
 		_ = json.NewEncoder(ctx).Encode(struct {
 			Thread   string           `json:"thread"`
 			Messages []models.Message `json:"messages"`
@@ -170,6 +190,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`
@@ -177,6 +198,9 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.read_thread_message")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
@@ -186,12 +210,14 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	id := pathParam(ctx, "id")
+	tr.Mark("get_message")
 	stored, err := store.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 
+	tr.Mark("parse_message")
 	var message models.Message
 	if err := json.Unmarshal([]byte(stored), &message); err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse message")
@@ -203,10 +229,14 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(message)
 }
 
 func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.read_message_reactions")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	id := pathParam(ctx, "id")
@@ -217,6 +247,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("get_message")
 	stored, err := store.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
@@ -233,6 +264,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	tr.Mark("process_reactions")
 	type reaction struct {
 		ID       string `json:"id"`
 		Reaction string `json:"reaction"`
@@ -243,6 +275,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 		out = append(out, reaction{ID: k, Reaction: v})
 	}
 
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
 		ID        string      `json:"id"`
 		Reactions interface{} `json:"reactions"`

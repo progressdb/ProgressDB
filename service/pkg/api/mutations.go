@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
@@ -27,6 +28,9 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 
 // thread management
 func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_create_thread")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	payload := append([]byte(nil), ctx.PostBody()...)
 	id := utils.GenThreadID()
@@ -36,14 +40,19 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
 }
 func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_update_thread")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
@@ -57,6 +66,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
@@ -64,6 +74,9 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 }
 func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_delete_thread")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
@@ -77,6 +90,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
@@ -86,6 +100,9 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 
 // message operations
 func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_create_message")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	threadID := pathParam(ctx, "threadID")
 	if threadID == "" {
@@ -101,14 +118,19 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
 }
 func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_update_message")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	threadID := pathParam(ctx, "threadID")
 	id := pathParam(ctx, "id")
@@ -124,6 +146,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
@@ -131,6 +154,9 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 }
 func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_delete_message")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
@@ -144,6 +170,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
@@ -153,6 +180,9 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 
 // message reactions
 func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_add_reaction")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
@@ -168,6 +198,7 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return
@@ -175,6 +206,9 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 }
 func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.enqueue_delete_reaction")
+	defer tr.Finish()
+
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	identity := pathParam(ctx, "identity")
 	id := pathParam(ctx, "id")
@@ -190,6 +224,7 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
 		"remote":   ctx.RemoteAddr().String(),
 	}
+	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
 		handleQueueError(ctx, err)
 		return

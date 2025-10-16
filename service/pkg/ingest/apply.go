@@ -8,16 +8,21 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store"
+	"progressdb/pkg/telemetry"
 )
 
 // applyBatchToDB persists a list of BatchEntry items to the store.
 // Message entries are saved via store.SaveMessage (handles encryption and sequencing).
 // Thread entries are processed with SaveThread or SoftDeleteThread as appropriate.
 func applyBatchToDB(entries []BatchEntry) error {
+	tr := telemetry.Track("ingest.apply_batch")
+	defer tr.Finish()
+
 	if len(entries) == 0 {
 		return nil
 	}
 
+	tr.Mark("process_entries")
 	for _, e := range entries {
 		switch {
 		case e.MsgID != "":
@@ -46,6 +51,7 @@ func applyBatchToDB(entries []BatchEntry) error {
 			}
 		}
 	}
+	tr.Mark("record_write")
 	store.RecordWrite(len(entries))
 	return nil
 }

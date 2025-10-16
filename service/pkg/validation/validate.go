@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"progressdb/pkg/models"
+	"progressdb/pkg/telemetry"
 )
 
 type Rules struct {
@@ -28,6 +29,9 @@ var rules Rules
 func SetRules(r Rules) { rules = r }
 
 func ValidateMessage(m models.Message) error {
+	tr := telemetry.Track("validation.validate_message")
+	defer tr.Finish()
+
 	var errs []string
 	if m.Body == nil {
 		errs = append(errs, "body is required")
@@ -42,6 +46,7 @@ func ValidateMessage(m models.Message) error {
 		"body":   m.Body,
 	}
 
+	tr.Mark("check_rules")
 	// Required paths
 	for _, p := range rules.Required {
 		if !existsAt(root, p) {

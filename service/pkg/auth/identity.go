@@ -10,6 +10,7 @@ import (
 
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 )
 
@@ -39,6 +40,9 @@ type SecConfig struct {
 // require signed hmac
 func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
+		tr := telemetry.Track("auth.require_signed_author")
+		defer tr.Finish()
+
 		// parse possible identifiers
 		role := strings.ToLower(string(ctx.Request.Header.Peek("X-Role-Name")))
 		userID := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-ID")))
@@ -77,6 +81,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 			return
 		}
 
+		tr.Mark("verify_signature")
 		// crypto verify the req: user_id <> hmac is not tampered
 		ok := false
 		for k := range keys {
@@ -113,6 +118,9 @@ func validateAuthor(a string) (bool, string) {
 
 // extract author - depending on frontend or backend role
 func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (string, int, string) {
+	tr := telemetry.Track("auth.resolve_author")
+	defer tr.Finish()
+
 	// signature-verified author from user value if present
 	if v := ctx.UserValue("author"); v != nil {
 		if id, ok := v.(string); ok && id != "" {

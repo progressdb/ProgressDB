@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 
+	"progressdb/pkg/telemetry"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -31,6 +33,9 @@ func New() *Router {
 
 // Handler satisfies the fasthttp.Server handler interface.
 func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("router.handle_request")
+	defer tr.Finish()
+
 	method := string(ctx.Method())
 	path := string(ctx.Path())
 	if list, ok := r.routes[method]; ok {
