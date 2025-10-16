@@ -14,18 +14,41 @@ import (
 
 // TODO: retry / DLQ
 
-// attach ingestor to queue
+// Ingestor orchestrates workers that consume from the API queue, invoke
+// registered handlers and ensure items are released back to the pool.
+type Ingestor struct {
+	q        *queue.IngestQueue
+	workers  int
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	running  int32
+	handlers map[queue.HandlerID]IngestorFunc
+
+	// batch knobs (future)
+	maxBatch int
+	flushDur time.Duration
+	// pause state
+	paused int32
+
+	seqCounter uint64
+	nextCommit uint64
+	commitMu   sync.Mutex
+	commitCond *sync.Cond
+}
+
+// NewIngestor creates a new Ingestor attached to the provided queue.
+// It expects a validated IngestorConfig (defaults applied by config.ValidateConfig()).
 func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig) *Ingestor {
-	if pc.Workers <= 0 {
+	if pc.WorkerCount <= 0 {
 		panic("ingestor.NewIngestor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
 	p := &Ingestor{
 		q:          q,
-		workers:    pc.Workers,
+		workers:    pc.WorkerCount,
 		stop:       make(chan struct{}),
 		handlers:   make(map[queue.HandlerID]IngestorFunc),
-		maxBatch:   pc.MaxBatchMsgs,
-		flushDur:   time.Duration(pc.FlushMs) * time.Millisecond,
+		maxBatch:   pc.MaxBatchSize,
+		flushDur:   time.Duration(pc.FlushIntervalMs) * time.Millisecond,
 		nextCommit: 1,
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
@@ -68,6 +91,7 @@ func (p *Ingestor) Start() {
 	if !atomic.CompareAndSwapInt32(&p.running, 0, 1) {
 		return
 	}
+	// start n worksers loops
 	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
 		go func(workerID int) {
@@ -179,6 +203,9 @@ func (p *Ingestor) workerLoop(workerID int) {
 			if err := applyBatchToDB(batchEntries); err != nil {
 				logger.Error("apply_batch_failed", "err", err)
 				// TODO: retry / DLQ
+			} else {
+				// Checkpoint successful apply
+				p.q.Checkpoint(seqID)
 			}
 			tr.Finish()
 		}

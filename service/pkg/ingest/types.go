@@ -2,31 +2,9 @@ package ingest
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"progressdb/pkg/ingest/queue"
 )
-
-type Ingestor struct {
-	q        *queue.IngestQueue
-	workers  int
-	stop     chan struct{}
-	wg       sync.WaitGroup
-	running  int32
-	handlers map[queue.HandlerID]IngestorFunc
-
-	// batch knobs (future)
-	maxBatch int
-	flushDur time.Duration
-	// pause state
-	paused int32
-
-	seqCounter uint64
-	nextCommit uint64
-	commitMu   sync.Mutex
-	commitCond *sync.Cond
-}
 
 // handles an Op, returning batch entries or an error for retry.
 type IngestorFunc func(ctx context.Context, op *queue.QueueOp) ([]BatchEntry, error)

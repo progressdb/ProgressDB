@@ -86,47 +86,48 @@ type RetentionConfig struct {
 
 // IngestConfig holds queueing and processing configuration.
 type IngestConfig struct {
-	Ingestor IngestorConfig `yaml:"processor"`
+	Ingestor IngestorConfig `yaml:"ingestor"`
 	Queue    QueueConfig    `yaml:"queue"`
 }
 
 // IngestorConfig controls worker concurrency and batching.
 type IngestorConfig struct {
-	Workers      int `yaml:"workers"`
-	MaxBatchMsgs int `yaml:"max_batch_msgs"`
-	FlushMs      int `yaml:"flush_ms"`
+	WorkerCount     int `yaml:"worker_count"`
+	MaxBatchSize    int `yaml:"max_batch_size"`
+	FlushIntervalMs int `yaml:"flush_interval_ms"`
 }
 
 // QueueConfig holds queue settings with mode selection.
 type QueueConfig struct {
-	Mode                 string             `yaml:"mode"` // "durable" or "memory"
-	Capacity             int                `yaml:"capacity"`
-	BatchSize            int                `yaml:"batch_size"`
-	DrainPollInterval    Duration           `yaml:"drain_poll_interval"`
-	MaxPooledBufferBytes SizeBytes          `yaml:"max_pooled_buffer_bytes"`
-	Memory               MemoryQueueConfig  `yaml:"memory"`
-	Durable              DurableQueueConfig `yaml:"durable"`
+	Mode           string             `yaml:"mode"` // "durable" or "memory"
+	BufferCapacity int                `yaml:"buffer_capacity"`
+	FlushBatchSize int                `yaml:"flush_batch_size"`
+	MaxBufferBytes SizeBytes          `yaml:"max_buffer_bytes"`
+	Memory         MemoryQueueConfig  `yaml:"memory"`
+	Durable        DurableQueueConfig `yaml:"durable"`
 }
 
 // MemoryQueueConfig holds settings for in-memory queue.
 type MemoryQueueConfig struct {
-	Recover          bool     `yaml:"recover"`
+	EnableRecovery   bool     `yaml:"enable_recovery"`
 	TruncateInterval Duration `yaml:"truncate_interval"`
+	PollInterval     Duration `yaml:"poll_interval"`
 }
 
 // DurableQueueConfig holds settings for durable queue with WAL.
 type DurableQueueConfig struct {
-	Recover          bool      `yaml:"recover"`
-	TruncateInterval Duration  `yaml:"truncate_interval"`
-	Mode             string    `yaml:"mode"` // batch | sync
-	MaxFileSize      SizeBytes `yaml:"max_file_size"`
-	EnableBatch      bool      `yaml:"enable_batch"`
-	BatchSize        int       `yaml:"batch_size"`
-	BatchInterval    Duration  `yaml:"batch_interval"`
-	EnableCompress   bool      `yaml:"enable_compress"`
-	CompressMinBytes int64     `yaml:"compress_min_bytes"`
-	RetentionBytes   SizeBytes `yaml:"retention_bytes"`
-	RetentionAge     Duration  `yaml:"retention_age"`
+	EnableRecovery      bool      `yaml:"enable_recovery"`
+	TruncateInterval    Duration  `yaml:"truncate_interval"`
+	MaxFileSize         SizeBytes `yaml:"max_file_size"`
+	FlushBatchSize      int       `yaml:"flush_batch_size"`
+	BatchInterval       Duration  `yaml:"batch_interval"`
+	MinCompressionBytes int64     `yaml:"min_compression_bytes"`
+	RetentionBytes      SizeBytes `yaml:"retention_bytes"`
+	RetentionAge        Duration  `yaml:"retention_age"`
+	// Computed fields (not in YAML)
+	WriteMode         string
+	EnableBatching    bool
+	EnableCompression bool
 	// DisablePebbleWAL controls the underlying Pebble DB's WAL setting.
 	// Default is true - given application level WAL
 	// This is here for configuration access

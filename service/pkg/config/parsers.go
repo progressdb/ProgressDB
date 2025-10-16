@@ -413,56 +413,50 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["QUEUE_MODE"]; v != "" {
 		envCfg.Ingest.Queue.Mode = strings.ToLower(strings.TrimSpace(v))
 	}
-	if v := envs["QUEUE_CAPACITY"]; v != "" {
+	if v := envs["QUEUE_BUFFER_CAPACITY"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.Capacity = n
+			envCfg.Ingest.Queue.BufferCapacity = n
 		}
 	}
-	if v := envs["QUEUE_BATCH_SIZE"]; v != "" {
+	if v := envs["QUEUE_FLUSH_BATCH_SIZE"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.BatchSize = n
+			envCfg.Ingest.Queue.FlushBatchSize = n
 		}
 	}
-	if v := envs["QUEUE_DRAIN_POLL_INTERVAL"]; v != "" {
-		envCfg.Ingest.Queue.DrainPollInterval = parseDuration(v)
+	if v := envs["QUEUE_MAX_BUFFER_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.MaxBufferBytes = parseSizeBytes(v)
 	}
-	if v := envs["QUEUE_MAX_POOLED_BUFFER_BYTES"]; v != "" {
-		envCfg.Ingest.Queue.MaxPooledBufferBytes = parseSizeBytes(v)
-	}
-	if v := envs["QUEUE_MEMORY_RECOVER"]; v != "" {
-		envCfg.Ingest.Queue.Memory.Recover = parseBool(v, false)
+	if v := envs["QUEUE_MEMORY_ENABLE_RECOVERY"]; v != "" {
+		envCfg.Ingest.Queue.Memory.EnableRecovery = parseBool(v, false)
 	}
 	if v := envs["QUEUE_MEMORY_TRUNCATE_INTERVAL"]; v != "" {
 		envCfg.Ingest.Queue.Memory.TruncateInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_DURABLE_RECOVER"]; v != "" {
-		envCfg.Ingest.Queue.Durable.Recover = parseBool(v, true)
+	if v := envs["QUEUE_MEMORY_POLL_INTERVAL"]; v != "" {
+		envCfg.Ingest.Queue.Memory.PollInterval = parseDuration(v)
+	}
+	if v := envs["QUEUE_DURABLE_ENABLE_RECOVERY"]; v != "" {
+		envCfg.Ingest.Queue.Durable.EnableRecovery = parseBool(v, true)
 	}
 	if v := envs["QUEUE_DURABLE_TRUNCATE_INTERVAL"]; v != "" {
 		envCfg.Ingest.Queue.Durable.TruncateInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_DURABLE_MODE"]; v != "" {
-		envCfg.Ingest.Queue.Durable.Mode = strings.ToLower(strings.TrimSpace(v))
+	if v := envs["QUEUE_DURABLE_WRITE_MODE"]; v != "" {
+		envCfg.Ingest.Queue.Durable.WriteMode = strings.ToLower(strings.TrimSpace(v))
 	}
 	if v := envs["QUEUE_DURABLE_MAX_FILE_SIZE"]; v != "" {
 		envCfg.Ingest.Queue.Durable.MaxFileSize = parseSizeBytes(v)
 	}
-	if v := envs["QUEUE_DURABLE_ENABLE_BATCH"]; v != "" {
-		envCfg.Ingest.Queue.Durable.EnableBatch = parseBool(v, true)
-	}
-	if v := envs["QUEUE_DURABLE_BATCH_SIZE"]; v != "" {
+	if v := envs["QUEUE_DURABLE_FLUSH_BATCH_SIZE"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.Durable.BatchSize = n
+			envCfg.Ingest.Queue.Durable.FlushBatchSize = n
 		}
 	}
 	if v := envs["QUEUE_DURABLE_BATCH_INTERVAL"]; v != "" {
 		envCfg.Ingest.Queue.Durable.BatchInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_DURABLE_ENABLE_COMPRESS"]; v != "" {
-		envCfg.Ingest.Queue.Durable.EnableCompress = parseBool(v, true)
-	}
-	if v := envs["QUEUE_DURABLE_COMPRESS_MIN_BYTES"]; v != "" {
-		envCfg.Ingest.Queue.Durable.CompressMinBytes = parseInt64(v, 512)
+	if v := envs["QUEUE_DURABLE_MIN_COMPRESSION_BYTES"]; v != "" {
+		envCfg.Ingest.Queue.Durable.MinCompressionBytes = parseInt64(v, 512)
 	}
 	if v := envs["QUEUE_DURABLE_RETENTION_BYTES"]; v != "" {
 		envCfg.Ingest.Queue.Durable.RetentionBytes = parseSizeBytes(v)

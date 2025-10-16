@@ -45,30 +45,27 @@ retention:
   lock_ttl: 300s
 
 ingest:
-  processor:
-    workers: 2                  # Match 2-core CPU
-    max_batch_msgs: 512         # Smaller batch to fit in lower RAM footprint
-    flush_ms: 5                 # Relaxed flush for lower resource use
+  ingestor:
+    worker_count: 2                  # Match 2-core CPU
+    max_batch_size: 512         # Smaller batch to fit in lower RAM footprint
+    flush_interval_ms: 5                 # Relaxed flush for lower resource use
   queue:
     mode: durable               # Keep on-disk durability
     # Shared base settings
-    capacity: 8192              # Smaller queue to fit 1GB RAM
-    batch_size: 128             # Less in-memory per batch
-    drain_poll_interval: 2ms    # Slightly slower polling reduces CPU
-    max_pooled_buffer_bytes: 64MB # Limit pooled buffer for lower RAM
+    buffer_capacity: 8192              # Smaller queue to fit 1GB RAM
+    flush_batch_size: 128             # Less in-memory per batch
+    max_buffer_bytes: 64MB # Limit pooled buffer for lower RAM
     memory:
-      recover: false
+      enable_recovery: false
       truncate_interval: 0s
+      poll_interval: 2ms    # Slightly slower polling reduces CPU
     durable:
-      recover: true
+      enable_recovery: true
       truncate_interval: 120s   # More infrequent WAL truncation (less SSD stress)
-      mode: batch
       max_file_size: 256MB      # WAL max size fits 1GB disk
-      enable_batch: true
-      batch_size: 32            # Keep batches tiny for minimal RAM and fast flush
+      flush_batch_size: 32      # Keep batches tiny for minimal RAM and fast flush
       batch_interval: 50ms      # WAL flush every 50ms
-      enable_compress: true
-      compress_min_bytes: 1024  # Compress only payloads 1KB+
+      min_compression_bytes: 1024  # Compress only payloads 1KB+
       retention_bytes: 0
       retention_age: 0
 

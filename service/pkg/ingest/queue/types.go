@@ -80,10 +80,10 @@ const (
 )
 
 type IngestQueueOptions struct {
-	Capacity          int
+	BufferCapacity    int
 	WAL               WAL
-	Mode              string
-	Recover           bool
+	WriteMode         string
+	EnableRecovery    bool
 	TruncateInterval  time.Duration
 	WalBacked         bool
 	DrainPollInterval time.Duration
@@ -122,13 +122,13 @@ type WALRecord struct {
 // Options configures WAL behavior when creating WAL instances.
 // DurableWALConfigOptions configures WAL behavior when creating WAL instances.
 type DurableWALConfigOptions struct {
-	Dir              string
-	MaxFileSize      int64
-	EnableBatch      bool
-	BatchSize        int
-	BatchInterval    time.Duration
-	EnableCompress   bool
-	CompressMinBytes int64
+	Dir                 string
+	MaxFileSize         int64
+	EnableBatching      bool
+	BatchSize           int
+	BatchInterval       time.Duration
+	EnableCompression   bool
+	MinCompressionBytes int64
 }
 
 // walFile holds file info for WAL segments.
@@ -156,14 +156,14 @@ type DurableBatchEntry struct {
 
 // FileWAL implements the WAL interface.
 type DurableFile struct {
-	dir              string
-	maxSize          int64
-	enableBatch      bool
-	batchSize        int
-	batchInterval    time.Duration
-	enableCompress   bool
-	compressMinBytes int64
-	compressMinRatio float64
+	dir                 string
+	maxSize             int64
+	enableBatching      bool
+	batchSize           int
+	batchInterval       time.Duration
+	enableCompression   bool
+	minCompressionBytes int64
+	compressMinRatio    float64
 
 	// Buffering/backpressure controls
 	maxBufferedBytes   int64

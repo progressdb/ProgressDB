@@ -21,9 +21,9 @@ const (
 	minWALBatchInterval     = 1 * time.Millisecond
 	defaultCompressMinBytes = 512
 	// Ingest/ingestor defaults
-	defaultIngestorWorkers      = 48
-	defaultIngestorMaxBatchMsgs = 10000
-	defaultIngestorFlushMs      = 1
+	defaultIngestorWorkerCount     = 48
+	defaultIngestorMaxBatchSize    = 10000
+	defaultIngestorFlushIntervalMs = 1
 
 	// Queue defaults
 	defaultQueueBatchSize        = 131072
@@ -123,20 +123,20 @@ func LoadConfigFile(path string) (*Config, error) {
 // configuration value is invalid.
 func (c *Config) ValidateConfig() error {
 	// Queue defaults
-	if c.Ingest.Queue.Capacity <= 0 {
-		c.Ingest.Queue.Capacity = defaultQueueCapacity
+	if c.Ingest.Queue.BufferCapacity <= 0 {
+		c.Ingest.Queue.BufferCapacity = defaultQueueCapacity
 	}
 	// Queue batch size (used by batch consumers)
-	if c.Ingest.Queue.BatchSize <= 0 {
-		c.Ingest.Queue.BatchSize = defaultQueueBatchSize
+	if c.Ingest.Queue.FlushBatchSize <= 0 {
+		c.Ingest.Queue.FlushBatchSize = defaultQueueBatchSize
 	}
-	// Drain poll interval (used when closing/draining the queue)
-	if c.Ingest.Queue.DrainPollInterval.Duration() == 0 {
-		c.Ingest.Queue.DrainPollInterval = Duration(defaultDrainPollInterval)
+	// Poll interval for memory mode
+	if c.Ingest.Queue.Memory.PollInterval.Duration() == 0 {
+		c.Ingest.Queue.Memory.PollInterval = Duration(defaultDrainPollInterval)
 	}
 	// max pooled buffer size
-	if c.Ingest.Queue.MaxPooledBufferBytes.Int64() == 0 {
-		c.Ingest.Queue.MaxPooledBufferBytes = SizeBytes(defaultMaxPooledBufferBytes)
+	if c.Ingest.Queue.MaxBufferBytes.Int64() == 0 {
+		c.Ingest.Queue.MaxBufferBytes = SizeBytes(defaultMaxPooledBufferBytes)
 	}
 	// WAL defaults and validation
 	wc := &c.Ingest.Queue.Durable
@@ -152,12 +152,22 @@ func (c *Config) ValidateConfig() error {
 	if wc.BatchInterval.Duration() < minWALBatchInterval {
 		return fmt.Errorf("durable.batch_interval must be >= %s", minWALBatchInterval)
 	}
-	if wc.BatchSize <= 0 {
-		wc.BatchSize = defaultWALBatchSize
+	if wc.FlushBatchSize <= 0 {
+		wc.FlushBatchSize = defaultWALBatchSize
 	}
-	if wc.CompressMinBytes == 0 {
-		wc.CompressMinBytes = defaultCompressMinBytes
+	if wc.MinCompressionBytes == 0 {
+		wc.MinCompressionBytes = defaultCompressMinBytes
 	}
+
+	// Compute derived fields
+	if wc.FlushBatchSize == 1 {
+		wc.WriteMode = "sync"
+		wc.EnableBatching = false
+	} else {
+		wc.WriteMode = "batch"
+		wc.EnableBatching = true
+	}
+	wc.EnableCompression = true
 
 	// Default is to disable Pebble WAL.
 	if wc.DisablePebbleWAL == nil {
@@ -165,24 +175,16 @@ func (c *Config) ValidateConfig() error {
 		wc.DisablePebbleWAL = &def
 	}
 
-	// Normalize mode
-	switch wc.Mode {
-	case "", "batch", "sync", "none":
-		// ok
-	default:
-		return fmt.Errorf("durable.mode must be one of: none, batch, sync")
-	}
-
 	// Ingestor defaults
 	pc := &c.Ingest.Ingestor
-	if pc.Workers <= 0 {
-		pc.Workers = runtime.NumCPU()
+	if pc.WorkerCount <= 0 {
+		pc.WorkerCount = runtime.NumCPU()
 	}
-	if pc.MaxBatchMsgs <= 0 {
-		pc.MaxBatchMsgs = defaultIngestorMaxBatchMsgs
+	if pc.MaxBatchSize <= 0 {
+		pc.MaxBatchSize = defaultIngestorMaxBatchSize
 	}
-	if pc.FlushMs <= 0 {
-		pc.FlushMs = defaultIngestorFlushMs
+	if pc.FlushIntervalMs <= 0 {
+		pc.FlushIntervalMs = defaultIngestorFlushIntervalMs
 	}
 
 	// Telemetry defaults

@@ -54,21 +54,21 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// warn if both wals are disabled and summarize potential data loss window
-	appWALenabled := eff.Config.Ingest.Queue.Durable.Recover
+	appWALenabled := eff.Config.Ingest.Queue.Durable.EnableRecovery
 	pebbleWALdisabled := true
 	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
 		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
 	}
 	if !appWALenabled && pebbleWALdisabled {
-		procFlush := time.Duration(eff.Config.Ingest.Ingestor.FlushMs) * time.Millisecond
+		procFlush := time.Duration(eff.Config.Ingest.Ingestor.FlushIntervalMs) * time.Millisecond
 		truncate := eff.Config.Ingest.Queue.Durable.TruncateInterval.Duration()
 		lossWindow := procFlush
 		if truncate > lossWindow {
 			lossWindow = truncate
 		}
-		queueCapacity := eff.Config.Ingest.Queue.Capacity
-		procWorkers := eff.Config.Ingest.Ingestor.Workers
-		procBatch := eff.Config.Ingest.Ingestor.MaxBatchMsgs
+		queueCapacity := eff.Config.Ingest.Queue.BufferCapacity
+		procWorkers := eff.Config.Ingest.Ingestor.WorkerCount
+		procBatch := eff.Config.Ingest.Ingestor.MaxBatchSize
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
 		lossWindowHuman := lossWindow.String()

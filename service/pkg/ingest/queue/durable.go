@@ -56,10 +56,10 @@ func (w *DurableFile) flushBatchLocked() error {
 		toWrite := data
 		// Determine compression threshold; default to 512 if not configured.
 		minBytes := int64(512)
-		if w.compressMinBytes > 0 {
-			minBytes = w.compressMinBytes
+		if w.minCompressionBytes > 0 {
+			minBytes = w.minCompressionBytes
 		}
-		if w.enableCompress && int64(len(data)) >= minBytes {
+		if w.enableCompression && int64(len(data)) >= minBytes {
 			compressed, err := compressData(data)
 			if err == nil {
 				// Apply post-compression ratio check
@@ -252,7 +252,7 @@ func (w *DurableFile) Close() error {
 	w.closed = true
 
 	// Flush pending batch
-	if w.enableBatch && len(w.batch.entries) > 0 {
+	if w.enableBatching && len(w.batch.entries) > 0 {
 		if err := w.flushBatchLocked(); err != nil {
 			return err
 		}
@@ -563,10 +563,11 @@ func (w *DurableFile) writeRecord(f *os.File, offset int64, data []byte, flags b
 // durability features (replay, truncation). This was previously in a
 // separate file; consolidated here for clarity.
 func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
-	if opts == nil || opts.Capacity <= 0 {
-		panic("queue.NewIngestQueueWithOptions: opts and opts.Capacity must be provided; ensure config.ValidateConfig() applied defaults")
+	if opts == nil || opts.BufferCapacity <= 0 {
+		panic("queue.NewIngestQueueWithOptions: opts and opts.BufferCapacity must be provided; ensure config.ValidateConfig() applied defaults")
 	}
-	cap := opts.Capacity
+
+	cap := opts.BufferCapacity
 	drainInterval := opts.DrainPollInterval
 	if drainInterval == 0 {
 		drainInterval = 250 * time.Microsecond // default
@@ -582,7 +583,7 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 	q.walBacked = opts.WalBacked
 	if opts != nil && opts.WAL != nil {
 		q.wal = opts.WAL
-		switch opts.Mode {
+		switch opts.WriteMode {
 		case "sync":
 			q.walMode = WalModeSync
 		case "batch":
@@ -591,12 +592,22 @@ func NewIngestQueueWithOptions(opts *IngestQueueOptions) *IngestQueue {
 			q.walMode = WalModeBatch
 		}
 
-		if opts.Recover {
+		if opts.EnableRecovery {
+			checkpoint, err := q.ReadCheckpoint()
+			if err != nil {
+				// Log error, but continue with checkpoint = 0
+				fmt.Printf("failed to read checkpoint: %v\n", err)
+				checkpoint = 0
+			}
 			// stream WAL records into the queue (do not re-append)
 			_ = q.wal.RecoverStream(func(r WALRecord) error {
 				op, err := deserializeOp(r.Data)
 				if err != nil {
 					// skip malformed records
+					return nil
+				}
+				if op.EnqSeq <= checkpoint {
+					// Already applied, skip
 					return nil
 				}
 				op.WalOffset = r.Offset
@@ -703,7 +714,7 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 	if opts.MaxFileSize == 0 {
 		return nil, fmt.Errorf("wal options missing max_file_size; ensure config.ValidateConfig() applied defaults")
 	}
-	if opts.EnableBatch {
+	if opts.EnableBatching {
 		if opts.BatchSize == 0 {
 			return nil, fmt.Errorf("wal options missing batch_size; ensure config.ValidateConfig() applied defaults")
 		}
@@ -717,15 +728,13 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 	}
 
 	w := &DurableFile{
-		dir:              opts.Dir,
-		maxSize:          opts.MaxFileSize,
-		enableBatch:      opts.EnableBatch,
-		batchSize:        opts.BatchSize,
-		batchInterval:    opts.BatchInterval,
-		enableCompress:   opts.EnableCompress,
-		compressMinBytes: opts.CompressMinBytes,
-		crcTable:         crc32.MakeTable(crc32.Castagnoli),
-		batch:            &DurableBatchBuffer{},
+		dir:                 opts.Dir,
+		maxSize:             opts.MaxFileSize,
+		enableBatching:      opts.EnableBatching,
+		batchSize:           opts.BatchSize,
+		batchInterval:       opts.BatchInterval,
+		enableCompression:   opts.EnableCompression,
+		minCompressionBytes: opts.MinCompressionBytes,
 	}
 	w.flushCond = sync.NewCond(&w.mu)
 
@@ -749,7 +758,7 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 	}
 
 	// Start batch flusher if enabled
-	if w.enableBatch {
+	if w.enableBatching {
 		go w.batchFlusher()
 	}
 
@@ -772,7 +781,7 @@ func (w *DurableFile) Append(data []byte) (int64, error) {
 // AppendCtx is like Append but respects ctx cancellation while waiting for
 // buffer space.
 func (w *DurableFile) AppendCtx(data []byte, ctx context.Context) (int64, error) {
-	if !w.enableBatch {
+	if !w.enableBatching {
 		return w.AppendSync(data)
 	}
 
@@ -855,7 +864,7 @@ func (w *DurableFile) AppendPooled(sb *SharedBuf) (int64, error) {
 // AppendPooledCtx appends a pooled buffer to WAL but respects ctx while
 // waiting for buffer space.
 func (w *DurableFile) AppendPooledCtx(sb *SharedBuf, ctx context.Context) (int64, error) {
-	if !w.enableBatch {
+	if !w.enableBatching {
 		return w.appendPooledSyncLocked(sb)
 	}
 
@@ -939,10 +948,10 @@ func (w *DurableFile) appendPooledSyncLocked(sb *SharedBuf) (int64, error) {
 	}
 	flags := byte(0)
 	minBytes := int64(512)
-	if w.compressMinBytes > 0 {
-		minBytes = w.compressMinBytes
+	if w.minCompressionBytes > 0 {
+		minBytes = w.minCompressionBytes
 	}
-	if w.enableCompress && int64(len(toWrite)) >= minBytes {
+	if w.enableCompression && int64(len(toWrite)) >= minBytes {
 		compressed, err := compressData(toWrite)
 		if err == nil {
 			ratio := w.compressMinRatio
@@ -1000,7 +1009,7 @@ func (w *DurableFile) AppendSync(data []byte) (int64, error) {
 	}
 
 	// Flush any pending batch first
-	if w.enableBatch && len(w.batch.entries) > 0 {
+	if w.enableBatching && len(w.batch.entries) > 0 {
 		if err := w.flushBatchLocked(); err != nil {
 			return 0, err
 		}
@@ -1015,10 +1024,10 @@ func (w *DurableFile) appendSyncLocked(data []byte) (int64, error) {
 	flags := byte(0)
 	// Only compress if enabled and data size meets threshold.
 	minBytes := int64(512)
-	if w.compressMinBytes > 0 {
-		minBytes = w.compressMinBytes
+	if w.minCompressionBytes > 0 {
+		minBytes = w.minCompressionBytes
 	}
-	if w.enableCompress && int64(len(data)) >= minBytes {
+	if w.enableCompression && int64(len(data)) >= minBytes {
 		compressed, err := compressData(data)
 		if err == nil {
 			// Apply post-compression ratio check: only accept compressed
@@ -1069,9 +1078,39 @@ func (w *DurableFile) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if !w.enableBatch || len(w.batch.entries) == 0 {
+	if !w.enableBatching || len(w.batch.entries) == 0 {
 		return nil
 	}
 
 	return w.flushBatchLocked()
+}
+
+// Checkpoint writes the last committed sequence to a checkpoint file for recovery.
+func (q *IngestQueue) Checkpoint(seq uint64) error {
+	if q.wal == nil {
+		return nil // No WAL, no checkpoint
+	}
+	checkpointPath := filepath.Join(q.wal.(*DurableFile).dir, "checkpoint.seq")
+	data := make([]byte, 8)
+	binary.LittleEndian.PutUint64(data, seq)
+	return os.WriteFile(checkpointPath, data, 0644)
+}
+
+// ReadCheckpoint reads the last committed sequence from the checkpoint file.
+func (q *IngestQueue) ReadCheckpoint() (uint64, error) {
+	if q.wal == nil {
+		return 0, nil
+	}
+	checkpointPath := filepath.Join(q.wal.(*DurableFile).dir, "checkpoint.seq")
+	data, err := os.ReadFile(checkpointPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil // No checkpoint, start from 0
+		}
+		return 0, err
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid checkpoint file size")
+	}
+	return binary.LittleEndian.Uint64(data), nil
 }

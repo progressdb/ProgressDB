@@ -34,29 +34,26 @@ retention:
   lock_ttl: 300s
 
 ingest:
-  processor:
-    workers: 12
-    max_batch_msgs: 1_000
-    flush_ms: 30
+  ingestor:
+    worker_count: 12
+    max_batch_size: 1_000
+    flush_interval_ms: 30
   queue:
     mode: memory
-    capacity: 10_000
-    batch_size: 1_000
-    drain_poll_interval: 5ms
-    max_pooled_buffer_bytes: 1gb
+    buffer_capacity: 10_000
+    flush_batch_size: 1_000
+    max_buffer_bytes: 1gb
     memory:
-      recover: false
+      enable_recovery: false
       truncate_interval: 0s
+      poll_interval: 5ms
     durable:
-      recover: true
+      enable_recovery: true
       truncate_interval: 120s
-      mode: batch
       max_file_size: 256MB
-      enable_batch: true
-      batch_size: 32
+      flush_batch_size: 32
       batch_interval: 50ms
-      enable_compress: true
-      compress_min_bytes: 1024
+      min_compression_bytes: 1024
       retention_bytes: 0
       retention_age: 0
 

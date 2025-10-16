@@ -29,13 +29,13 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 
 		// Create WAL config from durable config
 		walOpts := DurableWALConfigOptions{
-			Dir:              walDir,
-			MaxFileSize:      qc.Durable.MaxFileSize.Int64(),
-			EnableBatch:      qc.Durable.EnableBatch,
-			BatchSize:        qc.Durable.BatchSize,
-			BatchInterval:    qc.Durable.BatchInterval.Duration(),
-			EnableCompress:   qc.Durable.EnableCompress,
-			CompressMinBytes: qc.Durable.CompressMinBytes,
+			Dir:                 walDir,
+			MaxFileSize:         qc.Durable.MaxFileSize.Int64(),
+			EnableBatching:      qc.Durable.EnableBatching,
+			BatchSize:           qc.Durable.FlushBatchSize,
+			BatchInterval:       qc.Durable.BatchInterval.Duration(),
+			EnableCompression:   qc.Durable.EnableCompression,
+			MinCompressionBytes: qc.Durable.MinCompressionBytes,
 		}
 
 		wal, err := New(walOpts)
@@ -45,13 +45,13 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 
 		// Create queue options
 		qOpts := &IngestQueueOptions{
-			Capacity:          qc.Capacity,
+			BufferCapacity:    qc.BufferCapacity,
 			WAL:               wal,
-			Mode:              qc.Durable.Mode,
-			Recover:           qc.Durable.Recover,
+			WriteMode:         qc.Durable.WriteMode,
+			EnableRecovery:    qc.Durable.EnableRecovery,
 			TruncateInterval:  qc.Durable.TruncateInterval.Duration(),
 			WalBacked:         true,
-			DrainPollInterval: qc.DrainPollInterval.Duration(),
+			DrainPollInterval: qc.Memory.PollInterval.Duration(),
 		}
 
 		queue := NewIngestQueueWithOptions(qOpts)
@@ -70,7 +70,7 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 		return queue, nil
 	} else {
 		// Memory mode
-		return NewIngestQueue(qc.Capacity), nil
+		return NewIngestQueue(qc.BufferCapacity), nil
 	}
 }
 
@@ -78,7 +78,7 @@ func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, err
 // Callers should ensure `config.ValidateConfig()` was run so fields are populated.
 // Deprecated: Use NewQueueFromConfig instead.
 func NewIngestQueueFromConfig(qc config.QueueConfig) *IngestQueue {
-	return NewIngestQueue(qc.Capacity)
+	return NewIngestQueue(qc.BufferCapacity)
 }
 
 // SetDefaultIngestQueue sets the package default if q is non-nil.
