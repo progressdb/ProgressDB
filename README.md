@@ -40,8 +40,6 @@ This will expose the same endpoints as the binary below.
 
 ## Quickstart — Binary Executable
 
-Want to try ProgressDB in seconds?  Download a prebuilt release — no Go toolchain required.
-
 1) Get a binary
 
    Visit the Releases page and download the binary for your platform:
@@ -59,8 +57,6 @@ Want to try ProgressDB in seconds?  Download a prebuilt release — no Go toolch
 3) Windows
 
    Unzip and run `progressdb.exe` from PowerShell.
-
-That’s it — download, run, and connect with the SDKs below. Have fun!
 
 
 ## Install SDKs
