@@ -21,9 +21,10 @@ const (
 	minWALBatchInterval     = 1 * time.Millisecond
 	defaultCompressMinBytes = 512
 	// Ingest/ingestor defaults
-	defaultIngestorWorkerCount     = 48
-	defaultIngestorMaxBatchSize    = 10000
-	defaultIngestorFlushIntervalMs = 1
+	defaultIngestorWorkerCount          = 48
+	defaultIngestorApplyQueueBufferSize = 100
+	defaultIngestorMaxBatchSize         = 10000
+	defaultIngestorFlushIntervalMs      = 1
 
 	// Queue defaults
 	defaultQueueBatchSize        = 131072
@@ -180,6 +181,9 @@ func (c *Config) ValidateConfig() error {
 	pc := &c.Ingest.Ingestor
 	if pc.WorkerCount <= 0 {
 		pc.WorkerCount = runtime.NumCPU()
+	}
+	if pc.ApplyQueueBufferSize <= 0 {
+		pc.ApplyQueueBufferSize = defaultIngestorApplyQueueBufferSize
 	}
 
 	// Telemetry defaults

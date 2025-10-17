@@ -12,6 +12,12 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
+// ApplyBatch represents a batch of entries to be applied with its sequence ID.
+type ApplyBatch struct {
+	SeqID   uint64
+	Entries []BatchEntry
+}
+
 // TODO: retry / DLQ
 
 // Ingestor orchestrates workers that consume from the API queue, invoke
@@ -35,6 +41,12 @@ type Ingestor struct {
 	nextCommit uint64
 	commitMu   sync.Mutex
 	commitCond *sync.Cond
+
+	// sequenced apply queue for memory mode
+	applyCh        chan *ApplyBatch
+	nextApplySeq   uint64
+	pendingApplies map[uint64]*ApplyBatch
+	applyMu        sync.Mutex
 }
 
 // NewIngestor creates a new Ingestor attached to the provided queue.
@@ -52,14 +64,17 @@ func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig, qc config.Queue
 		maxBatch = qc.Durable.FlushBatchSize
 	}
 	p := &Ingestor{
-		q:          q,
-		workers:    pc.WorkerCount,
-		stop:       make(chan struct{}),
-		handlers:   make(map[queue.HandlerID]IngestorFunc),
-		maxBatch:   maxBatch,
-		flushDur:   time.Duration(flushMs) * time.Millisecond,
-		isMemory:   qc.Mode == "memory",
-		nextCommit: 1,
+		q:              q,
+		workers:        pc.WorkerCount,
+		stop:           make(chan struct{}),
+		handlers:       make(map[queue.HandlerID]IngestorFunc),
+		maxBatch:       maxBatch,
+		flushDur:       time.Duration(flushMs) * time.Millisecond,
+		isMemory:       qc.Mode == "memory",
+		nextCommit:     1,
+		applyCh:        make(chan *ApplyBatch, pc.ApplyQueueBufferSize), // configurable buffer to avoid blocking workers
+		nextApplySeq:   1,
+		pendingApplies: make(map[uint64]*ApplyBatch),
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
 	registerDefaultHandlers(p)
@@ -101,7 +116,15 @@ func (p *Ingestor) Start() {
 	if !atomic.CompareAndSwapInt32(&p.running, 0, 1) {
 		return
 	}
-	// start n worksers loops
+	// start apply loop for memory mode
+	if p.isMemory {
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			p.applyLoop()
+		}()
+	}
+	// start n workers loops
 	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
 		go func(workerID int) {
@@ -207,24 +230,38 @@ func (p *Ingestor) workerLoop(workerID int) {
 			}
 		}
 
-		// apply accumulated batch entries in commit order (skip for memory mode)
-		if !p.isMemory {
-			p.waitForCommit(seqID)
-		}
-		if len(batchEntries) > 0 {
-			tr := telemetry.Track("ingest.worker_batch_apply")
-			if err := ApplyBatchToDB(batchEntries); err != nil {
-				logger.Error("apply_batch_failed", "err", err)
-				// TODO: retry / DLQ
-			} else {
-				// Checkpoint successful apply
-				p.q.Checkpoint(seqID)
-				// Truncate WAL immediately after successful batch
-				p.q.TruncateNow()
+		// apply accumulated batch entries in commit order
+		if p.isMemory {
+			// for memory mode, send to sequenced apply queue
+			ab := &ApplyBatch{SeqID: seqID, Entries: batchEntries}
+			select {
+			case p.applyCh <- ab:
+				// sent successfully
+			case <-p.stop:
+				// stopping, apply directly to avoid loss
+				p.applyBatch(ab)
+				return
+			default:
+				// channel full, apply directly to avoid blocking (may violate order slightly, but better than blocking)
+				logger.Warn("apply_channel_full", "applying_directly", seqID)
+				p.applyBatch(ab)
 			}
-			tr.Finish()
-		}
-		if !p.isMemory {
+		} else {
+			// durable mode: wait for commit order
+			p.waitForCommit(seqID)
+			if len(batchEntries) > 0 {
+				tr := telemetry.Track("ingest.worker_batch_apply")
+				if err := ApplyBatchToDB(batchEntries); err != nil {
+					logger.Error("apply_batch_failed", "err", err)
+					// TODO: retry / DLQ
+				} else {
+					// Checkpoint successful apply
+					p.q.Checkpoint(seqID)
+					// Truncate WAL immediately after successful batch
+					p.q.TruncateNow()
+				}
+				tr.Finish()
+			}
 			p.markCommitted(seqID)
 		}
 		tr.Finish()
@@ -250,6 +287,57 @@ func (p *Ingestor) markCommitted(seq uint64) {
 		p.commitCond.Broadcast()
 	}
 	p.commitMu.Unlock()
+}
+
+// applyLoop processes ApplyBatches in sequence for memory mode.
+func (p *Ingestor) applyLoop() {
+	for {
+		select {
+		case ab := <-p.applyCh:
+			p.applyMu.Lock()
+			if ab.SeqID == p.nextApplySeq {
+				p.applyBatch(ab)
+				p.nextApplySeq++
+				// process any pending batches in sequence
+				for {
+					if next, ok := p.pendingApplies[p.nextApplySeq]; ok {
+						delete(p.pendingApplies, p.nextApplySeq)
+						p.applyBatch(next)
+						p.nextApplySeq++
+					} else {
+						break
+					}
+				}
+			} else if ab.SeqID > p.nextApplySeq {
+				p.pendingApplies[ab.SeqID] = ab
+			} // ignore if SeqID < nextApplySeq, already applied
+			p.applyMu.Unlock()
+		case <-p.stop:
+			// drain remaining batches
+			close(p.applyCh)
+			for ab := range p.applyCh {
+				p.applyBatch(ab) // apply remaining without sequencing, since stopping
+			}
+			return
+		}
+	}
+}
+
+// applyBatch applies a single ApplyBatch.
+func (p *Ingestor) applyBatch(ab *ApplyBatch) {
+	if len(ab.Entries) > 0 {
+		tr := telemetry.Track("ingest.worker_batch_apply")
+		if err := ApplyBatchToDB(ab.Entries); err != nil {
+			logger.Error("apply_batch_failed", "err", err)
+			// TODO: retry / DLQ
+		} else {
+			// Checkpoint successful apply
+			p.q.Checkpoint(ab.SeqID)
+			// Truncate WAL immediately after successful batch
+			p.q.TruncateNow()
+		}
+		tr.Finish()
+	}
 }
 
 // wires handlers per ops

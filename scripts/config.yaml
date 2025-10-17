@@ -36,8 +36,9 @@ retention:
 ingest:
   ingestor:
     worker_count: 16
+    apply_queue_buffer_size: 100
   queue:
-    mode: memory
+    mode: durable
     buffer_capacity: 1_000_000
     shutdown_poll_interval: 5ms
     memory:
@@ -45,7 +46,7 @@ ingest:
       flush_interval_ms: 50
     durable:
       recover_on_startup: true
-      flush_batch_size: 1_000
+      flush_batch_size: 1
       flush_interval_ms: 30
       size_per_wal_file: 256MB
       min_compress_size: 1024

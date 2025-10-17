@@ -727,6 +727,10 @@ func New(opts DurableWALConfigOptions) (*DurableFile, error) {
 		enableCompression:   opts.EnableCompression,
 		minCompressionBytes: opts.MinCompressionBytes,
 		maxBufferedBytes:    opts.MaxBufferBytes,
+		crcTable:            crc32.MakeTable(crc32.Castagnoli),
+	}
+	if opts.EnableBatching {
+		w.batch = &DurableBatchBuffer{}
 	}
 	w.flushCond = sync.NewCond(&w.mu)
 

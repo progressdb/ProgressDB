@@ -92,7 +92,8 @@ type IngestConfig struct {
 
 // IngestorConfig controls worker concurrency.
 type IngestorConfig struct {
-	WorkerCount int `yaml:"worker_count"`
+	WorkerCount          int `yaml:"worker_count"`
+	ApplyQueueBufferSize int `yaml:"apply_queue_buffer_size"`
 }
 
 // QueueConfig holds queue settings with mode selection.
