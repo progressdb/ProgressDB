@@ -3,11 +3,10 @@
 
 ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
 
-> ProgressDB is currently under active development and not yet recommended for production use or full capacity use. 
-> The database is heavily tested and actively used internally at [Fathom4Sight](https://fathom4sight.com), but breaking changes may still occur and some features remain incomplete.  
-> The next milestone release, v0.5.0, is expected around October 17, with another update planned by the end of the month.  
-> A built-in Progressor feature automatically performs necessary database migrations when model definitions change or new things needed. 
-> However, this currently applies only to the database layer itself, not the sdks etc.
+>ProgressDB is in active development and not yet ready for production or full-capacity use.
+>While extensively tested, breaking changes and incomplete features remain.
+>The next milestone, v0.5.0, is expected around October 17, with another update later this month.
+>The built-in Progressor handles automatic database migrations on model changes, though this currently applies only to the database layer—not the SDKs.
 
 ## Why ProgressDB?
 

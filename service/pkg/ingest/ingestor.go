@@ -249,9 +249,20 @@ func (p *Ingestor) workerLoop(workerID int) {
 			p.applyBatch(ab)
 			return
 		default:
-			// channel full, apply directly to avoid blocking (may violate order slightly, but better than blocking)
-			logger.Warn("apply_channel_full", "applying_directly", seqID)
-			p.applyBatch(ab)
+			if p.isMemory {
+				// channel full, apply directly to avoid blocking (memory mode doesn't require strict ordering)
+				logger.Warn("apply_channel_full", "applying_directly", seqID)
+				p.applyBatch(ab)
+			} else {
+				// durable mode: wait for space to maintain ordering and prevent data loss
+				select {
+				case p.applyCh <- ab:
+					// sent successfully after waiting
+				case <-p.stop:
+					p.applyBatch(ab)
+					return
+				}
+			}
 		}
 		tr.Finish()
 	}
