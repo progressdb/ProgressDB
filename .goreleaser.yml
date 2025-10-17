@@ -53,7 +53,7 @@ checksum:
 
 release:
   github:
-    owner: ha-sante   # 👈 replace
+    owner: ProgressDB   # 👈 replace
     name: progressdb              # 👈 repo name
   draft: false
   prerelease: auto

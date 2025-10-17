@@ -46,7 +46,7 @@ Want to try ProgressDB in seconds?  Download a prebuilt release — no Go toolch
 
    Visit the Releases page and download the binary for your platform:
 
-   https://github.com/ha-sante/ProgressDB/releases
+   https://github.com/progressdb/ProgressDB/releases
 
 2) Extract & run (Linux / macOS)
 
@@ -191,4 +191,4 @@ Planned
 - [ ] Search - search API / indexed search experience
 - [ ] Scaling - horizontal scaling features (sharding, partitioning, cluster replication)
 
-[![test-db-service](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/ha-sante/ProgressDB/actions/workflows/test-db-service.yml)
+[![test-db-service](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml)
