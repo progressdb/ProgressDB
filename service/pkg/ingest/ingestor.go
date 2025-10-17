@@ -16,6 +16,7 @@ import (
 type ApplyBatch struct {
 	SeqID   uint64
 	Entries []BatchEntry
+	MaxEnq  uint64
 }
 
 // TODO: retry / DLQ
@@ -76,7 +77,9 @@ func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig, qc config.Queue
 		nextApplySeq:   1,
 		pendingApplies: make(map[uint64]*ApplyBatch),
 	}
-	p.commitCond = sync.NewCond(&p.commitMu)
+	if qc.Mode == "durable" {
+		p.commitCond = sync.NewCond(&p.commitMu)
+	}
 	registerDefaultHandlers(p)
 	return p
 }
@@ -116,14 +119,12 @@ func (p *Ingestor) Start() {
 	if !atomic.CompareAndSwapInt32(&p.running, 0, 1) {
 		return
 	}
-	// start apply loop for memory mode
-	if p.isMemory {
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
-			p.applyLoop()
-		}()
-	}
+	// start apply loop
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.applyLoop()
+	}()
 	// start n workers loops
 	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
@@ -230,39 +231,27 @@ func (p *Ingestor) workerLoop(workerID int) {
 			}
 		}
 
-		// apply accumulated batch entries in commit order
-		if p.isMemory {
-			// for memory mode, send to sequenced apply queue
-			ab := &ApplyBatch{SeqID: seqID, Entries: batchEntries}
-			select {
-			case p.applyCh <- ab:
-				// sent successfully
-			case <-p.stop:
-				// stopping, apply directly to avoid loss
-				p.applyBatch(ab)
-				return
-			default:
-				// channel full, apply directly to avoid blocking (may violate order slightly, but better than blocking)
-				logger.Warn("apply_channel_full", "applying_directly", seqID)
-				p.applyBatch(ab)
+		// find max EnqSeq in batch for checkpoint
+		var maxEnq uint64
+		for _, e := range batchEntries {
+			if e.Enq > maxEnq {
+				maxEnq = e.Enq
 			}
-		} else {
-			// durable mode: wait for commit order
-			p.waitForCommit(seqID)
-			if len(batchEntries) > 0 {
-				tr := telemetry.Track("ingest.worker_batch_apply")
-				if err := ApplyBatchToDB(batchEntries); err != nil {
-					logger.Error("apply_batch_failed", "err", err)
-					// TODO: retry / DLQ
-				} else {
-					// Checkpoint successful apply
-					p.q.Checkpoint(seqID)
-					// Truncate WAL immediately after successful batch
-					p.q.TruncateNow()
-				}
-				tr.Finish()
-			}
-			p.markCommitted(seqID)
+		}
+
+		// send to sequenced apply queue
+		ab := &ApplyBatch{SeqID: seqID, Entries: batchEntries, MaxEnq: maxEnq}
+		select {
+		case p.applyCh <- ab:
+			// sent successfully
+		case <-p.stop:
+			// stopping, apply directly to avoid loss
+			p.applyBatch(ab)
+			return
+		default:
+			// channel full, apply directly to avoid blocking (may violate order slightly, but better than blocking)
+			logger.Warn("apply_channel_full", "applying_directly", seqID)
+			p.applyBatch(ab)
 		}
 		tr.Finish()
 	}
@@ -332,7 +321,7 @@ func (p *Ingestor) applyBatch(ab *ApplyBatch) {
 			// TODO: retry / DLQ
 		} else {
 			// Checkpoint successful apply
-			p.q.Checkpoint(ab.SeqID)
+			p.q.Checkpoint(ab.MaxEnq)
 			// Truncate WAL immediately after successful batch
 			p.q.TruncateNow()
 		}

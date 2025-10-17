@@ -1086,10 +1086,24 @@ func (q *IngestQueue) Checkpoint(seq uint64) error {
 	if q.wal == nil {
 		return nil // No WAL, no checkpoint
 	}
-	checkpointPath := filepath.Join(q.wal.(*DurableFile).dir, "checkpoint.seq")
+	dir := q.wal.(*DurableFile).dir
+	checkpointPath := filepath.Join(dir, "checkpoint.seq")
+	tempPath := filepath.Join(dir, "checkpoint.seq.tmp")
 	data := make([]byte, 8)
 	binary.LittleEndian.PutUint64(data, seq)
-	return os.WriteFile(checkpointPath, data, 0644)
+	f, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	// Rename to make atomic
+	return os.Rename(tempPath, checkpointPath)
 }
 
 // ReadCheckpoint reads the last committed sequence from the checkpoint file.

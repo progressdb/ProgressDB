@@ -149,6 +149,18 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
+	// open database
+	disablePebbleWAL := true
+	if a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
+		disablePebbleWAL = *a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
+	}
+	appWALEnabled := a.eff.Config.Ingest.Queue.Mode == "durable"
+	logger.Info("opening_database", "path", a.eff.DBPath, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
+	if err := store.Open(a.eff.DBPath, disablePebbleWAL, appWALEnabled); err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	logger.Info("database_opened", "path", a.eff.DBPath)
+
 	// config based basqueue
 	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue, a.eff.DBPath)
 	if err != nil {
@@ -176,6 +188,11 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		// shutdown HTTP server
+		if a.srvFast != nil {
+			_ = a.srvFast.Shutdown()
+		}
+
 		// shutdown ingest and sensor
 		if queue.DefaultIngestQueue != nil {
 			_ = queue.DefaultIngestQueue.Close()
