@@ -9,7 +9,8 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store/db"
+
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
@@ -18,18 +19,18 @@ import (
 
 // lists all messages for thread, ordered by insertion
 func ListMessages(threadID string, limit ...int) ([]string, error) {
-	tr := telemetry.Track("store.list_messages")
+	tr := telemetry.Track("storedb.list_messages")
 	defer tr.Finish()
 
-	if db.StoreDB == nil {
-		return nil, fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	mp, merr := keys.MsgPrefix(threadID)
 	if merr != nil {
 		return nil, merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}

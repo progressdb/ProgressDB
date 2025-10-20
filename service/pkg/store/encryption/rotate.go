@@ -9,7 +9,7 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/threads"
 
@@ -18,8 +18,8 @@ import (
 
 // migrates all thread messages to new DEK; backs up old data before overwriting
 func RotateThreadDEK(threadID, newKeyID string) error {
-	if db.StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	oldKeyID := ""
 	if s, err := threads.GetThread(threadID); err == nil {
@@ -38,7 +38,7 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		return merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
@@ -74,10 +74,10 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 					return fmt.Errorf("failed to marshal migrated message: %w", merr)
 				}
 				backupKey := append([]byte("backup:migrate:"), k...)
-				if err := db.StoreDB.Set(backupKey, v, db.WriteOpt(true)); err != nil {
+				if err := storedb.Client.Set(backupKey, v, storedb.WriteOpt(true)); err != nil {
 					return fmt.Errorf("backup failed: %w", err)
 				}
-				if err := db.StoreDB.Set(k, nb, db.WriteOpt(true)); err != nil {
+				if err := storedb.Client.Set(k, nb, storedb.WriteOpt(true)); err != nil {
 					return fmt.Errorf("write new ciphertext failed: %w", err)
 				}
 				continue
@@ -95,10 +95,10 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			return fmt.Errorf("encrypt with new key failed: %w", eerr)
 		}
 		backupKey := append([]byte("backup:migrate:"), k...)
-		if err := db.StoreDB.Set(backupKey, v, db.WriteOpt(true)); err != nil {
+		if err := storedb.Client.Set(backupKey, v, storedb.WriteOpt(true)); err != nil {
 			return fmt.Errorf("backup failed: %w", err)
 		}
-		if err := db.StoreDB.Set(k, ct, db.WriteOpt(true)); err != nil {
+		if err := storedb.Client.Set(k, ct, storedb.WriteOpt(true)); err != nil {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}

@@ -9,7 +9,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/locks"
 	"progressdb/pkg/telemetry"
@@ -17,11 +17,11 @@ import (
 
 // saves message with encryption and sequencing
 func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message, threadJSON string) error {
-	tr := telemetry.Track("store.save_message")
+	tr := telemetry.Track("storedb.save_message")
 	defer tr.Finish()
 
-	if db.StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 
 	// lock thread for sequencing
@@ -83,13 +83,13 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	}
 
 	// save to batch
-	batch := db.StoreDB.NewBatch()
+	batch := storedb.Client.NewBatch()
 	defer batch.Close()
-	batch.Set([]byte(msgKey), data, db.WriteOpt(true))
-	batch.Set([]byte(versionKey), data, db.WriteOpt(true))
+	batch.Set([]byte(msgKey), data, storedb.WriteOpt(true))
+	batch.Set([]byte(versionKey), data, storedb.WriteOpt(true))
 
 	tr.Mark("apply")
-	if err := db.StoreDB.Apply(batch, db.WriteOpt(true)); err != nil {
+	if err := storedb.Client.Apply(batch, storedb.WriteOpt(true)); err != nil {
 		logger.Error("save_message_failed", "thread", threadID, "msg", msgID, "error", err)
 		return err
 	}

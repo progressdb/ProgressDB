@@ -8,7 +8,6 @@ import (
 
 	"progressdb/pkg/auth"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
@@ -31,7 +30,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	slugQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("slug")))
 
 	tr.Mark("list_threads")
-	vals, err := store.ListThreads()
+	vals, err := storedb.ListThreads()
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -84,7 +83,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_thread")
-	stored, err := store.GetThread(id)
+	stored, err := storedb.GetThread(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
@@ -124,7 +123,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 
 	tr.Mark("check_thread")
-	if stored, err := store.GetThread(threadID); err == nil {
+	if stored, err := storedb.GetThread(threadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(stored), &th); err == nil {
 			if th.Deleted {
@@ -135,7 +134,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	msgs, err := store.ListMessages(threadID)
+	msgs, err := storedb.ListMessages(threadID)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -211,7 +210,7 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 
 	id := pathParam(ctx, "id")
 	tr.Mark("get_message")
-	stored, err := store.GetLatestMessage(id)
+	stored, err := storedb.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
@@ -248,7 +247,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_message")
-	stored, err := store.GetLatestMessage(id)
+	stored, err := storedb.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return

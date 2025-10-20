@@ -5,6 +5,7 @@ import (
 	"time"
 
 	router "progressdb/pkg/router"
+	storedb "progressdb/pkg/store/db/store"
 
 	"github.com/valyala/fasthttp"
 
@@ -14,7 +15,6 @@ import (
 	"progressdb/pkg/auth"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
-	"progressdb/pkg/store"
 
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
@@ -44,7 +44,7 @@ func (a *App) printBanner() {
 // readyzHandler handles the /readyz endpoint (fasthttp).
 func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 	// check store
-	if !store.Ready() {
+	if !storedb.Ready() {
 		ctx.SetStatusCode(fasthttp.StatusServiceUnavailable)
 		ctx.SetContentType("application/json")
 		_, _ = ctx.WriteString("{\"status\":\"not ready\"}")

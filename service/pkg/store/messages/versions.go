@@ -9,7 +9,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 
@@ -18,11 +18,11 @@ import (
 
 // returns all versions for a given message in order
 func ListMessageVersions(msgID string) ([]string, error) {
-	if db.StoreDB == nil {
-		return nil, fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	prefix := []byte("version:msg:" + msgID + ":")
-	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 
 // returns latest version for message, error if not found
 func GetLatestMessage(msgID string) (string, error) {
-	tr := telemetry.Track("store.get_latest_message")
+	tr := telemetry.Track("storedb.get_latest_message")
 	defer tr.Finish()
 
 	tr.Mark("list_versions")

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/store"
+	storedb "progressdb/pkg/store/db/store"
 )
 
 // Shutdown attempts to gracefully stop all running components.
@@ -51,7 +51,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	// flush close the storage
 	log.Printf("shutdown: closing store")
-	if err := store.Close(); err != nil {
+	if err := storedb.Close(); err != nil {
 		log.Printf("shutdown: store close error: %v", err)
 	}
 

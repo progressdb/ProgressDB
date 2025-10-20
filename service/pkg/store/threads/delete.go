@@ -7,25 +7,25 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 )
 
 // deletes thread metadata
 func DeleteThread(threadID string) error {
-	tr := telemetry.Track("store.delete_thread")
+	tr := telemetry.Track("storedb.delete_thread")
 	defer tr.Finish()
 
-	if db.StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	tk, err := keys.ThreadMetaKey(threadID)
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}
 	tr.Mark("delete")
-	if err := db.StoreDB.Delete([]byte(tk), db.WriteOpt(true)); err != nil {
+	if err := storedb.Client.Delete([]byte(tk), storedb.WriteOpt(true)); err != nil {
 		logger.Error("delete_thread_failed", "thread", threadID, "error", err)
 		return err
 	}
@@ -35,11 +35,11 @@ func DeleteThread(threadID string) error {
 
 // marks thread as deleted: just sets Deleted field and saves
 func SoftDeleteThread(threadID, actor string) error {
-	tr := telemetry.Track("store.soft_delete_thread")
+	tr := telemetry.Track("storedb.soft_delete_thread")
 	defer tr.Finish()
 
-	if db.StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	tk, terr := keys.ThreadMetaKey(threadID)
 	if terr != nil {
@@ -47,7 +47,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	}
 	key := []byte(tk)
 	tr.Mark("get_thread")
-	v, closer, err := db.StoreDB.Get(key)
+	v, closer, err := storedb.Client.Get(key)
 	if err != nil {
 		logger.Error("soft_delete_load_failed", "thread", threadID, "error", err)
 		return err
@@ -64,7 +64,7 @@ func SoftDeleteThread(threadID, actor string) error {
 	th.DeletedTS = time.Now().UTC().UnixNano()
 	nb, _ := json.Marshal(th)
 	tr.Mark("update_thread")
-	if err := db.StoreDB.Set(key, nb, db.WriteOpt(true)); err != nil {
+	if err := storedb.Client.Set(key, nb, storedb.WriteOpt(true)); err != nil {
 		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}

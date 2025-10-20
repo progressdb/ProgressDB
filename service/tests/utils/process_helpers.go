@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"progressdb/pkg/logger"
-	"progressdb/pkg/store"
+	storedb "progressdb/pkg/store/db/store"
 )
 
 // StartTestServerProcess starts a test server with default config and test keys.
@@ -53,12 +53,12 @@ func PreseedDB(t *testing.T, prefix string, seedFn func(storePath string)) strin
 	logger.Init()
 
 	// Open Pebble store with WAL disabled
-	if err := store.Open(storePath, true, false); err != nil {
-		t.Fatalf("store.Open failed: %v", err)
+	if err := storedb.Open(storePath, true, false); err != nil {
+		t.Fatalf("storedb.Open failed: %v", err)
 	}
 	defer func() {
-		if err := store.Close(); err != nil {
-			t.Fatalf("store.Close failed: %v", err)
+		if err := storedb.Close(); err != nil {
+			t.Fatalf("storedb.Close failed: %v", err)
 		}
 	}()
 

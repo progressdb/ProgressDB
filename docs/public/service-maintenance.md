@@ -37,7 +37,7 @@ KMS notes
 
 - If using `embedded` KMS: securely back up the master key and KMS data directory before maintenance.
 - If using `external` KMS: ensure the external KMS endpoint, credentials, and key IDs remain unchanged and reachable.
-- For any rewrap or rotation, snapshot DB and KMS metadata first and validate reads on a staging restore.
+- For any rewrap or rotation, snapshot DB and KMS metadata first and validate reads on a staging restoredb.
 
 Monitoring & quick checks
 

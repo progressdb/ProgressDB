@@ -1,4 +1,4 @@
-package db
+package storedb
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/store/db/index"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -14,11 +15,11 @@ var PendingWrites uint64
 
 // applies batch; sync forces fsync if true, else async write
 func ApplyBatch(batch *pebble.Batch, sync bool) error {
-	if StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	var err error
-	err = StoreDB.Apply(batch, WriteOpt(sync))
+	err = Client.Apply(batch, WriteOpt(sync))
 	if err != nil {
 		logger.Error("pebble_apply_batch_failed", "error", err)
 	}
@@ -48,13 +49,13 @@ func ResetPendingWrites() {
 
 // resets pending write counter
 func ResetIndexPendingWrites() {
-	atomic.StoreUint64(&IndexPendingWrites, 0)
+	atomic.StoreUint64(&index.IndexPendingWrites, 0)
 }
 
 // writes marker key, forces WAL fsync unless disabled (group-commit)
 func ForceSync() error {
-	if StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	if walDisabled {
 		logger.Debug("pebble_force_sync_noop_wal_disabled")
@@ -62,7 +63,7 @@ func ForceSync() error {
 	}
 	key := []byte("__progressDB_wal_sync_marker__")
 	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
-	if err := StoreDB.Set(key, val, WriteOpt(true)); err != nil {
+	if err := Client.Set(key, val, WriteOpt(true)); err != nil {
 		logger.Error("pebble_force_sync_failed", "err", err)
 		return err
 	}
@@ -79,16 +80,16 @@ func WriteOpt(requestSync bool) *pebble.WriteOptions {
 
 // applies batch; sync forces fsync if true, else async write
 func ApplyIndexBatch(batch *pebble.Batch, sync bool) error {
-	if IndexDB == nil {
+	if index.IndexDB == nil {
 		return fmt.Errorf("index pebble not opened; call index.Open first")
 	}
 	var err error
-	err = IndexDB.Apply(batch, IndexWriteOpt(sync))
+	err = index.IndexDB.Apply(batch, index.IndexWriteOpt(sync))
 	if err != nil {
 		logger.Error("index_pebble_apply_batch_failed", "error", err)
 	}
 	if err == nil {
-		atomic.AddUint64(&IndexPendingWrites, 1)
+		atomic.AddUint64(&index.IndexPendingWrites, 1)
 	}
 	return err
 }
@@ -98,36 +99,28 @@ func RecordIndexWrite(n int) {
 	if n <= 0 {
 		return
 	}
-	atomic.AddUint64(&IndexPendingWrites, uint64(n))
+	atomic.AddUint64(&index.IndexPendingWrites, uint64(n))
 }
 
 // returns count of pending writes since last sync
 func GetIndexPendingWrites() uint64 {
-	return atomic.LoadUint64(&IndexPendingWrites)
+	return atomic.LoadUint64(&index.IndexPendingWrites)
 }
 
 // writes marker key, forces WAL fsync unless disabled (group-commit)
 func ForceIndexSync() error {
-	if IndexDB == nil {
+	if index.IndexDB == nil {
 		return fmt.Errorf("index pebble not opened; call index.Open first")
 	}
-	if indexWALDisabled {
+	if index.IndexWALDisabled {
 		logger.Debug("index_pebble_force_sync_noop_wal_disabled")
 		return nil
 	}
 	key := []byte("__progressDB_index_wal_sync_marker__")
 	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
-	if err := IndexDB.Set(key, val, IndexWriteOpt(true)); err != nil {
+	if err := index.IndexDB.Set(key, val, index.IndexWriteOpt(true)); err != nil {
 		logger.Error("index_pebble_force_sync_failed", "err", err)
 		return err
 	}
 	return nil
-}
-
-// chooses sync/no-sync writeOptions, always disables sync if WAL disabled
-func IndexWriteOpt(requestSync bool) *pebble.WriteOptions {
-	if requestSync && !indexWALDisabled {
-		return pebble.Sync
-	}
-	return pebble.NoSync
 }

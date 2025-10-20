@@ -3,8 +3,6 @@ package tests
 import (
 	"strings"
 	"testing"
-
-	"progressdb/pkg/store"
 )
 
 // verifies MsgKey/VersionKey/ThreadMetaKey builders and parsers.
@@ -24,11 +22,11 @@ func TestKeysBuildersParsers(t *testing.T) {
 
 	for _, c := range cases {
 		// MsgKey -> ParseMsgKey
-		k, err := store.MsgKey(c.threadID, c.ts, c.seq)
+		k, err := storedb.MsgKey(c.threadID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("MsgKey error: %v", err)
 		}
-		tid, pts, pseq, perr := store.ParseMsgKey(k)
+		tid, pts, pseq, perr := storedb.ParseMsgKey(k)
 		if perr != nil {
 			t.Fatalf("ParseMsgKey error: %v (key=%s)", perr, k)
 		}
@@ -37,11 +35,11 @@ func TestKeysBuildersParsers(t *testing.T) {
 		}
 
 		// VersionKey -> ParseVersionKey
-		vk, err := store.VersionKey(c.msgID, c.ts, c.seq)
+		vk, err := storedb.VersionKey(c.msgID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("VersionKey error: %v", err)
 		}
-		mid, vts, vseq, verr := store.ParseVersionKey(vk)
+		mid, vts, vseq, verr := storedb.ParseVersionKey(vk)
 		if verr != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", verr, vk)
 		}
@@ -50,7 +48,7 @@ func TestKeysBuildersParsers(t *testing.T) {
 		}
 
 		// ThreadMetaKey
-		mk, err := store.ThreadMetaKey(c.threadID)
+		mk, err := storedb.ThreadMetaKey(c.threadID)
 		if err != nil {
 			t.Fatalf("ThreadMetaKey error: %v", err)
 		}
@@ -60,10 +58,10 @@ func TestKeysBuildersParsers(t *testing.T) {
 	}
 
 	// invalid ids
-	if _, err := store.MsgKey("", 1, 1); err == nil {
+	if _, err := storedb.MsgKey("", 1, 1); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if _, err := store.VersionKey("", 1, 1); err == nil {
+	if _, err := storedb.VersionKey("", 1, 1); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }
@@ -83,11 +81,11 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 
 	for _, c := range cases {
 		// MsgKey round-trip
-		k, err := store.MsgKey(c.threadID, c.ts, c.seq)
+		k, err := storedb.MsgKey(c.threadID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("MsgKey error: %v", err)
 		}
-		tid, pts, pseq, err := store.ParseMsgKey(k)
+		tid, pts, pseq, err := storedb.ParseMsgKey(k)
 		if err != nil {
 			t.Fatalf("ParseMsgKey error: %v (key=%s)", err, k)
 		}
@@ -96,11 +94,11 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 		}
 
 		// VersionKey round-trip
-		vk, err := store.VersionKey(c.msgID, c.ts, c.seq)
+		vk, err := storedb.VersionKey(c.msgID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("VersionKey error: %v", err)
 		}
-		mid, vts, vseq, err := store.ParseVersionKey(vk)
+		mid, vts, vseq, err := storedb.ParseVersionKey(vk)
 		if err != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
 		}
@@ -112,18 +110,18 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 
 func TestPrefixesAndValidators_StoreHelpers(t *testing.T) {
 	// Prefix helpers
-	if p, err := store.MsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
+	if p, err := storedb.MsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
 		t.Fatalf("MsgPrefix unexpected: %v %v", p, err)
 	}
-	if p, err := store.ThreadPrefix("abc"); err != nil || p != "thread:abc:" {
+	if p, err := storedb.ThreadPrefix("abc"); err != nil || p != "thread:abc:" {
 		t.Fatalf("ThreadPrefix unexpected: %v %v", p, err)
 	}
 
 	// validators
-	if err := store.ValidateThreadID(""); err == nil {
+	if err := storedb.ValidateThreadID(""); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if err := store.ValidateMsgID(""); err == nil {
+	if err := storedb.ValidateMsgID(""); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }

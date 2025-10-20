@@ -3,7 +3,7 @@ package locks
 import (
 	"bytes"
 
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
@@ -16,7 +16,7 @@ func ComputeMaxSeq(threadID string) (uint64, error) {
 		return 0, merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return 0, err
 	}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
@@ -13,15 +13,15 @@ import (
 
 // lists all saved thread metadata as JSON
 func ListThreads() ([]string, error) {
-	tr := telemetry.Track("store.list_threads")
+	tr := telemetry.Track("storedb.list_threads")
 	defer tr.Finish()
 
-	if db.StoreDB == nil {
-		return nil, fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	prefix := []byte("thread:")
 	tr.Mark("new_iter")
-	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}

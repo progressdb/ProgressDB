@@ -1,4 +1,4 @@
-package db
+package index
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 var IndexDB *pebble.DB
 var IndexDBPath string
-var indexWALDisabled bool
+var IndexWALDisabled bool
 var IndexPendingWrites uint64
 
 // opens/creates pebble DB with WAL settings for index storage
@@ -22,9 +22,9 @@ func OpenIndex(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	opts := &pebble.Options{
 		DisableWAL: disablePebbleWAL,
 	}
-	indexWALDisabled = opts.DisableWAL
+	IndexWALDisabled = opts.DisableWAL
 
-	if indexWALDisabled && !appWALEnabled {
+	if IndexWALDisabled && !appWALEnabled {
 		logger.Warn("index_durability_disabled", "durability", "no WAL enabled for index DB")
 	}
 
@@ -161,4 +161,12 @@ func DeleteIndexKey(key string) error {
 	}
 	logger.Debug("index_delete_key_ok", "key", key)
 	return nil
+}
+
+// chooses sync/no-sync writeOptions, always disables sync if WAL disabled
+func IndexWriteOpt(requestSync bool) *pebble.WriteOptions {
+	if requestSync && !IndexWALDisabled {
+		return pebble.Sync
+	}
+	return pebble.NoSync
 }

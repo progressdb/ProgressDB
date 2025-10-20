@@ -8,8 +8,9 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/locks"
 	"progressdb/pkg/store/threads"
-	"progressdb/pkg/store/db"
 )
 
 const (
@@ -46,7 +47,7 @@ func migrateTo0_2_0(ctx context.Context, from, to string) error {
 			continue
 		}
 
-		max, err := threads.MaxSeqForThread(th.ID)
+		max, err := locks.MaxSeqForThread(th.ID)
 		if err != nil {
 			logger.Error("migration_maxseq_failed", "thread", th.ID, "error", err)
 			continue
@@ -73,7 +74,7 @@ func migrateTo0_2_0(ctx context.Context, from, to string) error {
 func startMigration(from, to string) error {
 	marker := map[string]string{"from": from, "to": to, "started_at": time.Now().UTC().Format(time.RFC3339)}
 	mb, _ := json.Marshal(marker)
-	if err := db.SaveKey(systemInProgressKey, mb); err != nil {
+	if err := storedb.SaveKey(systemInProgressKey, mb); err != nil {
 		logger.Error("progressor_write_inprogress_failed", "error", err)
 		return fmt.Errorf("failed to write in-progress marker: %w", err)
 	}
@@ -83,11 +84,11 @@ func startMigration(from, to string) error {
 
 // finishMigration persists the new version, clears the in-progress marker and logs.
 func finishMigration(to string) error {
-	if err := db.SaveKey(systemVersionKey, []byte(to)); err != nil {
+	if err := storedb.SaveKey(systemVersionKey, []byte(to)); err != nil {
 		logger.Error("progressor_persist_version_failed", "version", to, "error", err)
 		return fmt.Errorf("failed to persist new version: %w", err)
 	}
-	if err := db.DeleteKey(systemInProgressKey); err != nil {
+	if err := storedb.DeleteKey(systemInProgressKey); err != nil {
 		logger.Error("progressor_delete_inprogress_failed", "error", err)
 	}
 	logger.Info("progressor_version_persisted", "version", to)
@@ -96,12 +97,12 @@ func finishMigration(to string) error {
 
 // Migrations are self-contained; Run dispatches the matching handler.
 func Run(ctx context.Context, newVersion string) (bool, error) {
-	stored, err := db.GetKey(systemVersionKey)
+	stored, err := storedb.GetKey(systemVersionKey)
 	if err != nil {
 		// treat missing system version key as a first-run case and use the
 		// historical last-known version as a sensible default so migrations
 		// are calculated from that point.
-		if db.IsNotFound(err) {
+		if storedb.IsNotFound(err) {
 			stored = defaultStoredVersion
 		} else {
 			logger.Error("progressor_read_version_failed", "error", err)
@@ -128,7 +129,7 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 		}
 		return true, nil
 	default:
-		if err := db.SaveKey(systemVersionKey, []byte(newVersion)); err != nil {
+		if err := storedb.SaveKey(systemVersionKey, []byte(newVersion)); err != nil {
 			logger.Error("progressor_persist_version_failed", "version", newVersion, "error", err)
 			return true, fmt.Errorf("failed to persist new version: %w", err)
 		}
@@ -137,9 +138,9 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 }
 
 func getStoredVersion() string {
-	v, err := db.GetKey(systemVersionKey)
+	v, err := storedb.GetKey(systemVersionKey)
 	if err != nil {
-		if db.IsNotFound(err) {
+		if storedb.IsNotFound(err) {
 			return defaultStoredVersion
 		}
 		return ""

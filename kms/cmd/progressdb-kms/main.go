@@ -49,7 +49,7 @@ func main() {
 		provider = p
 	}
 
-	st, errStore := store.New(*dataDir + "/kms.db")
+	st, errStore := storedb.New(*dataDir + "/kms.db")
 	if errStore != nil {
 		log.Fatalf("failed to open store: %v", errStore)
 	}
@@ -137,7 +137,7 @@ func decryptWithRaw(dek []byte, b64 string) ([]byte, error) {
 }
 
 // HTTP handlers (return handler funcs so we can capture dependencies)
-func createDEKHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+func createDEKHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "no provider configured", http.StatusInternalServerError)
@@ -164,7 +164,7 @@ func createDEKHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFu
 	}
 }
 
-func getWrappedHandler(st *store.Store) http.HandlerFunc {
+func getWrappedHandler(st *storedb.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		keyID := r.URL.Query().Get("key_id")
 		if keyID == "" {
@@ -184,7 +184,7 @@ func getWrappedHandler(st *store.Store) http.HandlerFunc {
 	}
 }
 
-func encryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+func encryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID     string `json:"key_id"`
@@ -228,7 +228,7 @@ func encryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc
 	}
 }
 
-func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+func decryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID      string `json:"key_id"`
@@ -269,7 +269,7 @@ func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc
 	}
 }
 
-func rewrapHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
+func rewrapHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID     string `json:"key_id"`

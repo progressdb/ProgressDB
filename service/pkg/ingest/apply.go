@@ -7,12 +7,13 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store"
+	"progressdb/pkg/store/messages"
+	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 )
 
-// ApplyBatchToDB persists a list of BatchEntry items to the store.
-// Message entries are saved via store.SaveMessage (handles encryption and sequencing).
+// ApplyBatchToDB persists a list of BatchEntry items to the storedb.
+// Message entries are saved via storedb.SaveMessage (handles encryption and sequencing).
 // Thread entries are processed with SaveThread or SoftDeleteThread as appropriate.
 func ApplyBatchToDB(entries []BatchEntry) error {
 	tr := telemetry.Track("ingest.apply_batch")
@@ -32,19 +33,19 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 				logger.Error("apply_batch_unmarshal_message", "err", err)
 				continue
 			}
-			if err := store.SaveMessage(context.Background(), e.Thread, e.MsgID, msg); err != nil {
+			if err := messages.SaveMessage(context.Background(), e.Thread, e.MsgID, msg); err != nil {
 				logger.Error("apply_batch_save_message_failed", "err", err, "thread", e.Thread, "msg", e.MsgID)
 				continue
 			}
 		default:
 			// Thread-level entry. Use SoftDeleteThread for deletes, otherwise SaveThread.
 			if e.Handler == queue.HandlerThreadDelete {
-				if err := store.SoftDeleteThread(e.Thread, ""); err != nil {
+				if err := threads.SoftDeleteThread(e.Thread, ""); err != nil {
 					logger.Error("apply_batch_soft_delete_failed", "err", err, "thread", e.Thread)
 					continue
 				}
 			} else {
-				if err := store.SaveThread(e.Thread, string(e.Payload)); err != nil {
+				if err := threads.SaveThread(e.Thread, string(e.Payload)); err != nil {
 					logger.Error("apply_batch_save_thread_failed", "err", err, "thread", e.Thread)
 					continue
 				}
@@ -52,6 +53,6 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 		}
 	}
 	tr.Mark("record_write")
-	store.RecordWrite(len(entries))
+	// storedb.RecordWrite(len(entries))
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/sensor"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/telemetry"
 
 	"github.com/dustin/go-humanize"
@@ -22,7 +23,6 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
 	"progressdb/pkg/state"
-	"progressdb/pkg/store/db"
 )
 
 // app groups server state and components.
@@ -126,7 +126,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 			disable = *aCfg.Ingest.Queue.Durable.DisablePebbleWAL
 		}
 	}
-	if err := db.StoreDB.(state.PathsVar.Store, disable, appWALenabled); err != nil {
+	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 
@@ -156,7 +156,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	appWALEnabled := a.eff.Config.Ingest.Queue.Mode == "durable"
 	logger.Info("opening_database", "path", a.eff.DBPath, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
-	if err := store.Open(a.eff.DBPath, disablePebbleWAL, appWALEnabled); err != nil {
+	if err := storedb.Open(a.eff.DBPath, disablePebbleWAL, appWALEnabled); err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	logger.Info("database_opened", "path", a.eff.DBPath)

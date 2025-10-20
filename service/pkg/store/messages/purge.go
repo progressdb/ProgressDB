@@ -5,18 +5,18 @@ import (
 	"fmt"
 
 	"progressdb/pkg/logger"
-	"progressdb/pkg/store/db"
+	storedb "progressdb/pkg/store/db/store"
 
 	"github.com/cockroachdb/pebble"
 )
 
 // deletes message and all version keys
 func PurgeMessagePermanently(messageID string) error {
-	if db.StoreDB == nil {
-		return fmt.Errorf("pebble not opened; call store.Open first")
+	if storedb.Client == nil {
+		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	vprefix := []byte("version:msg:" + messageID + ":")
-	vi, err := db.StoreDB.NewIter(&pebble.IterOptions{})
+	vi, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func PurgeMessagePermanently(messageID string) error {
 		keys = append(keys, append([]byte(nil), vi.Key()...))
 	}
 	for _, k := range keys {
-		if err := db.StoreDB.Delete(k, db.WriteOpt(true)); err != nil {
+		if err := storedb.Client.Delete(k, storedb.WriteOpt(true)); err != nil {
 			logger.Error("purge_message_delete_failed", "key", string(k), "error", err)
 		}
 	}

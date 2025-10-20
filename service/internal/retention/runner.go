@@ -9,13 +9,14 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store"
+	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/threads"
 )
 
 // runOnce executes a single retention run: acquire lease, scan threads, purge eligible items, write audit.
 func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath string) error {
 	ret := eff.Config.Retention
-	owner := store.GenMessageID()
+	owner := keys.GenMessageID()
 	lock := NewFileLease(auditPath)
 	acq, err := lock.Acquire(owner, ret.LockTTL.Duration())
 	if err != nil {
@@ -76,7 +77,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	defer hbCancel()
 
 	// open audit writer
-	runID := store.GenMessageID()
+	runID := keys.GenMessageID()
 	logger.Info("retention_run_start", "run_id", runID, "owner", owner, "dry_run", ret.DryRun)
 	// header (emit audit event via dedicated audit logger if present)
 	if logger.Audit != nil {
@@ -93,7 +94,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	}
 	cutoff := time.Now().UTC().Add(-pd)
 
-	threads, err := store.ListThreads()
+	threads, err := threads.ListThreads()
 	if err != nil {
 		return fmt.Errorf("list threads: %w", err)
 	}
@@ -125,7 +126,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 				continue
 			}
 			// attempt purge
-			err := store.PurgeThreadPermanently(th.ID)
+			err := threads.PurgeThreadPermanently(th.ID)
 			if err != nil {
 				entry["status"] = "failed"
 				entry["error"] = err.Error()

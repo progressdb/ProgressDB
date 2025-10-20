@@ -12,7 +12,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store"
+	"progressdb/pkg/store/messages"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/validation"
 )
@@ -118,7 +118,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error)
 	}
 
 	// load latest message
-	stored, err := store.GetLatestMessage(op.ID)
+	stored, err := messages.GetLatestMessage(op.ID)
 	if err != nil {
 		return nil, fmt.Errorf("message not found: %w", err)
 	}
@@ -160,7 +160,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, err
 		return nil, fmt.Errorf("no identity specified for reaction delete")
 	}
 
-	stored, err := store.GetLatestMessage(op.ID)
+	stored, err := messages.GetLatestMessage(op.ID)
 	if err != nil {
 		return nil, fmt.Errorf("message not found: %w", err)
 	}
