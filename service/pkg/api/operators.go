@@ -74,7 +74,7 @@ func AdminHealth(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_health")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -86,7 +86,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_stats")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -118,7 +118,7 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_list_threads")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -140,7 +140,7 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_list_keys")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -163,7 +163,7 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_get_key")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -193,7 +193,7 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_rotate_thread_dek")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -239,7 +239,7 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -329,7 +329,7 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 
 func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	// check admin permissions
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -476,7 +476,7 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.admin_generate_kek")
 	defer tr.Finish()
 
-	if !isAdminFast(ctx) {
+	if !isAdminUserRole(ctx) {
 		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
@@ -511,8 +511,6 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	}
 	return ids, nil
 }
-
-// helpers
 func auditSummary(event string, threads int, keys int, out map[string]map[string]string) {
 	okCount := 0
 	errCount := 0
@@ -529,11 +527,9 @@ func auditSummary(event string, threads int, keys int, out map[string]map[string
 	}
 	auditLog(event, fields)
 }
-
-func isAdminFast(ctx *fasthttp.RequestCtx) bool {
+func isAdminUserRole(ctx *fasthttp.RequestCtx) bool {
 	return string(ctx.Request.Header.Peek("X-Role-Name")) == "admin"
 }
-
 func auditLog(event string, fields map[string]interface{}) {
 	if logger.Audit != nil {
 		attrs := make([]interface{}, 0, len(fields)*2)
@@ -549,8 +545,6 @@ func auditLog(event string, fields map[string]interface{}) {
 	}
 	logger.Info(event, attrs...)
 }
-
-// returns the API key from Authorization or X-API-Key headers.
 func getAPIKey(ctx *fasthttp.RequestCtx) string {
 	auth := string(ctx.Request.Header.Peek("Authorization"))
 	var key string

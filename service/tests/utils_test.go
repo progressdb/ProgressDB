@@ -7,17 +7,18 @@ package tests
 import (
 	"testing"
 
+	"progressdb/pkg/store"
 	"progressdb/pkg/utils"
 )
 
 func TestUtils_Suite(t *testing.T) {
 	// Subtest: Validate ID/slug/path helpers produce expected non-empty outputs and correct splitting.
-	t.Run("GenID_Slug_Split", func(t *testing.T) {
-		id := utils.GenID()
+	t.Run("GenMessageID_Slug_Split", func(t *testing.T) {
+		id := store.GenMessageID()
 		if id == "" {
-			t.Fatalf("expected GenID to produce a value")
+			t.Fatalf("expected GenMessageID to produce a value")
 		}
-		tid := utils.GenThreadID()
+		tid := store.GenThreadID()
 		if tid == "" {
 			t.Fatalf("expected GenThreadID to produce a value")
 		}

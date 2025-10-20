@@ -12,7 +12,6 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -27,7 +26,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		msgID = msg.ID
 	}
 	if msgID == "" && msg.ID == "" {
-		msg.ID = utils.GenID()
+		msg.ID = GenMessageID()
 		msgID = msg.ID
 	}
 

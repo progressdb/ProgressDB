@@ -4,27 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync/atomic"
-	"time"
 )
-
-var idSeq uint64
-
-// GenID generates a unique message ID using the current UTC nanosecond timestamp and an atomic sequence number.
-// The format is "msg-<timestamp>-<seq>".
-func GenID() string {
-	n := time.Now().UTC().UnixNano()
-	s := atomic.AddUint64(&idSeq, 1)
-	return fmt.Sprintf("msg-%d-%d", n, s)
-}
-
-// GenThreadID generates a unique thread ID using the current UTC nanosecond timestamp and an atomic sequence number.
-// The format is "thread-<timestamp>-<seq>".
-func GenThreadID() string {
-	n := time.Now().UTC().UnixNano()
-	s := atomic.AddUint64(&idSeq, 1)
-	return fmt.Sprintf("thread-%d-%d", n, s)
-}
 
 // SplitPath splits a path string into its non-empty segments, separated by '/'.
 // For example, "/foo/bar/" becomes []string{"foo", "bar"}.

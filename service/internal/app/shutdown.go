@@ -14,7 +14,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	log.Printf("shutdown: requested")
 	a.state = "shutting_down"
 
-	// 1) stop accepting new requests
+	// stop accepting new requests
 	if a.srv != nil {
 		log.Printf("shutdown: stopping HTTP server")
 		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -26,7 +26,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// close kms clinet
+	// close kms client
 	if a.rc != nil {
 		log.Printf("shutdown: closing KMS client")
 		if err := a.rc.Close(); err != nil {

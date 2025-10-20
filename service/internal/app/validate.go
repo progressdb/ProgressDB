@@ -11,9 +11,7 @@ import (
 	"progressdb/pkg/config"
 )
 
-// validateConfig performs quick, fail-fast validation of the effective
-// configuration before starting long-running services. Keep checks light
-// and focused so callers can surface user-friendly errors.
+// set defaults, fail fast on critical errors
 func validateConfig(eff config.EffectiveConfigResult) error {
 	// DB path must be present
 	if p := eff.DBPath; p == "" {

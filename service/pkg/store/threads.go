@@ -11,7 +11,6 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -117,7 +116,7 @@ func SoftDeleteThread(threadID, actor string) error {
 		return err
 	}
 	tomb := models.Message{
-		ID:      utils.GenID(),
+		ID:      GenMessageID(),
 		Thread:  threadID,
 		Author:  actor,
 		TS:      time.Now().UTC().UnixNano(),

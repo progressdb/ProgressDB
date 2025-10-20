@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/store"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
@@ -33,7 +34,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	payload := append([]byte(nil), ctx.PostBody()...)
-	id := utils.GenThreadID()
+	id := store.GenThreadID()
 	extras := map[string]string{
 		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
 		"identity": string(ctx.Request.Header.Peek("X-Identity")),
@@ -110,7 +111,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
-	id := utils.GenID()
+	id := store.GenMessageID()
 	ts := time.Now().UTC().UnixNano()
 	extras := map[string]string{
 		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
