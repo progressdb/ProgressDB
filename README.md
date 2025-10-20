@@ -176,13 +176,13 @@ Available
 - [x] Frontend SDKs - typescript & react sdks published for v0.1.0
 
 Partial
-- [ ] Metrics - Prometheus metrics (hooks present - metrics coverage is incomplete)
-- [ ] Reliability - (WAL/buffering) are present in parts but not fully hardened for production
-- [ ] Performance - performance benchmarking tools are available - but SLO/alerting integrations are incomplete
+- [ ] Reliability - (WAL/buffering) are present but need autotuning for prod
+- [ ] Performance - performance on a simple setup is greate - but need testing for prod
+- [ ] Metrics - Metrics are present, but need cleanup for prod
 
 Planned
-- [ ] Encryption - Cloud-backed KMS / HSM integration
-- [ ] Backups - backups & tested restore workflows
+- [ ] Encryption - cloud-backed KMS ~ HSM integration from local only
+- [ ] Backups - backups & tested restore of chat datas
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery
 - [ ] Search - search API / indexed search experience
 - [ ] Scaling - horizontal scaling features (sharding, partitioning, cluster replication)
