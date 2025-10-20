@@ -1,4 +1,4 @@
-package store
+package encryption
 
 import (
 	"bytes"
@@ -9,17 +9,20 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
+	"progressdb/pkg/store/db"
+	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/threads"
 
 	"github.com/cockroachdb/pebble"
 )
 
 // migrates all thread messages to new DEK; backs up old data before overwriting
 func RotateThreadDEK(threadID, newKeyID string) error {
-	if db == nil {
+	if db.StoreDB == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	oldKeyID := ""
-	if s, err := GetThread(threadID); err == nil {
+	if s, err := threads.GetThread(threadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS != nil {
@@ -30,12 +33,12 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	mp, merr := MsgPrefix(threadID)
+	mp, merr := keys.MsgPrefix(threadID)
 	if merr != nil {
 		return merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
@@ -47,7 +50,7 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 		}
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
-		if likelyJSON(v) {
+		if LikelyJSON(v) {
 			var mm models.Message
 			if err := json.Unmarshal(v, &mm); err == nil {
 				decBody, derr := security.DecryptMessageBody(&mm, oldKeyID)
@@ -71,10 +74,10 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 					return fmt.Errorf("failed to marshal migrated message: %w", merr)
 				}
 				backupKey := append([]byte("backup:migrate:"), k...)
-				if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
+				if err := db.StoreDB.Set(backupKey, v, db.WriteOpt(true)); err != nil {
 					return fmt.Errorf("backup failed: %w", err)
 				}
-				if err := db.Set(k, nb, writeOpt(true)); err != nil {
+				if err := db.StoreDB.Set(k, nb, db.WriteOpt(true)); err != nil {
 					return fmt.Errorf("write new ciphertext failed: %w", err)
 				}
 				continue
@@ -92,14 +95,14 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			return fmt.Errorf("encrypt with new key failed: %w", eerr)
 		}
 		backupKey := append([]byte("backup:migrate:"), k...)
-		if err := db.Set(backupKey, v, writeOpt(true)); err != nil {
+		if err := db.StoreDB.Set(backupKey, v, db.WriteOpt(true)); err != nil {
 			return fmt.Errorf("backup failed: %w", err)
 		}
-		if err := db.Set(k, ct, writeOpt(true)); err != nil {
+		if err := db.StoreDB.Set(k, ct, db.WriteOpt(true)); err != nil {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
-	if s, terr := GetThread(threadID); terr == nil {
+	if s, terr := threads.GetThread(threadID); terr == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS == nil {
@@ -107,7 +110,7 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			}
 			th.KMS.KeyID = newKeyID
 			if nb, merr := json.Marshal(th); merr == nil {
-				if err := SaveThread(th.ID, string(nb)); err != nil {
+				if err := threads.SaveThread(th.ID, string(nb)); err != nil {
 					return fmt.Errorf("save thread key mapping failed: %w", err)
 				}
 			}

@@ -185,6 +185,6 @@ Planned
 - [ ] Backups - backups & tested restore of chat datas
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery
 - [ ] Search - search API / indexed search experience
-- [ ] Scaling - horizontal scaling features (sharding, partitioning, cluster replication)
+- [ ] Scaling - vertical or horizontal scaling features
 
 [![test-db-service](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml)

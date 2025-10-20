@@ -1,4 +1,4 @@
-package store
+package messages
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
+	"progressdb/pkg/store/db"
+	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
@@ -16,11 +18,11 @@ import (
 
 // returns all versions for a given message in order
 func ListMessageVersions(msgID string) ([]string, error) {
-	if db == nil {
-		return nil, fmt.Errorf("index pebble not opened; call index.Open first")
+	if db.StoreDB == nil {
+		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	prefix := []byte("version:msg:" + msgID + ":")
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +41,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 				Thread string `json:"thread"`
 			}
 			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
-				sthr, terr := GetThread(msg.Thread)
+				sthr, terr := threads.GetThread(msg.Thread)
 				if terr == nil {
 					var th struct {
 						KMS struct {

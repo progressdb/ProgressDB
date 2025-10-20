@@ -1,4 +1,4 @@
-package store
+package messages
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
+	"progressdb/pkg/store/db"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
@@ -19,15 +21,15 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 	tr := telemetry.Track("store.list_messages")
 	defer tr.Finish()
 
-	if db == nil {
+	if db.StoreDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	mp, merr := MsgPrefix(threadID)
+	mp, merr := keys.MsgPrefix(threadID)
 	if merr != nil {
 		return nil, merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -35,14 +37,14 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 	var out []string
 	var threadKeyID string
 	if security.EncryptionEnabled() {
-		if s, e := GetThread(threadID); e == nil {
-			var th models.Thread
-			if json.Unmarshal([]byte(s), &th) == nil {
-				if th.KMS != nil {
-					threadKeyID = th.KMS.KeyID
-				}
-			}
-		}
+		// if s, e := threads.GetThread(threadID); e == nil {
+		// 	var th models.Thread
+		// 	if json.Unmarshal([]byte(s), &th) == nil {
+		// 		if th.KMS != nil {
+		// 			threadKeyID = th.KMS.KeyID
+		// 		}
+		// 	}
+		// }
 	}
 	max := -1
 	if len(limit) > 0 {

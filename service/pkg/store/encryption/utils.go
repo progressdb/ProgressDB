@@ -1,4 +1,4 @@
-package store
+package encryption
 
 // true if likely contains JSON object/array based on first non-whitespace
 func likelyJSON(b []byte) bool {

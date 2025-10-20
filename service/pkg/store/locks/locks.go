@@ -1,4 +1,4 @@
-package store
+package locks
 
 import (
 	"sync"
@@ -10,7 +10,7 @@ var (
 )
 
 // returns mutex for given thread (creates if needed)
-func getThreadLock(threadID string) *sync.Mutex {
+func GetThreadLock(threadID string) *sync.Mutex {
 	locksMu.Lock()
 	defer locksMu.Unlock()
 	if l, ok := threadLocks[threadID]; ok {

@@ -22,7 +22,7 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/security"
 	"progressdb/pkg/state"
-	"progressdb/pkg/store"
+	"progressdb/pkg/store/db"
 )
 
 // app groups server state and components.
@@ -126,7 +126,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 			disable = *aCfg.Ingest.Queue.Durable.DisablePebbleWAL
 		}
 	}
-	if err := store.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
+	if err := db.StoreDB.(state.PathsVar.Store, disable, appWALenabled); err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 

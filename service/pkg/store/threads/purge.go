@@ -1,4 +1,4 @@
-package store
+package threads
 
 import (
 	"bytes"
@@ -7,21 +7,23 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db"
+	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
 )
 
 // deletes thread and all messages/versions; removes in batches
 func PurgeThreadPermanently(threadID string) error {
-	if db == nil {
+	if db.StoreDB == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	tp, terr := ThreadPrefix(threadID)
+	tp, terr := keys.ThreadPrefix(threadID)
 	if terr != nil {
 		return terr
 	}
 	prefix := []byte(tp)
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
@@ -30,7 +32,7 @@ func PurgeThreadPermanently(threadID string) error {
 	var batch [][]byte
 	deleteBatch := func(keys [][]byte) {
 		for _, k := range keys {
-			if err := db.Delete(k, writeOpt(true)); err != nil {
+			if err := db.StoreDB.Delete(k, db.WriteOpt(true)); err != nil {
 				logger.Error("purge_delete_failed", "key", string(k), "error", err)
 			}
 		}
@@ -46,7 +48,7 @@ func PurgeThreadPermanently(threadID string) error {
 		var m models.Message
 		if err := json.Unmarshal(v, &m); err == nil && m.ID != "" {
 			vprefix := []byte("version:msg:" + m.ID + ":")
-			vi, _ := db.NewIter(&pebble.IterOptions{})
+			vi, _ := db.StoreDB.NewIter(&pebble.IterOptions{})
 			if vi != nil {
 				for vi.SeekGE(vprefix); vi.Valid(); vi.Next() {
 					if !bytes.HasPrefix(vi.Key(), vprefix) {

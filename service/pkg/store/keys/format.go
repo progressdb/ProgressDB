@@ -1,4 +1,4 @@
-package store
+package keys
 
 import (
 	"fmt"

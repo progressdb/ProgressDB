@@ -1,4 +1,4 @@
-package store
+package db
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-var db *pebble.DB
-var dbPath string
+var StoreDB *pebble.DB
+var StoreDBPath string
 var walDisabled bool
 
 // opens/creates pebble DB with WAL settings
@@ -27,30 +27,30 @@ func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 		logger.Warn("durability_disabled", "durability", "no WAL enabled")
 	}
 
-	db, err = pebble.Open(path, opts)
+	StoreDB, err = pebble.Open(path, opts)
 	if err != nil {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
-	dbPath = path
+	StoreDBPath = path
 	return nil
 }
 
-// closes opened pebble DB
+// closes opened pebble StoreDB
 func Close() error {
-	if db == nil {
+	if StoreDB == nil {
 		return nil
 	}
-	if err := db.Close(); err != nil {
+	if err := StoreDB.Close(); err != nil {
 		return err
 	}
-	db = nil
+	StoreDB = nil
 	return nil
 }
 
-// returns true if DB is opened
+// returns true if StoreDB is opened
 func Ready() bool {
-	return db != nil
+	return StoreDB != nil
 }
 
 // returns true if error is pebble.ErrNotFound
@@ -63,7 +63,7 @@ func ListKeys(prefix string) ([]string, error) {
 	tr := telemetry.Track("store.list_keys")
 	defer tr.Finish()
 
-	if db == nil {
+	if StoreDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	var pfx []byte
@@ -72,7 +72,7 @@ func ListKeys(prefix string) ([]string, error) {
 	} else {
 		pfx = nil
 	}
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +100,11 @@ func GetKey(key string) (string, error) {
 	tr := telemetry.Track("store.get_key")
 	defer tr.Finish()
 
-	if db == nil {
+	if StoreDB == nil {
 		return "", fmt.Errorf("pebble not opened; call store.Open first")
 	}
 	tr.Mark("get")
-	v, closer, err := db.Get([]byte(key))
+	v, closer, err := StoreDB.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			logger.Debug("get_key_missing", "key", key)
@@ -122,10 +122,10 @@ func GetKey(key string) (string, error) {
 
 // stores arbitrary key/value (namespace caution: e.g. "kms:dek:")
 func SaveKey(key string, value []byte) error {
-	if db == nil {
+	if StoreDB == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	if err := db.Set([]byte(key), value, writeOpt(true)); err != nil {
+	if err := StoreDB.Set([]byte(key), value, WriteOpt(true)); err != nil {
 		logger.Error("save_key_failed", "key", key, "error", err)
 		return err
 	}
@@ -134,27 +134,27 @@ func SaveKey(key string, value []byte) error {
 }
 
 // returns iterator, caller must close
-func DBIter() (*pebble.Iterator, error) {
-	if db == nil {
+func StoreDBIter() (*pebble.Iterator, error) {
+	if StoreDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	return db.NewIter(&pebble.IterOptions{})
+	return StoreDB.NewIter(&pebble.IterOptions{})
 }
 
 // writes key (bytes) as is, for admin use
-func DBSet(key, value []byte) error {
-	if db == nil {
+func StoreDBSet(key, value []byte) error {
+	if StoreDB == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	return db.Set(key, value, writeOpt(true))
+	return StoreDB.Set(key, value, WriteOpt(true))
 }
 
 // removes key
 func DeleteKey(key string) error {
-	if db == nil {
+	if StoreDB == nil {
 		return fmt.Errorf("pebble not opened; call store.Open first")
 	}
-	if err := db.Delete([]byte(key), writeOpt(true)); err != nil {
+	if err := StoreDB.Delete([]byte(key), WriteOpt(true)); err != nil {
 		logger.Error("delete_key_failed", "key", key, "error", err)
 		return err
 	}

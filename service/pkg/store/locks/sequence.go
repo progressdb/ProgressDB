@@ -1,19 +1,22 @@
-package store
+package locks
 
 import (
 	"bytes"
+
+	"progressdb/pkg/store/db"
+	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
 )
 
 // scans messages for thread and returns largest sequence number
-func computeMaxSeq(threadID string) (uint64, error) {
-	mp, merr := MsgPrefix(threadID)
+func ComputeMaxSeq(threadID string) (uint64, error) {
+	mp, merr := keys.MsgPrefix(threadID)
 	if merr != nil {
 		return 0, merr
 	}
 	prefix := []byte(mp)
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	iter, err := db.StoreDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return 0, err
 	}
@@ -24,7 +27,7 @@ func computeMaxSeq(threadID string) (uint64, error) {
 			break
 		}
 		k := string(iter.Key())
-		_, _, s, perr := ParseMsgKey(k)
+		_, _, s, perr := keys.ParseMsgKey(k)
 		if perr != nil {
 			continue
 		}
@@ -35,7 +38,7 @@ func computeMaxSeq(threadID string) (uint64, error) {
 	return max, iter.Error()
 }
 
-// wrapper for computeMaxSeq (for migrations/admin)
+// wrapper for ComputeMaxSeq (for migrations/admin)
 func MaxSeqForThread(threadID string) (uint64, error) {
-	return computeMaxSeq(threadID)
+	return ComputeMaxSeq(threadID)
 }
