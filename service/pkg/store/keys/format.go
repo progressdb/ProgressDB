@@ -1,13 +1,9 @@
 package store
 
 import (
-	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 )
 
 // Key format constants and padding widths. Keep these in one place so
@@ -20,37 +16,6 @@ const (
 	tsPadWidth  = 20 // matches %020d used previously
 	seqPadWidth = 6  // matches %06d used previously
 )
-
-var (
-	// conservative ID validation: letters, digits, dot, underscore, dash
-	// and a reasonable upper bound to protect DB key shapes.
-	idRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]{1,256}$`)
-
-	// global sequence counter for ID generation
-	idSeq uint64
-)
-
-// ValidateThreadID ensures a thread id is safe to embed in keys.
-func ValidateThreadID(id string) error {
-	if id == "" {
-		return errors.New("thread id empty")
-	}
-	if !idRegexp.MatchString(id) {
-		return fmt.Errorf("invalid thread id: %q", id)
-	}
-	return nil
-}
-
-// ValidateMsgID ensures a message id is safe to embed in keys.
-func ValidateMsgID(id string) error {
-	if id == "" {
-		return errors.New("msg id empty")
-	}
-	if !idRegexp.MatchString(id) {
-		return fmt.Errorf("invalid msg id: %q", id)
-	}
-	return nil
-}
 
 // FormatTS returns a zero-padded timestamp string consistent with
 // the rest of the codebase.
@@ -197,33 +162,4 @@ func ThreadPrefix(threadID string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("thread:%s:", threadID), nil
-}
-
-// GetNextSequence returns the next sequence number for the given record type.
-// Currently uses a global counter, but designed for future per-user or per-type sequencing.
-func GetNextSequence(recordType string) uint64 {
-	return atomic.AddUint64(&idSeq, 1)
-}
-
-// sequencer returns the next sequence number for a given ID.
-// This enables per-ID sequencing for user-scoped key generation.
-func sequencer(id string) uint64 {
-	// For now, use global sequencing, but this can be extended to per-ID counters
-	return GetNextSequence("sequencer")
-}
-
-// GenMessageID generates a unique message ID using the current UTC nanosecond timestamp and a sequence number.
-// The format is "msg-<timestamp>-<seq>".
-func GenMessageID() string {
-	n := time.Now().UTC().UnixNano()
-	s := sequencer("message")
-	return fmt.Sprintf("msg-%d-%d", n, s)
-}
-
-// GenThreadID generates a unique thread ID using the current UTC nanosecond timestamp and a sequence number.
-// The format is "thread-<timestamp>-<seq>".
-func GenThreadID() string {
-	n := time.Now().UTC().UnixNano()
-	s := sequencer("thread")
-	return fmt.Sprintf("thread-%d-%d", n, s)
 }
