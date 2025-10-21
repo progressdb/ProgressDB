@@ -23,6 +23,7 @@ func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
 	r.POST("/_sign", Sign)
 	r.POST("/v1/_sign", Sign)
+	r.POST("/v1/sign", Sign)
 
 	// thread metadata operations
 	r.POST("/v1/threads", EnqueueCreateThread)

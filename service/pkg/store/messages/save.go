@@ -15,13 +15,30 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// saves message with encryption and sequencing
-func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message, threadJSON string) error {
+// saves message with sequencing (encryption done in compute phase)
+func SaveMessage(ctx context.Context, threadID, msgID string, encryptedData []byte, ts int64, author string, isDelete bool) error {
 	tr := telemetry.Track("storedb.save_message")
 	defer tr.Finish()
 
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
+	}
+
+	// read thread for decryption
+	threadKey, err := keys.ThreadMetaKey(threadID)
+	if err != nil {
+		return fmt.Errorf("invalid thread key: %w", err)
+	}
+	threadData, closer, err := storedb.Client.Get([]byte(threadKey))
+	if err != nil {
+		return fmt.Errorf("failed to get thread: %w", err)
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+	var thread models.Thread
+	if err := json.Unmarshal(threadData, &thread); err != nil {
+		return fmt.Errorf("failed to unmarshal thread: %w", err)
 	}
 
 	// lock thread for sequencing
@@ -37,27 +54,14 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	seq++
 
 	// build keys
-	msgKey, err := keys.MsgKey(threadID, msg.TS, seq)
+	msgKey, err := keys.MsgKey(threadID, ts, seq)
 	if err != nil {
 		return fmt.Errorf("invalid msg key: %w", err)
 	}
-	versionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(msg.TS), keys.FormatSeq(seq))
+	versionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(ts), keys.FormatSeq(seq))
 
-	// marshal message
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal message: %w", err)
-	}
-
-	// encrypt if enabled
-	var thread models.Thread
-	if err := json.Unmarshal([]byte(threadJSON), &thread); err != nil {
-		return fmt.Errorf("failed to unmarshal thread: %w", err)
-	}
-	data, err = encryption.EncryptMessageData(&thread, data)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt message: %w", err)
-	}
+	// data is already encrypted
+	data := encryptedData
 
 	// move old message to versioning if exists
 	if oldData, closer, err := storedb.Client.Get([]byte(msgKey)); err == nil {
@@ -66,7 +70,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 		oldDataCopy := append([]byte(nil), oldData...)
 		// decrypt old data to get old TS
-		oldDecrypted, err := encryption.DecryptMessageData(&thread, oldDataCopy)
+		oldDecrypted, err := encryption.DecryptMessageData(thread.KMS, oldDataCopy)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt old message: %w", err)
 		}
@@ -101,7 +105,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	}
 
 	// update version indexes for new
-	if err := index.UpdateVersionIndexes(threadID, msgID, msg.TS, seq, msg.TS, msg.TS); err != nil {
+	if err := index.UpdateVersionIndexes(threadID, msgID, ts, seq, ts, ts); err != nil {
 		logger.Error("update_version_indexes_failed", "thread", threadID, "msg", msgID, "error", err)
 		return err
 	}
@@ -115,20 +119,20 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	logger.Info("message_saved", "thread", threadID, "msg", msgID, "seq", seq)
 
 	// Update thread message indexes
-	if msg.Deleted {
+	if isDelete {
 		// On delete, add to skips
 		if err := index.UpdateOnMessageDelete(threadID, msgKey); err != nil {
 			logger.Error("update_thread_message_indexes_delete_failed", "thread", threadID, "msg", msgID, "error", err)
 			return err
 		}
 		// Add to user's deleted messages
-		if err := index.UpdateDeletedMessages(msg.Author, msgID, true); err != nil {
-			logger.Error("update_deleted_messages_failed", "user", msg.Author, "msg", msgID, "error", err)
+		if err := index.UpdateDeletedMessages(author, msgID, true); err != nil {
+			logger.Error("update_deleted_messages_failed", "user", author, "msg", msgID, "error", err)
 			return err
 		}
 	} else {
 		// On save, update counts and deltas
-		if err := index.UpdateOnMessageSave(threadID, msg.TS, msg.TS); err != nil {
+		if err := index.UpdateOnMessageSave(threadID, ts, ts); err != nil {
 			logger.Error("update_thread_message_indexes_failed", "thread", threadID, "msg", msgID, "error", err)
 			return err
 		}

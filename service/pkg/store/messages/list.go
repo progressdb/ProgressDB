@@ -57,7 +57,7 @@ func ListMessages(threadID string, limit ...int) ([]string, error) {
 		}
 		v := append([]byte(nil), iter.Value()...)
 		// decrypt if enabled
-		v, err = encryption.DecryptMessageData(&thread, v)
+		v, err = encryption.DecryptMessageData(thread.KMS, v)
 		if err != nil {
 			logger.Error("decrypt_message_failed", "threadID", threadID, "error", err)
 			return nil, fmt.Errorf("failed to decrypt message: %w", err)

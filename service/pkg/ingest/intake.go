@@ -14,6 +14,8 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
+// TODO: retry / DLQ
+
 // ApplyBatch represents a batch of entries to be applied with its sequence ID.
 type ApplyBatch struct {
 	SeqID   uint64
@@ -21,10 +23,7 @@ type ApplyBatch struct {
 	MaxEnq  uint64
 }
 
-// TODO: retry / DLQ
-
 // Ingestor orchestrates workers that consume from the API queue, invoke
-// registered handlers and ensure items are released back to the pool.
 type Ingestor struct {
 	q        *queue.IngestQueue
 	workers  int
@@ -36,13 +35,8 @@ type Ingestor struct {
 	// batch knobs (future)
 	maxBatch int
 	flushDur time.Duration
-	// pause state
-	paused int32
 
 	seqCounter uint64
-	nextCommit uint64
-	commitMu   sync.Mutex
-	commitCond *sync.Cond
 
 	// sequenced apply queue
 	applyCh        chan *ApplyBatch
@@ -66,12 +60,10 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 		handlers:       make(map[queue.HandlerID]IngestorFunc),
 		maxBatch:       maxBatch,
 		flushDur:       time.Duration(flushMs) * time.Millisecond,
-		nextCommit:     1,
 		applyCh:        make(chan *ApplyBatch, ac.QueueBufferSize), // configurable buffer to avoid blocking workers
 		nextApplySeq:   1,
 		pendingApplies: make(map[uint64]*ApplyBatch),
 	}
-	p.commitCond = sync.NewCond(&p.commitMu)
 	// Replay WAL to memory queue on startup if WAL enabled
 	if p.q.WAL() != nil {
 		p.q.DisableWAL()
@@ -85,31 +77,6 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 // RegisterHandler registers a IngestorFunc for a given HandlerID.
 func (p *Ingestor) RegisterHandler(h queue.HandlerID, fn IngestorFunc) {
 	p.handlers[h] = fn
-}
-
-// SetBatchParams adjusts the batch parameters at runtime.
-func (p *Ingestor) SetBatchParams(maxMsgs int, flush time.Duration) {
-	if maxMsgs > 0 {
-		p.maxBatch = maxMsgs
-	}
-	if flush > 0 {
-		p.flushDur = flush
-	}
-}
-
-// GetBatchParams returns the current batch parameters (max messages and flush duration).
-func (p *Ingestor) GetBatchParams() (int, time.Duration) {
-	return p.maxBatch, p.flushDur
-}
-
-// Pause stops processing new items until Resume is called.
-func (p *Ingestor) Pause() {
-	atomic.StoreInt32(&p.paused, 1)
-}
-
-// Resume resumes processing after a Pause.
-func (p *Ingestor) Resume() {
-	atomic.StoreInt32(&p.paused, 0)
 }
 
 // Start launches the worker pool.
@@ -159,15 +126,6 @@ func (p *Ingestor) Stop(ctx context.Context) {
 func (p *Ingestor) workerLoop(workerID int) {
 	for {
 		tr := telemetry.Track("ingest.worker_loop")
-		// if paused, wait briefly and re-check
-		if atomic.LoadInt32(&p.paused) == 1 {
-			select {
-			case <-p.stop:
-				return
-			case <-time.After(100 * time.Millisecond):
-				continue
-			}
-		}
 
 		// Batch collect
 		var items []*queue.QueueItem
@@ -259,27 +217,6 @@ func (p *Ingestor) workerLoop(workerID int) {
 		}
 		tr.Finish()
 	}
-}
-
-func (p *Ingestor) waitForCommit(seq uint64) {
-	p.commitMu.Lock()
-	for seq != p.nextCommit {
-		p.commitCond.Wait()
-	}
-	p.commitMu.Unlock()
-}
-
-func (p *Ingestor) markCommitted(seq uint64) {
-	p.commitMu.Lock()
-	if seq == p.nextCommit {
-		p.nextCommit++
-		p.commitCond.Broadcast()
-	} else if seq > p.nextCommit {
-		// Should not happen, but avoid deadlock if it does.
-		p.nextCommit = seq + 1
-		p.commitCond.Broadcast()
-	}
-	p.commitMu.Unlock()
 }
 
 // applyLoop processes ApplyBatches in sequence for memory mode.

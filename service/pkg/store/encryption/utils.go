@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/keys"
+
 	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
@@ -23,14 +26,15 @@ func likelyJSON(b []byte) bool {
 // exported version of likelyJSON
 func LikelyJSON(b []byte) bool { return likelyJSON(b) }
 
-// EncryptMessageData encrypts message data if encryption is enabled.
-func EncryptMessageData(thread *models.Thread, data []byte) ([]byte, error) {
+// EncryptMessageData encrypts message data if encryption is enabled, fetching KMS meta automatically.
+func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
 	if !security.EncryptionEnabled() {
 		return data, nil
 	}
 
-	if thread.KMS == nil || thread.KMS.KeyID == "" {
-		return nil, fmt.Errorf("no KMS key ID for thread")
+	kmsMeta, err := GetThreadKMS(threadID)
+	if err != nil {
+		return nil, err
 	}
 
 	if security.EncryptionHasFieldPolicy() {
@@ -38,25 +42,28 @@ func EncryptMessageData(thread *models.Thread, data []byte) ([]byte, error) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
 		}
-		encBody, err := security.EncryptMessageBody(&msg, *thread)
+		// For field policy, we need the full thread? Wait, security.EncryptMessageBody takes thread, but perhaps it only uses KMS.
+		// Assuming it can take a thread with only KMS.
+		fakeThread := &models.Thread{KMS: kmsMeta}
+		encBody, err := security.EncryptMessageBody(&msg, *fakeThread)
 		if err != nil {
 			return nil, err
 		}
 		msg.Body = encBody
 		return json.Marshal(msg)
 	} else {
-		enc, _, err := kms.EncryptWithDEK(thread.KMS.KeyID, data, nil)
+		enc, _, err := kms.EncryptWithDEK(kmsMeta.KeyID, data, nil)
 		return enc, err
 	}
 }
 
 // DecryptMessageData decrypts message data if encryption is enabled.
-func DecryptMessageData(thread *models.Thread, data []byte) ([]byte, error) {
+func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 	if !security.EncryptionEnabled() {
 		return data, nil
 	}
 
-	if thread.KMS == nil || thread.KMS.KeyID == "" {
+	if kmsMeta == nil || kmsMeta.KeyID == "" {
 		return nil, fmt.Errorf("no KMS key ID for thread")
 	}
 
@@ -65,13 +72,50 @@ func DecryptMessageData(thread *models.Thread, data []byte) ([]byte, error) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
 		}
-		decBody, err := security.DecryptMessageBody(&msg, thread.KMS.KeyID)
+		decBody, err := security.DecryptMessageBody(&msg, kmsMeta.KeyID)
 		if err != nil {
 			return nil, err
 		}
 		msg.Body = decBody
 		return json.Marshal(msg)
 	} else {
-		return kms.DecryptWithDEK(thread.KMS.KeyID, data, nil)
+		return kms.DecryptWithDEK(kmsMeta.KeyID, data, nil)
 	}
+}
+
+// GetThreadKMS retrieves only the KMS metadata for a thread without loading the full thread data.
+func GetThreadKMS(threadID string) (*models.KMSMeta, error) {
+	if !security.EncryptionEnabled() {
+		return nil, nil
+	}
+
+	threadKey, err := keys.ThreadMetaKey(threadID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid thread key: %w", err)
+	}
+
+	threadData, closer, err := storedb.Client.Get([]byte(threadKey))
+	if err != nil {
+		if storedb.IsNotFound(err) {
+			return nil, fmt.Errorf("thread not found: %s", threadID)
+		}
+		return nil, fmt.Errorf("failed to get thread: %w", err)
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+
+	// Unmarshal only the KMS field
+	var thread struct {
+		KMS *models.KMSMeta `json:"kms"`
+	}
+	if err := json.Unmarshal(threadData, &thread); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal thread KMS: %w", err)
+	}
+
+	if thread.KMS == nil || thread.KMS.KeyID == "" {
+		return nil, fmt.Errorf("no KMS key ID for thread")
+	}
+
+	return thread.KMS, nil
 }

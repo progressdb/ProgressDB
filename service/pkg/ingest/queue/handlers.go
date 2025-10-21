@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"sync/atomic"
-	"time"
 )
 
 // tryenqueuebytes: copies payload into a pooled buffer and enqueues a new op using the given fields
@@ -21,36 +20,6 @@ func (q *IngestQueue) EnqueueQueueOp(handler HandlerID, thread, id string, paylo
 
 	op := &QueueOp{Handler: handler, Thread: thread, ID: id, Payload: payload, TS: ts, Extras: extras}
 	return q.TryEnqueue(op)
-}
-
-func (q *IngestQueue) closeInternal(drain bool) {
-	if q == nil {
-		return
-	}
-	_ = atomic.CompareAndSwapInt32(&q.closed, 0, 1)
-
-	// wait for any in-flight enqueuers to finish before closing the channel
-	q.enqWg.Wait()
-
-	// ensure the channel is closed exactly once
-	q.closeOnce.Do(func() {
-		close(q.ch)
-	})
-
-	if drain {
-		for it := range q.ch {
-			it.Done()
-		}
-		return
-	}
-	ticker := time.NewTicker(q.drainPollInterval)
-	defer ticker.Stop()
-	for {
-		if atomic.LoadInt64(&q.inFlight) == 0 {
-			return
-		}
-		<-ticker.C
-	}
 }
 
 // len: returns current number of items in queue

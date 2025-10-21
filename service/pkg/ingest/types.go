@@ -17,5 +17,6 @@ type BatchEntry struct {
 	MsgID   string
 	Payload []byte
 	TS      int64
-	Enq     uint64 // enqueue sequence for ordering
+	Enq     uint64      // enqueue sequence for ordering
+	Model   interface{} // unencrypted model for apply logic (*models.Message, *models.Thread, or nil)
 }

@@ -8,7 +8,9 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/security"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/messages"
 	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
@@ -53,19 +55,10 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 	for _, e := range otherEntries {
 		switch {
 		case e.MsgID != "":
-			// Message entry: unmarshal and save.
-			var msg models.Message
-			if err := json.Unmarshal(e.Payload, &msg); err != nil {
-				logger.Error("apply_batch_unmarshal_message", "err", err)
-				continue
-			}
-			// Get thread JSON for encryption
-			threadJSON, err := threads.GetThread(e.Thread)
-			if err != nil {
-				logger.Error("apply_batch_get_thread_failed", "err", err, "thread", e.Thread)
-				continue
-			}
-			if err := messages.SaveMessage(context.Background(), e.Thread, e.MsgID, msg, threadJSON); err != nil {
+			// Message entry: use model and encrypted payload
+			msg := e.Model.(*models.Message)
+			isDelete := e.Handler == queue.HandlerMessageDelete
+			if err := messages.SaveMessage(context.Background(), e.Thread, e.MsgID, e.Payload, e.TS, msg.Author, isDelete); err != nil {
 				logger.Error("apply_batch_save_message_failed", "err", err, "thread", e.Thread, "msg", e.MsgID)
 				continue
 			}
@@ -125,10 +118,17 @@ func applyMergedReactions(msgID string, reacts []BatchEntry) error {
 
 	// Update timestamp and save
 	m.TS = timeutil.Now().UnixNano()
-	// Get thread JSON for encryption
-	threadJSON, err := threads.GetThread(m.Thread)
+	// marshal and encrypt
+	payload, err := json.Marshal(m)
 	if err != nil {
-		return fmt.Errorf("get thread failed: %w", err)
+		return fmt.Errorf("failed to marshal updated message: %w", err)
 	}
-	return messages.SaveMessage(context.Background(), m.Thread, m.ID, m, threadJSON)
+	// encrypt if enabled
+	if security.EncryptionEnabled() {
+		payload, err = encryption.EncryptMessageData(m.Thread, payload)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt message: %w", err)
+		}
+	}
+	return messages.SaveMessage(context.Background(), m.Thread, m.ID, payload, m.TS, m.Author, false)
 }

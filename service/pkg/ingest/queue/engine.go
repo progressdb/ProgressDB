@@ -173,64 +173,6 @@ func (q *IngestQueue) Out() <-chan *QueueItem {
 	return q.ch
 }
 
-// non-blocking in-memory enqueue
-func (q *IngestQueue) tryEnqueueInMemory(newOp *QueueOp) error {
-	// handle payload buffer
-	var bb *bytebufferpool.ByteBuffer
-	if len(newOp.Payload) > 0 {
-		bb = bytebufferpool.Get()
-		bb.B = append(bb.B[:0], newOp.Payload...)
-		newOp.Payload = bb.B[:len(newOp.Payload)]
-	}
-
-	it := &QueueItem{Op: newOp, Buf: bb, Q: q}
-
-	select {
-	case q.ch <- it:
-		atomic.AddInt64(&q.inFlight, 1)
-		return nil
-	default:
-		if bb != nil {
-			bytebufferpool.Put(bb)
-		}
-		queueOpPool.Put(newOp)
-		atomic.AddUint64(&q.dropped, 1)
-		atomic.AddUint64(&enqueueFailTotal, 1)
-		return ErrQueueFull
-	}
-}
-
-// blocking in-memory enqueue
-func (q *IngestQueue) enqueueInMemory(ctx context.Context, newOp *QueueOp) error {
-	// prepare buffer
-	var bb *bytebufferpool.ByteBuffer
-	if len(newOp.Payload) > 0 {
-		bb = bytebufferpool.Get()
-		bb.B = append(bb.B[:0], newOp.Payload...)
-		newOp.Payload = bb.B[:len(newOp.Payload)]
-	}
-
-	it := queueItemPool.Get().(*QueueItem)
-	it.Op = newOp
-	it.Buf = bb
-	it.Q = q
-
-	select {
-	case q.ch <- it:
-		atomic.AddInt64(&q.inFlight, 1)
-		return nil
-	case <-ctx.Done():
-		if bb != nil {
-			bytebufferpool.Put(bb)
-		}
-		queueOpPool.Put(newOp)
-		queueItemPool.Put(it)
-		atomic.AddUint64(&q.dropped, 1)
-		atomic.AddUint64(&enqueueFailTotal, 1)
-		return ctx.Err()
-	}
-}
-
 // global non-blocking enqueue
 func TryEnqueue(op *QueueOp) error {
 	if DefaultIngestQueue != nil {
