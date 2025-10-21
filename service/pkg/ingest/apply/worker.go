@@ -2,6 +2,7 @@ package apply
 
 import (
 	"sort"
+	"time"
 
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
@@ -14,15 +15,17 @@ type ApplyWorker struct {
 	workers int
 	buffer  []types.BatchEntry
 	maxSize int
+	timeout time.Duration
 }
 
 // NewApplyWorker creates a new apply worker.
-func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int) *ApplyWorker {
+func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, timeoutMs int) *ApplyWorker {
 	return &ApplyWorker{
 		input:   input,
 		workers: workers,
 		buffer:  make([]types.BatchEntry, 0, maxBatchSize),
 		maxSize: maxBatchSize,
+		timeout: time.Duration(timeoutMs) * time.Millisecond,
 	}
 }
 
@@ -35,13 +38,22 @@ func (aw *ApplyWorker) Start(stop <-chan struct{}) {
 }
 
 func (aw *ApplyWorker) run() {
+	timer := time.NewTimer(aw.timeout)
+	defer timer.Stop()
+
 	for {
 		select {
 		case entry := <-aw.input:
 			aw.buffer = append(aw.buffer, entry)
 			if len(aw.buffer) >= aw.maxSize {
 				aw.flush()
+				timer.Reset(aw.timeout)
 			}
+		case <-timer.C:
+			if len(aw.buffer) > 0 {
+				aw.flush()
+			}
+			timer.Reset(aw.timeout)
 		case <-aw.stop:
 			aw.flush() // flush remaining
 			return

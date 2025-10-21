@@ -23,22 +23,24 @@ func NewIngestQueue(capacity int) *IngestQueue {
 	}
 }
 
-// InitGlobalIngestQueue creates and sets the global ingest queue with WAL enabled.
+// InitGlobalIngestQueue creates and sets the global ingest queue with optional WAL.
 func InitGlobalIngestQueue(ic config.IntakeConfig, dbPath string) error {
-	queue := NewIngestQueue(ic.BufferCapacity)
+	queue := NewIngestQueue(ic.QueueCapacity)
 	queue.drainPollInterval = ic.ShutdownPollInterval.Duration()
 
-	// Always enable WAL for durability
-	walDir := filepath.Join(dbPath, "wal")
-	opts := &Options{
-		SegmentSize: int(ic.WAL.SegmentSize.Int64()),
+	if ic.WAL.Enabled {
+		// Enable WAL for durability
+		walDir := filepath.Join(dbPath, "wal")
+		opts := &Options{
+			SegmentSize: int(ic.WAL.SegmentSize.Int64()),
+		}
+		wal, err := Open(walDir, opts)
+		if err != nil {
+			return fmt.Errorf("failed to create WAL: %w", err)
+		}
+		queue.wal = wal
+		queue.walBacked = true
 	}
-	wal, err := Open(walDir, opts)
-	if err != nil {
-		return fmt.Errorf("failed to create WAL: %w", err)
-	}
-	queue.wal = wal
-	queue.walBacked = true
 
 	GlobalIngestQueue = queue
 	return nil

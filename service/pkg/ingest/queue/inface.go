@@ -79,16 +79,6 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 	}
 }
 
-// start single operation worker
-func (q *IngestQueue) RunWorker(stop <-chan struct{}, handler func(*QueueOp) error) {
-	RunWorker(q, stop, handler)
-}
-
-// start batch operation worker
-func (q *IngestQueue) RunBatchWorker(stop <-chan struct{}, batchSize int, handler func([]*QueueOp) error) {
-	RunBatchWorker(q, stop, batchSize, handler)
-}
-
 // shutdown queue
 func (q *IngestQueue) Close() error {
 	if atomic.LoadInt32(&q.closed) == 1 {

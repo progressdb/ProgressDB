@@ -35,17 +35,18 @@ retention:
 
 ingest:
   intake:
-    buffer_capacity: 1
+    queue_capacity: 1
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
       segment_size: 20MB
   compute:
     worker_count: 16
+    buffer_capacity: 1000
   apply:
-    queue_buffer_size: 1_000_000
-    flush_interval_ms: 1
-    batch_size: 1_000
+    batch_count: 1_000
+    batch_timeout_ms: 1000
+    fsync_after_batch: true
 
 telemetry:
   sample_rate: 0.001

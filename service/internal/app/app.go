@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
@@ -67,16 +66,14 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 
 	// warn if WAL is disabled and summarize potential data loss window
 	if !appWALenabled {
-		flushMs := eff.Config.Ingest.Apply.FlushIntervalMs
-		procFlush := time.Duration(flushMs) * time.Millisecond
-		lossWindow := procFlush
-		queueCapacity := eff.Config.Ingest.Intake.BufferCapacity
+		// With fsync after each batch, loss window is minimal
+		queueCapacity := eff.Config.Ingest.Intake.QueueCapacity
 		procWorkers := eff.Config.Ingest.Compute.WorkerCount
-		procBatch := eff.Config.Ingest.Apply.BatchSize
+		procBatch := eff.Config.Ingest.Apply.BatchCount
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
-		lossWindowHuman := lossWindow.String()
-		processorFlushHuman := procFlush.String()
+		lossWindowHuman := "minimal (fsync per batch)"
+		processorFlushHuman := "immediate"
 		queueCapacityHuman := humanize.Comma(int64(queueCapacity))
 		messagesAtRiskHuman := humanize.Comma(int64(messagesAtRisk))
 

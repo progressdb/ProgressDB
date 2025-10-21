@@ -16,6 +16,7 @@ type Ingestor struct {
 	applyWorker   *apply.ApplyWorker
 	computeBuf    chan types.BatchEntry
 	stop          chan struct{}
+	stopOnce      sync.Once
 	wg            sync.WaitGroup
 }
 
@@ -24,18 +25,18 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 	if cc.WorkerCount <= 0 {
 		cc.WorkerCount = 1
 	}
-	applyWorkers := ac.WorkerCount
-	if applyWorkers <= 0 {
-		applyWorkers = 1
+	applyWorkers := 1 // fixed to 1 for sequencing
+	if ac.BatchCount <= 0 {
+		ac.BatchCount = 10
 	}
-	if ac.BatchSize <= 0 {
-		ac.BatchSize = 10
+	if cc.BufferCapacity <= 0 {
+		cc.BufferCapacity = 1000
 	}
 
-	computeBuf := make(chan types.BatchEntry, 1000) // buffer size
+	computeBuf := make(chan types.BatchEntry, cc.BufferCapacity)
 
 	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount)
-	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchSize)
+	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeoutMs)
 
 	return &Ingestor{
 		computeWorker: computeWorker,
@@ -53,6 +54,8 @@ func (i *Ingestor) Start() {
 
 // Stop shuts down the ingestor workers.
 func (i *Ingestor) Stop() {
-	close(i.stop)
+	i.stopOnce.Do(func() {
+		close(i.stop)
+	})
 	i.wg.Wait()
 }

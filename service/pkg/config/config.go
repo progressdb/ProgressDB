@@ -125,15 +125,13 @@ func LoadConfigFile(path string) (*Config, error) {
 // configuration value is invalid.
 func (c *Config) ValidateConfig() error {
 	// Intake defaults
-	if c.Ingest.Intake.BufferCapacity <= 0 {
-		c.Ingest.Intake.BufferCapacity = defaultQueueCapacity
+	if c.Ingest.Intake.QueueCapacity <= 0 {
+		c.Ingest.Intake.QueueCapacity = defaultQueueCapacity
 	}
 	if c.Ingest.Intake.ShutdownPollInterval.Duration() == 0 {
 		c.Ingest.Intake.ShutdownPollInterval = Duration(defaultDrainPollInterval)
 	}
-	if !c.Ingest.Intake.WAL.Enabled {
-		c.Ingest.Intake.WAL.Enabled = true
-	}
+	// Respect WAL enabled config - do not force to true
 	if c.Ingest.Intake.WAL.SegmentSize.Int64() == 0 {
 		c.Ingest.Intake.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
 	}
@@ -149,21 +147,20 @@ func (c *Config) ValidateConfig() error {
 		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
 		cc.WorkerCount = numCPU
 	}
+	if cc.BufferCapacity <= 0 {
+		cc.BufferCapacity = 1000 // default compute buffer capacity
+	}
 
 	// Apply defaults
 	ac := &c.Ingest.Apply
-	if ac.WorkerCount <= 0 {
-		ac.WorkerCount = 1 // default to 1 apply worker
+	if ac.BatchCount <= 0 {
+		ac.BatchCount = defaultIngestorMaxBatchSize
 	}
-	if ac.QueueBufferSize <= 0 {
-		ac.QueueBufferSize = defaultIngestorApplyQueueBufferSize
+	if ac.BatchTimeoutMs <= 0 {
+		ac.BatchTimeoutMs = 1000 // 1 second default
 	}
-	if ac.FlushIntervalMs <= 0 {
-		ac.FlushIntervalMs = defaultIngestorFlushIntervalMs
-	}
-	if ac.BatchSize <= 0 {
-		ac.BatchSize = defaultIngestorMaxBatchSize
-	}
+	// Fsync after batch defaults to true for durability
+	ac.FsyncAfterBatch = true
 
 	// Telemetry defaults
 	if c.Telemetry.SampleRate == 0 {

@@ -80,6 +80,13 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 	tr.Mark("record_write")
 	storedb.RecordWrite(len(entries))
+
+	// Fsync after batch apply for durability
+	if err := storedb.ForceSync(); err != nil {
+		logger.Error("apply_batch_fsync_failed", "err", err)
+		// Don't fail the batch for fsync errors
+	}
+
 	return nil
 }
 

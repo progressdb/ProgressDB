@@ -71,41 +71,44 @@ func TestCloseAndDrain(t *testing.T) {
 	}
 }
 
-func TestRunWorkerEnsuresDone(t *testing.T) {
+func TestQueueOutEnsuresDone(t *testing.T) {
 	q := qpkg.NewIngestQueue(4)
-	stop := make(chan struct{})
 	processed := make(chan string, 4)
-	go q.RunWorker(stop, func(op *qpkg.QueueOp) error {
-		processed <- op.ID
-		return nil
-	})
+
+	go func() {
+		for it := range q.Out() {
+			processed <- it.Op.ID
+			it.JobDone()
+		}
+	}()
 
 	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
 	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
 
-	// allow worker to process
+	// allow consumer to process
 	select {
 	case id := <-processed:
 		if id == "" {
 			t.Fatalf("unexpected empty id")
 		}
 	case <-time.After(200 * time.Millisecond):
-		t.Fatalf("worker did not process item")
+		t.Fatalf("consumer did not process item")
 	}
 
-	close(stop)
+	q.Close()
 }
 
 func TestQueueCloseWaitsForDrain(t *testing.T) {
 	q := qpkg.NewIngestQueue(8)
-	stop := make(chan struct{})
 	var processed int32
 
-	go q.RunWorker(stop, func(op *qpkg.QueueOp) error {
-		time.Sleep(5 * time.Millisecond)
-		atomic.AddInt32(&processed, 1)
-		return nil
-	})
+	go func() {
+		for it := range q.Out() {
+			time.Sleep(5 * time.Millisecond)
+			atomic.AddInt32(&processed, 1)
+			it.JobDone()
+		}
+	}()
 
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("m%d", i)
@@ -138,23 +141,26 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {
 		t.Fatalf("expected ErrQueueClosed, got %v", err)
 	}
-
-	close(stop)
 }
 
-func TestRunBatchWorkerBatches(t *testing.T) {
+func TestQueueOutBatches(t *testing.T) {
 	q := qpkg.NewIngestQueue(16)
-	stop := make(chan struct{})
 	batchCh := make(chan []string, 4)
 
-	go q.RunBatchWorker(stop, 3, func(ops []*qpkg.QueueOp) error {
-		ids := make([]string, len(ops))
-		for i, op := range ops {
-			ids[i] = op.ID
+	go func() {
+		var batch []string
+		for it := range q.Out() {
+			batch = append(batch, it.Op.ID)
+			if len(batch) == 3 {
+				batchCh <- batch
+				batch = nil
+			}
+			it.JobDone()
 		}
-		batchCh <- ids
-		return nil
-	})
+		if len(batch) > 0 {
+			batchCh <- batch
+		}
+	}()
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("b%d", i)
@@ -176,20 +182,11 @@ collect:
 		}
 	}
 
-	if len(batches) == 0 {
-		t.Fatalf("expected batches to be processed")
+	if len(batches) != 2 {
+		t.Fatalf("expected 2 batches, got %d", len(batches))
 	}
 
-	total := 0
-	for _, b := range batches {
-		if len(b) > 3 {
-			t.Fatalf("batch size exceeded limit: %v", b)
-		}
-		total += len(b)
+	if len(batches[0]) != 3 || len(batches[1]) != 2 {
+		t.Fatalf("unexpected batch sizes: %v", batches)
 	}
-	if total != 5 {
-		t.Fatalf("expected 5 ops processed, got %d", total)
-	}
-
-	close(stop)
 }

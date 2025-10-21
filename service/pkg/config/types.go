@@ -93,22 +93,22 @@ type IngestConfig struct {
 
 // IntakeConfig controls enqueue buffering and persistence.
 type IntakeConfig struct {
-	BufferCapacity       int       `yaml:"buffer_capacity"`
+	QueueCapacity        int       `yaml:"queue_capacity"`
 	ShutdownPollInterval Duration  `yaml:"shutdown_poll_interval"`
 	WAL                  WALConfig `yaml:"wal"`
 }
 
 // ComputeConfig controls worker concurrency for mutation processing.
 type ComputeConfig struct {
-	WorkerCount int `yaml:"worker_count"`
+	WorkerCount    int `yaml:"worker_count"`
+	BufferCapacity int `yaml:"buffer_capacity"`
 }
 
 // ApplyConfig controls batching and queuing for DB applies.
 type ApplyConfig struct {
-	WorkerCount     int `yaml:"worker_count"`
-	QueueBufferSize int `yaml:"queue_buffer_size"`
-	FlushIntervalMs int `yaml:"flush_interval_ms"`
-	BatchSize       int `yaml:"batch_size"`
+	BatchCount      int  `yaml:"batch_count"`
+	FsyncAfterBatch bool `yaml:"fsync_after_batch"`
+	BatchTimeoutMs  int  `yaml:"batch_timeout_ms"`
 }
 
 // QueueConfig holds queue settings.

@@ -130,11 +130,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"INTAKE_WAL_ENABLED":            os.Getenv("PROGRESSDB_INTAKE_WAL_ENABLED"),
 		"INTAKE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_INTAKE_WAL_SEGMENT_SIZE"),
 		// compute
-		"COMPUTE_WORKER_COUNT": os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
+		"COMPUTE_WORKER_COUNT":    os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
+		"COMPUTE_BUFFER_CAPACITY": os.Getenv("PROGRESSDB_COMPUTE_BUFFER_CAPACITY"),
 		// apply
-		"APPLY_QUEUE_BUFFER_SIZE": os.Getenv("PROGRESSDB_APPLY_QUEUE_BUFFER_SIZE"),
-		"APPLY_FLUSH_INTERVAL_MS": os.Getenv("PROGRESSDB_APPLY_FLUSH_INTERVAL_MS"),
-		"APPLY_BATCH_SIZE":        os.Getenv("PROGRESSDB_APPLY_BATCH_SIZE"),
+		"APPLY_BATCH_COUNT":      os.Getenv("PROGRESSDB_APPLY_BATCH_COUNT"),
+		"APPLY_BATCH_TIMEOUT_MS": os.Getenv("PROGRESSDB_APPLY_BATCH_TIMEOUT_MS"),
 	}
 
 	// check if any env was set
@@ -391,9 +391,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Logging.Level = strings.TrimSpace(v)
 	}
 
-	if v := envs["INTAKE_BUFFER_CAPACITY"]; v != "" {
+	if v := envs["INTAKE_QUEUE_CAPACITY"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Intake.BufferCapacity = n
+			envCfg.Ingest.Intake.QueueCapacity = n
 		}
 	}
 	if v := envs["INTAKE_SHUTDOWN_POLL_INTERVAL"]; v != "" {
@@ -410,19 +410,20 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Ingest.Compute.WorkerCount = n
 		}
 	}
-	if v := envs["APPLY_QUEUE_BUFFER_SIZE"]; v != "" {
+
+	if v := envs["COMPUTE_BUFFER_CAPACITY"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Apply.QueueBufferSize = n
+			envCfg.Ingest.Compute.BufferCapacity = n
 		}
 	}
-	if v := envs["APPLY_FLUSH_INTERVAL_MS"]; v != "" {
+	if v := envs["APPLY_BATCH_COUNT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Apply.FlushIntervalMs = n
+			envCfg.Ingest.Apply.BatchCount = n
 		}
 	}
-	if v := envs["APPLY_BATCH_SIZE"]; v != "" {
+	if v := envs["APPLY_BATCH_TIMEOUT_MS"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Apply.BatchSize = n
+			envCfg.Ingest.Apply.BatchTimeoutMs = n
 		}
 	}
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
