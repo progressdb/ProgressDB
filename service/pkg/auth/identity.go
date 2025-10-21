@@ -100,6 +100,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 		// allow req to continue
 		logger.Info("signature_verified", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 		ctx.SetUserValue("author", userID)
+		ctx.Request.Header.Set("X-User-ID", userID)
 		next(ctx)
 	}
 }
@@ -136,6 +137,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 				return "", fasthttp.StatusForbidden, "author mismatch between signature and body author"
 			}
 			logger.Info("author_resolved_signature", "author", id, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			ctx.Request.Header.Set("X-User-ID", id)
 			return id, 0, ""
 		}
 	}
@@ -150,6 +152,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 				return "", fasthttp.StatusBadRequest, msg
 			}
 			logger.Info("author_from_body_backend", "user", bodyAuthor, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			ctx.Request.Header.Set("X-User-ID", bodyAuthor)
 			return bodyAuthor, 0, ""
 		}
 		if h := string(ctx.Request.Header.Peek("X-User-ID")); h != "" {
@@ -158,6 +161,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 				return "", fasthttp.StatusBadRequest, msg
 			}
 			logger.Info("author_from_header_backend", "user", h, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			ctx.Request.Header.Set("X-User-ID", h)
 			return h, 0, ""
 		}
 		if q := string(ctx.QueryArgs().Peek("author")); q != "" {
@@ -166,6 +170,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 				return "", fasthttp.StatusBadRequest, msg
 			}
 			logger.Info("author_from_query_backend", "user", q, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+			ctx.Request.Header.Set("X-User-ID", q)
 			return q, 0, ""
 		}
 		logger.Warn("backend_missing_author", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))

@@ -14,7 +14,6 @@ import (
 	"progressdb/pkg/security"
 	"progressdb/pkg/store/messages"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/validation"
 )
 
 // message op methods
@@ -38,7 +37,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 	}
 	// prefer extras identity as author if payload missing
 	if m.Author == "" {
-		if a := op.Extras["identity"]; a != "" {
+		if a := op.Extras["user_id"]; a != "" {
 			m.Author = a
 		}
 	}
@@ -48,7 +47,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 	if m.ID == "" {
 		return nil, fmt.Errorf("missing message id")
 	}
-	if err := validation.ValidateMessage(m); err != nil {
+	if err := ValidateMessage(m); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 	// re-marshal to ensure canonical payload
@@ -111,7 +110,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error)
 	}
 	identity := p.Identity
 	if identity == "" && op.Extras != nil {
-		identity = op.Extras["identity"]
+		identity = op.Extras["user_id"]
 	}
 	if p.Reaction == "" || identity == "" {
 		return nil, fmt.Errorf("invalid reaction payload")
@@ -154,7 +153,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, err
 		identity = p.Identity
 	}
 	if identity == "" && op.Extras != nil {
-		identity = op.Extras["identity"]
+		identity = op.Extras["user_id"]
 	}
 	if identity == "" {
 		return nil, fmt.Errorf("no identity specified for reaction delete")
@@ -197,6 +196,11 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	}
 	if th.UpdatedTS == 0 {
 		th.UpdatedTS = th.CreatedTS
+	}
+
+	// Validate thread
+	if err := ValidateThread(th); err != nil {
+		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
 	// If encryption is enabled, provision a DEK for the thread using KMS.

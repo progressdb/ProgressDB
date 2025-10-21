@@ -121,6 +121,12 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 			}
 			// tr.Mark("rate_limit")
 
+			// check for signature if present
+			if string(ctx.Request.Header.Peek("X-User-Signature")) != "" {
+				RequireSignedAuthorFast(next)(ctx)
+				return
+			}
+
 			// allow request through
 			// logger.Info("request_allowed", "method", string(ctx.Method()), "path", string(ctx.Path()), "role", ctx.Request.Header.Peek("X-Role-Name"))
 			next(ctx)

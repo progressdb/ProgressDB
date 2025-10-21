@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	"progressdb/pkg/api/router"
+	"progressdb/pkg/auth"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
 	"github.com/valyala/fasthttp"
-
-	"progressdb/pkg/api/router"
 )
 
 func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
@@ -34,12 +34,26 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	payload := append([]byte(nil), ctx.PostBody()...)
+
+	// Validate request
+	if err := router.ValidateCreateThreadRequest(ctx); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	id := keys.GenThreadID()
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
@@ -61,11 +75,19 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
@@ -85,11 +107,19 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
@@ -111,13 +141,27 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
+
+	// Validate request
+	if err := router.ValidateCreateMessageRequest(ctx); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	id := keys.GenMessageID()
 	ts := time.Now().UTC().UnixNano()
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
@@ -140,12 +184,20 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	ts := time.Now().UTC().UnixNano()
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
@@ -165,11 +217,19 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
@@ -192,12 +252,20 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	}
 	// Body should contain {"reaction":"👍","identity":"u1"} or similar.
 	payload := append([]byte(nil), ctx.PostBody()...)
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	ts := time.Now().UTC().UnixNano()
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
@@ -219,11 +287,19 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 	}
 	// Minimal payload to indicate deletion: {"remove_reaction_for":"<identity>"}
 	payload := []byte(fmt.Sprintf(`{"remove_reaction_for":"%s"}`, identity))
+
+	// Resolve author
+	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
+	if code != 0 {
+		router.WriteJSONError(ctx, code, msg)
+		return
+	}
+
 	extras := map[string]string{
-		"role":     string(ctx.Request.Header.Peek("X-Role-Name")),
-		"identity": string(ctx.Request.Header.Peek("X-Identity")),
-		"reqid":    string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":   ctx.RemoteAddr().String(),
+		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
+		"user_id": author,
+		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
+		"remote":  ctx.RemoteAddr().String(),
 	}
 	tr.Mark("enqueue")
 	if err := queue.DefaultIngestQueue.TryEnqueue(&queue.QueueOp{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: time.Now().UTC().UnixNano(), Extras: extras}); err != nil {
