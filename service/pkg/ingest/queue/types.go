@@ -8,13 +8,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-// opPool pools QueueOp instances to reduce allocations.
-var opPool = sync.Pool{
-	New: func() interface{} {
-		return &QueueOp{}
-	},
-}
-
 // HandlerID specifies the operation to perform for a queue Op.
 type HandlerID string
 
@@ -69,22 +62,6 @@ type IngestQueue struct {
 
 	wal       WAL
 	walBacked bool
-}
-
-const (
-	WalModeNone = iota
-	WalModeBatch
-	WalModeSync
-)
-
-type IngestQueueOptions struct {
-	BufferCapacity    int
-	WAL               WAL
-	WriteMode         string
-	EnableRecovery    bool
-	TruncateInterval  time.Duration
-	WalBacked         bool
-	DrainPollInterval time.Duration
 }
 
 // SharedBuf is a ByteBuffer with atomic refcounting, to share between WAL and consumers.

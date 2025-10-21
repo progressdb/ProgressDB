@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -13,14 +12,14 @@ import (
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
 	q := qpkg.NewIngestQueue(2)
 
-	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m2", nil, 0); err != nil {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m2", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// next should fail with ErrQueueFull
-	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m3", nil, 0); err == nil {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m3", nil, 0); err == nil {
 		t.Fatalf("expected ErrQueueFull, got nil")
 	}
 	if q.Dropped() == 0 {
@@ -40,11 +39,10 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	}()
 
 	// enqueue two items
-	ctx := context.Background()
-	if err := q.EnqueueBytes(ctx, qpkg.HandlerMessageCreate, "t1", "m1", []byte("a"), 0); err != nil {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", []byte("a"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
-	if err := q.EnqueueBytes(ctx, qpkg.HandlerMessageUpdate, "t1", "m2", []byte("b"), 0); err != nil {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageUpdate, "t1", "m2", []byte("b"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
 
@@ -60,26 +58,11 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	}
 }
 
-func TestEnqueueWithContextCancel(t *testing.T) {
-	q := qpkg.NewIngestQueue(1)
-	// fill queue
-	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	err := q.EnqueueBytes(ctx, qpkg.HandlerMessageCreate, "t1", "m2", nil, 0)
-	if err == nil {
-		t.Fatalf("expected enqueue to fail due to cancelled context")
-	}
-}
-
 func TestCloseAndDrain(t *testing.T) {
 	q := qpkg.NewIngestQueue(4)
 	// enqueue some items
-	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
-	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
+	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
+	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
 
 	q.Close()
 
@@ -97,8 +80,8 @@ func TestRunWorkerEnsuresDone(t *testing.T) {
 		return nil
 	})
 
-	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
-	_ = q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
+	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
+	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
 
 	// allow worker to process
 	select {
@@ -126,7 +109,7 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("m%d", i)
-		if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("p"), 0); err != nil {
+		if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("p"), 0); err != nil {
 			t.Fatalf("enqueue failed: %v", err)
 		}
 	}
@@ -152,7 +135,7 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {
+	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {
 		t.Fatalf("expected ErrQueueClosed, got %v", err)
 	}
 
@@ -175,7 +158,7 @@ func TestRunBatchWorkerBatches(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("b%d", i)
-		if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
+		if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
 			t.Fatalf("enqueue failed: %v", err)
 		}
 	}

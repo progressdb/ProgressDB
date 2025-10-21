@@ -109,7 +109,6 @@ func serializeOpToBB(op *QueueOp, bb *bytebufferpool.ByteBuffer) ([]byte, error)
 
 // Pools for reusing QueueOp and QueueItem objects.
 var queueOpPool = sync.Pool{New: func() any { return &QueueOp{} }}
-var queueItemPool = sync.Pool{New: func() any { return &QueueItem{} }}
 
 // DefaultIngestQueue
 var DefaultIngestQueue *IngestQueue
@@ -156,15 +155,6 @@ func (it *QueueItem) CopyPayload() []byte {
 		return dst
 	}
 	return nil
-}
-
-// sharedBuf methods
-func (s *SharedBuf) inc() { atomic.AddInt32(&s.refs, 1) }
-func (s *SharedBuf) dec() bool {
-	if atomic.AddInt32(&s.refs, -1) == 0 {
-		return true
-	}
-	return false
 }
 
 // Errs

@@ -280,7 +280,7 @@ func (p *Ingestor) replayWALToQueue() {
 			continue
 		}
 		// Enqueue to memory (assuming queue supports direct enqueue)
-		if err := p.q.Enqueue(context.Background(), &op); err != nil {
+		if err := p.q.Enqueue(&op); err != nil {
 			logger.Error("wal_replay_enqueue_failed", "index", i, "err", err)
 		}
 	}
