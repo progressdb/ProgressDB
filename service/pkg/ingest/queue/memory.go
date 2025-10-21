@@ -21,17 +21,17 @@ func NewIngestQueue(capacity int) *IngestQueue {
 }
 
 // NewQueueFromConfig creates a queue based on the provided configuration.
-func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, error) {
-	queue := NewIngestQueue(qc.BufferCapacity)
-	queue.drainPollInterval = qc.ShutdownPollInterval.Duration()
+func NewQueueFromConfig(ic config.IntakeConfig, dbPath string) (*IngestQueue, error) {
+	queue := NewIngestQueue(ic.BufferCapacity)
+	queue.drainPollInterval = ic.ShutdownPollInterval.Duration()
 
-	if qc.WAL.Enabled {
+	if ic.WAL.Enabled {
 		// Create WAL directory path
 		walDir := filepath.Join(dbPath, "wal")
 
 		// Create simple WAL with custom segment size
 		opts := &Options{
-			SegmentSize: int(qc.WAL.SegmentSize.Int64()),
+			SegmentSize: int(ic.WAL.SegmentSize.Int64()),
 		}
 		wal, err := Open(walDir, opts)
 		if err != nil {
@@ -57,4 +57,22 @@ func SetDefaultIngestQueue(q *IngestQueue) {
 	if q != nil {
 		DefaultIngestQueue = q
 	}
+}
+
+// DisableWAL disables WAL backing for enqueues.
+func (q *IngestQueue) DisableWAL() {
+	q.walBacked = false
+}
+
+// EnableWAL enables WAL backing for enqueues.
+func (q *IngestQueue) EnableWAL() {
+	q.walBacked = true
+}
+
+// WAL returns the WAL log, if any.
+func (q *IngestQueue) WAL() *Log {
+	if q.wal == nil {
+		return nil
+	}
+	return q.wal.(*Log)
 }

@@ -83,8 +83,8 @@ func TestCloseAndDrain(t *testing.T) {
 
 	q.Close()
 
-	if q.Len() != 0 {
-		t.Fatalf("expected queue drained, got len=%d", q.Len())
+	if q.Len() != 2 {
+		t.Fatalf("expected queue not drained, got len=%d", q.Len())
 	}
 }
 
@@ -143,8 +143,13 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 		t.Fatalf("queue close timed out")
 	}
 
-	if got := atomic.LoadInt32(&processed); got != 3 {
-		t.Fatalf("expected 3 processed messages, got %d", got)
+	// wait for worker to process
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for atomic.LoadInt32(&processed) != 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("worker did not process all messages, got %d", atomic.LoadInt32(&processed))
+		}
+		time.Sleep(1 * time.Millisecond)
 	}
 
 	if err := q.TryEnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {

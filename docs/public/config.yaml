@@ -45,17 +45,18 @@ retention:
   lock_ttl: 300s
 
 ingest:
-  ingestor:
-    worker_count: 2                  # Match 2-core CPU
-    apply_queue_buffer_size: 100     # Buffer for apply queue
-    flush_interval_ms: 1              # Flush interval for batches
-    max_batch_size: 10000             # Max batch size
-  queue:
+  intake:
     buffer_capacity: 8192              # Smaller queue to fit 1GB RAM
     shutdown_poll_interval: 250ms      # Poll interval for shutdown
     wal:
       enabled: true                    # Enable WAL for durability
       segment_size: 20MB               # WAL segment size
+  compute:
+    worker_count: 2                   # Match 2-core CPU
+  apply:
+    queue_buffer_size: 100            # Buffer for apply queue
+    flush_interval_ms: 1              # Interval to flush pending applies (ms)
+    batch_size: 10000                 # Max entries per apply batch
 
 telemetry:
   sample_rate: 0.001

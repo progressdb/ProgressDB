@@ -6,6 +6,7 @@ import (
 	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/timeutil"
@@ -23,6 +24,7 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 	case queue.ErrQueueClosed:
 		router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "server shutting down")
 	default:
+		logger.Error("enqueue_failed", "error", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 	}
 }

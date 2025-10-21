@@ -27,7 +27,6 @@ type ApplyBatch struct {
 // registered handlers and ensure items are released back to the pool.
 type Ingestor struct {
 	q        *queue.IngestQueue
-	wal      *queue.Log // WAL for backup/replay
 	workers  int
 	stop     chan struct{}
 	wg       sync.WaitGroup
@@ -40,13 +39,12 @@ type Ingestor struct {
 	// pause state
 	paused int32
 
-	isMemory   bool
 	seqCounter uint64
 	nextCommit uint64
 	commitMu   sync.Mutex
 	commitCond *sync.Cond
 
-	// sequenced apply queue for memory mode
+	// sequenced apply queue
 	applyCh        chan *ApplyBatch
 	nextApplySeq   uint64
 	pendingApplies map[uint64]*ApplyBatch
@@ -54,40 +52,31 @@ type Ingestor struct {
 }
 
 // NewIngestor creates a new Ingestor attached to the provided queue.
-// It expects a validated IngestorConfig and QueueConfig (defaults applied by config.ValidateConfig()).
-func NewIngestor(q *queue.IngestQueue, pc config.IngestorConfig, qc config.QueueConfig, walPath string) *Ingestor {
-	if pc.WorkerCount <= 0 {
+// It expects a validated ComputeConfig and ApplyConfig (defaults applied by config.ValidateConfig()).
+func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyConfig) *Ingestor {
+	if cc.WorkerCount <= 0 {
 		panic("ingestor.NewIngestor: workers must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
-	flushMs := pc.FlushIntervalMs
-	maxBatch := pc.MaxBatchSize
-	var wal *queue.Log
-	if walPath != "" {
-		// Open WAL for backup
-		w, err := queue.Open(walPath, queue.DefaultOptions)
-		if err != nil {
-			panic("ingestor.NewIngestor: failed to open WAL: " + err.Error())
-		}
-		wal = w
-	}
+	flushMs := ac.FlushIntervalMs
+	maxBatch := ac.BatchSize
 	p := &Ingestor{
 		q:              q,
-		wal:            wal,
-		workers:        pc.WorkerCount,
+		workers:        cc.WorkerCount,
 		stop:           make(chan struct{}),
 		handlers:       make(map[queue.HandlerID]IngestorFunc),
 		maxBatch:       maxBatch,
 		flushDur:       time.Duration(flushMs) * time.Millisecond,
-		isMemory:       false,
 		nextCommit:     1,
-		applyCh:        make(chan *ApplyBatch, pc.ApplyQueueBufferSize), // configurable buffer to avoid blocking workers
+		applyCh:        make(chan *ApplyBatch, ac.QueueBufferSize), // configurable buffer to avoid blocking workers
 		nextApplySeq:   1,
 		pendingApplies: make(map[uint64]*ApplyBatch),
 	}
 	p.commitCond = sync.NewCond(&p.commitMu)
 	// Replay WAL to memory queue on startup if WAL enabled
-	if p.wal != nil {
+	if p.q.WAL() != nil {
+		p.q.DisableWAL()
 		p.replayWALToQueue()
+		p.q.EnableWAL()
 	}
 	registerDefaultHandlers(p)
 	return p
@@ -160,9 +149,6 @@ func (p *Ingestor) Stop(ctx context.Context) {
 	select {
 	case <-done:
 		logger.Info("ingestor_stopped")
-		if err := p.wal.Close(); err != nil {
-			logger.Error("wal_close_failed", "err", err)
-		}
 	case <-ctx.Done():
 		logger.Warn("ingestor_stop_timeout")
 	}
@@ -262,19 +248,13 @@ func (p *Ingestor) workerLoop(workerID int) {
 			p.applyBatch(ab)
 			return
 		default:
-			if p.isMemory {
-				// channel full, apply directly to avoid blocking (memory mode doesn't require strict ordering)
-				logger.Warn("apply_channel_full", "applying_directly", seqID)
+			// channel full, wait for space to maintain ordering and prevent data loss
+			select {
+			case p.applyCh <- ab:
+				// sent successfully after waiting
+			case <-p.stop:
 				p.applyBatch(ab)
-			} else {
-				// durable mode: wait for space to maintain ordering and prevent data loss
-				select {
-				case p.applyCh <- ab:
-					// sent successfully after waiting
-				case <-p.stop:
-					p.applyBatch(ab)
-					return
-				}
+				return
 			}
 		}
 		tr.Finish()
@@ -338,19 +318,20 @@ func (p *Ingestor) applyLoop() {
 
 // replayWALToQueue replays WAL entries into the memory queue on startup.
 func (p *Ingestor) replayWALToQueue() {
-	first, err := p.wal.FirstIndex()
+	wal := p.q.WAL()
+	first, err := wal.FirstIndex()
 	if err != nil {
 		logger.Info("wal_replay_no_entries")
 		return
 	}
-	last, err := p.wal.LastIndex()
+	last, err := wal.LastIndex()
 	if err != nil {
 		logger.Error("wal_replay_last_index_failed", "err", err)
 		return
 	}
 	logger.Info("wal_replay_starting", "first", first, "last", last)
 	for i := first; i <= last; i++ {
-		data, err := p.wal.Read(i)
+		data, err := wal.Read(i)
 		if err != nil {
 			logger.Error("wal_replay_read_failed", "index", i, "err", err)
 			continue
@@ -401,7 +382,7 @@ func (p *Ingestor) truncateWAL(ab *ApplyBatch) {
 	}
 	// Assuming WAL index corresponds to Enq; truncate front to minEnq-1
 	if minEnq > 1 {
-		if err := p.wal.TruncateFront(minEnq - 1); err != nil {
+		if err := p.q.WAL().TruncateFront(minEnq - 1); err != nil {
 			logger.Error("wal_truncate_front_failed", "err", err)
 		}
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -60,7 +59,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		return nil, fmt.Errorf("state paths not initialized")
 	}
 	disable := true // always disable Pebble WAL since we have app-level WAL
-	appWALenabled := eff.Config.Ingest.Queue.WAL.Enabled
+	appWALenabled := eff.Config.Ingest.Intake.WAL.Enabled
 	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
@@ -68,12 +67,12 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 
 	// warn if WAL is disabled and summarize potential data loss window
 	if !appWALenabled {
-		flushMs := 1
+		flushMs := eff.Config.Ingest.Apply.FlushIntervalMs
 		procFlush := time.Duration(flushMs) * time.Millisecond
 		lossWindow := procFlush
-		queueCapacity := eff.Config.Ingest.Queue.BufferCapacity
-		procWorkers := eff.Config.Ingest.Ingestor.WorkerCount
-		procBatch := 10000
+		queueCapacity := eff.Config.Ingest.Intake.BufferCapacity
+		procWorkers := eff.Config.Ingest.Compute.WorkerCount
+		procBatch := eff.Config.Ingest.Apply.BatchSize
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
 		lossWindowHuman := lossWindow.String()
@@ -127,7 +126,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	// open database
 	disablePebbleWAL := true // always disable Pebble WAL
-	appWALEnabled := a.eff.Config.Ingest.Queue.WAL.Enabled
+	appWALEnabled := a.eff.Config.Ingest.Intake.WAL.Enabled
 	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
 	if err := storedb.Open(state.PathsVar.Store, disablePebbleWAL, appWALEnabled); err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
@@ -150,16 +149,12 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// config based basqueue
-	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue, a.eff.DBPath)
+	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Intake, a.eff.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 	queue.SetDefaultIngestQueue(q)
-	walPath := ""
-	if a.eff.Config.Ingest.Queue.WAL.Enabled {
-		walPath = filepath.Join(a.eff.DBPath, "wal")
-	}
-	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor, a.eff.Config.Ingest.Queue, walPath)
+	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 

@@ -34,17 +34,18 @@ retention:
   lock_ttl: 300s
 
 ingest:
-  ingestor:
-    worker_count: 16
-    apply_queue_buffer_size: 10_000
-    flush_interval_ms: 1
-    max_batch_size: 10000
-  queue:
-    buffer_capacity: 1_000_000
+  intake:
+    buffer_capacity: 1
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
       segment_size: 20MB
+  compute:
+    worker_count: 16
+  apply:
+    queue_buffer_size: 1_000_000
+    flush_interval_ms: 1
+    batch_size: 1_000
 
 telemetry:
   sample_rate: 0.001

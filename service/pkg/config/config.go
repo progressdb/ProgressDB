@@ -124,41 +124,42 @@ func LoadConfigFile(path string) (*Config, error) {
 // the receiver to fill in missing defaults and returns an error if any
 // configuration value is invalid.
 func (c *Config) ValidateConfig() error {
-	// Queue defaults
-	if c.Ingest.Queue.BufferCapacity <= 0 {
-		c.Ingest.Queue.BufferCapacity = defaultQueueCapacity
+	// Intake defaults
+	if c.Ingest.Intake.BufferCapacity <= 0 {
+		c.Ingest.Intake.BufferCapacity = defaultQueueCapacity
 	}
-	// Shutdown poll interval
-	if c.Ingest.Queue.ShutdownPollInterval.Duration() == 0 {
-		c.Ingest.Queue.ShutdownPollInterval = Duration(defaultDrainPollInterval)
+	if c.Ingest.Intake.ShutdownPollInterval.Duration() == 0 {
+		c.Ingest.Intake.ShutdownPollInterval = Duration(defaultDrainPollInterval)
 	}
-	// WAL defaults
-	if !c.Ingest.Queue.WAL.Enabled {
-		c.Ingest.Queue.WAL.Enabled = true
+	if !c.Ingest.Intake.WAL.Enabled {
+		c.Ingest.Intake.WAL.Enabled = true
 	}
-	if c.Ingest.Queue.WAL.SegmentSize.Int64() == 0 {
-		c.Ingest.Queue.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
+	if c.Ingest.Intake.WAL.SegmentSize.Int64() == 0 {
+		c.Ingest.Intake.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
 	}
 
-	// Ingestor defaults
+	// Compute defaults
 	numCPU := runtime.NumCPU()
 	runtime.GOMAXPROCS(numCPU)
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
-	pc := &c.Ingest.Ingestor
-	if pc.WorkerCount <= 0 {
-		pc.WorkerCount = numCPU
-	} else if pc.WorkerCount > numCPU {
-		logger.Warn("worker_count_capped", "requested", pc.WorkerCount, "capped_to", numCPU)
-		pc.WorkerCount = numCPU
+	cc := &c.Ingest.Compute
+	if cc.WorkerCount <= 0 {
+		cc.WorkerCount = numCPU
+	} else if cc.WorkerCount > numCPU {
+		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
+		cc.WorkerCount = numCPU
 	}
-	if pc.ApplyQueueBufferSize <= 0 {
-		pc.ApplyQueueBufferSize = defaultIngestorApplyQueueBufferSize
+
+	// Apply defaults
+	ac := &c.Ingest.Apply
+	if ac.QueueBufferSize <= 0 {
+		ac.QueueBufferSize = defaultIngestorApplyQueueBufferSize
 	}
-	if pc.FlushIntervalMs <= 0 {
-		pc.FlushIntervalMs = defaultIngestorFlushIntervalMs
+	if ac.FlushIntervalMs <= 0 {
+		ac.FlushIntervalMs = defaultIngestorFlushIntervalMs
 	}
-	if pc.MaxBatchSize <= 0 {
-		pc.MaxBatchSize = defaultIngestorMaxBatchSize
+	if ac.BatchSize <= 0 {
+		ac.BatchSize = defaultIngestorMaxBatchSize
 	}
 
 	// Telemetry defaults

@@ -124,11 +124,17 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		// logging
 		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
 
-		// queue
-		"QUEUE_BUFFER_CAPACITY":        os.Getenv("PROGRESSDB_QUEUE_BUFFER_CAPACITY"),
-		"QUEUE_SHUTDOWN_POLL_INTERVAL": os.Getenv("PROGRESSDB_QUEUE_SHUTDOWN_POLL_INTERVAL"),
-		"QUEUE_WAL_ENABLED":            os.Getenv("PROGRESSDB_QUEUE_WAL_ENABLED"),
-		"QUEUE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_QUEUE_WAL_SEGMENT_SIZE"),
+		// intake
+		"INTAKE_BUFFER_CAPACITY":        os.Getenv("PROGRESSDB_INTAKE_BUFFER_CAPACITY"),
+		"INTAKE_SHUTDOWN_POLL_INTERVAL": os.Getenv("PROGRESSDB_INTAKE_SHUTDOWN_POLL_INTERVAL"),
+		"INTAKE_WAL_ENABLED":            os.Getenv("PROGRESSDB_INTAKE_WAL_ENABLED"),
+		"INTAKE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_INTAKE_WAL_SEGMENT_SIZE"),
+		// compute
+		"COMPUTE_WORKER_COUNT": os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
+		// apply
+		"APPLY_QUEUE_BUFFER_SIZE": os.Getenv("PROGRESSDB_APPLY_QUEUE_BUFFER_SIZE"),
+		"APPLY_FLUSH_INTERVAL_MS": os.Getenv("PROGRESSDB_APPLY_FLUSH_INTERVAL_MS"),
+		"APPLY_BATCH_SIZE":        os.Getenv("PROGRESSDB_APPLY_BATCH_SIZE"),
 	}
 
 	// check if any env was set
@@ -385,20 +391,39 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		envCfg.Logging.Level = strings.TrimSpace(v)
 	}
 
-	// queue env overrides
-	if v := envs["QUEUE_BUFFER_CAPACITY"]; v != "" {
+	if v := envs["INTAKE_BUFFER_CAPACITY"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Queue.BufferCapacity = n
+			envCfg.Ingest.Intake.BufferCapacity = n
 		}
 	}
-	if v := envs["QUEUE_SHUTDOWN_POLL_INTERVAL"]; v != "" {
-		envCfg.Ingest.Queue.ShutdownPollInterval = parseDuration(v)
+	if v := envs["INTAKE_SHUTDOWN_POLL_INTERVAL"]; v != "" {
+		envCfg.Ingest.Intake.ShutdownPollInterval = parseDuration(v)
 	}
-	if v := envs["QUEUE_WAL_ENABLED"]; v != "" {
-		envCfg.Ingest.Queue.WAL.Enabled = parseBool(v, true)
+	if v := envs["INTAKE_WAL_ENABLED"]; v != "" {
+		envCfg.Ingest.Intake.WAL.Enabled = parseBool(v, true)
 	}
-	if v := envs["QUEUE_WAL_SEGMENT_SIZE"]; v != "" {
-		envCfg.Ingest.Queue.WAL.SegmentSize = parseSizeBytes(v)
+	if v := envs["INTAKE_WAL_SEGMENT_SIZE"]; v != "" {
+		envCfg.Ingest.Intake.WAL.SegmentSize = parseSizeBytes(v)
+	}
+	if v := envs["COMPUTE_WORKER_COUNT"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Compute.WorkerCount = n
+		}
+	}
+	if v := envs["APPLY_QUEUE_BUFFER_SIZE"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Apply.QueueBufferSize = n
+		}
+	}
+	if v := envs["APPLY_FLUSH_INTERVAL_MS"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Apply.FlushIntervalMs = n
+		}
+	}
+	if v := envs["APPLY_BATCH_SIZE"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Apply.BatchSize = n
+		}
 	}
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}
 }

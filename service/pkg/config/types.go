@@ -84,18 +84,30 @@ type RetentionConfig struct {
 	LockTTL Duration `yaml:"lock_ttl"`
 }
 
-// IngestConfig holds queueing and processing configuration.
+// IngestConfig holds intake, compute, and apply configuration.
 type IngestConfig struct {
-	Ingestor IngestorConfig `yaml:"ingestor"`
-	Queue    QueueConfig    `yaml:"queue"`
+	Intake  IntakeConfig  `yaml:"intake"`
+	Compute ComputeConfig `yaml:"compute"`
+	Apply   ApplyConfig   `yaml:"apply"`
 }
 
-// IngestorConfig controls worker concurrency.
-type IngestorConfig struct {
-	WorkerCount          int `yaml:"worker_count"`
-	ApplyQueueBufferSize int `yaml:"apply_queue_buffer_size"`
-	FlushIntervalMs      int `yaml:"flush_interval_ms"`
-	MaxBatchSize         int `yaml:"max_batch_size"`
+// IntakeConfig controls enqueue buffering and persistence.
+type IntakeConfig struct {
+	BufferCapacity       int       `yaml:"buffer_capacity"`
+	ShutdownPollInterval Duration  `yaml:"shutdown_poll_interval"`
+	WAL                  WALConfig `yaml:"wal"`
+}
+
+// ComputeConfig controls worker concurrency for mutation processing.
+type ComputeConfig struct {
+	WorkerCount int `yaml:"worker_count"`
+}
+
+// ApplyConfig controls batching and queuing for DB applies.
+type ApplyConfig struct {
+	QueueBufferSize int `yaml:"queue_buffer_size"`
+	FlushIntervalMs int `yaml:"flush_interval_ms"`
+	BatchSize       int `yaml:"batch_size"`
 }
 
 // QueueConfig holds queue settings.
