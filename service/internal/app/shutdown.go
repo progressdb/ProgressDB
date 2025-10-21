@@ -2,60 +2,16 @@ package app
 
 import (
 	"context"
-	"log"
-	"time"
 
-	"progressdb/pkg/ingest/queue"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/shutdown"
 )
 
 // Shutdown attempts to gracefully stop all running components.
 func (a *App) Shutdown(ctx context.Context) error {
-	log.Printf("shutdown: requested")
 	a.state = "shutting_down"
-
-	// stop accepting new requests
-	if a.srv != nil {
-		log.Printf("shutdown: stopping HTTP server")
-		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if err := a.srv.Shutdown(ctx2); err != nil {
-			log.Printf("shutdown: http shutdown error: %v", err)
-		} else {
-			log.Printf("shutdown: http shutdown complete")
-		}
+	err := shutdown.ShutdownApp(ctx, a.srv, a.srvFast, a.rc, a.retentionCancel, a.ingestIngestor, a.hwSensor)
+	if err == nil {
+		a.state = "stopped"
 	}
-
-	// close kms client
-	if a.rc != nil {
-		log.Printf("shutdown: closing KMS client")
-		if err := a.rc.Close(); err != nil {
-			log.Printf("shutdown: kms client close error: %v", err)
-		}
-	}
-
-	// cancel retention scheduler if running
-	if a.retentionCancel != nil {
-		log.Printf("shutdown: stopping retention scheduler")
-		a.retentionCancel()
-	}
-
-	// ensure ingest queue drains before closing store and stop ingest processor
-	if queue.GlobalIngestQueue != nil {
-		queue.GlobalIngestQueue.Close()
-	}
-	if a.ingestIngestor != nil {
-		log.Printf("shutdown: stopping ingestor")
-		a.ingestIngestor.Stop()
-	}
-
-	// flush close the storage
-	log.Printf("shutdown: closing store")
-	if err := storedb.Close(); err != nil {
-		log.Printf("shutdown: store close error: %v", err)
-	}
-
-	a.state = "stopped"
-	log.Printf("shutdown: complete")
-	return nil
+	return err
 }

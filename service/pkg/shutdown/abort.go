@@ -1,16 +1,13 @@
 package shutdown
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/state"
 	"runtime"
-	"syscall"
 	"time"
 
 	"progressdb/pkg/timeutil"
@@ -171,35 +168,4 @@ func RequestExitFile(dbPath, reason string) (string, error) {
 	}
 	_ = os.Chmod(reqPath, 0o600)
 	return reqPath, nil
-}
-
-// SetupSignalHandler installs handlers for SIGINT/SIGTERM and SIGPIPE and
-// returns a cancellable context. The returned context is cancelled when any
-// of the watched signals arrives. Use the cancel function to stop watching
-// and to release resources.
-func SetupSignalHandler(parent context.Context) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(parent)
-
-	// handle interrupt/terminate for graceful shutdown
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		s := <-sigc
-		logger.Info("signal_received", "signal", s.String(), "msg", "shutdown requested")
-		cancel()
-	}()
-
-	// watch for SIGPIPE and dump goroutine stacks to aid diagnostics
-	sigpipe := make(chan os.Signal, 1)
-	signal.Notify(sigpipe, syscall.SIGPIPE)
-	go func() {
-		s := <-sigpipe
-		logger.Info("signal_received", "signal", s.String(), "msg", "SIGPIPE - dumping goroutine stacks")
-		buf := make([]byte, 1<<20)
-		n := runtime.Stack(buf, true)
-		logger.Info("goroutine_stack_dump", "dump", string(buf[:n]))
-		cancel()
-	}()
-
-	return ctx, cancel
 }

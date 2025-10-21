@@ -19,13 +19,13 @@ type ApplyWorker struct {
 }
 
 // NewApplyWorker creates a new apply worker.
-func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, timeoutMs int) *ApplyWorker {
+func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, timeout time.Duration) *ApplyWorker {
 	return &ApplyWorker{
 		input:   input,
 		workers: workers,
 		buffer:  make([]types.BatchEntry, 0, maxBatchSize),
 		maxSize: maxBatchSize,
-		timeout: time.Duration(timeoutMs) * time.Millisecond,
+		timeout: timeout,
 	}
 }
 

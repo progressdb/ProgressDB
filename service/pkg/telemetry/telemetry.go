@@ -34,6 +34,7 @@ type Telemetry struct {
 	buffers          map[string]*bufio.Writer
 	traces           chan *Trace
 	stopCh           chan struct{}
+	stopOnce         sync.Once
 	wg               sync.WaitGroup
 	flushInt         time.Duration
 	maxFileSizeBytes int64
@@ -200,6 +201,8 @@ func (t *Telemetry) getBufferFor(op string) *bufio.Writer {
 
 // Close stops background writer and flushes all remaining data.
 func (t *Telemetry) Close() {
-	close(t.stopCh)
-	t.wg.Wait()
+	t.stopOnce.Do(func() {
+		close(t.stopCh)
+		t.wg.Wait()
+	})
 }

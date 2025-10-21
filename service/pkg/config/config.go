@@ -156,8 +156,8 @@ func (c *Config) ValidateConfig() error {
 	if ac.BatchCount <= 0 {
 		ac.BatchCount = defaultIngestorMaxBatchSize
 	}
-	if ac.BatchTimeoutMs <= 0 {
-		ac.BatchTimeoutMs = 1000 // 1 second default
+	if ac.BatchTimeout.Duration() <= 0 {
+		ac.BatchTimeout = Duration(1 * time.Second) // 1 second default
 	}
 	// Fsync after batch defaults to true for durability
 	ac.FsyncAfterBatch = true

@@ -170,38 +170,6 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		// shutdown HTTP server
-		if a.srvFast != nil {
-			_ = a.srvFast.Shutdown()
-		}
-
-		// shutdown ingest and sensor
-		if queue.GlobalIngestQueue != nil {
-			_ = queue.GlobalIngestQueue.Close()
-		}
-
-		// stop ingestor
-		if a.ingestIngestor != nil {
-			a.ingestIngestor.Stop()
-		}
-
-		// stop sensor
-		if a.hwSensor != nil {
-			a.hwSensor.Stop()
-		}
-
-		// close index
-		if err := index.Close(); err != nil {
-			logger.Error("index_close_failed", "error", err)
-		}
-
-		// close store
-		if err := storedb.Close(); err != nil {
-			logger.Error("store_close_failed", "error", err)
-		}
-
-		// close tel
-		telemetry.Close()
 		return nil
 	case err := <-errCh:
 		return err

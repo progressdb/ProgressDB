@@ -36,7 +36,7 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 	computeBuf := make(chan types.BatchEntry, cc.BufferCapacity)
 
 	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount)
-	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeoutMs)
+	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeout.Duration())
 
 	return &Ingestor{
 		computeWorker: computeWorker,

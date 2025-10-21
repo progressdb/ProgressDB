@@ -14,6 +14,7 @@ import (
 type Sensor struct {
 	config        MonitorConfig
 	stopCh        chan struct{}
+	stopOnce      sync.Once
 	mu            sync.Mutex
 	diskAlert     bool
 	memAlert      bool
@@ -48,7 +49,9 @@ func (s *Sensor) Start() {
 
 // stop sensor
 func (s *Sensor) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 }
 
 // run loop

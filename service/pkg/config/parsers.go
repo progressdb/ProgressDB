@@ -133,8 +133,8 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"COMPUTE_WORKER_COUNT":    os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
 		"COMPUTE_BUFFER_CAPACITY": os.Getenv("PROGRESSDB_COMPUTE_BUFFER_CAPACITY"),
 		// apply
-		"APPLY_BATCH_COUNT":      os.Getenv("PROGRESSDB_APPLY_BATCH_COUNT"),
-		"APPLY_BATCH_TIMEOUT_MS": os.Getenv("PROGRESSDB_APPLY_BATCH_TIMEOUT_MS"),
+		"APPLY_BATCH_COUNT":   os.Getenv("PROGRESSDB_APPLY_BATCH_COUNT"),
+		"APPLY_BATCH_TIMEOUT": os.Getenv("PROGRESSDB_APPLY_BATCH_TIMEOUT"),
 	}
 
 	// check if any env was set
@@ -421,9 +421,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Ingest.Apply.BatchCount = n
 		}
 	}
-	if v := envs["APPLY_BATCH_TIMEOUT_MS"]; v != "" {
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Apply.BatchTimeoutMs = n
+	if v := envs["APPLY_BATCH_TIMEOUT"]; v != "" {
+		if d, err := time.ParseDuration(strings.TrimSpace(v)); err == nil {
+			envCfg.Ingest.Apply.BatchTimeout = Duration(d)
 		}
 	}
 	return envCfg, EnvResult{BackendKeys: backendKeys, SigningKeys: signingKeys, EnvUsed: envUsed}

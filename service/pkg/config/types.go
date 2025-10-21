@@ -106,9 +106,9 @@ type ComputeConfig struct {
 
 // ApplyConfig controls batching and queuing for DB applies.
 type ApplyConfig struct {
-	BatchCount      int  `yaml:"batch_count"`
-	FsyncAfterBatch bool `yaml:"fsync_after_batch"`
-	BatchTimeoutMs  int  `yaml:"batch_timeout_ms"`
+	BatchCount      int      `yaml:"batch_count"`
+	FsyncAfterBatch bool     `yaml:"fsync_after_batch"`
+	BatchTimeout    Duration `yaml:"apply_batch_timeout"`
 }
 
 // QueueConfig holds queue settings.
