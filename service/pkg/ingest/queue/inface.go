@@ -1,9 +1,9 @@
 package queue
 
 import (
+	"encoding/json"
+	"errors"
 	"sync/atomic"
-
-	"github.com/valyala/bytebufferpool"
 )
 
 // TODO: queue full - drop strategy
@@ -12,6 +12,12 @@ import (
 var (
 	// enqueue sequence number
 	enqSeq uint64
+)
+
+// Queue errors
+var (
+	ErrQueueFull   = errors.New("ingest queue full")
+	ErrQueueClosed = errors.New("ingest queue closed")
 )
 
 // enqueue operation (non-blocking)
@@ -32,8 +38,13 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
-	newOp := queueOpPool.Get().(*QueueOp)
-	*newOp = *op
+	newOp := &QueueOp{
+		Handler: op.Handler,
+		Thread:  op.Thread,
+		ID:      op.ID,
+		Payload: op.Payload,
+		TS:      op.TS,
+	}
 	if op.Extras != nil {
 		newMap := make(map[string]string, len(op.Extras))
 		for k, v := range op.Extras {
@@ -45,22 +56,16 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 
 	var it *QueueItem
 	if q.wal != nil && q.walBacked {
-		bb := bytebufferpool.Get()
-		payloadSlice, err := serializeOpToBB(newOp, bb)
+		data, err := json.Marshal(newOp)
 		if err != nil {
-			bytebufferpool.Put(bb)
-			queueOpPool.Put(newOp)
 			return err
 		}
-		newOp.Payload = payloadSlice
-		if err := q.wal.Write(uint64(newOp.EnqSeq), payloadSlice); err != nil {
-			bytebufferpool.Put(bb)
-			queueOpPool.Put(newOp)
+		if err := q.wal.Write(uint64(newOp.EnqSeq), data); err != nil {
 			return err
 		}
-		it = &QueueItem{Op: newOp, Sb: nil, Buf: bb, Q: q}
+		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
 	} else {
-		it = &QueueItem{Op: newOp, Sb: nil, Buf: nil, Q: q}
+		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
 	}
 
 	select {
@@ -107,8 +112,8 @@ func (q *IngestQueue) Out() <-chan *QueueItem {
 
 // global enqueue
 func Enqueue(op *QueueOp) error {
-	if DefaultIngestQueue != nil {
-		return DefaultIngestQueue.Enqueue(op)
+	if GlobalIngestQueue != nil {
+		return GlobalIngestQueue.Enqueue(op)
 	}
 	return ErrQueueClosed
 }

@@ -8,6 +8,9 @@ import (
 	"progressdb/pkg/config"
 )
 
+// GlobalIngestQueue is the global ingest queue instance.
+var GlobalIngestQueue *IngestQueue
+
 // NewIngestQueue creates a bounded IngestQueue of given capacity (>0).
 func NewIngestQueue(capacity int) *IngestQueue {
 	if capacity <= 0 {
@@ -20,36 +23,25 @@ func NewIngestQueue(capacity int) *IngestQueue {
 	}
 }
 
-// NewQueueFromConfig creates a queue based on the provided configuration.
-func NewQueueFromConfig(ic config.IntakeConfig, dbPath string) (*IngestQueue, error) {
+// InitGlobalIngestQueue creates and sets the global ingest queue with WAL enabled.
+func InitGlobalIngestQueue(ic config.IntakeConfig, dbPath string) error {
 	queue := NewIngestQueue(ic.BufferCapacity)
 	queue.drainPollInterval = ic.ShutdownPollInterval.Duration()
 
-	if ic.WAL.Enabled {
-		// Create WAL directory path
-		walDir := filepath.Join(dbPath, "wal")
-
-		// Create simple WAL with custom segment size
-		opts := &Options{
-			SegmentSize: int(ic.WAL.SegmentSize.Int64()),
-		}
-		wal, err := Open(walDir, opts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create WAL: %w", err)
-		}
-
-		queue.wal = wal
-		queue.walBacked = true
+	// Always enable WAL for durability
+	walDir := filepath.Join(dbPath, "wal")
+	opts := &Options{
+		SegmentSize: int(ic.WAL.SegmentSize.Int64()),
 	}
-
-	return queue, nil
-}
-
-// SetDefaultIngestQueue sets the package default if q is non-nil.
-func SetDefaultIngestQueue(q *IngestQueue) {
-	if q != nil {
-		DefaultIngestQueue = q
+	wal, err := Open(walDir, opts)
+	if err != nil {
+		return fmt.Errorf("failed to create WAL: %w", err)
 	}
+	queue.wal = wal
+	queue.walBacked = true
+
+	GlobalIngestQueue = queue
+	return nil
 }
 
 // DisableWAL disables WAL backing for enqueues.

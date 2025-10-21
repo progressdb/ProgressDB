@@ -41,8 +41,8 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 
 	// ensure ingest queue drains before closing store and stop ingest processor
-	if queue.DefaultIngestQueue != nil {
-		queue.DefaultIngestQueue.Close()
+	if queue.GlobalIngestQueue != nil {
+		queue.GlobalIngestQueue.Close()
 	}
 	if a.ingestIngestor != nil {
 		log.Printf("shutdown: stopping ingestor")

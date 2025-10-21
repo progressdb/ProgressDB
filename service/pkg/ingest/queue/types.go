@@ -4,8 +4,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/valyala/bytebufferpool"
 )
 
 // HandlerID specifies the operation to perform for a queue Op.
@@ -37,16 +35,24 @@ type QueueOp struct {
 // QueueItem wraps a QueueOp and buffer/queue references.
 type QueueItem struct {
 	Op   *QueueOp
-	Buf  *bytebufferpool.ByteBuffer
 	Sb   *SharedBuf
 	once sync.Once
 	Q    *IngestQueue
 }
 
-// Max buffer size for pooling. Larger ones are not pooled.
-var maxPooledBuffer = 256 * 1024 // 256 KiB
-
-const opRecordVersion = 0x1
+// Done manages the lifecycle of the QueueItem, decrementing inFlight and releasing resources.
+func (it *QueueItem) Done() {
+	it.once.Do(func() {
+		if it.Q != nil {
+			atomic.AddInt64(&it.Q.inFlight, -1)
+			it.Q = nil
+		}
+		if it.Sb != nil {
+			it.Sb.release()
+			it.Sb = nil
+		}
+	})
+}
 
 // Queue is the core queue/engine type used package-wide.
 type IngestQueue struct {
@@ -64,9 +70,9 @@ type IngestQueue struct {
 	walBacked bool
 }
 
-// SharedBuf is a ByteBuffer with atomic refcounting, to share between WAL and consumers.
+// SharedBuf holds data with atomic refcounting, to share between WAL and consumers.
 type SharedBuf struct {
-	bb   *bytebufferpool.ByteBuffer
+	data []byte
 	refs int32
 }
 

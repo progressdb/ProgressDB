@@ -148,13 +148,11 @@ func (a *App) Run(ctx context.Context) error {
 		a.retentionCancel = cancel
 	}
 
-	// config based basqueue
-	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Intake, a.eff.DBPath)
-	if err != nil {
-		return fmt.Errorf("failed to create queue: %w", err)
+	// init intake queue
+	if err := queue.InitGlobalIngestQueue(a.eff.Config.Ingest.Intake, a.eff.DBPath); err != nil {
+		return fmt.Errorf("failed to init queue: %w", err)
 	}
-	queue.SetDefaultIngestQueue(q)
-	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply)
+	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 
@@ -181,8 +179,8 @@ func (a *App) Run(ctx context.Context) error {
 		}
 
 		// shutdown ingest and sensor
-		if queue.DefaultIngestQueue != nil {
-			_ = queue.DefaultIngestQueue.Close()
+		if queue.GlobalIngestQueue != nil {
+			_ = queue.GlobalIngestQueue.Close()
 		}
 
 		// stop ingestor
