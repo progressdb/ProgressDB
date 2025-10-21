@@ -7,6 +7,7 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/timeutil"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -62,7 +63,7 @@ func ForceSync() error {
 		return nil
 	}
 	key := []byte("__progressDB_wal_sync_marker__")
-	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
+	val := []byte(timeutil.Now().Format(time.RFC3339Nano))
 	if err := Client.Set(key, val, WriteOpt(true)); err != nil {
 		logger.Error("pebble_force_sync_failed", "err", err)
 		return err
@@ -117,7 +118,7 @@ func ForceIndexSync() error {
 		return nil
 	}
 	key := []byte("__progressDB_index_wal_sync_marker__")
-	val := []byte(time.Now().UTC().Format(time.RFC3339Nano))
+	val := []byte(timeutil.Now().Format(time.RFC3339Nano))
 	if err := index.IndexDB.Set(key, val, index.IndexWriteOpt(true)); err != nil {
 		logger.Error("index_pebble_force_sync_failed", "err", err)
 		return err

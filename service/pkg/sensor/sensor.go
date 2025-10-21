@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"progressdb/pkg/timeutil"
 )
 
 // sensor struct
@@ -66,7 +67,7 @@ func (s *Sensor) run() {
 
 // check hardware
 func (s *Sensor) checkHardware() {
-	now := time.Now()
+	now := timeutil.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

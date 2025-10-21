@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+	"progressdb/pkg/timeutil"
 )
 
 // Per-key rate limiter pool.
@@ -40,12 +41,12 @@ func (p *limiterPool) get(key string) *rate.Limiter {
 		p.m = make(map[string]*limiterEntry)
 	}
 	if e, ok := p.m[key]; ok {
-		e.lastSeen = time.Now()
+		e.lastSeen = timeutil.Now()
 		return e.l
 	}
 
 	l := rate.NewLimiter(rate.Limit(p.cfg.RPS), p.cfg.Burst)
-	p.m[key] = &limiterEntry{l: l, lastSeen: time.Now()}
+	p.m[key] = &limiterEntry{l: l, lastSeen: timeutil.Now()}
 	return l
 }
 
@@ -59,7 +60,7 @@ func (p *limiterPool) cleanupLoop() {
 	ticker := time.NewTicker(p.cleanupPeriod)
 	defer ticker.Stop()
 	for range ticker.C {
-		cutoff := time.Now().Add(-p.ttl)
+		cutoff := timeutil.Now().Add(-p.ttl)
 		p.mu.Lock()
 		for k, e := range p.m {
 			if e.lastSeen.Before(cutoff) {

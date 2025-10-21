@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"progressdb/pkg/logger"
 	"time"
+
+	"progressdb/pkg/timeutil"
 )
 
 type fileLease struct {
@@ -23,7 +25,7 @@ func NewFileLease(auditPath string) *fileLease {
 }
 
 func (l *fileLease) Acquire(owner string, ttl time.Duration) (bool, error) {
-	now := time.Now().UTC()
+	now := timeutil.Now()
 	exp := now.Add(ttl)
 	lf := leaseFile{Owner: owner, Expires: exp.Format(time.RFC3339)}
 	b, _ := json.Marshal(lf)
@@ -75,7 +77,7 @@ func (l *fileLease) Renew(owner string, ttl time.Duration) error {
 	if existing.Owner != owner {
 		return fmt.Errorf("not owner")
 	}
-	exp := time.Now().UTC().Add(ttl)
+	exp := timeutil.Now().Add(ttl)
 	existing.Expires = exp.Format(time.RFC3339)
 	b, _ := json.Marshal(existing)
 	tmp := l.path + ".tmp"

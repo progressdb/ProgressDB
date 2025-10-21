@@ -3,7 +3,6 @@ package threads
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
@@ -11,6 +10,7 @@ import (
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
+	"progressdb/pkg/timeutil"
 )
 
 // deletes thread metadata
@@ -62,7 +62,7 @@ func SoftDeleteThread(threadID, actor string) error {
 		return err
 	}
 	th.Deleted = true
-	th.DeletedTS = time.Now().UTC().UnixNano()
+	th.DeletedTS = timeutil.Now().UnixNano()
 	nb, _ := json.Marshal(th)
 	tr.Mark("update_thread")
 	if err := storedb.Client.Set(key, nb, storedb.WriteOpt(true)); err != nil {

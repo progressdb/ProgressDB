@@ -3,7 +3,8 @@ package keys
 import (
 	"fmt"
 	"sync/atomic"
-	"time"
+
+	"progressdb/pkg/timeutil"
 )
 
 var (
@@ -27,7 +28,7 @@ func sequencer(id string) uint64 {
 // GenMessageID generates a unique message ID using the current UTC nanosecond timestamp and a sequence number.
 // The format is "msg-<timestamp>-<seq>".
 func GenMessageID() string {
-	n := time.Now().UTC().UnixNano()
+	n := timeutil.Now().UnixNano()
 	s := sequencer("message")
 	return fmt.Sprintf("msg-%d-%d", n, s)
 }
@@ -35,7 +36,7 @@ func GenMessageID() string {
 // GenThreadID generates a unique thread ID using the current UTC nanosecond timestamp and a sequence number.
 // The format is "thread-<timestamp>-<seq>".
 func GenThreadID() string {
-	n := time.Now().UTC().UnixNano()
+	n := timeutil.Now().UnixNano()
 	s := sequencer("thread")
 	return fmt.Sprintf("thread-%d-%d", n, s)
 }

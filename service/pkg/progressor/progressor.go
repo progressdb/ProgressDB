@@ -11,6 +11,7 @@ import (
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/locks"
 	"progressdb/pkg/store/threads"
+	"progressdb/pkg/timeutil"
 )
 
 const (
@@ -57,7 +58,7 @@ func migrateTo0_2_0(ctx context.Context, from, to string) error {
 		}
 
 		th.LastSeq = max
-		th.UpdatedTS = time.Now().UTC().UnixNano()
+		th.UpdatedTS = timeutil.Now().UnixNano()
 		nb, _ := json.Marshal(th)
 		if err := threads.SaveThread(th.ID, string(nb)); err != nil {
 			logger.Error("migration_save_thread_failed", "thread", th.ID, "error", err)
@@ -72,7 +73,7 @@ func migrateTo0_2_0(ctx context.Context, from, to string) error {
 
 // startMigration writes the in-progress marker and logs the start of a migration.
 func startMigration(from, to string) error {
-	marker := map[string]string{"from": from, "to": to, "started_at": time.Now().UTC().Format(time.RFC3339)}
+	marker := map[string]string{"from": from, "to": to, "started_at": timeutil.Now().Format(time.RFC3339)}
 	mb, _ := json.Marshal(marker)
 	if err := storedb.SaveKey(systemInProgressKey, mb); err != nil {
 		logger.Error("progressor_write_inprogress_failed", "error", err)

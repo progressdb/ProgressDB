@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+
+	"progressdb/pkg/timeutil"
 )
 
 type exitRequest struct {
@@ -69,7 +71,7 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 		return "", "", fmt.Errorf("failed to create abort dir: %w", e)
 	}
 
-	ts := time.Now().UnixNano()
+	ts := timeutil.Now().UnixNano()
 	dumpName := fmt.Sprintf("crash-%d.log", ts)
 	dumpPath := filepath.Join(crashDir, dumpName)
 
@@ -82,7 +84,7 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 	tmpName := f.Name()
 	defer func() { _ = os.Remove(tmpName) }()
 
-	fmt.Fprintf(f, "time: %s\n", time.Now().UTC().Format(time.RFC3339))
+	fmt.Fprintf(f, "time: %s\n", timeutil.Now().Format(time.RFC3339))
 	fmt.Fprintf(f, "reason: %s\n", reason)
 	fmt.Fprintf(f, "error: %v\n", err)
 	fmt.Fprintf(f, "\n--- environ ---\n")
@@ -103,7 +105,7 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 
 	// create abort request referencing the crash dump
 	req := exitRequest{
-		Time:      time.Now().UTC().Format(time.RFC3339),
+		Time:      timeutil.Now().Format(time.RFC3339),
 		Reason:    reason,
 		Cmd:       "crash",
 		CrashPath: dumpPath,
@@ -145,8 +147,8 @@ func RequestExitFile(dbPath, reason string) (string, error) {
 	if err := os.MkdirAll(abortDir, 0o700); err != nil {
 		return "", err
 	}
-	ts := time.Now().UnixNano()
-	req := exitRequest{Time: time.Now().UTC().Format(time.RFC3339), Reason: reason, Cmd: "abort", Meta: map[string]string{"pid": fmt.Sprintf("%d", os.Getpid())}}
+	ts := timeutil.Now().UnixNano()
+	req := exitRequest{Time: timeutil.Now().Format(time.RFC3339), Reason: reason, Cmd: "abort", Meta: map[string]string{"pid": fmt.Sprintf("%d", os.Getpid())}}
 	rtmp, err := os.CreateTemp(abortDir, ".req-*.tmp")
 	if err != nil {
 		return "", err

@@ -11,6 +11,7 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/state"
+	"progressdb/pkg/timeutil"
 )
 
 var storedEff *config.EffectiveConfigResult
@@ -74,7 +75,7 @@ func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPa
 		}
 
 		// calculate next tick after now (UTC)
-		now := time.Now().UTC()
+		now := timeutil.Now()
 		next, err := gronx.NextTickAfter(cronExpr, now, false)
 		if err != nil {
 			logger.Error("retention_nexttick_failed", "cron", cronExpr, "error", err)

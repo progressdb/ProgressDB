@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"progressdb/pkg/timeutil"
 )
 
 type Step struct {
@@ -82,7 +84,7 @@ func New(dir string, bufferSize, queueCapacity int, flushInterval time.Duration,
 
 // Track starts a new trace that is automatically linked to this telemetry.
 func (t *Telemetry) Track(name string) *Trace {
-	now := time.Now()
+	now := timeutil.Now()
 	return &Trace{
 		Name:     name,
 		Start:    now,
@@ -93,7 +95,7 @@ func (t *Telemetry) Track(name string) *Trace {
 
 // Mark records the elapsed duration since last mark.
 func (tr *Trace) Mark(label string) {
-	now := time.Now()
+	now := timeutil.Now()
 	delta := now.Sub(tr.lastMark).Seconds() * 1000
 	tr.Steps = append(tr.Steps, Step{Name: label, Duration: delta})
 	tr.lastMark = now

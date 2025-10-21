@@ -11,6 +11,7 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/keys"
 	thread_store "progressdb/pkg/store/threads"
+	"progressdb/pkg/timeutil"
 )
 
 // runOnce executes a single retention run: acquire lease, scan threads, purge eligible items, write audit.
@@ -81,9 +82,9 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	logger.Info("retention_run_start", "run_id", runID, "owner", owner, "dry_run", ret.DryRun)
 	// header (emit audit event via dedicated audit logger if present)
 	if logger.Audit != nil {
-		logger.Audit.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+		logger.Audit.Info("retention_audit_header", "run_id", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
 	} else {
-		logger.Info("retention_audit_header", "run_id", runID, "started_at", time.Now().UTC().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+		logger.Info("retention_audit_header", "run_id", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
 	}
 
 	// compute cutoff
@@ -92,7 +93,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 		logger.Error("retention_invalid_period", "period", ret.Period, "error", perr)
 		return fmt.Errorf("invalid retention period: %w", perr)
 	}
-	cutoff := time.Now().UTC().Add(-pd)
+	cutoff := timeutil.Now().Add(-pd)
 
 	threads, err := thread_store.ListThreads()
 	if err != nil {
@@ -139,7 +140,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 				continue
 			}
 			entry["status"] = "success"
-			entry["purged_at"] = time.Now().UTC().Format(time.RFC3339)
+			entry["purged_at"] = timeutil.Now().Format(time.RFC3339)
 			if logger.Audit != nil {
 				logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
 			} else {

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/kms"
@@ -14,6 +13,7 @@ import (
 	"progressdb/pkg/security"
 	"progressdb/pkg/store/messages"
 	"progressdb/pkg/telemetry"
+	"progressdb/pkg/timeutil"
 )
 
 // message op methods
@@ -42,7 +42,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		}
 	}
 	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
+		m.TS = timeutil.Now().UnixNano()
 	}
 	if m.ID == "" {
 		return nil, fmt.Errorf("missing message id")
@@ -70,7 +70,7 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		m.Thread = op.Thread
 	}
 	if m.TS == 0 {
-		m.TS = time.Now().UTC().UnixNano()
+		m.TS = timeutil.Now().UnixNano()
 	}
 	// allow partial updates; caller should provide resulting full message
 	payload, _ := json.Marshal(m)
@@ -90,7 +90,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("missing message id for delete")
 	}
 	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{ID: id, Deleted: true, TS: time.Now().UTC().UnixNano(), Thread: m.Thread}
+	tomb := models.Message{ID: id, Deleted: true, TS: timeutil.Now().UnixNano(), Thread: m.Thread}
 	payload, _ := json.Marshal(tomb)
 	be := BatchEntry{Handler: qpkg.HandlerMessageDelete, Thread: tomb.Thread, MsgID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
@@ -132,7 +132,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error)
 		m.Reactions = make(map[string]string)
 	}
 	m.Reactions[identity] = p.Reaction
-	m.TS = time.Now().UTC().UnixNano()
+	m.TS = timeutil.Now().UnixNano()
 	payload, _ := json.Marshal(m)
 	be := BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
@@ -170,7 +170,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, err
 	if m.Reactions != nil {
 		delete(m.Reactions, identity)
 	}
-	m.TS = time.Now().UTC().UnixNano()
+	m.TS = timeutil.Now().UnixNano()
 	payload, _ := json.Marshal(m)
 	be := BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
@@ -192,7 +192,7 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	}
 	// Ensure timestamps
 	if th.CreatedTS == 0 {
-		th.CreatedTS = time.Now().UTC().UnixNano()
+		th.CreatedTS = timeutil.Now().UnixNano()
 	}
 	if th.UpdatedTS == 0 {
 		th.UpdatedTS = th.CreatedTS
@@ -234,7 +234,7 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 		th.ID = op.Thread
 	}
 	if th.UpdatedTS == 0 {
-		th.UpdatedTS = time.Now().UTC().UnixNano()
+		th.UpdatedTS = timeutil.Now().UnixNano()
 	}
 	// Copy payload so returned BatchEntry does not alias the pooled Op buffer.
 	var payloadCopy []byte
@@ -256,6 +256,6 @@ func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	if th.ID == "" {
 		return nil, fmt.Errorf("missing thread id for delete")
 	}
-	be := BatchEntry{Handler: qpkg.HandlerThreadDelete, Thread: th.ID, Payload: []byte{}, TS: time.Now().UTC().UnixNano()}
+	be := BatchEntry{Handler: qpkg.HandlerThreadDelete, Thread: th.ID, Payload: []byte{}, TS: timeutil.Now().UnixNano()}
 	return []BatchEntry{be}, nil
 }
