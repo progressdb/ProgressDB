@@ -1,4 +1,4 @@
-package ingest
+package apply
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
@@ -17,11 +18,11 @@ import (
 	"progressdb/pkg/timeutil"
 )
 
-// ApplyBatchToDB persists a list of BatchEntry items to the storedb.
+// ApplyBatchToDB persists a list of types.BatchEntry items to the storedb.
 // Message entries are saved via storedb.SaveMessage (handles encryption and sequencing).
 // Thread entries are processed with SaveThread or SoftDeleteThread as appropriate.
 // Reactions are merged per message and applied.
-func ApplyBatchToDB(entries []BatchEntry) error {
+func ApplyBatchToDB(entries []types.BatchEntry) error {
 	tr := telemetry.Track("ingest.apply_batch")
 	defer tr.Finish()
 
@@ -32,8 +33,8 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 	tr.Mark("process_entries")
 
 	// Group reaction entries by message ID for merging
-	reactionGroups := make(map[string][]BatchEntry)
-	var otherEntries []BatchEntry
+	reactionGroups := make(map[string][]types.BatchEntry)
+	var otherEntries []types.BatchEntry
 
 	for _, e := range entries {
 		if e.Handler == queue.HandlerReactionAdd || e.Handler == queue.HandlerReactionDelete {
@@ -83,7 +84,7 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 }
 
 // applyMergedReactions merges reaction ops for a message and applies them.
-func applyMergedReactions(msgID string, reacts []BatchEntry) error {
+func applyMergedReactions(msgID string, reacts []types.BatchEntry) error {
 	// Read the latest message once
 	stored, err := messages.GetLatestMessage(msgID)
 	if err != nil {

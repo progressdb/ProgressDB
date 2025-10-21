@@ -105,6 +105,7 @@ type ComputeConfig struct {
 
 // ApplyConfig controls batching and queuing for DB applies.
 type ApplyConfig struct {
+	WorkerCount     int `yaml:"worker_count"`
 	QueueBufferSize int `yaml:"queue_buffer_size"`
 	FlushIntervalMs int `yaml:"flush_interval_ms"`
 	BatchSize       int `yaml:"batch_size"`

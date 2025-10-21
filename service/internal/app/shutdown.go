@@ -46,7 +46,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 	if a.ingestIngestor != nil {
 		log.Printf("shutdown: stopping ingestor")
-		a.ingestIngestor.Stop(ctx)
+		a.ingestIngestor.Stop()
 	}
 
 	// flush close the storage

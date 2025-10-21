@@ -1,11 +1,14 @@
-package ingest
+package compute
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/telemetry"
@@ -13,7 +16,7 @@ import (
 )
 
 // message op methods
-func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
@@ -67,10 +70,10 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := BatchEntry{Handler: qpkg.HandlerMessageCreate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	return []types.BatchEntry{be}, nil
 }
-func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
@@ -104,10 +107,10 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := BatchEntry{Handler: qpkg.HandlerMessageUpdate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageUpdate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	return []types.BatchEntry{be}, nil
 }
-func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var m models.Message
 	if len(op.Payload) > 0 {
 		_ = json.Unmarshal(op.Payload, &m)
@@ -137,12 +140,12 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := BatchEntry{Handler: qpkg.HandlerMessageDelete, Thread: tomb.Thread, MsgID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageDelete, Thread: tomb.Thread, MsgID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
+	return []types.BatchEntry{be}, nil
 }
 
 // reactions op methods
-func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if op.ID == "" {
 		return nil, fmt.Errorf("missing message id for reaction")
 	}
@@ -168,10 +171,10 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error)
 		"action":   "add",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	return []types.BatchEntry{be}, nil
 }
-func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if op.ID == "" {
 		return nil, fmt.Errorf("missing message id for reaction delete")
 	}
@@ -199,12 +202,12 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, err
 		"action":   "delete",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	return []types.BatchEntry{be}, nil
 }
 
 // thread meta op methods
-func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var th models.Thread
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for thread create")
@@ -241,10 +244,10 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	th.KMS = kmsMeta
 
 	payload, _ := json.Marshal(th)
-	be := BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
+	return []types.BatchEntry{be}, nil
 }
-func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var th models.Thread
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
 		// best-effort: fall back to op.Thread
@@ -256,16 +259,16 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	if th.UpdatedTS == 0 {
 		th.UpdatedTS = timeutil.Now().UnixNano()
 	}
-	// Copy payload so returned BatchEntry does not alias the pooled Op buffer.
+	// Copy payload so returned types.BatchEntry does not alias the pooled Op buffer.
 	var payloadCopy []byte
 	if len(op.Payload) > 0 {
 		payloadCopy = make([]byte, len(op.Payload))
 		copy(payloadCopy, op.Payload)
 	}
-	be := BatchEntry{Handler: qpkg.HandlerThreadUpdate, Thread: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, Thread: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th}
+	return []types.BatchEntry{be}, nil
 }
-func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
+func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var th models.Thread
 	if len(op.Payload) > 0 {
 		_ = json.Unmarshal(op.Payload, &th)
@@ -276,6 +279,41 @@ func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	if th.ID == "" {
 		return nil, fmt.Errorf("missing thread id for delete")
 	}
-	be := BatchEntry{Handler: qpkg.HandlerThreadDelete, Thread: th.ID, Payload: []byte{}, TS: timeutil.Now().UnixNano(), Model: nil}
-	return []BatchEntry{be}, nil
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadDelete, Thread: th.ID, Payload: []byte{}, TS: timeutil.Now().UnixNano(), Model: nil}
+	return []types.BatchEntry{be}, nil
+}
+
+func ValidateMessage(m models.Message) error {
+	tr := telemetry.Track("validation.validate_message")
+	defer tr.Finish()
+
+	var errs []string
+	if m.Body == nil {
+		errs = append(errs, "body is required")
+	}
+
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func ValidateThread(th models.Thread) error {
+	tr := telemetry.Track("validation.validate_thread")
+	defer tr.Finish()
+
+	var errs []string
+	if th.ID == "" {
+		errs = append(errs, "id is required")
+	}
+	if th.Title == "" {
+		errs = append(errs, "title is required")
+	}
+	if th.Author == "" {
+		errs = append(errs, "author is required")
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
 }

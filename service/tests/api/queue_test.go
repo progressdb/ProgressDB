@@ -52,7 +52,7 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 		if o.Op.ID != "m1" && o.Op.ID != "m2" {
 			t.Fatalf("unexpected op id: %s", o.Op.ID)
 		}
-		o.Done()
+		o.JobDone()
 	case <-time.After(200 * time.Millisecond):
 		t.Fatalf("timed out waiting for consumer")
 	}

@@ -152,6 +152,9 @@ func (c *Config) ValidateConfig() error {
 
 	// Apply defaults
 	ac := &c.Ingest.Apply
+	if ac.WorkerCount <= 0 {
+		ac.WorkerCount = 1 // default to 1 apply worker
+	}
 	if ac.QueueBufferSize <= 0 {
 		ac.QueueBufferSize = defaultIngestorApplyQueueBufferSize
 	}

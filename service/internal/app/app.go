@@ -185,7 +185,7 @@ func (a *App) Run(ctx context.Context) error {
 
 		// stop ingestor
 		if a.ingestIngestor != nil {
-			a.ingestIngestor.Stop(context.Background())
+			a.ingestIngestor.Stop()
 		}
 
 		// stop sensor
