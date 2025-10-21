@@ -121,6 +121,11 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 			logger.Error("update_thread_message_indexes_delete_failed", "thread", threadID, "msg", msgID, "error", err)
 			return err
 		}
+		// Add to user's deleted messages
+		if err := index.UpdateDeletedMessages(msg.Author, msgID, true); err != nil {
+			logger.Error("update_deleted_messages_failed", "user", msg.Author, "msg", msgID, "error", err)
+			return err
+		}
 	} else {
 		// On save, update counts and deltas
 		if err := index.UpdateOnMessageSave(threadID, msg.TS, msg.TS); err != nil {

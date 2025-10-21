@@ -1,9 +1,11 @@
 package threads
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
@@ -33,6 +35,19 @@ func SaveThread(threadID, data string) error {
 	if err := index.InitThreadMessageIndexes(threadID); err != nil {
 		logger.Error("init_thread_message_indexes_failed", "thread", threadID, "error", err)
 		return err
+	}
+
+	// Update user ownership
+	var th models.Thread
+	if err := json.Unmarshal([]byte(data), &th); err != nil {
+		logger.Error("unmarshal_thread_for_ownership_failed", "thread", threadID, "error", err)
+		return err
+	}
+	if th.Author != "" {
+		if err := index.UpdateUserOwnership(th.Author, threadID, true); err != nil {
+			logger.Error("update_user_ownership_failed", "user", th.Author, "thread", threadID, "error", err)
+			return err
+		}
 	}
 
 	return nil

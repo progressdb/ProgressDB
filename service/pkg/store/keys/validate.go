@@ -33,3 +33,14 @@ func ValidateMsgID(id string) error {
 	}
 	return nil
 }
+
+// ValidateUserID ensures a user id is safe to embed in keys.
+func ValidateUserID(id string) error {
+	if id == "" {
+		return errors.New("user id empty")
+	}
+	if !idRegexp.MatchString(id) {
+		return fmt.Errorf("invalid user id: %q", id)
+	}
+	return nil
+}

@@ -7,6 +7,7 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
@@ -68,6 +69,13 @@ func SoftDeleteThread(threadID, actor string) error {
 		logger.Error("soft_delete_save_failed", "thread", threadID, "error", err)
 		return err
 	}
+
+	// Update deleted threads index
+	if err := index.UpdateDeletedThreads(th.Author, threadID, true); err != nil {
+		logger.Error("update_deleted_threads_failed", "user", th.Author, "thread", threadID, "error", err)
+		return err
+	}
+
 	logger.Info("thread_soft_deleted", "thread", threadID, "actor", actor)
 	return nil
 }

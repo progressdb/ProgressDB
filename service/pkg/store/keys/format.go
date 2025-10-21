@@ -9,10 +9,14 @@ import (
 // Key format constants and padding widths. Keep these in one place so
 // formatting/parsing stays consistent across the codebase.
 const (
-	msgKeyFmt               = "thread:%s:msg:%s-%s"
-	versionKeyFmt           = "version:msg:%s:%s-%s"
-	threadMetaFmt           = "thread:%s:meta"
-	threadsToMessagesKeyFmt = "idx:T:%s:MS:%s"
+	msgKeyFmt                = "thread:%s:msg:%s-%s"
+	versionKeyFmt            = "version:msg:%s:%s-%s"
+	threadMetaFmt            = "thread:%s:meta"
+	threadsToMessagesKeyFmt  = "idx:T:%s:MS:%s"
+	userThreadsKeyFmt        = "idx:U:%s:threads"
+	threadParticipantsKeyFmt = "idx:P:%s"
+	deletedThreadsKeyFmt     = "idx:T:deleted:U:%s:list"
+	deletedMessagesKeyFmt    = "idx:M:deleted:U:%s:list"
 
 	tsPadWidth  = 20 // matches %020d used previously
 	seqPadWidth = 6  // matches %06d used previously
@@ -171,4 +175,36 @@ func ThreadsToMessagesIndexKey(threadID, suffix string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(threadsToMessagesKeyFmt, threadID, suffix), nil
+}
+
+// UserThreadsIndexKey builds an index key for user thread ownership.
+func UserThreadsIndexKey(userID string) (string, error) {
+	if err := ValidateUserID(userID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(userThreadsKeyFmt, userID), nil
+}
+
+// ThreadParticipantsIndexKey builds an index key for thread participants.
+func ThreadParticipantsIndexKey(threadID string) (string, error) {
+	if err := ValidateThreadID(threadID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(threadParticipantsKeyFmt, threadID), nil
+}
+
+// DeletedThreadsIndexKey builds an index key for user's deleted threads.
+func DeletedThreadsIndexKey(userID string) (string, error) {
+	if err := ValidateUserID(userID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(deletedThreadsKeyFmt, userID), nil
+}
+
+// DeletedMessagesIndexKey builds an index key for user's deleted messages.
+func DeletedMessagesIndexKey(userID string) (string, error) {
+	if err := ValidateUserID(userID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(deletedMessagesKeyFmt, userID), nil
 }

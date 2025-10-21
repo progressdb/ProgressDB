@@ -19,6 +19,17 @@ func PurgeThreadPermanently(threadID string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
+
+	// Get thread to extract author
+	sth, err := GetThread(threadID)
+	if err != nil {
+		return fmt.Errorf("failed to get thread: %w", err)
+	}
+	var th models.Thread
+	if err := json.Unmarshal([]byte(sth), &th); err != nil {
+		return fmt.Errorf("failed to unmarshal thread: %w", err)
+	}
+
 	tp, terr := keys.ThreadPrefix(threadID)
 	if terr != nil {
 		return terr
@@ -93,6 +104,19 @@ func PurgeThreadPermanently(threadID string) error {
 	}
 
 	_ = DeleteThread(threadID)
+
+	// Delete user thread indexes
+	if err := index.DeleteUserThreadIndexes(th.Author); err != nil {
+		logger.Error("delete_user_thread_indexes_failed", "user", th.Author, "error", err)
+		// Continue
+	}
+
+	// Delete thread participant indexes
+	if err := index.DeleteThreadParticipantIndexes(threadID); err != nil {
+		logger.Error("delete_thread_participant_indexes_failed", "thread", threadID, "error", err)
+		// Continue
+	}
+
 	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", 0)
 	return nil
 }
