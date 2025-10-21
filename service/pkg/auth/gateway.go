@@ -6,9 +6,9 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"progressdb/pkg/api/router"
 	"progressdb/pkg/logger"
 	// "progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 )
 
 // entry way for all requests - authenticated & authorized
@@ -46,7 +46,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 				ip := clientIPFast(ctx)
 				logger.Debug("ip_check", "ip", ip)
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
-					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", string(ctx.Path()))
 					return
 				}
@@ -82,7 +82,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// enforce api_key required
 			if role == RoleUnauth || !hasAPIKey {
-				utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "unauthorized")
+				router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
 				// tr.Mark("api_key_validation")
 				return
@@ -93,7 +93,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// enforce frontend routes only
 			if role == RoleFrontend && !frontendAllowedFast(ctx) {
-				utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
 				// tr.Mark("frontend_check")
 				return
@@ -104,7 +104,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 			if role == RoleAdmin {
 				path := string(ctx.Path())
 				if !strings.HasPrefix(path, "/admin") {
-					utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
+					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
 					logger.Warn("admin_route_violation", "path", path, "remote", ctx.RemoteAddr().String())
 					// tr.Mark("admin_check")
 					return
@@ -114,7 +114,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// enforce rate_limiting per api key
 			if !limiters.Allow(key) {
-				utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
+				router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
 				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
 				// tr.Mark("rate_limit")
 				return

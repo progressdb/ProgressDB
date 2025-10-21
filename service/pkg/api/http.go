@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"progressdb/pkg/router"
+	"progressdb/pkg/api/router"
 
 	"github.com/valyala/fasthttp"
 )

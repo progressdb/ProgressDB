@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	router "progressdb/pkg/router"
+	router "progressdb/pkg/api/router"
 	storedb "progressdb/pkg/store/db/store"
 
 	"github.com/valyala/fasthttp"

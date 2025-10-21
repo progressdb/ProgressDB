@@ -1,16 +1,16 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
+
+	"progressdb/pkg/api/router"
 )
 
 func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
@@ -19,11 +19,11 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 	}
 	switch err {
 	case queue.ErrQueueFull:
-		utils.JSONErrorFast(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
+		router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "server busy; try again")
 	case queue.ErrQueueClosed:
-		utils.JSONErrorFast(ctx, fasthttp.StatusServiceUnavailable, "server shutting down")
+		router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "server shutting down")
 	default:
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "enqueue failed")
 	}
 }
 
@@ -48,7 +48,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
+	_ = router.WriteJSON(ctx, map[string]string{"id": id})
 }
 func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.enqueue_update_thread")
@@ -57,7 +57,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
@@ -81,7 +81,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
@@ -107,7 +107,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	threadID := pathParam(ctx, "threadID")
 	if threadID == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
@@ -126,7 +126,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(map[string]string{"id": id})
+	_ = router.WriteJSON(ctx, map[string]string{"id": id})
 }
 func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.enqueue_update_message")
@@ -136,7 +136,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 	id := pathParam(ctx, "id")
 	if threadID == "" || id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id or message id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id or message id missing")
 		return
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
@@ -161,7 +161,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "message id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "message id missing")
 		return
 	}
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
@@ -187,7 +187,7 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	id := pathParam(ctx, "id")
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "message id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "message id missing")
 		return
 	}
 	// Body should contain {"reaction":"👍","identity":"u1"} or similar.
@@ -214,7 +214,7 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 	identity := pathParam(ctx, "identity")
 	id := pathParam(ctx, "id")
 	if id == "" || identity == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "message id or identity missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "message id or identity missing")
 		return
 	}
 	// Minimal payload to indicate deletion: {"remove_reaction_for":"<identity>"}

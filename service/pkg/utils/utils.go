@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -24,15 +23,6 @@ func SplitPath(p string) []string {
 	}
 	if cur != "" {
 		out = append(out, cur)
-	}
-	return out
-}
-
-// ToRawMessages converts a slice of JSON-encoded strings to a slice of json.RawMessage.
-func ToRawMessages(vals []string) []json.RawMessage {
-	out := make([]json.RawMessage, 0, len(vals))
-	for _, s := range vals {
-		out = append(out, json.RawMessage(s))
 	}
 	return out
 }

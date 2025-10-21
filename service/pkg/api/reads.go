@@ -9,13 +9,12 @@ import (
 	"progressdb/pkg/auth"
 	"progressdb/pkg/models"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
 
-	thread_store "progressdb/pkg/store/threads"
+	"progressdb/pkg/api/router"
 	message_store "progressdb/pkg/store/messages"
-
+	thread_store "progressdb/pkg/store/threads"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -26,7 +25,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		utils.JSONErrorFast(ctx, code, msg)
+		router.WriteJSONError(ctx, code, msg)
 		return
 	}
 
@@ -36,7 +35,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	tr.Mark("list_threads")
 	vals, err := thread_store.ListThreads()
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -63,7 +62,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		Threads []models.Thread `json:"threads"`
 	}{Threads: out})
 }
@@ -76,35 +75,35 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 
 	id := pathParam(ctx, "id")
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "thread id missing")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		utils.JSONErrorFast(ctx, code, msg)
+		router.WriteJSONError(ctx, code, msg)
 		return
 	}
 
 	tr.Mark("get_thread")
 	stored, err := thread_store.GetThread(id)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 
 	tr.Mark("parse_thread")
 	var th models.Thread
 	if err := json.Unmarshal([]byte(stored), &th); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to parse thread")
 		return
 	}
 	if th.Deleted {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
 		return
 	}
 	if author != "" && th.Author != author {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "author does not match")
 		return
 	}
 
@@ -120,7 +119,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		utils.JSONErrorFast(ctx, code, msg)
+		router.WriteJSONError(ctx, code, msg)
 		return
 	}
 
@@ -131,7 +130,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(stored), &th); err == nil {
 			if th.Deleted {
-				utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "thread not found")
+				router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
 				return
 			}
 		}
@@ -140,7 +139,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	tr.Mark("list_messages")
 	msgs, err := message_store.ListMessages(threadID)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -181,7 +180,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	if len(out) == 0 {
 		tr.Mark("encode_empty_response")
-		_ = json.NewEncoder(ctx).Encode(struct {
+		_ = router.WriteJSON(ctx, struct {
 			Thread   string           `json:"thread"`
 			Messages []models.Message `json:"messages"`
 		}{Thread: threadID, Messages: out})
@@ -189,12 +188,12 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	if author != "" && !authorFound {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author not found in any message in this thread")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "author not found in any message in this thread")
 		return
 	}
 
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		Thread   string           `json:"thread"`
 		Messages []models.Message `json:"messages"`
 	}{Thread: threadID, Messages: out})
@@ -208,7 +207,7 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 
 	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
 	if code != 0 {
-		utils.JSONErrorFast(ctx, code, msg)
+		router.WriteJSONError(ctx, code, msg)
 		return
 	}
 
@@ -216,24 +215,24 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	tr.Mark("get_message")
 	stored, err := message_store.GetLatestMessage(id)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 
 	tr.Mark("parse_message")
 	var message models.Message
 	if err := json.Unmarshal([]byte(stored), &message); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to parse message")
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to parse message")
 		return
 	}
 
 	if message.Author != author {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "author does not match")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "author does not match")
 		return
 	}
 
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(message)
+	_ = router.WriteJSON(ctx, message)
 }
 
 func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
@@ -246,24 +245,24 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 
 	if id == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing id")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing id")
 		return
 	}
 
 	tr.Mark("get_message")
 	stored, err := message_store.GetLatestMessage(id)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 	var msg models.Message
 	if err := json.Unmarshal([]byte(stored), &msg); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "invalid stored message")
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "invalid stored message")
 		return
 	}
 
 	if threadID != "" && msg.Thread != threadID {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, "message not found in thread")
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "message not found in thread")
 		return
 	}
 
@@ -279,7 +278,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		ID        string      `json:"id"`
 		Reactions interface{} `json:"reactions"`
 	}{ID: id, Reactions: out})

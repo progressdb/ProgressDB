@@ -8,10 +8,10 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"progressdb/pkg/api/router"
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 )
 
 // caller role
@@ -67,7 +67,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 		// reject all reqs - if no signature and user details
 		if sig == "" || userID == "" {
 			logger.Warn("missing_signature_headers", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
-			utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing signature headers")
+			router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "missing signature headers")
 			return
 		}
 
@@ -75,7 +75,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 		keys := config.GetSigningKeys()
 		if len(keys) == 0 {
 			logger.Error("no_signing_keys_configured")
-			utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "server misconfigured: no signing secrets available")
+			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "server misconfigured: no signing secrets available")
 			return
 		}
 
@@ -93,7 +93,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 		}
 		if !ok {
 			logger.Warn("invalid_signature", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
-			utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "invalid signature")
+			router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "invalid signature")
 			return
 		}
 

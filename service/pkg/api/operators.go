@@ -13,6 +13,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"progressdb/pkg/api/router"
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
@@ -21,7 +22,6 @@ import (
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
-	"progressdb/pkg/utils"
 
 	"progressdb/pkg/store/messages"
 	"progressdb/pkg/store/threads"
@@ -38,14 +38,14 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	role := string(ctx.Request.Header.Peek("X-Role-Name"))
 	if role != "backend" {
 		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", ctx.RemoteAddr().String())
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 
 	key := getAPIKey(ctx)
 	if key == "" {
 		logger.Warn("missing api key in signHandler", "remote", ctx.RemoteAddr().String())
-		utils.JSONErrorFast(ctx, fasthttp.StatusUnauthorized, "missing api key")
+		router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "missing api key")
 		return
 	}
 
@@ -54,7 +54,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	}
 	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil || payload.UserID == "" {
 		logger.Warn("invalid payload in signHandler", "error", err, "remote", ctx.RemoteAddr().String())
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid payload")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid payload")
 		return
 	}
 
@@ -64,7 +64,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	sig := hex.EncodeToString(mac.Sum(nil))
 
 	tr.Mark("encode_response")
-	if err := json.NewEncoder(ctx).Encode(map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
+	if err := router.WriteJSON(ctx, map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
 	}
 }
@@ -76,7 +76,7 @@ func AdminHealth(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
@@ -88,7 +88,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
@@ -109,7 +109,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 		msgCount += int64(indexes.End - indexes.Start + 1)
 	}
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		Threads  int   `json:"threads"`
 		Messages int64 `json:"messages"`
 	}{Threads: len(threads), Messages: msgCount})
@@ -120,7 +120,7 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
@@ -128,13 +128,13 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	tr.Mark("list_threads")
 	vals, err := threads.ListThreads()
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		Threads []json.RawMessage `json:"threads"`
-	}{Threads: utils.ToRawMessages(vals)})
+	}{Threads: router.ToRawMessages(vals)})
 }
 
 func AdminListKeys(ctx *fasthttp.RequestCtx) {
@@ -142,7 +142,7 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
@@ -151,11 +151,11 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	tr.Mark("list_keys")
 	keys, err := messages.ListMessages(prefix)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(struct {
+	_ = router.WriteJSON(ctx, struct {
 		Keys []string `json:"keys"`
 	}{Keys: keys})
 }
@@ -165,23 +165,23 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	keyEnc := pathParam(ctx, "key")
 	if keyEnc == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing key")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing key")
 		return
 	}
 	key, err := url.PathUnescape(keyEnc)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
 		return
 	}
 	tr.Mark("get_key")
 	val, err := storedb.GetKey(key)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
 		return
 	}
 	ctx.Response.Header.Set("Content-Type", "application/octet-stream")
@@ -196,32 +196,32 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	var req struct {
 		ThreadID string `json:"thread_id"`
 	}
 	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid request")
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "invalid request"})
 		return
 	}
 	if strings.TrimSpace(req.ThreadID) == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing thread_id")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing thread_id")
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"status": "error", "error": "missing thread_id"})
 		return
 	}
 	tr.Mark("create_dek")
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(req.ThreadID)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "status": "error", "error": err.Error()})
 		return
 	}
 	tr.Mark("rotate_dek")
 	if err := encryption.RotateThreadDEK(req.ThreadID, newKeyID); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "error", "error": err.Error()})
 		return
 	}
@@ -236,13 +236,13 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		}
 	}
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(map[string]string{"status": "ok", "new_key": newKeyID})
+	_ = router.WriteJSON(ctx, map[string]string{"status": "ok", "new_key": newKeyID})
 	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
 }
 
 func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	var req struct {
@@ -252,11 +252,11 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 		Parallelism int      `json:"parallelism"`
 	}
 	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid request")
 		return
 	}
 	if strings.TrimSpace(req.NewKEKHex) == "" {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "missing new_kek_hex")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing new_kek_hex")
 		auditLog("admin_rewrap_deks", map[string]interface{}{"status": "error", "error": "missing new_kek_hex"})
 		return
 	}
@@ -266,11 +266,11 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 
 	threadsIDs, err := determineThreadIDs(req.ThreadIDs, req.All)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 	if len(threadsIDs) == 0 {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no threads specified")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "no threads specified")
 		return
 	}
 
@@ -287,7 +287,7 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	}
 
 	if len(keyIDs) == 0 {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no key mappings found for provided threads")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "no key mappings found for provided threads")
 		return
 	}
 
@@ -324,15 +324,14 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 			out[res.Key]["kek_id"] = res.Kek
 		}
 	}
-	ctx.Response.Header.Set("Content-Type", "application/json")
-	_ = json.NewEncoder(ctx).Encode(out)
+	_ = router.WriteJSON(ctx, out)
 	auditSummary("admin_rewrap_deks", len(threadsIDs), len(keyIDs), out)
 }
 
 func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	// check admin permissions
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -343,7 +342,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		Parallelism int      `json:"parallelism"`
 	}
 	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "invalid request")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -355,11 +354,11 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	// determine thread IDs to operate on
 	threadsIDs, err := determineThreadIDs(req.ThreadIDs, req.All)
 	if err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 	if len(threadsIDs) == 0 {
-		utils.JSONErrorFast(ctx, fasthttp.StatusBadRequest, "no threads specified")
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "no threads specified")
 		return
 	}
 
@@ -462,8 +461,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	ctx.Response.Header.Set("Content-Type", "application/json")
-	_ = json.NewEncoder(ctx).Encode(out)
+	_ = router.WriteJSON(ctx, out)
 	auditSummary("admin_encrypt_existing", len(threadsIDs), 0, out)
 }
 
@@ -472,19 +470,18 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
-		utils.JSONErrorFast(ctx, fasthttp.StatusForbidden, "forbidden")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	tr.Mark("generate_key")
 	buf := make([]byte, 32)
 	if _, err := crand.Read(buf); err != nil {
-		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, "failed to generate key")
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to generate key")
 		return
 	}
 	kek := hex.EncodeToString(buf)
-	ctx.Response.Header.Set("Content-Type", "application/json")
 	tr.Mark("encode_response")
-	_ = json.NewEncoder(ctx).Encode(map[string]string{"kek_hex": kek})
+	_ = router.WriteJSON(ctx, map[string]string{"kek_hex": kek})
 	auditLog("admin_generate_kek", map[string]interface{}{"status": "ok"})
 }
 
