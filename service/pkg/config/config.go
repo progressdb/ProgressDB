@@ -9,6 +9,7 @@ import (
 
 	"github.com/adhocore/gronx"
 	"gopkg.in/yaml.v3"
+	"progressdb/pkg/logger"
 )
 
 // Defaults and limits for queue/WAL configuration
@@ -131,59 +132,33 @@ func (c *Config) ValidateConfig() error {
 	if c.Ingest.Queue.ShutdownPollInterval.Duration() == 0 {
 		c.Ingest.Queue.ShutdownPollInterval = Duration(defaultDrainPollInterval)
 	}
-	// Memory batch size
-	if c.Ingest.Queue.Memory.FlushBatchSize <= 0 {
-		c.Ingest.Queue.Memory.FlushBatchSize = defaultQueueBatchSize
+	// WAL defaults
+	if !c.Ingest.Queue.WAL.Enabled {
+		c.Ingest.Queue.WAL.Enabled = true
 	}
-	// Memory flush interval
-	if c.Ingest.Queue.Memory.FlushIntervalMs <= 0 {
-		c.Ingest.Queue.Memory.FlushIntervalMs = defaultIngestorFlushIntervalMs
-	}
-	// WAL defaults and validation
-	wc := &c.Ingest.Queue.Durable
-	if wc.SizePerWalFile.Int64() == 0 {
-		wc.SizePerWalFile = SizeBytes(defaultWALMaxFileSize)
-	}
-	if wc.SizePerWalFile.Int64() < minWALFileSize {
-		return fmt.Errorf("durable.size_per_wal_file must be >= %d bytes", minWALFileSize)
-	}
-
-	if wc.FlushBatchSize <= 0 {
-		wc.FlushBatchSize = defaultWALBatchSize
-	}
-	if wc.WriteBufferSize.Int64() == 0 {
-		wc.WriteBufferSize = SizeBytes(defaultMaxPooledBufferBytes)
-	}
-	if wc.FlushIntervalMs <= 0 {
-		wc.FlushIntervalMs = defaultIngestorFlushIntervalMs
-	}
-	if wc.MinCompressSize == 0 {
-		wc.MinCompressSize = defaultCompressMinBytes
-	}
-
-	// Compute derived fields
-	if wc.FlushBatchSize == 1 {
-		wc.WriteMode = "sync"
-		wc.EnableBatching = false
-	} else {
-		wc.WriteMode = "batch"
-		wc.EnableBatching = true
-	}
-	wc.EnableCompression = true
-
-	// Default is to disable Pebble WAL.
-	if wc.DisablePebbleWAL == nil {
-		def := true
-		wc.DisablePebbleWAL = &def
+	if c.Ingest.Queue.WAL.SegmentSize.Int64() == 0 {
+		c.Ingest.Queue.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
 	}
 
 	// Ingestor defaults
+	numCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(numCPU)
+	logger.Info("system_logical_cores", "logical_cores", numCPU)
 	pc := &c.Ingest.Ingestor
 	if pc.WorkerCount <= 0 {
-		pc.WorkerCount = runtime.NumCPU()
+		pc.WorkerCount = numCPU
+	} else if pc.WorkerCount > numCPU {
+		logger.Warn("worker_count_capped", "requested", pc.WorkerCount, "capped_to", numCPU)
+		pc.WorkerCount = numCPU
 	}
 	if pc.ApplyQueueBufferSize <= 0 {
 		pc.ApplyQueueBufferSize = defaultIngestorApplyQueueBufferSize
+	}
+	if pc.FlushIntervalMs <= 0 {
+		pc.FlushIntervalMs = defaultIngestorFlushIntervalMs
+	}
+	if pc.MaxBatchSize <= 0 {
+		pc.MaxBatchSize = defaultIngestorMaxBatchSize
 	}
 
 	// Telemetry defaults

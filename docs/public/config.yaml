@@ -47,27 +47,15 @@ retention:
 ingest:
   ingestor:
     worker_count: 2                  # Match 2-core CPU
-    max_batch_size: 512         # Smaller batch to fit in lower RAM footprint
-    flush_interval_ms: 5                 # Relaxed flush for lower resource use
+    apply_queue_buffer_size: 100     # Buffer for apply queue
+    flush_interval_ms: 1              # Flush interval for batches
+    max_batch_size: 10000             # Max batch size
   queue:
-    mode: durable               # Keep on-disk durability
-    # Shared base settings
     buffer_capacity: 8192              # Smaller queue to fit 1GB RAM
-    flush_batch_size: 128             # Less in-memory per batch
-    max_buffer_bytes: 64MB # Limit pooled buffer for lower RAM
-    memory:
-      enable_recovery: false
-      truncate_interval: 0s
-      poll_interval: 2ms    # Slightly slower polling reduces CPU
-    durable:
-      enable_recovery: true
-      truncate_interval: 120s   # More infrequent WAL truncation (less SSD stress)
-      max_file_size: 256MB      # WAL max size fits 1GB disk
-      flush_batch_size: 32      # Keep batches tiny for minimal RAM and fast flush
-      batch_interval: 50ms      # WAL flush every 50ms
-      min_compression_bytes: 1024  # Compress only payloads 1KB+
-      retention_bytes: 0
-      retention_age: 0
+    shutdown_poll_interval: 250ms      # Poll interval for shutdown
+    wal:
+      enabled: true                    # Enable WAL for durability
+      segment_size: 20MB               # WAL segment size
 
 telemetry:
   sample_rate: 0.001

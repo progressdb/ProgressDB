@@ -2,9 +2,6 @@ package queue
 
 import "progressdb/pkg/telemetry"
 
-// Worker loops are moved into their own file to separate runtime worker
-// orchestration from core queue responsibilities.
-
 // RunWorker consumes QueueItems one-by-one and invokes the provided handler.
 func RunWorker(q *IngestQueue, stop <-chan struct{}, handler func(*QueueOp) error) {
 	for {

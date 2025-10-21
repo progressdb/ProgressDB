@@ -1,9 +1,6 @@
 package queue
 
 import (
-	"context"
-	"hash/crc32"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,13 +68,7 @@ type IngestQueue struct {
 	inFlight  int64
 
 	wal       WAL
-	walMode   int
 	walBacked bool
-
-	ackMu         sync.Mutex
-	outstanding   map[int64]struct{}
-	outstandingH  offsetHeap
-	lastTruncated int64
 }
 
 const (
@@ -107,16 +98,13 @@ func (sb *SharedBuf) release() {
 }
 
 // WAL defines the write-ahead log interface (used by engine and WAL code).
+// Simplified to match simple Log.
 type WAL interface {
-	Append([]byte) (int64, error)
-	AppendCtx([]byte, context.Context) (int64, error)
-	AppendPooled(*SharedBuf) (int64, error)
-	AppendPooledCtx(*SharedBuf, context.Context) (int64, error)
-	AppendSync([]byte) (int64, error)
-	Flush() error
-	Recover() ([]WALRecord, error)
-	RecoverStream(func(WALRecord) error) error
-	TruncateBefore(int64) error
+	Write(index uint64, data []byte) error
+	Read(index uint64) (data []byte, err error)
+	FirstIndex() (index uint64, err error)
+	LastIndex() (index uint64, err error)
+	TruncateFront(index uint64) error
 	Close() error
 }
 
@@ -124,71 +112,4 @@ type WAL interface {
 type WALRecord struct {
 	Offset int64
 	Data   []byte
-}
-
-// Options configures WAL behavior when creating WAL instances.
-// DurableWALConfigOptions configures WAL behavior when creating WAL instances.
-type DurableWALConfigOptions struct {
-	Dir                 string
-	MaxFileSize         int64
-	EnableBatching      bool
-	BatchSize           int
-	BatchInterval       time.Duration
-	EnableCompression   bool
-	MinCompressionBytes int64
-	MaxBufferBytes      int64
-}
-
-// walFile holds file info for WAL segments.
-type DurableFileSegment struct {
-	f            *os.File
-	num          int
-	offset       int64
-	size         int64
-	minSeq       int64 // Minimum sequence in file
-	maxSeq       int64 // Maximum sequence in file
-	fileChecksum uint32
-}
-
-// batchBuffer accumulates pending batch writes.
-type DurableBatchBuffer struct {
-	entries []DurableBatchEntry
-	size    int64
-}
-
-type DurableBatchEntry struct {
-	seq  int64
-	data []byte
-	sb   *SharedBuf // Pooled buffer ownership (optional)
-}
-
-// FileWAL implements the WAL interface.
-type DurableFile struct {
-	dir                 string
-	maxSize             int64
-	enableBatching      bool
-	batchSize           int
-	batchInterval       time.Duration
-	enableCompression   bool
-	minCompressionBytes int64
-	compressMinRatio    float64
-
-	// Buffering/backpressure controls
-	maxBufferedBytes   int64
-	maxBufferedEntries int
-	bufferWaitTimeout  time.Duration
-	spaceCh            chan struct{}
-
-	mu       sync.Mutex
-	curr     *DurableFileSegment
-	files    []*DurableFileSegment
-	nextNum  int
-	seq      int64
-	crcTable *crc32.Table
-
-	// Batch mode state
-	batch      *DurableBatchBuffer
-	batchTimer *time.Timer
-	flushCond  *sync.Cond
-	closed     bool
 }

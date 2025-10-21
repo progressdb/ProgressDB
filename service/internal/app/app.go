@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -58,35 +59,21 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	if state.PathsVar.Store == "" {
 		return nil, fmt.Errorf("state paths not initialized")
 	}
-	disable := true
-	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
-		disable = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
-	}
-	appWALenabled := eff.Config.Ingest.Queue.Durable.RecoverOnStartup
+	disable := true // always disable Pebble WAL since we have app-level WAL
+	appWALenabled := eff.Config.Ingest.Queue.WAL.Enabled
 	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
-	// warn if both wals are disabled and summarize potential data loss window
-	pebbleWALdisabled := disable
-	if !appWALenabled && pebbleWALdisabled {
-		var flushMs int
-		if eff.Config.Ingest.Queue.Mode == "memory" {
-			flushMs = eff.Config.Ingest.Queue.Memory.FlushIntervalMs
-		} else {
-			flushMs = eff.Config.Ingest.Queue.Durable.FlushIntervalMs
-		}
+	// warn if WAL is disabled and summarize potential data loss window
+	if !appWALenabled {
+		flushMs := 1
 		procFlush := time.Duration(flushMs) * time.Millisecond
 		lossWindow := procFlush
 		queueCapacity := eff.Config.Ingest.Queue.BufferCapacity
 		procWorkers := eff.Config.Ingest.Ingestor.WorkerCount
-		var procBatch int
-		if eff.Config.Ingest.Queue.Mode == "memory" {
-			procBatch = eff.Config.Ingest.Queue.Memory.FlushBatchSize
-		} else {
-			procBatch = eff.Config.Ingest.Queue.Durable.FlushBatchSize
-		}
+		procBatch := 10000
 		messagesAtRisk := queueCapacity + procWorkers*procBatch
 
 		lossWindowHuman := lossWindow.String()
@@ -139,11 +126,8 @@ func (a *App) Run(ctx context.Context) error {
 	a.printBanner()
 
 	// open database
-	disablePebbleWAL := true
-	if a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
-		disablePebbleWAL = *a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
-	}
-	appWALEnabled := a.eff.Config.Ingest.Queue.Mode == "durable"
+	disablePebbleWAL := true // always disable Pebble WAL
+	appWALEnabled := a.eff.Config.Ingest.Queue.WAL.Enabled
 	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
 	if err := storedb.Open(state.PathsVar.Store, disablePebbleWAL, appWALEnabled); err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
@@ -171,7 +155,11 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 	queue.SetDefaultIngestQueue(q)
-	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor, a.eff.Config.Ingest.Queue)
+	walPath := ""
+	if a.eff.Config.Ingest.Queue.WAL.Enabled {
+		walPath = filepath.Join(a.eff.DBPath, "wal")
+	}
+	ingestor := ingest.NewIngestor(queue.DefaultIngestQueue, a.eff.Config.Ingest.Ingestor, a.eff.Config.Ingest.Queue, walPath)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 

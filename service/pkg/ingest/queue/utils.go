@@ -3,7 +3,6 @@ package queue
 import (
 	"bytes"
 	"compress/gzip"
-	"container/heap"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -20,27 +19,6 @@ const (
 	maxExtrasLen  = 0xFFFF     // 65535
 	maxPayloadLen = 0xFFFFFFFF // 4294967295
 )
-
-// offsetHeap is a min-heap of int64 values (WAL offsets).
-type offsetHeap []int64
-
-func (h offsetHeap) Len() int           { return len(h) }
-func (h offsetHeap) Less(i, j int) bool { return h[i] < h[j] }
-func (h offsetHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *offsetHeap) Push(x any)        { *h = append(*h, x.(int64)) }
-func (h *offsetHeap) Pop() any {
-	old := *h
-	n := len(old)
-	v := old[n-1]
-	*h = old[0 : n-1]
-	return v
-}
-
-// Helper to push into heap (wraps stdlib heap functions). Using helper
-// functions in utils keeps engine code concise.
-func heapPushOffset(h *offsetHeap, v int64) {
-	heap.Push(h, v)
-}
 
 // compressData compresses input bytes using gzip and returns the compressed
 // bytes or an error.
@@ -337,9 +315,6 @@ var DefaultIngestQueue *IngestQueue
 func (it *QueueItem) Done() {
 	it.once.Do(func() {
 		if it.Q != nil {
-			if it.Op != nil && it.Op.WalOffset >= 0 {
-				it.Q.ack(it.Op.WalOffset)
-			}
 			atomic.AddInt64(&it.Q.inFlight, -1)
 			it.Q = nil
 		}

@@ -11,7 +11,6 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
-	"progressdb/pkg/store/messages"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/timeutil"
 )
@@ -116,25 +115,14 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error)
 		return nil, fmt.Errorf("invalid reaction payload")
 	}
 
-	// load latest message
-	stored, err := messages.GetLatestMessage(op.ID)
-	if err != nil {
-		return nil, fmt.Errorf("message not found: %w", err)
+	// Defer DB read to apply phase: prepare payload with reaction details
+	reactionPayload := map[string]string{
+		"reaction": p.Reaction,
+		"identity": identity,
+		"action":   "add",
 	}
-	var m models.Message
-	if err := json.Unmarshal([]byte(stored), &m); err != nil {
-		return nil, fmt.Errorf("invalid stored message: %w", err)
-	}
-	if m.Deleted {
-		return nil, fmt.Errorf("message deleted")
-	}
-	if m.Reactions == nil {
-		m.Reactions = make(map[string]string)
-	}
-	m.Reactions[identity] = p.Reaction
-	m.TS = timeutil.Now().UnixNano()
-	payload, _ := json.Marshal(m)
-	be := BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
+	payload, _ := json.Marshal(reactionPayload)
+	be := BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
 func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error) {
@@ -159,20 +147,13 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, err
 		return nil, fmt.Errorf("no identity specified for reaction delete")
 	}
 
-	stored, err := messages.GetLatestMessage(op.ID)
-	if err != nil {
-		return nil, fmt.Errorf("message not found: %w", err)
+	// Defer DB read to apply phase: prepare payload with reaction details
+	reactionPayload := map[string]string{
+		"identity": identity,
+		"action":   "delete",
 	}
-	var m models.Message
-	if err := json.Unmarshal([]byte(stored), &m); err != nil {
-		return nil, fmt.Errorf("invalid stored message: %w", err)
-	}
-	if m.Reactions != nil {
-		delete(m.Reactions, identity)
-	}
-	m.TS = timeutil.Now().UnixNano()
-	payload, _ := json.Marshal(m)
-	be := BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq}
+	payload, _ := json.Marshal(reactionPayload)
+	be := BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq}
 	return []BatchEntry{be}, nil
 }
 

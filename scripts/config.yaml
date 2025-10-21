@@ -37,21 +37,14 @@ ingest:
   ingestor:
     worker_count: 16
     apply_queue_buffer_size: 10_000
+    flush_interval_ms: 1
+    max_batch_size: 10000
   queue:
-    mode: memory
     buffer_capacity: 1_000_000
     shutdown_poll_interval: 5ms
-    memory:
-      flush_batch_size: 10_000
-      flush_interval_ms: 1
-    durable:
-      recover_on_startup: true
-      flush_batch_size: 10_000
-      flush_interval_ms: 1
-      size_per_wal_file: 256MB
-      min_compress_size: 5120
-      write_buffer_size: 1gb
-      disable_pebble_wal: true
+    wal:
+      enabled: false
+      segment_size: 20MB
 
 telemetry:
   sample_rate: 0.001

@@ -21,50 +21,28 @@ func NewIngestQueue(capacity int) *IngestQueue {
 }
 
 // NewQueueFromConfig creates a queue based on the provided configuration.
-// It handles both durable and memory modes using the config types directly.
 func NewQueueFromConfig(qc config.QueueConfig, dbPath string) (*IngestQueue, error) {
-	if qc.Mode == "durable" {
+	queue := NewIngestQueue(qc.BufferCapacity)
+	queue.drainPollInterval = qc.ShutdownPollInterval.Duration()
+
+	if qc.WAL.Enabled {
 		// Create WAL directory path
 		walDir := filepath.Join(dbPath, "wal")
 
-		// Create WAL config from durable config
-		walOpts := DurableWALConfigOptions{
-			Dir:                 walDir,
-			MaxFileSize:         qc.Durable.SizePerWalFile.Int64(),
-			EnableBatching:      qc.Durable.EnableBatching,
-			BatchSize:           qc.Durable.FlushBatchSize,
-			BatchInterval:       time.Duration(qc.Durable.FlushIntervalMs) * time.Millisecond,
-			EnableCompression:   qc.Durable.EnableCompression,
-			MinCompressionBytes: qc.Durable.MinCompressSize,
-			MaxBufferBytes:      qc.Durable.WriteBufferSize.Int64(),
+		// Create simple WAL with custom segment size
+		opts := &Options{
+			SegmentSize: int(qc.WAL.SegmentSize.Int64()),
 		}
-
-		wal, err := New(walOpts)
+		wal, err := Open(walDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create WAL: %w", err)
 		}
 
-		// Create queue options
-		qOpts := &IngestQueueOptions{
-			BufferCapacity:    qc.BufferCapacity,
-			WAL:               wal,
-			WriteMode:         qc.Durable.WriteMode,
-			EnableRecovery:    qc.Durable.RecoverOnStartup,
-			WalBacked:         true,
-			DrainPollInterval: qc.ShutdownPollInterval.Duration(),
-		}
-
-		queue := NewIngestQueueWithOptions(qOpts)
-
-		return queue, nil
-	} else {
-		// Memory mode
-		qOpts := &IngestQueueOptions{
-			BufferCapacity:    qc.BufferCapacity,
-			DrainPollInterval: qc.ShutdownPollInterval.Duration(),
-		}
-		return NewIngestQueueWithOptions(qOpts), nil
+		queue.wal = wal
+		queue.walBacked = true
 	}
+
+	return queue, nil
 }
 
 // NewIngestQueueFromConfig constructs a IngestQueue from a typed `config.QueueConfig`.

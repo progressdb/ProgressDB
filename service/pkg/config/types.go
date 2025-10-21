@@ -94,40 +94,21 @@ type IngestConfig struct {
 type IngestorConfig struct {
 	WorkerCount          int `yaml:"worker_count"`
 	ApplyQueueBufferSize int `yaml:"apply_queue_buffer_size"`
+	FlushIntervalMs      int `yaml:"flush_interval_ms"`
+	MaxBatchSize         int `yaml:"max_batch_size"`
 }
 
-// QueueConfig holds queue settings with mode selection.
+// QueueConfig holds queue settings.
 type QueueConfig struct {
-	Mode                 string             `yaml:"mode"` // "durable" or "memory"
-	BufferCapacity       int                `yaml:"buffer_capacity"`
-	ShutdownPollInterval Duration           `yaml:"shutdown_poll_interval"`
-	Memory               MemoryQueueConfig  `yaml:"memory"`
-	Durable              DurableQueueConfig `yaml:"durable"`
+	BufferCapacity       int       `yaml:"buffer_capacity"`
+	ShutdownPollInterval Duration  `yaml:"shutdown_poll_interval"`
+	WAL                  WALConfig `yaml:"wal"`
 }
 
-// MemoryQueueConfig holds settings for in-memory queue.
-type MemoryQueueConfig struct {
-	FlushBatchSize  int `yaml:"flush_batch_size"`
-	FlushIntervalMs int `yaml:"flush_interval_ms"`
-}
-
-// DurableQueueConfig holds settings for durable queue with WAL.
-type DurableQueueConfig struct {
-	RecoverOnStartup bool      `yaml:"recover_on_startup"`
-	SizePerWalFile   SizeBytes `yaml:"size_per_wal_file"`
-	FlushBatchSize   int       `yaml:"flush_batch_size"`
-	MinCompressSize  int64     `yaml:"min_compress_size"`
-	WriteBufferSize  SizeBytes `yaml:"write_buffer_size"`
-	FlushIntervalMs  int       `yaml:"flush_interval_ms"`
-	// Computed fields (not in YAML)
-	WriteMode         string
-	EnableBatching    bool
-	EnableCompression bool
-	// DisablePebbleWAL controls the underlying Pebble DB's WAL setting.
-	// Default is true - given application level WAL
-	// This is here for configuration access
-	// NOTE that enabling 2 wals can decrease performance.
-	DisablePebbleWAL *bool `yaml:"disable_pebble_wal"`
+// WALConfig holds settings for WAL backup.
+type WALConfig struct {
+	Enabled     bool      `yaml:"enabled"`
+	SegmentSize SizeBytes `yaml:"segment_size"`
 }
 
 // SizeBytes represents a number of bytes, unmarshaled from human-friendly strings like "64MB" or plain integers.
