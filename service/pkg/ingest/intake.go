@@ -170,7 +170,7 @@ func (p *Ingestor) workerLoop(workerID int) {
 				entries, err := fn(context.Background(), it.Op)
 				if err != nil {
 					logger.Error("ingest_handler_error", "handler", it.Op.Handler, "error", err)
-					it.Done()
+					it.JobDone()
 					continue
 				}
 				for i := range entries {
@@ -181,10 +181,10 @@ func (p *Ingestor) workerLoop(workerID int) {
 				batchEntries = append(batchEntries, entries...)
 				// release pooled resources for this item now that we've copied
 				// any necessary data into BatchEntries.
-				it.Done()
+				it.JobDone()
 			} else {
 				logger.Warn("no_ingest_handler", "handler", it.Op.Handler)
-				it.Done()
+				it.JobDone()
 			}
 		}
 

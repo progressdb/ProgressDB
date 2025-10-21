@@ -41,7 +41,7 @@ type QueueItem struct {
 }
 
 // Done manages the lifecycle of the QueueItem, decrementing inFlight and releasing resources.
-func (it *QueueItem) Done() {
+func (it *QueueItem) JobDone() {
 	it.once.Do(func() {
 		if it.Q != nil {
 			atomic.AddInt64(&it.Q.inFlight, -1)

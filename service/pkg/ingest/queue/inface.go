@@ -74,7 +74,7 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 		return nil
 	default:
 		atomic.AddUint64(&q.dropped, 1)
-		it.Done()
+		it.JobDone()
 		return ErrQueueFull
 	}
 }
