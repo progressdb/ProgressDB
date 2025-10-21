@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/threads"
+	thread_store "progressdb/pkg/store/threads"
 )
 
 // runOnce executes a single retention run: acquire lease, scan threads, purge eligible items, write audit.
@@ -94,7 +94,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	}
 	cutoff := time.Now().UTC().Add(-pd)
 
-	threads, err := threads.ListThreads()
+	threads, err := thread_store.ListThreads()
 	if err != nil {
 		return fmt.Errorf("list threads: %w", err)
 	}
@@ -126,7 +126,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 				continue
 			}
 			// attempt purge
-			err := threads.PurgeThreadPermanently(th.ID)
+			err := thread_store.PurgeThreadPermanently(th.ID)
 			if err != nil {
 				entry["status"] = "failed"
 				entry["error"] = err.Error()

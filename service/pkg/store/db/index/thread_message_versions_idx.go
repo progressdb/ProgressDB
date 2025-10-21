@@ -1,0 +1,121 @@
+package index
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"progressdb/pkg/logger"
+	"progressdb/pkg/store/keys"
+	"progressdb/pkg/telemetry"
+)
+
+// UpdateVersionIndexes updates version indexes for a message.
+func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdAt, updatedAt int64) error {
+	tr := telemetry.Track("index.update_version_indexes")
+	defer tr.Finish()
+
+	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
+	baseKey := fmt.Sprintf("%s:version", msgID)
+
+	// Load existing
+	var indexes ThreadMessageIndexes
+	for _, s := range suffixes {
+		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
+		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
+		if err != nil {
+			return err
+		}
+		val, err := GetIndexKey(key)
+		if err != nil {
+			if IndexIsNotFound(err) {
+				continue // defaults
+			}
+			return err
+		}
+		var ptr interface{}
+		switch s {
+		case "start":
+			ptr = &indexes.Start
+		case "end":
+			ptr = &indexes.End
+		case "cdeltas":
+			ptr = &indexes.Cdeltas
+		case "udeltas":
+			ptr = &indexes.Udeltas
+		case "skips":
+			ptr = &indexes.Skips
+		case "last_created_at":
+			ptr = &indexes.LastCreatedAt
+		case "last_updated_at":
+			ptr = &indexes.LastUpdatedAt
+		}
+		if err := json.Unmarshal([]byte(val), ptr); err != nil {
+			return fmt.Errorf("unmarshal version index %s: %w", s, err)
+		}
+	}
+
+	// Update
+	indexes.End++
+	createdDelta := createdAt - indexes.LastCreatedAt
+	updatedDelta := updatedAt - indexes.LastUpdatedAt
+	indexes.Cdeltas = append(indexes.Cdeltas, createdDelta)
+	indexes.Udeltas = append(indexes.Udeltas, updatedDelta)
+	indexes.LastCreatedAt = createdAt
+	indexes.LastUpdatedAt = updatedAt
+
+	// Save
+	for _, s := range suffixes {
+		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
+		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
+		if err != nil {
+			return err
+		}
+		var val interface{}
+		switch s {
+		case "start":
+			val = indexes.Start
+		case "end":
+			val = indexes.End
+		case "cdeltas":
+			val = indexes.Cdeltas
+		case "udeltas":
+			val = indexes.Udeltas
+		case "skips":
+			val = indexes.Skips
+		case "last_created_at":
+			val = indexes.LastCreatedAt
+		case "last_updated_at":
+			val = indexes.LastUpdatedAt
+		}
+		data, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Errorf("marshal version index %s: %w", s, err)
+		}
+		if err := SaveIndexKey(key, data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteVersionIndexes deletes version indexes for a message.
+func DeleteVersionIndexes(threadID, msgID string) error {
+	tr := telemetry.Track("index.delete_version_indexes")
+	defer tr.Finish()
+
+	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
+	baseKey := fmt.Sprintf("%s:version", msgID)
+
+	for _, s := range suffixes {
+		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
+		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
+		if err != nil {
+			return err
+		}
+		if err := DeleteIndexKey(key); err != nil {
+			logger.Error("delete_version_index_failed", "key", key, "error", err)
+			return err
+		}
+	}
+	return nil
+}

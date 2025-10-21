@@ -16,8 +16,10 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/utils"
 
@@ -100,11 +102,11 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
 		}
-		msgs, err := messages.ListMessages(th.ID)
+		indexes, err := index.GetThreadMessageIndexes(th.ID)
 		if err != nil {
 			continue
 		}
-		msgCount += int64(len(msgs))
+		msgCount += int64(indexes.End - indexes.Start + 1)
 	}
 	tr.Mark("encode_response")
 	_ = json.NewEncoder(ctx).Encode(struct {
@@ -274,7 +276,7 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 
 	keyIDs := make(map[string]struct{})
 	for _, tid := range threadsIDs {
-		if s, err := threads.Get(tid); err == nil {
+		if s, err := threads.GetThread(tid); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
 				if th.KMS != nil && th.KMS.KeyID != "" {
@@ -372,7 +374,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		go func(threadID string) {
 			defer func() { <-sem }()
 			// get thread metadata
-			stored, err := threads.Get(threadID)
+			stored, err := threads.GetThread(threadID)
 			if err != nil {
 				resCh <- result{Thread: threadID, Err: "thread not found"}
 				return
@@ -392,19 +394,19 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if payload, merr := json.Marshal(th); merr == nil {
-					_ = threads.Save(th.ID, string(payload))
+					_ = threads.SaveThread(th.ID, string(payload))
 				}
 			}
 
 			// get key prefix for thread messages
-			prefix, merr := messages.Prefix(threadID)
+			prefix, merr := keys.MsgPrefix(threadID)
 			if merr != nil {
 				resCh <- result{Thread: threadID, Err: merr.Error()}
 				return
 			}
 
 			// create iterator for all message keys in the thread
-			iter, err := messages.DBIter()
+			iter, err := storedb.Iter()
 			if err != nil {
 				resCh <- result{Thread: threadID, Err: err.Error()}
 				return
@@ -419,7 +421,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				}
 				k := append([]byte(nil), iter.Key()...)
 				v := append([]byte(nil), iter.Value()...)
-				if messages.LikelyJSON(v) {
+				if encryption.LikelyJSON(v) {
 					ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
@@ -427,11 +429,11 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 					}
 					// backup original value
 					backupKey := append([]byte("backup:encrypt:"), k...)
-					if err := messages.SaveKey(string(backupKey), v); err != nil {
+					if err := storedb.SaveKey(string(backupKey), v); err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
-					if err := messages.DBSet(k, ct); err != nil {
+					if err := storedb.Set(k, ct); err != nil {
 						resCh <- result{Thread: threadID, Err: err.Error()}
 						return
 					}
@@ -490,7 +492,7 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	if all {
-		vals, err := threads.List()
+		vals, err := threads.ListThreads()
 		if err != nil {
 			return nil, err
 		}

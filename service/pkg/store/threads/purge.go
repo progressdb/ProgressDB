@@ -30,11 +30,19 @@ func PurgeThreadPermanently(threadID string) error {
 	}
 	defer iter.Close()
 	const deleteBatchSize = 1000
-	var batch [][]byte
-	deleteBatch := func(keys [][]byte) {
+	var mainBatch [][]byte
+	var indexBatch [][]byte
+	deleteMainBatch := func(keys [][]byte) {
 		for _, k := range keys {
 			if err := storedb.Client.Delete(k, storedb.WriteOpt(true)); err != nil {
 				logger.Error("purge_delete_failed", "key", string(k), "error", err)
+			}
+		}
+	}
+	deleteIndexBatch := func(keys [][]byte) {
+		for _, k := range keys {
+			if err := index.IndexDB.Delete(k, index.IndexWriteOpt(true)); err != nil {
+				logger.Error("purge_index_delete_failed", "key", string(k), "error", err)
 			}
 		}
 	}
@@ -44,34 +52,38 @@ func PurgeThreadPermanently(threadID string) error {
 			break
 		}
 		k := append([]byte(nil), iter.Key()...)
-		batch = append(batch, k)
+		mainBatch = append(mainBatch, k)
 		v := append([]byte(nil), iter.Value()...)
 		var m models.Message
 		if err := json.Unmarshal(v, &m); err == nil && m.ID != "" {
-			vprefix := []byte("version:msg:" + m.ID + ":")
-			vi, _ := storedb.Client.NewIter(&pebble.IterOptions{})
+			// delete versions from index DB
+			vprefix := []byte("idx:versions:" + m.ID + ":")
+			vi, _ := index.IndexDB.NewIter(&pebble.IterOptions{})
 			if vi != nil {
 				for vi.SeekGE(vprefix); vi.Valid(); vi.Next() {
 					if !bytes.HasPrefix(vi.Key(), vprefix) {
 						break
 					}
 					kk := append([]byte(nil), vi.Key()...)
-					batch = append(batch, kk)
-					if len(batch) >= deleteBatchSize {
-						deleteBatch(batch)
-						batch = batch[:0]
+					indexBatch = append(indexBatch, kk)
+					if len(indexBatch) >= deleteBatchSize {
+						deleteIndexBatch(indexBatch)
+						indexBatch = indexBatch[:0]
 					}
 				}
 				vi.Close()
 			}
 		}
-		if len(batch) >= deleteBatchSize {
-			deleteBatch(batch)
-			batch = batch[:0]
+		if len(mainBatch) >= deleteBatchSize {
+			deleteMainBatch(mainBatch)
+			mainBatch = mainBatch[:0]
 		}
 	}
-	if len(batch) > 0 {
-		deleteBatch(batch)
+	if len(mainBatch) > 0 {
+		deleteMainBatch(mainBatch)
+	}
+	if len(indexBatch) > 0 {
+		deleteIndexBatch(indexBatch)
 	}
 
 	// Delete thread message indexes

@@ -7,6 +7,7 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/messages"
 	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
@@ -33,7 +34,13 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 				logger.Error("apply_batch_unmarshal_message", "err", err)
 				continue
 			}
-			if err := messages.SaveMessage(context.Background(), e.Thread, e.MsgID, msg); err != nil {
+			// Get thread JSON for encryption
+			threadJSON, err := threads.GetThread(e.Thread)
+			if err != nil {
+				logger.Error("apply_batch_get_thread_failed", "err", err, "thread", e.Thread)
+				continue
+			}
+			if err := messages.SaveMessage(context.Background(), e.Thread, e.MsgID, msg, threadJSON); err != nil {
 				logger.Error("apply_batch_save_message_failed", "err", err, "thread", e.Thread, "msg", e.MsgID)
 				continue
 			}
@@ -53,6 +60,6 @@ func ApplyBatchToDB(entries []BatchEntry) error {
 		}
 	}
 	tr.Mark("record_write")
-	// storedb.RecordWrite(len(entries))
+	storedb.RecordWrite(len(entries))
 	return nil
 }

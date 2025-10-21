@@ -12,6 +12,10 @@ import (
 	"progressdb/pkg/utils"
 
 	"github.com/valyala/fasthttp"
+
+	thread_store "progressdb/pkg/store/threads"
+	message_store "progressdb/pkg/store/messages"
+
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -30,7 +34,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	slugQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("slug")))
 
 	tr.Mark("list_threads")
-	vals, err := storedb.ListThreads()
+	vals, err := thread_store.ListThreads()
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -83,7 +87,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_thread")
-	stored, err := storedb.GetThread(id)
+	stored, err := thread_store.GetThread(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
@@ -123,7 +127,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 
 	tr.Mark("check_thread")
-	if stored, err := storedb.GetThread(threadID); err == nil {
+	if stored, err := thread_store.GetThread(threadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(stored), &th); err == nil {
 			if th.Deleted {
@@ -134,7 +138,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	msgs, err := storedb.ListMessages(threadID)
+	msgs, err := message_store.ListMessages(threadID)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -210,7 +214,7 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 
 	id := pathParam(ctx, "id")
 	tr.Mark("get_message")
-	stored, err := storedb.GetLatestMessage(id)
+	stored, err := message_store.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return
@@ -247,7 +251,7 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_message")
-	stored, err := storedb.GetLatestMessage(id)
+	stored, err := message_store.GetLatestMessage(id)
 	if err != nil {
 		utils.JSONErrorFast(ctx, fasthttp.StatusNotFound, err.Error())
 		return

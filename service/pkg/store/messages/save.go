@@ -41,10 +41,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	if err != nil {
 		return fmt.Errorf("invalid msg key: %w", err)
 	}
-	versionKey, err := keys.VersionKey(msgID, msg.TS, seq)
-	if err != nil {
-		return fmt.Errorf("invalid version key: %w", err)
-	}
+	versionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(msg.TS), keys.FormatSeq(seq))
 
 	// marshal message
 	data, err := json.Marshal(msg)
@@ -62,11 +59,52 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	// save to batch
+	// move old message to versioning if exists
+	if oldData, closer, err := storedb.Client.Get([]byte(msgKey)); err == nil {
+		if closer != nil {
+			defer closer.Close()
+		}
+		oldDataCopy := append([]byte(nil), oldData...)
+		// decrypt old data to get old TS
+		oldDecrypted, err := encryption.DecryptMessageData(&thread, oldDataCopy)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt old message: %w", err)
+		}
+		var oldMsg models.Message
+		if err := json.Unmarshal(oldDecrypted, &oldMsg); err != nil {
+			return fmt.Errorf("failed to unmarshal old message: %w", err)
+		}
+		oldSeq := seq - 1
+		oldVersionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(oldMsg.TS), keys.FormatSeq(oldSeq))
+		if err := index.SaveIndexKey(oldVersionKey, oldDataCopy); err != nil {
+			logger.Error("save_old_version_failed", "key", oldVersionKey, "error", err)
+			return err
+		}
+		// update version indexes for old
+		if err := index.UpdateVersionIndexes(threadID, msgID, oldMsg.TS, oldSeq, oldMsg.TS, oldMsg.TS); err != nil {
+			logger.Error("update_version_indexes_old_failed", "thread", threadID, "msg", msgID, "error", err)
+			return err
+		}
+	} else if !storedb.IsNotFound(err) {
+		return fmt.Errorf("failed to check existing message: %w", err)
+	}
+
+	// save to batch (main DB for current)
 	batch := storedb.Client.NewBatch()
 	defer batch.Close()
 	batch.Set([]byte(msgKey), data, storedb.WriteOpt(true))
-	batch.Set([]byte(versionKey), data, storedb.WriteOpt(true))
+
+	// save version to index DB
+	if err := index.SaveIndexKey(versionKey, data); err != nil {
+		logger.Error("save_version_failed", "key", versionKey, "error", err)
+		return err
+	}
+
+	// update version indexes for new
+	if err := index.UpdateVersionIndexes(threadID, msgID, msg.TS, seq, msg.TS, msg.TS); err != nil {
+		logger.Error("update_version_indexes_failed", "thread", threadID, "msg", msgID, "error", err)
+		return err
+	}
 
 	tr.Mark("apply")
 	if err := storedb.Client.Apply(batch, storedb.WriteOpt(true)); err != nil {
