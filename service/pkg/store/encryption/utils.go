@@ -1,15 +1,16 @@
 package encryption
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
-	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/store/keys"
-
 	"progressdb/pkg/kms"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
+	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/keys"
 )
 
 // true if likely contains JSON object/array based on first non-whitespace
@@ -81,6 +82,31 @@ func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 	} else {
 		return kms.DecryptWithDEK(kmsMeta.KeyID, data, nil)
 	}
+}
+
+// ProvisionThreadKMS provisions a DEK for the thread if encryption is enabled and KMS provider is available.
+func ProvisionThreadKMS(threadID string) (*models.KMSMeta, error) {
+	if !security.EncryptionEnabled() {
+		return nil, nil
+	}
+
+	if !kms.IsProviderEnabled() {
+		logger.Info("encryption_enabled_but_no_kms_provider", "thread", threadID)
+		return nil, nil
+	}
+
+	logger.Info("provisioning_thread_kms", "thread", threadID)
+	keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
+	if err != nil {
+		return nil, fmt.Errorf("kms provision failed: %w", err)
+	}
+
+	return &models.KMSMeta{
+		KeyID:      keyID,
+		WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
+		KEKID:      kekID,
+		KEKVersion: kekVer,
+	}, nil
 }
 
 // GetThreadKMS retrieves only the KMS metadata for a thread without loading the full thread data.

@@ -2,15 +2,11 @@ package ingest
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
 	qpkg "progressdb/pkg/ingest/queue"
-	"progressdb/pkg/kms"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/timeutil"
@@ -61,16 +57,14 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// encrypt if enabled
-	if security.EncryptionEnabled() {
-		tr := telemetry.Track("ingest.message_encryption")
-		defer tr.Finish()
+	// encrypt if enabled (handled internally by EncryptMessageData)
+	tr := telemetry.Track("ingest.message_encryption")
+	defer tr.Finish()
 
-		tr.Mark("encrypt")
-		payload, err = encryption.EncryptMessageData(m.Thread, payload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt message: %w", err)
-		}
+	tr.Mark("encrypt")
+	payload, err = encryption.EncryptMessageData(m.Thread, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
 	be := BatchEntry{Handler: qpkg.HandlerMessageCreate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
@@ -101,15 +95,13 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// encrypt if enabled
-	if security.EncryptionEnabled() {
-		tr := telemetry.Track("ingest.message_encryption")
-		defer tr.Finish()
-		tr.Mark("encrypt")
-		payload, err = encryption.EncryptMessageData(m.Thread, payload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt message: %w", err)
-		}
+	// encrypt if enabled (handled internally by EncryptMessageData)
+	tr := telemetry.Track("ingest.message_encryption")
+	defer tr.Finish()
+	tr.Mark("encrypt")
+	payload, err = encryption.EncryptMessageData(m.Thread, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
 	be := BatchEntry{Handler: qpkg.HandlerMessageUpdate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
@@ -136,15 +128,13 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, erro
 		return nil, fmt.Errorf("failed to marshal tomb: %w", err)
 	}
 
-	// encrypt if enabled
-	if security.EncryptionEnabled() {
-		tr := telemetry.Track("ingest.message_encryption")
-		defer tr.Finish()
-		tr.Mark("encrypt")
-		payload, err = encryption.EncryptMessageData(tomb.Thread, payload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt message: %w", err)
-		}
+	// encrypt if enabled (handled internally by EncryptMessageData)
+	tr := telemetry.Track("ingest.message_encryption")
+	defer tr.Finish()
+	tr.Mark("encrypt")
+	payload, err = encryption.EncryptMessageData(tomb.Thread, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
 	be := BatchEntry{Handler: qpkg.HandlerMessageDelete, Thread: tomb.Thread, MsgID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
@@ -243,19 +233,12 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]BatchEntry, error
 	// If encryption is enabled, provision a DEK for the thread using KMS.
 	tr := telemetry.Track("ingest.thread_encryption")
 	defer tr.Finish()
-	if security.EncryptionEnabled() {
-		if kms.IsProviderEnabled() {
-			logger.Info("ingest_provisioning_thread_kms", "thread", th.ID)
-			tr.Mark("kms_create_dek")
-			keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(th.ID)
-			if err != nil {
-				return nil, fmt.Errorf("kms provision failed: %w", err)
-			}
-			th.KMS = &models.KMSMeta{KeyID: keyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
-		} else {
-			logger.Info("encryption_enabled_but_no_kms_provider", "thread", th.ID)
-		}
+	tr.Mark("kms_provision")
+	kmsMeta, err := encryption.ProvisionThreadKMS(th.ID)
+	if err != nil {
+		return nil, err
 	}
+	th.KMS = kmsMeta
 
 	payload, _ := json.Marshal(th)
 	be := BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
