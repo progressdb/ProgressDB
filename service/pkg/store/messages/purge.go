@@ -22,12 +22,9 @@ func PurgeMessagePermanently(messageID string) error {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	if index.IndexDB == nil {
-		return fmt.Errorf("index pebble not opened; call index.Open first")
+		return fmt.Errorf("pebble not opened; call Open first")
 	}
-
-	// build prefix for version index keys
-	vprefix := []byte("idx:versions:" + messageID + ":")
-	// create index iterator
+	vprefix := fmt.Sprintf("version:msg:%s:", messageID)
 	vi, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
@@ -39,8 +36,8 @@ func PurgeMessagePermanently(messageID string) error {
 	var ts, seq int64
 	var versionKeys [][]byte
 	found := false
-	for vi.SeekGE(vprefix); vi.Valid(); vi.Next() {
-		if !bytes.HasPrefix(vi.Key(), vprefix) {
+	for vi.SeekGE([]byte(vprefix)); vi.Valid(); vi.Next() {
+		if !bytes.HasPrefix(vi.Key(), []byte(vprefix)) {
 			break
 		}
 		if !found {
@@ -92,7 +89,7 @@ func PurgeMessagePermanently(messageID string) error {
 
 	// delete version keys from index DB
 	for _, k := range versionKeys {
-		if err := index.IndexDB.Delete(k, index.IndexWriteOpt(true)); err != nil {
+		if err := index.IndexDB.Delete(k, index.WriteOpt(true)); err != nil {
 			logger.Error("purge_version_delete_failed", "key", string(k), "error", err)
 		}
 	}

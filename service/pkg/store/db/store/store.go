@@ -17,6 +17,9 @@ var walDisabled bool
 
 // opens/creates pebble Client with WAL settings
 func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
+	if Client != nil {
+		return nil // already opened
+	}
 	var err error
 	opts := &pebble.Options{
 		DisableWAL: disablePebbleWAL,

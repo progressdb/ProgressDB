@@ -29,8 +29,8 @@ func UpdateUserOwnership(userID, threadID string, add bool) error {
 		return err
 	}
 
-	val, err := GetIndexKey(key)
-	if err != nil && !IndexIsNotFound(err) {
+	val, err := GetKey(key)
+	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -63,7 +63,7 @@ func UpdateUserOwnership(userID, threadID string, add bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal user threads: %w", err)
 	}
-	return SaveIndexKey(key, data)
+	return SaveKey(key, data)
 }
 
 // UpdateThreadParticipants adds or removes a user from thread participants.
@@ -76,8 +76,8 @@ func UpdateThreadParticipants(threadID, userID string, add bool) error {
 		return err
 	}
 
-	val, err := GetIndexKey(key)
-	if err != nil && !IndexIsNotFound(err) {
+	val, err := GetKey(key)
+	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -110,7 +110,7 @@ func UpdateThreadParticipants(threadID, userID string, add bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal thread participants: %w", err)
 	}
-	return SaveIndexKey(key, data)
+	return SaveKey(key, data)
 }
 
 // GetUserThreads returns threads owned by user.
@@ -120,9 +120,9 @@ func GetUserThreads(userID string) ([]string, error) {
 		return nil, err
 	}
 
-	val, err := GetIndexKey(key)
+	val, err := GetKey(key)
 	if err != nil {
-		if IndexIsNotFound(err) {
+		if IsNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err
@@ -142,9 +142,9 @@ func GetThreadParticipants(threadID string) ([]string, error) {
 		return nil, err
 	}
 
-	val, err := GetIndexKey(key)
+	val, err := GetKey(key)
 	if err != nil {
-		if IndexIsNotFound(err) {
+		if IsNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err
@@ -166,7 +166,7 @@ func DeleteUserThreadIndexes(userID string) error {
 	if err != nil {
 		return err
 	}
-	if err := DeleteIndexKey(key); err != nil {
+	if err := DeleteKey(key); err != nil {
 		logger.Error("delete_user_thread_index_failed", "key", key, "error", err)
 		return err
 	}
@@ -182,7 +182,7 @@ func DeleteThreadParticipantIndexes(threadID string) error {
 	if err != nil {
 		return err
 	}
-	if err := DeleteIndexKey(key); err != nil {
+	if err := DeleteKey(key); err != nil {
 		logger.Error("delete_thread_participant_index_failed", "key", key, "error", err)
 		return err
 	}

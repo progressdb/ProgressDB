@@ -25,9 +25,9 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		if err != nil {
 			return err
 		}
-		val, err := GetIndexKey(key)
+		val, err := GetKey(key)
 		if err != nil {
-			if IndexIsNotFound(err) {
+			if IsNotFound(err) {
 				continue // defaults
 			}
 			return err
@@ -91,7 +91,7 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		if err != nil {
 			return fmt.Errorf("marshal version index %s: %w", s, err)
 		}
-		if err := SaveIndexKey(key, data); err != nil {
+		if err := SaveKey(key, data); err != nil {
 			return err
 		}
 	}
@@ -112,7 +112,7 @@ func DeleteVersionIndexes(threadID, msgID string) error {
 		if err != nil {
 			return err
 		}
-		if err := DeleteIndexKey(key); err != nil {
+		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_version_index_failed", "key", key, "error", err)
 			return err
 		}

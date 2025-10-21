@@ -29,8 +29,8 @@ func UpdateDeletedThreads(userID, threadID string, add bool) error {
 		return err
 	}
 
-	val, err := GetIndexKey(key)
-	if err != nil && !IndexIsNotFound(err) {
+	val, err := GetKey(key)
+	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -63,7 +63,7 @@ func UpdateDeletedThreads(userID, threadID string, add bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal deleted threads: %w", err)
 	}
-	return SaveIndexKey(key, data)
+	return SaveKey(key, data)
 }
 
 // UpdateDeletedMessages adds or removes a deleted message for user.
@@ -76,8 +76,8 @@ func UpdateDeletedMessages(userID, msgID string, add bool) error {
 		return err
 	}
 
-	val, err := GetIndexKey(key)
-	if err != nil && !IndexIsNotFound(err) {
+	val, err := GetKey(key)
+	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -110,7 +110,7 @@ func UpdateDeletedMessages(userID, msgID string, add bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal deleted messages: %w", err)
 	}
-	return SaveIndexKey(key, data)
+	return SaveKey(key, data)
 }
 
 // GetDeletedThreads returns deleted threads for user.
@@ -120,9 +120,9 @@ func GetDeletedThreads(userID string) ([]string, error) {
 		return nil, err
 	}
 
-	val, err := GetIndexKey(key)
+	val, err := GetKey(key)
 	if err != nil {
-		if IndexIsNotFound(err) {
+		if IsNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err
@@ -142,9 +142,9 @@ func GetDeletedMessages(userID string) ([]string, error) {
 		return nil, err
 	}
 
-	val, err := GetIndexKey(key)
+	val, err := GetKey(key)
 	if err != nil {
-		if IndexIsNotFound(err) {
+		if IsNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err
@@ -171,7 +171,7 @@ func DeleteUserDeletionIndexes(userID string) error {
 	}
 
 	for _, key := range keysToDelete {
-		if err := DeleteIndexKey(key); err != nil {
+		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_user_deletion_index_failed", "key", key, "error", err)
 			return err
 		}

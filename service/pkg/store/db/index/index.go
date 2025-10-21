@@ -17,7 +17,7 @@ var IndexWALDisabled bool
 var IndexPendingWrites uint64
 
 // opens/creates pebble DB with WAL settings for index storage
-func OpenIndex(path string, disablePebbleWAL bool, appWALEnabled bool) error {
+func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	var err error
 	opts := &pebble.Options{
 		DisableWAL: disablePebbleWAL,
@@ -25,12 +25,12 @@ func OpenIndex(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	IndexWALDisabled = opts.DisableWAL
 
 	if IndexWALDisabled && !appWALEnabled {
-		logger.Warn("index_durability_disabled", "durability", "no WAL enabled for index DB")
+		logger.Warn("durability_disabled", "durability", "no WAL enabled for index DB")
 	}
 
 	IndexDB, err = pebble.Open(path, opts)
 	if err != nil {
-		logger.Error("index_pebble_open_failed", "path", path, "error", err)
+		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
 	IndexDBPath = path
@@ -38,7 +38,7 @@ func OpenIndex(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 }
 
 // closes opened pebble DB
-func CloseIndex() error {
+func Close() error {
 	if IndexDB == nil {
 		return nil
 	}
@@ -50,22 +50,22 @@ func CloseIndex() error {
 }
 
 // returns true if DB is opened
-func IndexReady() bool {
+func Ready() bool {
 	return IndexDB != nil
 }
 
 // returns true if error is pebble.ErrNotFound
-func IndexIsNotFound(err error) bool {
+func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
 // lists all keys as strings for prefix; returns all if prefix empty
-func ListIndexKeys(prefix string) ([]string, error) {
-	tr := telemetry.Track("index.list_keys")
+func ListKeys(prefix string) ([]string, error) {
+	tr := telemetry.Track("list_keys")
 	defer tr.Finish()
 
 	if IndexDB == nil {
-		return nil, fmt.Errorf("index pebble not opened; call index.Open first")
+		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
 	var pfx []byte
 	if prefix != "" {
@@ -97,74 +97,74 @@ func ListIndexKeys(prefix string) ([]string, error) {
 }
 
 // returns raw value for key as string
-func GetIndexKey(key string) (string, error) {
-	tr := telemetry.Track("index.get_key")
+func GetKey(key string) (string, error) {
+	tr := telemetry.Track("get_key")
 	defer tr.Finish()
 
 	if IndexDB == nil {
-		return "", fmt.Errorf("index pebble not opened; call index.Open first")
+		return "", fmt.Errorf("pebble not opened; call Open first")
 	}
 	tr.Mark("get")
 	v, closer, err := IndexDB.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
-			logger.Debug("index_get_key_missing", "key", key)
+			logger.Debug("get_key_missing", "key", key)
 		} else {
-			logger.Error("index_get_key_failed", "key", key, "error", err)
+			logger.Error("get_key_failed", "key", key, "error", err)
 		}
 		return "", err
 	}
 	if closer != nil {
 		defer closer.Close()
 	}
-	logger.Debug("index_get_key_ok", "key", key, "len", len(v))
+	logger.Debug("get_key_ok", "key", key, "len", len(v))
 	return string(v), nil
 }
 
 // stores arbitrary key/value (namespace caution: e.g. "idx:author:")
-func SaveIndexKey(key string, value []byte) error {
+func SaveKey(key string, value []byte) error {
 	if IndexDB == nil {
-		return fmt.Errorf("index pebble not opened; call index.Open first")
+		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	if err := IndexDB.Set([]byte(key), value, IndexWriteOpt(true)); err != nil {
-		logger.Error("index_save_key_failed", "key", key, "error", err)
+	if err := IndexDB.Set([]byte(key), value, WriteOpt(true)); err != nil {
+		logger.Error("save_key_failed", "key", key, "error", err)
 		return err
 	}
-	logger.Debug("index_save_key_ok", "key", key, "len", len(value))
+	logger.Debug("save_key_ok", "key", key, "len", len(value))
 	return nil
 }
 
 // returns iterator, caller must close
-func IndexDBIter() (*pebble.Iterator, error) {
+func DBIter() (*pebble.Iterator, error) {
 	if IndexDB == nil {
-		return nil, fmt.Errorf("index pebble not opened; call index.Open first")
+		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
 	return IndexDB.NewIter(&pebble.IterOptions{})
 }
 
 // writes key (bytes) as is, for admin use
-func IndexDBSet(key, value []byte) error {
+func DBSet(key, value []byte) error {
 	if IndexDB == nil {
-		return fmt.Errorf("index pebble not opened; call index.Open first")
+		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	return IndexDB.Set(key, value, IndexWriteOpt(true))
+	return IndexDB.Set(key, value, WriteOpt(true))
 }
 
 // removes key
-func DeleteIndexKey(key string) error {
+func DeleteKey(key string) error {
 	if IndexDB == nil {
-		return fmt.Errorf("index pebble not opened; call index.Open first")
+		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	if err := IndexDB.Delete([]byte(key), IndexWriteOpt(true)); err != nil {
-		logger.Error("index_delete_key_failed", "key", key, "error", err)
+	if err := IndexDB.Delete([]byte(key), WriteOpt(true)); err != nil {
+		logger.Error("delete_key_failed", "key", key, "error", err)
 		return err
 	}
-	logger.Debug("index_delete_key_ok", "key", key)
+	logger.Debug("delete_key_ok", "key", key)
 	return nil
 }
 
 // chooses sync/no-sync writeOptions, always disables sync if WAL disabled
-func IndexWriteOpt(requestSync bool) *pebble.WriteOptions {
+func WriteOpt(requestSync bool) *pebble.WriteOptions {
 	if requestSync && !IndexWALDisabled {
 		return pebble.Sync
 	}

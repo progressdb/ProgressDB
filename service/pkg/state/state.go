@@ -18,8 +18,9 @@ func EnsureStateDirs(dbPath string) error {
 	kmsPath := filepath.Join(statePath, "kms")
 	tmpPath := filepath.Join(statePath, "tmp")
 	telPath := filepath.Join(statePath, "telemetry")
+	indexPath := filepath.Join(dbPath, "index")
 
-	paths := []string{storePath, walPath, auditPath, retentionPath, kmsPath, tmpPath, telPath}
+	paths := []string{storePath, walPath, auditPath, retentionPath, kmsPath, tmpPath, telPath, indexPath}
 
 	for _, p := range paths {
 		// ensure parent exists

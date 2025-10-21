@@ -76,7 +76,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 		}
 		oldSeq := seq - 1
 		oldVersionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(oldMsg.TS), keys.FormatSeq(oldSeq))
-		if err := index.SaveIndexKey(oldVersionKey, oldDataCopy); err != nil {
+		if err := index.SaveKey(oldVersionKey, oldDataCopy); err != nil {
 			logger.Error("save_old_version_failed", "key", oldVersionKey, "error", err)
 			return err
 		}
@@ -95,7 +95,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	batch.Set([]byte(msgKey), data, storedb.WriteOpt(true))
 
 	// save version to index DB
-	if err := index.SaveIndexKey(versionKey, data); err != nil {
+	if err := index.SaveKey(versionKey, data); err != nil {
 		logger.Error("save_version_failed", "key", versionKey, "error", err)
 		return err
 	}

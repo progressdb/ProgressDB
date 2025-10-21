@@ -19,9 +19,9 @@ import (
 // returns all versions for a given message in order
 func ListMessageVersions(msgID string) ([]string, error) {
 	if index.IndexDB == nil {
-		return nil, fmt.Errorf("index pebble not opened; call index.Open first")
+		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
-	prefix := []byte("idx:versions:" + msgID + ":")
+	prefix := fmt.Sprintf("version:msg:%s:", msgID)
 	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -30,8 +30,8 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	var out []string
 	var threadKeyID string
 	var threadChecked bool
-	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
-		if !bytes.HasPrefix(iter.Key(), prefix) {
+	for iter.SeekGE([]byte(prefix)); iter.Valid(); iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), []byte(prefix)) {
 			break
 		}
 		v := append([]byte(nil), iter.Value()...)

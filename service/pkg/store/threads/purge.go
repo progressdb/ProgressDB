@@ -52,7 +52,7 @@ func PurgeThreadPermanently(threadID string) error {
 	}
 	deleteIndexBatch := func(keys [][]byte) {
 		for _, k := range keys {
-			if err := index.IndexDB.Delete(k, index.IndexWriteOpt(true)); err != nil {
+			if err := index.IndexDB.Delete(k, index.WriteOpt(true)); err != nil {
 				logger.Error("purge_index_delete_failed", "key", string(k), "error", err)
 			}
 		}

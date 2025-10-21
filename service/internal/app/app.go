@@ -13,6 +13,7 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/sensor"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/telemetry"
 
@@ -53,12 +54,22 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		return nil, err
 	}
 
-	// warn if both wals are disabled and summarize potential data loss window
-	appWALenabled := eff.Config.Ingest.Queue.Durable.RecoverOnStartup
-	pebbleWALdisabled := true
-	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
-		pebbleWALdisabled = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
+	// open store (caller ensures directories exist)
+	if state.PathsVar.Store == "" {
+		return nil, fmt.Errorf("state paths not initialized")
 	}
+	disable := true
+	if eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
+		disable = *eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
+	}
+	appWALenabled := eff.Config.Ingest.Queue.Durable.RecoverOnStartup
+	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
+		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
+	}
+	logger.Info("database_opened", "path", state.PathsVar.Store)
+
+	// warn if both wals are disabled and summarize potential data loss window
+	pebbleWALdisabled := disable
 	if !appWALenabled && pebbleWALdisabled {
 		var flushMs int
 		if eff.Config.Ingest.Queue.Mode == "memory" {
@@ -116,20 +127,6 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 		return nil, fmt.Errorf("invalid encryption fields: %w", err)
 	}
 
-	// open store (caller ensures directories exist)
-	if state.PathsVar.Store == "" {
-		return nil, fmt.Errorf("state paths not initialized")
-	}
-	disable := true
-	if aCfg := eff.Config; aCfg != nil {
-		if aCfg.Ingest.Queue.Durable.DisablePebbleWAL != nil {
-			disable = *aCfg.Ingest.Queue.Durable.DisablePebbleWAL
-		}
-	}
-	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
-		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
-	}
-
 	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}
 	return a, nil
 }
@@ -141,6 +138,25 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	a.printBanner()
 
+	// open database
+	disablePebbleWAL := true
+	if a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
+		disablePebbleWAL = *a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
+	}
+	appWALEnabled := a.eff.Config.Ingest.Queue.Mode == "durable"
+	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
+	if err := storedb.Open(state.PathsVar.Store, disablePebbleWAL, appWALEnabled); err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	logger.Info("database_opened", "path", state.PathsVar.Store)
+
+	// open index database
+	logger.Info("opening_index", "path", state.PathsVar.Index, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
+	if err := index.Open(state.PathsVar.Index, disablePebbleWAL, appWALEnabled); err != nil {
+		return fmt.Errorf("failed to open index: %w", err)
+	}
+	logger.Info("index_opened", "path", state.PathsVar.Index)
+
 	// start retention scheduler if enabled
 	retention.SetEffectiveConfig(a.eff)
 	if cancel, err := retention.Start(ctx, a.eff); err != nil {
@@ -148,18 +164,6 @@ func (a *App) Run(ctx context.Context) error {
 	} else {
 		a.retentionCancel = cancel
 	}
-
-	// open database
-	disablePebbleWAL := true
-	if a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL != nil {
-		disablePebbleWAL = *a.eff.Config.Ingest.Queue.Durable.DisablePebbleWAL
-	}
-	appWALEnabled := a.eff.Config.Ingest.Queue.Mode == "durable"
-	logger.Info("opening_database", "path", a.eff.DBPath, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
-	if err := storedb.Open(a.eff.DBPath, disablePebbleWAL, appWALEnabled); err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
-	}
-	logger.Info("database_opened", "path", a.eff.DBPath)
 
 	// config based basqueue
 	q, err := queue.NewQueueFromConfig(a.eff.Config.Ingest.Queue, a.eff.DBPath)
@@ -206,6 +210,16 @@ func (a *App) Run(ctx context.Context) error {
 		// stop sensor
 		if a.hwSensor != nil {
 			a.hwSensor.Stop()
+		}
+
+		// close index
+		if err := index.Close(); err != nil {
+			logger.Error("index_close_failed", "error", err)
+		}
+
+		// close store
+		if err := storedb.Close(); err != nil {
+			logger.Error("store_close_failed", "error", err)
 		}
 
 		// close tel

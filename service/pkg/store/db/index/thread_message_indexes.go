@@ -90,7 +90,7 @@ func DeleteThreadMessageIndexes(threadID string) error {
 		if err != nil {
 			return err
 		}
-		if err := DeleteIndexKey(key); err != nil {
+		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_thread_message_index_failed", "key", key, "error", err)
 			return err
 		}
@@ -104,7 +104,7 @@ func GetIndexValue(threadID, suffix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return GetIndexKey(key)
+	return GetKey(key)
 }
 
 // GetThreadMessageIndexes loads all indexes for a thread.
@@ -132,9 +132,9 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 		if err != nil {
 			return indexes, err
 		}
-		val, err := GetIndexKey(key)
+		val, err := GetKey(key)
 		if err != nil {
-			if IndexIsNotFound(err) {
+			if IsNotFound(err) {
 				// If not found, assume default (for new threads or missing fields)
 				continue
 			}
@@ -169,7 +169,7 @@ func saveIndexes(threadID string, indexes ThreadMessageIndexes) error {
 		if err != nil {
 			return fmt.Errorf("marshal index %s: %w", suffix, err)
 		}
-		if err := SaveIndexKey(key, data); err != nil {
+		if err := SaveKey(key, data); err != nil {
 			return err
 		}
 	}
