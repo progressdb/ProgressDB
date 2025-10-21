@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"progressdb/internal/retention"
-	"progressdb/pkg/utils"
 	testutils "progressdb/tests/utils"
+	utils "progressdb/tests/utils"
 )
 
 func TestRetention_Suite(t *testing.T) {

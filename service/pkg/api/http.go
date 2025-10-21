@@ -2,11 +2,21 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/pprof"
 
 	"progressdb/pkg/api/router"
 
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
+
+// wrapHTTPHandler wraps an http.Handler to work with fasthttp.
+func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
+	return func(ctx *fasthttp.RequestCtx) {
+		fasthttpadaptor.NewFastHTTPHandler(h)(ctx)
+	}
+}
 
 // RegisterRoutes wires all API routes onto the provided router.
 func RegisterRoutes(r *router.Router) {
@@ -50,6 +60,13 @@ func RegisterRoutes(r *router.Router) {
 	r.POST("/admin/encryption/rewrap-deks", AdminEncryptionRewrapDEKs)
 	r.POST("/admin/encryption/encrypt-existing", AdminEncryptionEncryptExisting)
 	r.POST("/admin/encryption/generate-kek", AdminEncryptionGenerateKEK)
+
+	// admin pprof routes
+	r.GET("/admin/debug/pprof/", wrapHTTPHandler(http.HandlerFunc(pprof.Index)))
+	r.GET("/admin/debug/pprof/cmdline", wrapHTTPHandler(http.HandlerFunc(pprof.Cmdline)))
+	r.GET("/admin/debug/pprof/profile", wrapHTTPHandler(http.HandlerFunc(pprof.Profile)))
+	r.GET("/admin/debug/pprof/symbol", wrapHTTPHandler(http.HandlerFunc(pprof.Symbol)))
+	r.GET("/admin/debug/pprof/trace", wrapHTTPHandler(http.HandlerFunc(pprof.Trace)))
 }
 
 // Handler returns the fasthttp handler for the ProgressDB API.

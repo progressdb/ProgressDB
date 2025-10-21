@@ -9,14 +9,10 @@ import (
 
 	"github.com/valyala/fasthttp"
 
-	"net/http"
-	"net/http/pprof"
 	"progressdb/pkg/api"
 	"progressdb/pkg/auth"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
-
-	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 // printBanner prints the startup banner and build info.
@@ -112,25 +108,11 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	r.GET("/healthz", a.healthzHandlerFast)
 	r.GET("/readyz", a.readyzHandlerFast)
 
-	// pprof routes, protected by admin key
-	wrapHTTPHandler := func(h http.Handler) func(ctx *fasthttp.RequestCtx) {
-		return func(ctx *fasthttp.RequestCtx) {
-			fasthttpadaptor.NewFastHTTPHandler(h)(ctx)
-		}
-	}
-	r.GET("/admin/debug/pprof/", wrapHTTPHandler(http.HandlerFunc(pprof.Index)))
-	r.GET("/admin/debug/pprof/cmdline", wrapHTTPHandler(http.HandlerFunc(pprof.Cmdline)))
-	r.GET("/admin/debug/pprof/profile", wrapHTTPHandler(http.HandlerFunc(pprof.Profile)))
-	r.GET("/admin/debug/pprof/symbol", wrapHTTPHandler(http.HandlerFunc(pprof.Symbol)))
-	r.GET("/admin/debug/pprof/trace", wrapHTTPHandler(http.HandlerFunc(pprof.Trace)))
-
 	// Register API routes on fasthttp router
 	api.RegisterRoutes(r)
 
 	r.NotFound(func(ctx *fasthttp.RequestCtx) {
-		ctx.SetStatusCode(fasthttp.StatusNotFound)
-		ctx.SetContentType("application/json")
-		_, _ = ctx.WriteString(`{"error":"not found"}`)
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "not found")
 	})
 
 	fastHandler := r.Handler
