@@ -3,8 +3,8 @@ package api
 import (
 	"fmt"
 
+	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/auth"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"

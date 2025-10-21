@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api"
-	"progressdb/pkg/auth"
+	"progressdb/pkg/api/auth"
 	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
 )

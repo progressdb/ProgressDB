@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"progressdb/pkg/auth"
+	"progressdb/pkg/api/auth"
 	"progressdb/pkg/models"
 	"progressdb/pkg/telemetry"
 
