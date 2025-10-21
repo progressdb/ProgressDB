@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/locks"
 	"progressdb/pkg/telemetry"
@@ -54,32 +54,12 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 
 	// encrypt if enabled
 	var thread models.Thread
-	if security.EncryptionEnabled() {
-		// unmarshal thread
-		if err := json.Unmarshal([]byte(threadJSON), &thread); err != nil {
-			return fmt.Errorf("failed to unmarshal thread: %w", err)
-		}
-		if thread.KMS == nil || thread.KMS.KeyID == "" {
-			return fmt.Errorf("no KMS key ID for thread")
-		}
-		if security.EncryptionHasFieldPolicy() {
-			// encrypt fields
-			encBody, encErr := security.EncryptMessageBody(&msg, thread)
-			if encErr != nil {
-				return fmt.Errorf("field encryption failed: %w", encErr)
-			}
-			msg.Body = encBody
-			data, err = json.Marshal(msg)
-			if err != nil {
-				return fmt.Errorf("failed to marshal encrypted message: %w", err)
-			}
-		} else {
-			// encrypt whole
-			data, _, err = kms.EncryptWithDEK(thread.KMS.KeyID, data, nil)
-			if err != nil {
-				return fmt.Errorf("encryption failed: %w", err)
-			}
-		}
+	if err := json.Unmarshal([]byte(threadJSON), &thread); err != nil {
+		return fmt.Errorf("failed to unmarshal thread: %w", err)
+	}
+	data, err = encryption.EncryptMessageData(&thread, data)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
 	// save to batch
@@ -95,5 +75,21 @@ func SaveMessage(ctx context.Context, threadID, msgID string, msg models.Message
 	}
 
 	logger.Info("message_saved", "thread", threadID, "msg", msgID, "seq", seq)
+
+	// Update thread message indexes
+	if msg.Deleted {
+		// On delete, add to skips
+		if err := index.UpdateOnMessageDelete(threadID, msgKey); err != nil {
+			logger.Error("update_thread_message_indexes_delete_failed", "thread", threadID, "msg", msgID, "error", err)
+			return err
+		}
+	} else {
+		// On save, update counts and deltas
+		if err := index.UpdateOnMessageSave(threadID, msg.TS, msg.TS); err != nil {
+			logger.Error("update_thread_message_indexes_failed", "thread", threadID, "msg", msgID, "error", err)
+			return err
+		}
+	}
+
 	return nil
 }

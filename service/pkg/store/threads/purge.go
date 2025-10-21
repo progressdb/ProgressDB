@@ -7,6 +7,7 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 
@@ -72,6 +73,13 @@ func PurgeThreadPermanently(threadID string) error {
 	if len(batch) > 0 {
 		deleteBatch(batch)
 	}
+
+	// Delete thread message indexes
+	if err := index.DeleteThreadMessageIndexes(threadID); err != nil {
+		logger.Error("delete_thread_message_indexes_failed", "thread", threadID, "error", err)
+		// Continue with purge
+	}
+
 	_ = DeleteThread(threadID)
 	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", 0)
 	return nil

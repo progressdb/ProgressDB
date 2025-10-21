@@ -9,9 +9,10 @@ import (
 // Key format constants and padding widths. Keep these in one place so
 // formatting/parsing stays consistent across the codebase.
 const (
-	msgKeyFmt     = "thread:%s:msg:%s-%s"
-	versionKeyFmt = "version:msg:%s:%s-%s"
-	threadMetaFmt = "thread:%s:meta"
+	msgKeyFmt               = "thread:%s:msg:%s-%s"
+	versionKeyFmt           = "version:msg:%s:%s-%s"
+	threadMetaFmt           = "thread:%s:meta"
+	threadsToMessagesKeyFmt = "idx:T:%s:MS:%s"
 
 	tsPadWidth  = 20 // matches %020d used previously
 	seqPadWidth = 6  // matches %06d used previously
@@ -162,4 +163,12 @@ func ThreadPrefix(threadID string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("thread:%s:", threadID), nil
+}
+
+// ThreadsToMessagesIndexKey builds an index key for thread message indexes.
+func ThreadsToMessagesIndexKey(threadID, suffix string) (string, error) {
+	if err := ValidateThreadID(threadID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(threadsToMessagesKeyFmt, threadID, suffix), nil
 }

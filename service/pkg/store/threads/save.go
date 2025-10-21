@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
@@ -27,5 +28,12 @@ func SaveThread(threadID, data string) error {
 		return err
 	}
 	logger.Info("thread_saved", "thread", threadID)
+
+	// Initialize thread message indexes for new thread
+	if err := index.InitThreadMessageIndexes(threadID); err != nil {
+		logger.Error("init_thread_message_indexes_failed", "thread", threadID, "error", err)
+		return err
+	}
+
 	return nil
 }
