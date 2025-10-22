@@ -179,13 +179,10 @@ func WriteValidationError(ctx *fasthttp.RequestCtx, err *auth.AuthorResolutionEr
 func ValidateUserID(userID string) error {
 	const maxLen = 36
 
-	if userID == "" {
+	if len(userID) == 0 {
 		return fmt.Errorf("user ID cannot be empty")
 	}
-	if len(userID) < 1 {
-		return fmt.Errorf("user ID too short")
-	}
-	if len(userID) > 36 {
+	if len(userID) > maxLen {
 		return fmt.Errorf("user ID too long (maximum 36 characters)")
 	}
 	for _, r := range userID {
