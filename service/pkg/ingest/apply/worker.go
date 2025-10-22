@@ -2,6 +2,7 @@ package apply
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"progressdb/pkg/ingest/types"
@@ -30,10 +31,14 @@ func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, ti
 }
 
 // Start begins the apply workers.
-func (aw *ApplyWorker) Start(stop <-chan struct{}) {
+func (aw *ApplyWorker) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	aw.stop = stop
 	for i := 0; i < aw.workers; i++ {
-		go aw.run()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			aw.run()
+		}()
 	}
 }
 

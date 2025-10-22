@@ -41,7 +41,7 @@ ingest:
       enabled: false
       segment_size: 20MB
   compute:
-    worker_count: 16
+    worker_count: 64
     buffer_capacity: 100_000
   apply:
      batch_count: 1_000

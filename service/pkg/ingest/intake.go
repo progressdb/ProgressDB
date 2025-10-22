@@ -48,8 +48,8 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 
 // Start begins the ingestor workers.
 func (i *Ingestor) Start() {
-	i.computeWorker.Start(i.stop)
-	i.applyWorker.Start(i.stop)
+	i.computeWorker.Start(i.stop, &i.wg)
+	i.applyWorker.Start(i.stop, &i.wg)
 }
 
 // Stop shuts down the ingestor workers.

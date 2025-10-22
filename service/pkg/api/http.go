@@ -4,12 +4,81 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"runtime"
 
 	"progressdb/pkg/api/router"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
+
+var (
+	goroutines = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "go_goroutines",
+			Help: "Number of active goroutines.",
+		},
+		func() float64 { return float64(runtime.NumGoroutine()) },
+	)
+
+	gcPauseTotal = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "go_gc_pause_total_ns",
+			Help: "Total GC pause time in nanoseconds.",
+		},
+		func() float64 {
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			return float64(stats.PauseTotalNs)
+		},
+	)
+
+	heapAlloc = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "go_heap_alloc_bytes",
+			Help: "Current heap allocation in bytes.",
+		},
+		func() float64 {
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			return float64(stats.HeapAlloc)
+		},
+	)
+
+	heapSys = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "go_heap_sys_bytes",
+			Help: "Total heap size in bytes.",
+		},
+		func() float64 {
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			return float64(stats.HeapSys)
+		},
+	)
+
+	numGC = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "go_gc_cycles_total",
+			Help: "Total number of GC cycles.",
+		},
+		func() float64 {
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			return float64(stats.NumGC)
+		},
+	)
+)
+
+func init() {
+	// prometheus.MustRegister(goroutines) // Already registered by Prometheus client library
+	prometheus.MustRegister(gcPauseTotal)
+	prometheus.MustRegister(heapAlloc)
+	prometheus.MustRegister(heapSys)
+	prometheus.MustRegister(numGC)
+}
 
 // wrapHTTPHandler wraps an http.Handler to work with fasthttp.
 func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
@@ -62,7 +131,8 @@ func RegisterRoutes(r *router.Router) {
 	r.POST("/admin/encryption/encrypt-existing", AdminEncryptionEncryptExisting)
 	r.POST("/admin/encryption/generate-kek", AdminEncryptionGenerateKEK)
 
-	// admin pprof routes
+	// admin debug routes
+	r.GET("/admin/debug/prometheus", wrapHTTPHandler(promhttp.Handler()))
 	r.GET("/admin/debug/pprof/", wrapHTTPHandler(http.HandlerFunc(pprof.Index)))
 	r.GET("/admin/debug/pprof/cmdline", wrapHTTPHandler(http.HandlerFunc(pprof.Cmdline)))
 	r.GET("/admin/debug/pprof/profile", wrapHTTPHandler(http.HandlerFunc(pprof.Profile)))

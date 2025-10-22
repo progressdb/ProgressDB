@@ -138,7 +138,7 @@ func (c *Config) ValidateConfig() error {
 
 	// Compute defaults
 	numCPU := runtime.NumCPU()
-	runtime.GOMAXPROCS(numCPU)
+	// runtime.GOMAXPROCS(numCPU) // Commented out to test effect of CPU pinning
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
 	cc := &c.Ingest.Compute
 	if cc.WorkerCount <= 0 {

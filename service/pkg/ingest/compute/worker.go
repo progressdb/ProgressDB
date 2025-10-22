@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
@@ -27,10 +28,14 @@ func NewComputeWorker(queue *qpkg.IngestQueue, output chan<- types.BatchEntry, w
 }
 
 // Start begins the compute workers.
-func (cw *ComputeWorker) Start(stop <-chan struct{}) {
+func (cw *ComputeWorker) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	cw.stop = stop
 	for i := 0; i < cw.workers; i++ {
-		go cw.run()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cw.run()
+		}()
 	}
 }
 
