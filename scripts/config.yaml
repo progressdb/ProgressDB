@@ -24,7 +24,7 @@ logging:
 
 retention:
   enabled: false
-  cron: ""
+  cron: "0 2 * * *"
   period: "24h"
   batch_size: 1000
   batch_sleep_ms: 0
@@ -45,12 +45,16 @@ ingest:
     buffer_capacity: 100_000
   apply:
      batch_count: 1_000
-     apply_batch_timeout: 1s
+     batch_timeout: 1s
      fsync_after_batch: true
 
 telemetry:
   sample_rate: 0.001
   slow_threshold: 200ms
+  buffer_size: 60MB
+  file_max_size: 40MB
+  flush_interval: 2s
+  queue_capacity: 2048
 
 sensor:
   monitor:

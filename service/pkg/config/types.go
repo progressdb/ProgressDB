@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml/ast"
 )
 
 // RuntimeConfig holds runtime key sets for use by other packages.
@@ -29,9 +29,9 @@ type Config struct {
 
 // ServerConfig holds http, tls, and security settings.
 type ServerConfig struct {
-	Address     string       `yaml:"address"`
-	Port        int          `yaml:"port"`
-	DBPath      string       `yaml:"db_path"`
+	Address     string       `yaml:"address,default=0.0.0.0"`
+	Port        int          `yaml:"port,default=8080"`
+	DBPath      string       `yaml:"db_path,default=./database"`
 	TLS         TLSConfig    `yaml:"tls"`
 	CORS        CORSConfig   `yaml:"cors"`
 	RateLimit   RateConfig   `yaml:"rate_limit"`
@@ -52,8 +52,8 @@ type CORSConfig struct {
 
 // RateConfig holds rate limiting settings.
 type RateConfig struct {
-	RPS   float64 `yaml:"rps"`
-	Burst int     `yaml:"burst"`
+	RPS   float64 `yaml:"rps,default=1000"`
+	Burst int     `yaml:"burst,default=1000"`
 }
 
 // APIKeyConfig holds API key settings.
@@ -65,23 +65,23 @@ type APIKeyConfig struct {
 
 // LoggingConfig holds logging configuration.
 type LoggingConfig struct {
-	Level string `yaml:"level"`
+	Level string `yaml:"level,default=info"`
 }
 
 // RetentionConfig holds configuration for the automatic purge runner.
 type RetentionConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	Cron         string `yaml:"cron"`
-	Period       string `yaml:"period"`
-	BatchSize    int    `yaml:"batch_size"`
-	BatchSleepMs int    `yaml:"batch_sleep_ms"`
-	DryRun       bool   `yaml:"dry_run"`
-	Paused       bool   `yaml:"paused"`
-	MinPeriod    string `yaml:"min_period"`
+	Enabled      bool   `yaml:"enabled,default=false"`
+	Cron         string `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
+	Period       string `yaml:"period,default=24h"`
+	BatchSize    int    `yaml:"batch_size,default=1000"`
+	BatchSleepMs int    `yaml:"batch_sleep_ms,default=0"`
+	DryRun       bool   `yaml:"dry_run,default=false"`
+	Paused       bool   `yaml:"paused,default=false"`
+	MinPeriod    string `yaml:"min_period,default=1h"`
 	// LockTTL controls the lease TTL used by the retention scheduler when
 	// acquiring a lock to perform a run. Specified as a duration string
 	// (e.g. "300s"). If zero, a sensible default will be applied.
-	LockTTL Duration `yaml:"lock_ttl"`
+	LockTTL Duration `yaml:"lock_ttl,default=300s"`
 }
 
 // IngestConfig holds intake, compute, and apply configuration.
@@ -93,23 +93,23 @@ type IngestConfig struct {
 
 // IntakeConfig controls enqueue buffering and persistence.
 type IntakeConfig struct {
-	QueueCapacity        int            `yaml:"queue_capacity"`
-	ShutdownPollInterval Duration       `yaml:"shutdown_poll_interval"`
+	QueueCapacity        int            `yaml:"queue_capacity,default=4194304"` // 4M for higher buffer
+	ShutdownPollInterval Duration       `yaml:"shutdown_poll_interval,default=250µs"`
 	WAL                  WALConfig      `yaml:"wal"`
 	Recovery             RecoveryConfig `yaml:"recovery"`
 }
 
 // ComputeConfig controls worker concurrency for mutation processing.
 type ComputeConfig struct {
-	WorkerCount    int `yaml:"worker_count"`
-	BufferCapacity int `yaml:"buffer_capacity"`
+	WorkerCount    int `yaml:"worker_count,default=48"` // Will be capped to CPU count in validation
+	BufferCapacity int `yaml:"buffer_capacity,default=1000"`
 }
 
 // ApplyConfig controls batching and queuing for DB applies.
 type ApplyConfig struct {
-	BatchCount      int      `yaml:"batch_count"`
-	FsyncAfterBatch bool     `yaml:"fsync_after_batch"`
-	BatchTimeout    Duration `yaml:"apply_batch_timeout"`
+	BatchCount      int      `yaml:"batch_count,default=10000"`
+	FsyncAfterBatch bool     `yaml:"fsync_after_batch,default=true"`
+	BatchTimeout    Duration `yaml:"batch_timeout,default=1s"`
 }
 
 // QueueConfig holds queue settings.
@@ -121,26 +121,30 @@ type QueueConfig struct {
 
 // WALConfig holds settings for WAL backup.
 type WALConfig struct {
-	Enabled     bool      `yaml:"enabled"`
-	SegmentSize SizeBytes `yaml:"segment_size"`
+	Enabled     bool      `yaml:"enabled,default=false"`
+	SegmentSize SizeBytes `yaml:"segment_size,default=2GB"`
 }
 
 // RecoveryConfig controls crash recovery behavior.
 type RecoveryConfig struct {
-	Enabled        bool `yaml:"enabled"`
-	WALEnabled     bool `yaml:"wal_enabled"`
-	TempIdxEnabled bool `yaml:"temp_index_enabled"`
+	Enabled        bool `yaml:"enabled,default=true"`
+	WALEnabled     bool `yaml:"wal_enabled,default=true"`
+	TempIdxEnabled bool `yaml:"temp_index_enabled,default=true"`
 }
 
 // SizeBytes represents a number of bytes, unmarshaled from human-friendly strings like "64MB" or plain integers.
 type SizeBytes int64
 
-func (s *SizeBytes) UnmarshalYAML(node *yaml.Node) error {
+func (s *SizeBytes) UnmarshalYAML(node ast.Node) error {
 	if node == nil {
 		*s = 0
 		return nil
 	}
-	raw := strings.TrimSpace(node.Value)
+	stringNode, ok := node.(*ast.StringNode)
+	if !ok {
+		return fmt.Errorf("expected string node for SizeBytes, got %T", node)
+	}
+	raw := strings.TrimSpace(stringNode.Value)
 	if raw == "" {
 		*s = 0
 		return nil
@@ -153,7 +157,7 @@ func (s *SizeBytes) UnmarshalYAML(node *yaml.Node) error {
 		*s = SizeBytes(i)
 		return nil
 	}
-	return fmt.Errorf("invalid size value: %q", node.Value)
+	return fmt.Errorf("invalid size value: %q", stringNode.Value)
 }
 
 func (s SizeBytes) Int64() int64 { return int64(s) }
@@ -161,12 +165,16 @@ func (s SizeBytes) Int64() int64 { return int64(s) }
 // Duration is a wrapper around time.Duration that supports YAML parsing from strings like "100ms" or plain numbers (interpreted as seconds).
 type Duration time.Duration
 
-func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+func (d *Duration) UnmarshalYAML(node ast.Node) error {
 	if node == nil {
 		*d = Duration(0)
 		return nil
 	}
-	raw := strings.TrimSpace(node.Value)
+	stringNode, ok := node.(*ast.StringNode)
+	if !ok {
+		return fmt.Errorf("expected string node for Duration, got %T", node)
+	}
+	raw := strings.TrimSpace(stringNode.Value)
 	if raw == "" {
 		*d = Duration(0)
 		return nil
@@ -180,42 +188,42 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 		*d = Duration(time.Duration(f * float64(time.Second)))
 		return nil
 	}
-	return fmt.Errorf("invalid duration value: %q", node.Value)
+	return fmt.Errorf("invalid duration value: %q", stringNode.Value)
 }
 
 func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
 // TelemetryConfig controls telemetry collection and storage settings.
 type TelemetryConfig struct {
-	SampleRate    float64   `yaml:"sample_rate"`
-	SlowThreshold Duration  `yaml:"slow_threshold"`
-	BufferSize    SizeBytes `yaml:"buffer_size"`
-	FileMaxSize   SizeBytes `yaml:"file_max_size"`
-	FlushInterval Duration  `yaml:"flush_interval"`
-	QueueCapacity int       `yaml:"queue_capacity"`
+	SampleRate    float64   `yaml:"sample_rate,default=0.001"`
+	SlowThreshold Duration  `yaml:"slow_threshold,default=200ms"`
+	BufferSize    SizeBytes `yaml:"buffer_size,default=60MB"`
+	FileMaxSize   SizeBytes `yaml:"file_max_size,default=40MB"`
+	FlushInterval Duration  `yaml:"flush_interval,default=2s"`
+	QueueCapacity int       `yaml:"queue_capacity,default=2048"`
 }
 
 // SensorConfig holds sensor related tuning knobs.
 type SensorConfig struct {
 	Monitor struct {
-		PollInterval   Duration `yaml:"poll_interval"`
-		DiskHighPct    int      `yaml:"disk_high_pct"`
-		DiskLowPct     int      `yaml:"disk_low_pct"`
-		MemHighPct     int      `yaml:"mem_high_pct"`
-		CPUHighPct     int      `yaml:"cpu_high_pct"`
-		RecoveryWindow Duration `yaml:"recovery_window"`
+		PollInterval   Duration `yaml:"poll_interval,default=500ms"`
+		DiskHighPct    int      `yaml:"disk_high_pct,default=80"`
+		DiskLowPct     int      `yaml:"disk_low_pct,default=60"`
+		MemHighPct     int      `yaml:"mem_high_pct,default=80"`
+		CPUHighPct     int      `yaml:"cpu_high_pct,default=90"`
+		RecoveryWindow Duration `yaml:"recovery_window,default=5s"`
 	} `yaml:"monitor"`
 }
 
 // EncryptionConfig holds encryption related settings.
 type EncryptionConfig struct {
-	Enabled bool     `yaml:"enabled"`
+	Enabled bool     `yaml:"enabled,default=false"`
 	Fields  []string `yaml:"fields"`
 	KMS     struct {
-		Mode          string `yaml:"mode"`
-		Endpoint      string `yaml:"endpoint"`
-		DataDir       string `yaml:"data_dir"`
-		Binary        string `yaml:"binary"`
+		Mode          string `yaml:"mode,default=embedded"`
+		Endpoint      string `yaml:"endpoint,default=127.0.0.1:6820"`
+		DataDir       string `yaml:"data_dir,default=./kms-data"`
+		Binary        string `yaml:"binary,default=/usr/local/bin/progressdb-kms"`
 		MasterKeyFile string `yaml:"master_key_file"`
 		MasterKeyHex  string `yaml:"master_key_hex"`
 	} `yaml:"kms"`

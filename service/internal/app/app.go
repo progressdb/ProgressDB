@@ -139,7 +139,7 @@ func (a *App) Run(ctx context.Context) error {
 	logger.Info("index_opened", "path", state.PathsVar.Index)
 
 	// initialize recovery system (will run after queue is created)
-	recoveryConfig := a.eff.Config.Ingest.Recovery
+	recoveryConfig := a.eff.Config.Ingest.Intake.Recovery
 	ingest.InitGlobalRecovery(
 		nil, // queue will be set after queue initialization
 		storedb.Client,

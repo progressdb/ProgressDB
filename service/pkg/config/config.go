@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/logger"
 
 	"github.com/adhocore/gronx"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // Defaults and limits for queue/WAL configuration
@@ -121,144 +121,27 @@ func LoadConfigFile(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate applies defaults and validates values in the config. It mutates
-// the receiver to fill in missing defaults and returns an error if any
-// configuration value is invalid.
+// Validate validates values in the config and applies any runtime-specific logic.
+// Most defaults are now handled via struct tags using goccy/go-yaml.
+// This method mainly handles validation and runtime-specific adjustments.
 func (c *Config) ValidateConfig() error {
-	// Intake defaults
-	if c.Ingest.Intake.QueueCapacity <= 0 {
-		c.Ingest.Intake.QueueCapacity = defaultQueueCapacity
-	}
-	if c.Ingest.Intake.ShutdownPollInterval.Duration() == 0 {
-		c.Ingest.Intake.ShutdownPollInterval = Duration(defaultDrainPollInterval)
-	}
-	// Respect WAL enabled config - do not force to true
-	if c.Ingest.Intake.WAL.SegmentSize.Int64() == 0 {
-		c.Ingest.Intake.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
-	}
-
-	// Recovery defaults - only set if struct exists but field is zero
-	// Check if Recovery struct was explicitly set vs completely missing
-	if c.Ingest.Intake.Recovery != (RecoveryConfig{}) {
-		// Recovery struct exists, check individual fields
-		if c.Ingest.Intake.Recovery.Enabled == false {
-			// Field was explicitly set to false, keep it
-		} else {
-			// Field is zero (unset), default to true
-			c.Ingest.Intake.Recovery.Enabled = true
-		}
-
-		if c.Ingest.Intake.Recovery.WALEnabled == false {
-			// Field was explicitly set to false, keep it
-		} else {
-			// Field is zero (unset), default to true
-			c.Ingest.Intake.Recovery.WALEnabled = true
-		}
-
-		if c.Ingest.Intake.Recovery.TempIdxEnabled == false {
-			// Field was explicitly set to false, keep it
-		} else {
-			// Field is zero (unset), default to true
-			c.Ingest.Intake.Recovery.TempIdxEnabled = true
-		}
-	} else {
-		// Recovery struct completely missing, create with defaults
-		c.Ingest.Intake.Recovery = RecoveryConfig{
-			Enabled:        true,
-			WALEnabled:     true,
-			TempIdxEnabled: true,
-		}
-	}
-
-	// Compute defaults
+	// Compute validation and CPU capping (still needed as this is runtime logic)
 	numCPU := runtime.NumCPU()
 	// runtime.GOMAXPROCS(numCPU) // Commented out to test effect of CPU pinning
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
 	cc := &c.Ingest.Compute
-	if cc.WorkerCount <= 0 {
-		cc.WorkerCount = numCPU
-	} else if cc.WorkerCount > numCPU {
+	if cc.WorkerCount > numCPU {
 		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
 		cc.WorkerCount = numCPU
 	}
-	if cc.BufferCapacity <= 0 {
-		cc.BufferCapacity = 1000 // default compute buffer capacity
-	}
-
-	// Apply defaults
-	ac := &c.Ingest.Apply
-	if ac.BatchCount <= 0 {
-		ac.BatchCount = defaultIngestorMaxBatchSize
-	}
-	if ac.BatchTimeout.Duration() <= 0 {
-		ac.BatchTimeout = Duration(1 * time.Second) // 1 second default
-	}
-	// Fsync after batch defaults to true for durability
-	ac.FsyncAfterBatch = true
-
-	// Telemetry defaults
-	if c.Telemetry.SampleRate == 0 {
-		c.Telemetry.SampleRate = defaultTelemetrySampleRate
-	}
-	if c.Telemetry.SlowThreshold.Duration() == 0 {
-		c.Telemetry.SlowThreshold = Duration(time.Duration(defaultTelemetrySlowMs) * time.Millisecond)
-	}
-	if c.Telemetry.BufferSize.Int64() == 0 {
-		c.Telemetry.BufferSize = SizeBytes(defaultTelemetryBufferSize)
-	}
-	if c.Telemetry.FileMaxSize.Int64() == 0 {
-		c.Telemetry.FileMaxSize = SizeBytes(defaultTelemetryFileMaxSize)
-	}
-	if c.Telemetry.FlushInterval.Duration() == 0 {
-		c.Telemetry.FlushInterval = Duration(time.Duration(defaultTelemetryFlushMs) * time.Millisecond)
-	}
-	if c.Telemetry.QueueCapacity <= 0 {
-		c.Telemetry.QueueCapacity = defaultTelemetryQueueCapacity
-	}
-
-	// Security defaults: rate limiting
-	if c.Server.RateLimit.RPS <= 0 {
-		c.Server.RateLimit.RPS = 1000
-	}
-	if c.Server.RateLimit.Burst <= 0 {
-		c.Server.RateLimit.Burst = 1000
-	}
-
-	// Sensor monitor defaults
-	if c.Sensor.Monitor.PollInterval.Duration() == 0 {
-		c.Sensor.Monitor.PollInterval = Duration(defaultSensorPollInterval)
-	}
-	if c.Sensor.Monitor.DiskHighPct == 0 {
-		c.Sensor.Monitor.DiskHighPct = defaultSensorDiskHighPct
-	}
-	if c.Sensor.Monitor.DiskLowPct == 0 {
-		c.Sensor.Monitor.DiskLowPct = defaultSensorDiskLowPct
-	}
-	if c.Sensor.Monitor.MemHighPct == 0 {
-		c.Sensor.Monitor.MemHighPct = defaultSensorMemHighPct
-	}
-	if c.Sensor.Monitor.CPUHighPct == 0 {
-		c.Sensor.Monitor.CPUHighPct = defaultSensorCPUHighPct
-	}
-	if c.Sensor.Monitor.RecoveryWindow.Duration() == 0 {
-		c.Sensor.Monitor.RecoveryWindow = Duration(defaultSensorRecoveryWindow)
-	}
-
-	// Retention defaults
-	// Retention lock TTL
-	if c.Retention.LockTTL.Duration() == 0 {
-		c.Retention.LockTTL = Duration(defaultRetentionLockTTL)
-	}
-	// Retention cron (if not set, default to daily at 02:00)
-	if c.Retention.Cron == "" {
-		c.Retention.Cron = defaultRetentionCron
-	}
 
 	// Validate user-passed retention cron for correctness.
-	// Only validate if the cron string is set (either set by user, or by the default above).
 	if !gronx.IsValid(c.Retention.Cron) {
 		return fmt.Errorf("invalid retention cron expression: %s", c.Retention.Cron)
 	}
+
+	// Note: Most defaults are now handled by struct tags.
+	// The goccy/go-yaml library will automatically apply defaults for zero values.
 
 	return nil
 }
