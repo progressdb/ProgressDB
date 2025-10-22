@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,9 +25,17 @@ type Trace struct {
 	TotalMS  float64   `json:"total_ms"`
 	lastMark time.Time
 	tel      *Telemetry
+	strategy RotationStrategy
 }
 
 // Telemetry manages async writing of traces to per-op files.
+type RotationStrategy int
+
+const (
+	RotationStrategyTruncate RotationStrategy = iota
+	RotationStrategyPurge
+)
+
 type Telemetry struct {
 	dir              string
 	mu               sync.Mutex
@@ -40,18 +49,24 @@ type Telemetry struct {
 	maxFileSizeBytes int64
 	bufferSize       int
 	queueCap         int
+	rotationStrategy RotationStrategy
 }
 
 var tel *Telemetry
 
 // Init initializes the global telemetry instance.
 func Init(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64) {
-	tel, _ = New(dir, bufferSize, queueCapacity, flushInterval, maxFileSize)
+	tel, _ = New(dir, bufferSize, queueCapacity, flushInterval, maxFileSize, RotationStrategyPurge)
 }
 
 // Track starts a new trace using the global telemetry instance.
 func Track(name string) *Trace {
 	return tel.Track(name)
+}
+
+// TrackWithStrategy starts a new trace with specific rotation strategy.
+func TrackWithStrategy(name string, strategy RotationStrategy) *Trace {
+	return tel.TrackWithStrategy(name, strategy)
 }
 
 // Close stops the global telemetry instance.
@@ -62,8 +77,13 @@ func Close() {
 	}
 }
 
+// InitWithStrategy initializes the global telemetry instance with a specific rotation strategy.
+func InitWithStrategy(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64, strategy RotationStrategy) {
+	tel, _ = New(dir, bufferSize, queueCapacity, flushInterval, maxFileSize, strategy)
+}
+
 // New creates a new telemetry subsystem with async background writer.
-func New(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64) (*Telemetry, error) {
+func New(dir string, bufferSize, queueCapacity int, flushInterval time.Duration, maxFileSize int64, strategy RotationStrategy) (*Telemetry, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
@@ -77,6 +97,7 @@ func New(dir string, bufferSize, queueCapacity int, flushInterval time.Duration,
 		maxFileSizeBytes: maxFileSize, // max file size in bytes
 		bufferSize:       bufferSize,
 		queueCap:         queueCapacity,
+		rotationStrategy: strategy,
 	}
 	t.wg.Add(1)
 	go t.writerLoop()
@@ -91,6 +112,19 @@ func (t *Telemetry) Track(name string) *Trace {
 		Start:    now,
 		lastMark: now,
 		tel:      t,
+		strategy: t.rotationStrategy, // default to telemetry's strategy
+	}
+}
+
+// TrackWithStrategy starts a new trace with specific rotation strategy.
+func (t *Telemetry) TrackWithStrategy(name string, strategy RotationStrategy) *Trace {
+	now := timeutil.Now()
+	return &Trace{
+		Name:     name,
+		Start:    now,
+		lastMark: now,
+		tel:      t,
+		strategy: strategy,
 	}
 }
 
@@ -146,24 +180,47 @@ func (t *Telemetry) writerLoop() {
 				continue
 			}
 			t.mu.Lock()
-			b := t.getBufferFor(tr.Name)
+			b := t.getBufferFor(tr.Name, tr.strategy)
 			b.Write(data)
 			b.WriteByte('\n')
 			t.mu.Unlock()
 
 		case <-ticker.C:
 			t.mu.Lock()
-			for name, b := range t.buffers {
+			for key, b := range t.buffers {
 				b.Flush()
-				f := t.files[name]
+				f := t.files[key]
 				if fi, err := f.Stat(); err == nil && fi.Size() > t.maxFileSizeBytes {
-					// truncate and recreate file when > max size
-					f.Close()
-					os.Remove(f.Name())
-					newF, _ := os.OpenFile(f.Name(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-					t.files[name] = newF
-					t.buffers[name] = bufio.NewWriterSize(newF, t.bufferSize)
-					fmt.Fprintf(os.Stderr, "telemetry: truncated %s (size exceeded %d bytes)\n", name, t.maxFileSizeBytes)
+					// extract strategy from key (format: "operation_strategy")
+					parts := strings.Split(key, "_")
+					if len(parts) < 2 {
+						continue
+					}
+					strategyStr := parts[len(parts)-1]
+					var strategy RotationStrategy
+					if strategyStr == "1" {
+						strategy = RotationStrategyPurge
+					} else {
+						strategy = RotationStrategyTruncate
+					}
+
+					switch strategy {
+					case RotationStrategyPurge:
+						// purge file completely when > max size
+						f.Close()
+						os.Remove(f.Name())
+						delete(t.files, key)
+						delete(t.buffers, key)
+						fmt.Fprintf(os.Stderr, "telemetry: purged %s (size exceeded %d bytes)\n", key, t.maxFileSizeBytes)
+					case RotationStrategyTruncate:
+						// truncate and recreate file when > max size
+						f.Close()
+						os.Remove(f.Name())
+						newF, _ := os.OpenFile(f.Name(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+						t.files[key] = newF
+						t.buffers[key] = bufio.NewWriterSize(newF, t.bufferSize)
+						fmt.Fprintf(os.Stderr, "telemetry: truncated %s (size exceeded %d bytes)\n", key, t.maxFileSizeBytes)
+					}
 				}
 			}
 			t.mu.Unlock()
@@ -183,19 +240,20 @@ func (t *Telemetry) writerLoop() {
 	}
 }
 
-func (t *Telemetry) getBufferFor(op string) *bufio.Writer {
-	if b, ok := t.buffers[op]; ok {
+func (t *Telemetry) getBufferFor(op string, strategy RotationStrategy) *bufio.Writer {
+	key := fmt.Sprintf("%s_%v", op, strategy) // unique key per operation+strategy
+	if b, ok := t.buffers[key]; ok {
 		return b
 	}
-	path := filepath.Join(t.dir, fmt.Sprintf("%s.jsonl", op))
+	path := filepath.Join(t.dir, fmt.Sprintf("%s_%v.jsonl", op, strategy))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "telemetry: failed to open %s: %v\n", path, err)
 		return bufio.NewWriter(os.Stdout)
 	}
 	b := bufio.NewWriterSize(f, t.bufferSize)
-	t.files[op] = f
-	t.buffers[op] = b
+	t.files[key] = f
+	t.buffers[key] = b
 	return b
 }
 

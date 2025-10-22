@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"progressdb/pkg/logger"
-	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -61,9 +60,6 @@ func IsNotFound(err error) bool {
 
 // lists all keys as strings for prefix; returns all if prefix empty
 func ListKeys(prefix string) ([]string, error) {
-	tr := telemetry.Track("list_keys")
-	defer tr.Finish()
-
 	if IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
@@ -98,13 +94,9 @@ func ListKeys(prefix string) ([]string, error) {
 
 // returns raw value for key as string
 func GetKey(key string) (string, error) {
-	tr := telemetry.Track("get_key")
-	defer tr.Finish()
-
 	if IndexDB == nil {
 		return "", fmt.Errorf("pebble not opened; call Open first")
 	}
-	tr.Mark("get")
 	v, closer, err := IndexDB.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {

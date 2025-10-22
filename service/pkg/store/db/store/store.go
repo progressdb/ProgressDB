@@ -100,7 +100,7 @@ func ListKeys(prefix string) ([]string, error) {
 
 // returns raw value for key as string
 func GetKey(key string) (string, error) {
-	tr := telemetry.Track("db.get_key")
+	tr := telemetry.TrackWithStrategy("db.get_key", telemetry.RotationStrategyPurge)
 	defer tr.Finish()
 
 	if Client == nil {

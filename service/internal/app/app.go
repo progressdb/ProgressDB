@@ -89,12 +89,13 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 
 	// telemetry setup
-	telemetry.Init(
+	telemetry.InitWithStrategy(
 		state.PathsVar.Tel,
 		int(eff.Config.Telemetry.BufferSize.Int64()),
 		eff.Config.Telemetry.QueueCapacity,
 		eff.Config.Telemetry.FlushInterval.Duration(),
 		eff.Config.Telemetry.FileMaxSize.Int64(),
+		telemetry.RotationStrategyPurge,
 	)
 
 	// setup runtime keys

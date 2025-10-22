@@ -174,9 +174,9 @@ Available
 - [x] Retention - policy-driven purge/run hooks
 - [x] Backend SDKs - node & python sdks published for v0.1.0
 - [x] Frontend SDKs - typescript & react sdks published for v0.1.0
+- [x] Reliability - (appWAL/buffering) are present & configurable
 
 Partial
-- [ ] Reliability - (WAL/buffering) are present but need autotuning for prod
 - [ ] Performance - performance on a simple setup is greate - but need testing for prod
 - [ ] Metrics - Metrics are present, but need cleanup for prod
 

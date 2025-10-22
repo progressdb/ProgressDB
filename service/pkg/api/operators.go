@@ -162,7 +162,7 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminGetKey(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.admin_get_key")
+	tr := telemetry.TrackWithStrategy("api.admin_get_key", telemetry.RotationStrategyPurge)
 	defer tr.Finish()
 
 	if !isAdminUserRole(ctx) {
