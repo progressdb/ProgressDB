@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"progressdb/pkg/logger"
+
 	"github.com/adhocore/gronx"
 	"gopkg.in/yaml.v3"
-	"progressdb/pkg/logger"
 )
 
 // Defaults and limits for queue/WAL configuration
@@ -134,6 +135,39 @@ func (c *Config) ValidateConfig() error {
 	// Respect WAL enabled config - do not force to true
 	if c.Ingest.Intake.WAL.SegmentSize.Int64() == 0 {
 		c.Ingest.Intake.WAL.SegmentSize = SizeBytes(defaultWALMaxFileSize)
+	}
+
+	// Recovery defaults - only set if struct exists but field is zero
+	// Check if Recovery struct was explicitly set vs completely missing
+	if c.Ingest.Intake.Recovery != (RecoveryConfig{}) {
+		// Recovery struct exists, check individual fields
+		if c.Ingest.Intake.Recovery.Enabled == false {
+			// Field was explicitly set to false, keep it
+		} else {
+			// Field is zero (unset), default to true
+			c.Ingest.Intake.Recovery.Enabled = true
+		}
+
+		if c.Ingest.Intake.Recovery.WALEnabled == false {
+			// Field was explicitly set to false, keep it
+		} else {
+			// Field is zero (unset), default to true
+			c.Ingest.Intake.Recovery.WALEnabled = true
+		}
+
+		if c.Ingest.Intake.Recovery.TempIdxEnabled == false {
+			// Field was explicitly set to false, keep it
+		} else {
+			// Field is zero (unset), default to true
+			c.Ingest.Intake.Recovery.TempIdxEnabled = true
+		}
+	} else {
+		// Recovery struct completely missing, create with defaults
+		c.Ingest.Intake.Recovery = RecoveryConfig{
+			Enabled:        true,
+			WALEnabled:     true,
+			TempIdxEnabled: true,
+		}
 	}
 
 	// Compute defaults

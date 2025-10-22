@@ -153,13 +153,7 @@ func (tr *Trace) Finish() {
 	if remaining > 0.001 { // threshold to avoid noise
 		tr.Steps = append(tr.Steps, Step{Name: "unmarked", Duration: remaining})
 	}
-
-	// Optional quick stdout feedback
-	// fmt.Printf("Trace: %s (%.2fms)\n", tr.Name, tr.TotalMS)
-	// for _, s := range tr.Steps {
-	// 	fmt.Printf("  ↳ %-25s %.2fms\n", s.Name, s.Duration)
-	// }
-
+	
 	tr.tel.traces <- tr // block if queue full
 	tr.tel = nil        // prevent re-send on multiple Finish() calls
 }

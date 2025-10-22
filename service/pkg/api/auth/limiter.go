@@ -21,6 +21,7 @@ type limiterPool struct {
 	startCleanup  sync.Once
 	ttl           time.Duration
 	cleanupPeriod time.Duration
+	stopCh        chan struct{} // Channel to signal cleanup goroutine to stop
 }
 
 // get limiter for key, create if missing; start cleanup once
@@ -32,6 +33,7 @@ func (p *limiterPool) get(key string) *rate.Limiter {
 		if p.cleanupPeriod == 0 {
 			p.cleanupPeriod = time.Minute
 		}
+		p.stopCh = make(chan struct{})
 		go p.cleanupLoop()
 	})
 
@@ -55,18 +57,31 @@ func (p *limiterPool) Allow(key string) bool {
 	return p.get(key).Allow()
 }
 
+// Shutdown gracefully stops the cleanup goroutine.
+func (p *limiterPool) Shutdown() {
+	if p.stopCh != nil {
+		close(p.stopCh)
+	}
+}
+
 // cleanupLoop removes limiters unused > TTL.
 func (p *limiterPool) cleanupLoop() {
 	ticker := time.NewTicker(p.cleanupPeriod)
 	defer ticker.Stop()
-	for range ticker.C {
-		cutoff := timeutil.Now().Add(-p.ttl)
-		p.mu.Lock()
-		for k, e := range p.m {
-			if e.lastSeen.Before(cutoff) {
-				delete(p.m, k)
+
+	for {
+		select {
+		case <-ticker.C:
+			cutoff := timeutil.Now().Add(-p.ttl)
+			p.mu.Lock()
+			for k, e := range p.m {
+				if e.lastSeen.Before(cutoff) {
+					delete(p.m, k)
+				}
 			}
+			p.mu.Unlock()
+		case <-p.stopCh:
+			return // Exit gracefully when stop signal received
 		}
-		p.mu.Unlock()
 	}
 }

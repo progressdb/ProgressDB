@@ -27,13 +27,17 @@ func (q *IngestQueue) Enqueue(op *QueueOp) error {
 
 // internal enqueue function
 func (q *IngestQueue) enqueue(op *QueueOp) error {
+	// Acquire enqueue lock to atomically check closed state and increment WaitGroup
+	q.enqMu.Lock()
 	if atomic.LoadInt32(&q.closed) == 1 {
+		q.enqMu.Unlock()
 		return ErrQueueClosed
 	}
-
 	q.enqWg.Add(1)
+	q.enqMu.Unlock()
 	defer q.enqWg.Done()
 
+	// Final check after acquiring the enqueue slot
 	if atomic.LoadInt32(&q.closed) == 1 {
 		return ErrQueueClosed
 	}

@@ -129,6 +129,10 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"INTAKE_SHUTDOWN_POLL_INTERVAL": os.Getenv("PROGRESSDB_INTAKE_SHUTDOWN_POLL_INTERVAL"),
 		"INTAKE_WAL_ENABLED":            os.Getenv("PROGRESSDB_INTAKE_WAL_ENABLED"),
 		"INTAKE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_INTAKE_WAL_SEGMENT_SIZE"),
+		// recovery
+		"INTAKE_RECOVERY_ENABLED":          os.Getenv("PROGRESSDB_INTAKE_RECOVERY_ENABLED"),
+		"INTAKE_RECOVERY_WAL_ENABLED":      os.Getenv("PROGRESSDB_INTAKE_RECOVERY_WAL_ENABLED"),
+		"INTAKE_RECOVERY_TEMP_IDX_ENABLED": os.Getenv("PROGRESSDB_INTAKE_RECOVERY_TEMP_IDX_ENABLED"),
 		// compute
 		"COMPUTE_WORKER_COUNT":    os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
 		"COMPUTE_BUFFER_CAPACITY": os.Getenv("PROGRESSDB_COMPUTE_BUFFER_CAPACITY"),
@@ -404,6 +408,16 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 	if v := envs["INTAKE_WAL_SEGMENT_SIZE"]; v != "" {
 		envCfg.Ingest.Intake.WAL.SegmentSize = parseSizeBytes(v)
+	}
+	// recovery env overrides
+	if v := envs["INTAKE_RECOVERY_ENABLED"]; v != "" {
+		envCfg.Ingest.Intake.Recovery.Enabled = parseBool(v, true)
+	}
+	if v := envs["INTAKE_RECOVERY_WAL_ENABLED"]; v != "" {
+		envCfg.Ingest.Intake.Recovery.WALEnabled = parseBool(v, true)
+	}
+	if v := envs["INTAKE_RECOVERY_TEMP_IDX_ENABLED"]; v != "" {
+		envCfg.Ingest.Intake.Recovery.TempIdxEnabled = parseBool(v, true)
 	}
 	if v := envs["COMPUTE_WORKER_COUNT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {

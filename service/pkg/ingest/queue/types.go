@@ -66,6 +66,7 @@ type IngestQueue struct {
 	enqWg     sync.WaitGroup
 	closeOnce sync.Once
 	inFlight  int64
+	enqMu     sync.Mutex // protects enqueue operations
 
 	wal       WAL
 	walBacked bool

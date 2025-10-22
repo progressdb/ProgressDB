@@ -138,6 +138,17 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	logger.Info("index_opened", "path", state.PathsVar.Index)
 
+	// initialize recovery system (will run after queue is created)
+	recoveryConfig := a.eff.Config.Ingest.Recovery
+	ingest.InitGlobalRecovery(
+		nil, // queue will be set after queue initialization
+		storedb.Client,
+		index.IndexDB,
+		recoveryConfig.Enabled,
+		recoveryConfig.WALEnabled && appWALEnabled,
+		recoveryConfig.TempIdxEnabled,
+	)
+
 	// start retention scheduler if enabled
 	retention.SetEffectiveConfig(a.eff)
 	if cancel, err := retention.Start(ctx, a.eff); err != nil {
@@ -150,6 +161,18 @@ func (a *App) Run(ctx context.Context) error {
 	if err := queue.InitGlobalIngestQueue(a.eff.Config.Ingest.Intake, a.eff.DBPath); err != nil {
 		return fmt.Errorf("failed to init queue: %w", err)
 	}
+
+	// set queue for recovery system
+	ingest.SetRecoveryQueue(queue.GlobalIngestQueue)
+
+	// run crash recovery before starting ingestor
+	recoveryStats := ingest.RunGlobalRecovery()
+	if recoveryStats.WALErrors > 0 || recoveryStats.TempIndexErrors > 0 {
+		logger.Warn("recovery_completed_with_errors",
+			"wal_errors", recoveryStats.WALErrors,
+			"temp_index_errors", recoveryStats.TempIndexErrors)
+	}
+
 	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply)
 	ingestor.Start()
 	a.ingestIngestor = ingestor

@@ -9,51 +9,30 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// ErrCorrupt is returns when log is corrupt.
-var ErrCorrupt = fmt.Errorf("wal corrupt")
+var (
+	ErrCorrupt    = fmt.Errorf("wal corrupt")
+	ErrClosed     = fmt.Errorf("wal closed")
+	ErrNotFound   = fmt.Errorf("not found")
+	ErrOutOfOrder = fmt.Errorf("out of order")
+	ErrOutOfRange = fmt.Errorf("out of range")
+	ErrEmptyLog   = fmt.Errorf("empty log")
+)
 
-// ErrClosed is returned when an operation cannot be completed because
-// log is closed.
-var ErrClosed = fmt.Errorf("wal closed")
-
-// ErrNotFound is returned when an entry is not found.
-var ErrNotFound = fmt.Errorf("not found")
-
-// ErrOutOfOrder is returned from Write() when index is not equal to
-// LastIndex()+1. It's required that log monotonically grows by one and has
-// no gaps. Thus, series 10,11,12,13,14 is valid, but 10,11,13,14 is
-// not because there's a gap between 11 and 13. Also, 10,12,11,13 is not
-// valid because 12 and 11 are out of order.
-var ErrOutOfOrder = fmt.Errorf("out of order")
-
-// ErrOutOfRange is returned from TruncateFront() and TruncateBack() when
-// index not in range of the log's first and last index. Or, this
-// may be returned when caller is attempting to remove *all* entries;
-// The log requires that at least one entry exists following a truncate.
-var ErrOutOfRange = fmt.Errorf("out of range")
-
-// ErrEmptyLog is returned by Open() when log has been emptied.
-var ErrEmptyLog = fmt.Errorf("empty log")
-
-// Options for Log
+// Options for WAL Log behavior.
 type Options struct {
-	// NoSync disables fsync after writes. This is less durable and puts the
-	// log at risk of data loss when there's a server crash.
+	// NoSync disables fsync after writes (unsafe, less durable).
 	NoSync bool
-	// SegmentSize of each segment. This is just a target value, actual size
-	// may differ. Default 20 MB (kept for compatibility)
+	// SegmentSize target segment size (default 20 MB; kept for compatibility).
 	SegmentSize int
-	// LogFormat is the format of log files. Kept for compatibility.
+	// LogFormat format for log files (compatibility).
 	LogFormat int
-	// SegmentCacheSize is the maximum number of segments that will be held in
-	// memory for caching. Kept for compatibility.
+	// SegmentCacheSize max segments cached in memory (compatibility).
 	SegmentCacheSize int
-	// NoCopy allows for Read() operation to return raw underlying data
-	// slice. Kept for compatibility.
+	// NoCopy returns raw data slice in Read (compatibility).
 	NoCopy bool
-	// AllowEmpty allows for a log to have all entries removed. Kept for compatibility.
+	// AllowEmpty permits truncating all entries (compatibility).
 	AllowEmpty bool
-	// Perms represents datafiles modes and permission bits. Kept for compatibility.
+	// DirPerms and FilePerms set directory/file permissions (compatibility).
 	DirPerms  int
 	FilePerms int
 }
@@ -192,6 +171,7 @@ func (l *Log) getNextSequence() (uint64, error) {
 	// Increment and persist
 	nextSeq++
 	batch := l.db.NewBatch()
+	defer batch.Close()
 	batch.Set([]byte("meta:next_sequence"), []byte(fmt.Sprintf("%d", nextSeq)), l.writeOpts())
 
 	if err := l.db.Apply(batch, l.writeOpts()); err != nil {
@@ -274,7 +254,7 @@ func (l *Log) LastIndex() (uint64, error) {
 		return 0, ErrClosed
 	}
 
-	// Scan for the last entry
+	// Scan for the last entry efficiently by starting from the end
 	iter, err := l.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte("00000000000000000000"), // Minimum possible key
 		UpperBound: []byte("99999999999999999999"), // Maximum possible key
@@ -285,12 +265,14 @@ func (l *Log) LastIndex() (uint64, error) {
 	defer iter.Close()
 
 	var lastSeq uint64
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) == 20 { // Ensure it's an operation key
-			if seq, err := strconv.ParseUint(string(key), 10, 64); err == nil {
-				if seq > lastSeq {
+	// Start from the last key and work backwards for efficiency
+	if iter.Last() {
+		for ; iter.Valid(); iter.Prev() {
+			key := iter.Key()
+			if len(key) == 20 { // Ensure it's an operation key
+				if seq, err := strconv.ParseUint(string(key), 10, 64); err == nil {
 					lastSeq = seq
+					break // Found the highest sequence, no need to continue
 				}
 			}
 		}

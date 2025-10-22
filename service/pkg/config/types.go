@@ -93,9 +93,10 @@ type IngestConfig struct {
 
 // IntakeConfig controls enqueue buffering and persistence.
 type IntakeConfig struct {
-	QueueCapacity        int       `yaml:"queue_capacity"`
-	ShutdownPollInterval Duration  `yaml:"shutdown_poll_interval"`
-	WAL                  WALConfig `yaml:"wal"`
+	QueueCapacity        int            `yaml:"queue_capacity"`
+	ShutdownPollInterval Duration       `yaml:"shutdown_poll_interval"`
+	WAL                  WALConfig      `yaml:"wal"`
+	Recovery             RecoveryConfig `yaml:"recovery"`
 }
 
 // ComputeConfig controls worker concurrency for mutation processing.
@@ -122,6 +123,13 @@ type QueueConfig struct {
 type WALConfig struct {
 	Enabled     bool      `yaml:"enabled"`
 	SegmentSize SizeBytes `yaml:"segment_size"`
+}
+
+// RecoveryConfig controls crash recovery behavior.
+type RecoveryConfig struct {
+	Enabled        bool `yaml:"enabled"`
+	WALEnabled     bool `yaml:"wal_enabled"`
+	TempIdxEnabled bool `yaml:"temp_index_enabled"`
 }
 
 // SizeBytes represents a number of bytes, unmarshaled from human-friendly strings like "64MB" or plain integers.
