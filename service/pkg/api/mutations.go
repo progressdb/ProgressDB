@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 
-	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
@@ -44,9 +43,9 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -79,9 +78,9 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	payload := append([]byte(nil), ctx.PostBody()...)
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -111,9 +110,9 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -151,9 +150,9 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -188,9 +187,9 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	payload := append([]byte(nil), ctx.PostBody()...)
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -221,9 +220,9 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	payload := []byte(fmt.Sprintf(`{"id":"%s"}`, id))
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -256,9 +255,9 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	payload := append([]byte(nil), ctx.PostBody()...)
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 
@@ -291,9 +290,9 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 	payload := []byte(fmt.Sprintf(`{"remove_reaction_for":"%s"}`, identity))
 
 	// Resolve author
-	author, code, msg := auth.ResolveAuthorFromRequestFast(ctx, "")
-	if code != 0 {
-		router.WriteJSONError(ctx, code, msg)
+	author, authErr := ValidateAuthor(ctx, "")
+	if authErr != nil {
+		WriteValidationError(ctx, authErr)
 		return
 	}
 

@@ -5,19 +5,14 @@ ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT_DIR"
 
 # defaults
-# DEFAULT_TARGET="http://192.168.0.132:8080"
 DEFAULT_TARGET="http://localhost:8080"
 DEFAULT_USER_ID="user1"
 DEFAULT_BACKEND_API_KEY="sk_example"
 DEFAULT_FRONTEND_API_KEY="pk_example"
-DEFAULT_THREAD_ID="user1"
 
-# prompt for mode
-read -r -p "Mode (create/create-thread/get-threads/retrieve) [create-thread]: " MODE
-MODE=${MODE:-create-thread}
-if [[ "$MODE" != "create" && "$MODE" != "retrieve" && "$MODE" != "create-thread" && "$MODE" != "get-threads" ]]; then
-  echo "Invalid mode: $MODE"; exit 2
-fi
+echo "=== Get Threads Benchmark ==="
+echo "This benchmark retrieves threads"
+echo ""
 
 # prompt for target url
 read -r -p "Host endpoint [${DEFAULT_TARGET}]: " TARGET_URL
@@ -38,10 +33,6 @@ export FRONTEND_API_KEY
 read -r -p "USER_ID [${DEFAULT_USER_ID}]: " USER_ID
 USER_ID=${USER_ID:-$DEFAULT_USER_ID}
 export USER_ID
-
-# Use thread-scoped endpoints (messages are under threads)
-CREATE_PATH="/v1/threads"
-RETRIEVE_PATH="/v1/threads"
 
 # get user signature
 echo "Requesting signature for user '$USER_ID'"
@@ -65,21 +56,10 @@ export TEST_ARTIFACTS_ROOT="$ARTIFACT_ROOT"
 # run k6 and save output beneath perf artifacts
 ART_DIR="$ARTIFACT_ROOT/perf/k6"
 mkdir -p "$ART_DIR"
-TEST_ID="bench-$(date +%Y%m%d%H%M%S)"
+TEST_ID="get-threads-$(date +%Y%m%d%H%M%S)"
 OUT_JSON="$ART_DIR/${TEST_ID}.json"
 
-if [[ "$MODE" == "create" ]]; then
-  echo "Running create k6"
-  k6 run --out json=$OUT_JSON service/tests/benching/k6/create.js
-elif [[ "$MODE" == "create-thread" ]]; then
-  echo "Running create-thread k6"
-  k6 run --out json=$OUT_JSON service/tests/benching/k6/create-thread.js
-elif [[ "$MODE" == "get-threads" ]]; then
-  echo "Running get-threads k6"
-  k6 run --out json=$OUT_JSON service/tests/benching/k6/get-threads.js
-else
-  echo "Running retrieve k6"
-  k6 run --out json=$OUT_JSON service/tests/benching/k6/retrieve.js
-fi
+echo "Running get-threads benchmark..."
+k6 run --out json=$OUT_JSON service/tests/benching/k6/get-threads.js
 
 echo "Output: $OUT_JSON"
