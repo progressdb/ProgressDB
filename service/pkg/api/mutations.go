@@ -50,14 +50,17 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	}
 
 	id := keys.GenThreadID()
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerThreadCreate, Thread: id, ID: "", Payload: payload, TS: timeutil.Now().UnixNano(), Extras: extras}); err != nil {
+	metadata := NewRequestMetadata(ctx, author)
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerThreadCreate,
+		Thread:  id,
+		ID:      "",
+		Payload: payload,
+		TS:      timeutil.Now().UnixNano(),
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -84,14 +87,16 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerThreadUpdate, Thread: id, ID: "", Payload: payload, TS: timeutil.Now().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerThreadUpdate,
+		Thread:  id,
+		ID:      "",
+		Payload: payload,
+		TS:      timeutil.Now().UnixNano(),
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -116,14 +121,17 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerThreadDelete, Thread: id, ID: "", Payload: payload, TS: timeutil.Now().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerThreadDelete,
+		Thread:  id,
+		ID:      "",
+		Payload: payload,
+		TS:      timeutil.Now().UnixNano(),
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -158,14 +166,17 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 
 	id := keys.GenMessageID()
 	ts := timeutil.Now().UnixNano()
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerMessageCreate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerMessageCreate,
+		Thread:  threadID,
+		ID:      id,
+		Payload: payload,
+		TS:      ts,
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -194,14 +205,17 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	ts := timeutil.Now().UnixNano()
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerMessageUpdate, Thread: threadID, ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerMessageUpdate,
+		Thread:  threadID,
+		ID:      id,
+		Payload: payload,
+		TS:      ts,
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -226,14 +240,17 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerMessageDelete, Thread: "", ID: id, Payload: payload, TS: timeutil.Now().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerMessageDelete,
+		Thread:  "",
+		ID:      id,
+		Payload: payload,
+		TS:      timeutil.Now().UnixNano(),
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -254,6 +271,12 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	// Body should contain {"reaction":"👍","identity":"u1"} or similar.
 	payload := append([]byte(nil), ctx.PostBody()...)
 
+	// Validate request
+	if err := router.ValidateReactionRequest(ctx); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
 	// Resolve author
 	author, authErr := ValidateAuthor(ctx, "")
 	if authErr != nil {
@@ -262,14 +285,17 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	ts := timeutil.Now().UnixNano()
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerReactionAdd, Thread: "", ID: id, Payload: payload, TS: ts, Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerReactionAdd,
+		Thread:  "",
+		ID:      id,
+		Payload: payload,
+		TS:      ts,
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
@@ -296,14 +322,17 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	extras := map[string]string{
-		"role":    string(ctx.Request.Header.Peek("X-Role-Name")),
-		"user_id": author,
-		"reqid":   string(ctx.Request.Header.Peek("X-Request-Id")),
-		"remote":  ctx.RemoteAddr().String(),
-	}
+	metadata := NewRequestMetadata(ctx, author)
+
 	tr.Mark("enqueue")
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{Handler: queue.HandlerReactionDelete, Thread: "", ID: id, Payload: payload, TS: timeutil.Now().UnixNano(), Extras: extras}); err != nil {
+	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
+		Handler: queue.HandlerReactionDelete,
+		Thread:  "",
+		ID:      id,
+		Payload: payload,
+		TS:      timeutil.Now().UnixNano(),
+		Extras:  metadata.ToQueueExtras(),
+	}); err != nil {
 		handleQueueError(ctx, err)
 		return
 	}
