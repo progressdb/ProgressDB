@@ -7,7 +7,7 @@ visibility: public
 
 # System Architecture Overview
 
-ProgressDB is built as a **high-performance, append-only database service**, purpose-designed for chat and timeline data. Its architecture emphasizes predictable performance, data integrity, and developer-friendly APIs.
+ProgressDB is built as a **high-performance, append-only database service**, purpose-designed for chat data. Its architecture emphasizes predictable performance, data integrity, and developer-friendly APIs.
 
 ---
 
@@ -34,7 +34,7 @@ The core logic is organized as a **pipeline of distinct, composable stages**:
 3. **Batching**: Incoming events are grouped (batched) both per logical scope (e.g., thread, conversation) and for optimal write throughput.
    - Configurable batch size and timeout for fine-grained performance/durability tuning.
 4. **Application Layer**: Applies batched operations to the underlying storage engine, appending new events.
-5. **Durability/Sync**: Data is committed. If **WAL (Write-Ahead Logging)** is enabled, batch state is mirrored for full durability and crash recovery.
+5. **Durability/Sync**: Data is committed. If **App WAL** is enabled, batch state is mirrored for full durability and crash recovery.
 6. **Ack/Respond**: Once fully applied, the service acknowledges completion with a JSON response.
 
 ---

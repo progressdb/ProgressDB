@@ -16,8 +16,6 @@ import (
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/telemetry"
 
-	"github.com/dustin/go-humanize"
-
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
@@ -64,28 +62,9 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
-	// warn if WAL is disabled and summarize potential data loss window
+	// warn if WAL is disabled
 	if !appWALenabled {
-		// With fsync after each batch, loss window is minimal
-		queueCapacity := eff.Config.Ingest.Intake.QueueCapacity
-		procWorkers := eff.Config.Ingest.Compute.WorkerCount
-		procBatch := eff.Config.Ingest.Apply.BatchCount
-		messagesAtRisk := queueCapacity + procWorkers*procBatch
-
-		lossWindowHuman := "minimal (fsync per batch)"
-		processorFlushHuman := "immediate"
-		queueCapacityHuman := humanize.Comma(int64(queueCapacity))
-		messagesAtRiskHuman := humanize.Comma(int64(messagesAtRisk))
-
-		summaryItems := []string{
-			fmt.Sprintf("loss_window: %s", lossWindowHuman),
-			fmt.Sprintf("processor_flush: %s", processorFlushHuman),
-			fmt.Sprintf("queue_capacity: %s", queueCapacityHuman),
-			fmt.Sprintf("processor_workers: %d", procWorkers),
-			fmt.Sprintf("processor_max_batch_msgs: %s", humanize.Comma(int64(procBatch))),
-			fmt.Sprintf("messages_at_risk: %s", messagesAtRiskHuman),
-		}
-		logger.LogConfigSummary("config_durability_summary", summaryItems)
+		logger.Warn("wal_disabled_data_risk", "message", "WAL is disabled - potential data loss during crash")
 	}
 
 	// telemetry setup

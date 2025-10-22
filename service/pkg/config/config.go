@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"time"
 
 	"progressdb/pkg/logger"
 
@@ -14,43 +13,43 @@ import (
 )
 
 // Defaults and limits for queue/WAL configuration
-const (
-	defaultQueueCapacity    = 4 * 1024 * 1024        // 4M for higher buffer
-	defaultWALMaxFileSize   = 2 * 1024 * 1024 * 1024 // 2 GiB
-	defaultWALBatchInterval = 10 * time.Millisecond
-	defaultWALBatchSize     = 4096
-	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
-	minWALBatchInterval     = 1 * time.Millisecond
-	defaultCompressMinBytes = 512
-	// Ingest/ingestor defaults
-	defaultIngestorWorkerCount          = 48
-	defaultIngestorApplyQueueBufferSize = 100
-	defaultIngestorMaxBatchSize         = 10000
-	defaultIngestorFlushIntervalMs      = 1
+// const (
+// 	defaultQueueCapacity    = 4 * 1024 * 1024        // 4M for higher buffer
+// 	defaultWALMaxFileSize   = 2 * 1024 * 1024 * 1024 // 2 GiB
+// 	defaultWALBatchInterval = 10 * time.Millisecond
+// 	defaultWALBatchSize     = 4096
+// 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
+// 	minWALBatchInterval     = 1 * time.Millisecond
+// 	defaultCompressMinBytes = 512
+// 	// Ingest/ingestor defaults
+// 	defaultIngestorWorkerCount          = 48
+// 	defaultIngestorApplyQueueBufferSize = 100
+// 	defaultIngestorMaxBatchSize         = 10000
+// 	defaultIngestorFlushIntervalMs      = 1
 
-	// Queue defaults
-	defaultQueueBatchSize        = 131072
-	defaultDrainPollInterval     = 250 * time.Microsecond
-	defaultMaxPooledBufferBytes  = 3 * 1024 * 1024 * 1024 // 3 GiB
-	defaultQueueTruncateInterval = 60 * time.Second
-	// Retention defaults
-	defaultRetentionLockTTL = 300 * time.Second
-	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
-	// telemetry defaults
-	defaultTelemetrySampleRate    = 0.001
-	defaultTelemetrySlowMs        = 200
-	defaultTelemetryBufferSize    = 60 * 1024 * 1024 // 60MB
-	defaultTelemetryFileMaxSize   = 40 * 1024 * 1024 // 40MB
-	defaultTelemetryFlushMs       = 2000             // 2 seconds
-	defaultTelemetryQueueCapacity = 2048
-	// sensor defaults
-	defaultSensorPollInterval   = 500 * time.Millisecond
-	defaultSensorDiskHighPct    = 80
-	defaultSensorDiskLowPct     = 60
-	defaultSensorMemHighPct     = 80
-	defaultSensorCPUHighPct     = 90
-	defaultSensorRecoveryWindow = 5 * time.Second
-)
+// 	// Queue defaults
+// 	defaultQueueBatchSize        = 131072
+// 	defaultDrainPollInterval     = 250 * time.Microsecond
+// 	defaultMaxPooledBufferBytes  = 3 * 1024 * 1024 * 1024 // 3 GiB
+// 	defaultQueueTruncateInterval = 60 * time.Second
+// 	// Retention defaults
+// 	defaultRetentionLockTTL = 300 * time.Second
+// 	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
+// 	// telemetry defaults
+// 	defaultTelemetrySampleRate    = 0.001
+// 	defaultTelemetrySlowMs        = 200
+// 	defaultTelemetryBufferSize    = 60 * 1024 * 1024 // 60MB
+// 	defaultTelemetryFileMaxSize   = 40 * 1024 * 1024 // 40MB
+// 	defaultTelemetryFlushMs       = 2000             // 2 seconds
+// 	defaultTelemetryQueueCapacity = 2048
+// 	// sensor defaults
+// 	defaultSensorPollInterval   = 500 * time.Millisecond
+// 	defaultSensorDiskHighPct    = 80
+// 	defaultSensorDiskLowPct     = 60
+// 	defaultSensorMemHighPct     = 80
+// 	defaultSensorCPUHighPct     = 90
+// 	defaultSensorRecoveryWindow = 5 * time.Second
+// )
 
 var (
 	runtimeMu  sync.RWMutex
@@ -122,12 +121,9 @@ func LoadConfigFile(path string) (*Config, error) {
 }
 
 // Validate validates values in the config and applies any runtime-specific logic.
-// Most defaults are now handled via struct tags using goccy/go-yaml.
-// This method mainly handles validation and runtime-specific adjustments.
 func (c *Config) ValidateConfig() error {
-	// Compute validation and CPU capping (still needed as this is runtime logic)
 	numCPU := runtime.NumCPU()
-	// runtime.GOMAXPROCS(numCPU) // Commented out to test effect of CPU pinning
+	runtime.GOMAXPROCS(numCPU)
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
 	cc := &c.Ingest.Compute
 	if cc.WorkerCount > numCPU {
@@ -139,9 +135,6 @@ func (c *Config) ValidateConfig() error {
 	if !gronx.IsValid(c.Retention.Cron) {
 		return fmt.Errorf("invalid retention cron expression: %s", c.Retention.Cron)
 	}
-
-	// Note: Most defaults are now handled by struct tags.
-	// The goccy/go-yaml library will automatically apply defaults for zero values.
 
 	return nil
 }

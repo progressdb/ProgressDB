@@ -6,7 +6,9 @@ import (
 	"crypto/cipher"
 	crand "crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -19,6 +21,168 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// validateKeyStrength performs additional validation on master key strength
+func validateKeyStrength(key []byte) error {
+	if len(key) != 32 {
+		return errors.New("master key must be exactly 32 bytes (256 bits)")
+	}
+
+	// Check for common weak patterns
+	if isWeakKeyPattern(key) {
+		return errors.New("master key contains weak or predictable patterns")
+	}
+
+	// Basic entropy check - ensure key is not too repetitive
+	uniqueBytes := make(map[byte]bool)
+	for _, b := range key {
+		uniqueBytes[b] = true
+	}
+
+	// At least 16 unique bytes out of 32 (50% uniqueness)
+	if len(uniqueBytes) < 16 {
+		return errors.New("master key has insufficient uniqueness")
+	}
+
+	return nil
+}
+
+// isWeakKeyPattern checks for common weak key patterns
+func isWeakKeyPattern(key []byte) bool {
+	// Check for all zeros
+	allZeros := true
+	for _, b := range key {
+		if b != 0 {
+			allZeros = false
+			break
+		}
+	}
+	if allZeros {
+		return true
+	}
+
+	// Check for all 0xFF
+	allOnes := true
+	for _, b := range key {
+		if b != 0xFF {
+			allOnes = false
+			break
+		}
+	}
+	if allOnes {
+		return true
+	}
+
+	// Check for repeated single byte
+	if len(key) > 1 {
+		first := key[0]
+		allSame := true
+		for _, b := range key {
+			if b != first {
+				allSame = false
+				break
+			}
+		}
+		if allSame {
+			return true
+		}
+	}
+
+	// Check for sequential patterns (0x00, 0x01, 0x02, ...)
+	sequential := true
+	for i := 1; i < len(key); i++ {
+		if key[i] != key[i-1]+1 {
+			sequential = false
+			break
+		}
+	}
+	if sequential {
+		return true
+	}
+
+	// Check for alternating patterns
+	alternating := true
+	for i := 2; i < len(key); i++ {
+		if key[i] != key[i-2] {
+			alternating = false
+			break
+		}
+	}
+	if alternating {
+		return true
+	}
+
+	return false
+}
+
+// validateConfigPath performs basic validation on the config file path
+func validateConfigPath(cfgPath string) error {
+	if cfgPath == "" {
+		return errors.New("config path cannot be empty")
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		return fmt.Errorf("config file does not exist: %s", cfgPath)
+	}
+
+	// Check file permissions (should not be world-readable)
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		return fmt.Errorf("cannot stat config file: %w", err)
+	}
+
+	// Check if others have read permission
+	if info.Mode().Perm()&0004 != 0 {
+		log.Printf("WARNING: Config file %s is world-readable. Consider restricting permissions.", cfgPath)
+	}
+
+	return nil
+}
+
+// loadMasterKeyFromConfig loads and validates master key from YAML config
+func loadMasterKeyFromConfig(cfgPath string) (string, error) {
+	// Validate config file path and permissions
+	if err := validateConfigPath(cfgPath); err != nil {
+		return "", err
+	}
+
+	b, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config struct {
+		MasterKeyHex string `yaml:"master_key_hex"`
+		MasterKey    string `yaml:"master_key"`
+	}
+
+	if err := yaml.Unmarshal(b, &config); err != nil {
+		return "", fmt.Errorf("failed to parse config YAML: %w", err)
+	}
+
+	masterKey := config.MasterKeyHex
+	if masterKey == "" {
+		masterKey = config.MasterKey
+	}
+
+	if masterKey == "" {
+		return "", errors.New("no master_key or master_key_hex found in config")
+	}
+
+	// Validate hex format
+	keyBytes, err := hex.DecodeString(masterKey)
+	if err != nil {
+		return "", fmt.Errorf("master key is not valid hex: %w", err)
+	}
+
+	// Additional key strength validation
+	if err := validateKeyStrength(keyBytes); err != nil {
+		return "", fmt.Errorf("master key failed strength validation: %w", err)
+	}
+
+	return masterKey, nil
+}
+
 func main() {
 	var (
 		endpoint = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
@@ -30,14 +194,11 @@ func main() {
 	// load config if provided
 	var masterHex string
 	if *cfgPath != "" {
-		if b, errCfg := os.ReadFile(*cfgPath); errCfg == nil {
-			var m map[string]string
-			_ = yaml.Unmarshal(b, &m)
-			masterHex = m["master_key_hex"]
-			if masterHex == "" {
-				masterHex = m["master_key"]
-			}
+		loadedKey, err := loadMasterKeyFromConfig(*cfgPath)
+		if err != nil {
+			log.Fatalf("failed to load master key from config %s: %v", *cfgPath, err)
 		}
+		masterHex = loadedKey
 	}
 
 	var provider kmss.KMSProvider
@@ -49,7 +210,7 @@ func main() {
 		provider = p
 	}
 
-	st, errStore := storedb.New(*dataDir + "/kms.db")
+	st, errStore := store.New(*dataDir + "/kms.db")
 	if errStore != nil {
 		log.Fatalf("failed to open store: %v", errStore)
 	}
@@ -137,7 +298,7 @@ func decryptWithRaw(dek []byte, b64 string) ([]byte, error) {
 }
 
 // HTTP handlers (return handler funcs so we can capture dependencies)
-func createDEKHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
+func createDEKHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "no provider configured", http.StatusInternalServerError)
@@ -164,7 +325,7 @@ func createDEKHandler(provider kmss.KMSProvider, st *storedb.Store) http.Handler
 	}
 }
 
-func getWrappedHandler(st *storedb.Store) http.HandlerFunc {
+func getWrappedHandler(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		keyID := r.URL.Query().Get("key_id")
 		if keyID == "" {
@@ -184,7 +345,7 @@ func getWrappedHandler(st *storedb.Store) http.HandlerFunc {
 	}
 }
 
-func encryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
+func encryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID     string `json:"key_id"`
@@ -228,7 +389,7 @@ func encryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFu
 	}
 }
 
-func decryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
+func decryptHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID      string `json:"key_id"`
@@ -269,7 +430,7 @@ func decryptHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFu
 	}
 }
 
-func rewrapHandler(provider kmss.KMSProvider, st *storedb.Store) http.HandlerFunc {
+func rewrapHandler(provider kmss.KMSProvider, st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			KeyID     string `json:"key_id"`

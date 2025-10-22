@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"runtime"
 	"sync"
 	"time"
 
@@ -22,21 +24,168 @@ type hashicorpProvider struct {
 	w   *aead.Wrapper
 	mu  sync.RWMutex
 	// wrapped maps dekID -> wrapped blob
-	wrapped map[string][]byte
+	wrapped map[string]*secureBytes
+}
+
+// validateKeyEntropy checks if a key has sufficient entropy for cryptographic use
+func validateKeyEntropy(key []byte) error {
+	if len(key) != 32 {
+		return errors.New("key must be exactly 32 bytes")
+	}
+
+	// Calculate Shannon entropy
+	freq := make(map[byte]int)
+	for _, b := range key {
+		freq[b]++
+	}
+
+	var entropy float64
+	for _, count := range freq {
+		if count > 0 {
+			p := float64(count) / float64(len(key))
+			entropy -= p * math.Log2(p)
+		}
+	}
+
+	// Minimum entropy threshold (7.0 bits per byte for 32-byte key)
+	// This ensures the key is not predictable or repetitive
+	if entropy < 7.0 {
+		return fmt.Errorf("insufficient key entropy: %.2f < 7.0", entropy)
+	}
+
+	// Check for common weak patterns
+	if isWeakPattern(key) {
+		return errors.New("key contains weak or predictable patterns")
+	}
+
+	return nil
+}
+
+// isWeakPattern checks for common weak key patterns
+func isWeakPattern(key []byte) bool {
+	// Check for all zeros
+	allZeros := true
+	for _, b := range key {
+		if b != 0 {
+			allZeros = false
+			break
+		}
+	}
+	if allZeros {
+		return true
+	}
+
+	// Check for repeated bytes
+	if len(key) > 1 {
+		first := key[0]
+		allSame := true
+		for _, b := range key {
+			if b != first {
+				allSame = false
+				break
+			}
+		}
+		if allSame {
+			return true
+		}
+	}
+
+	// Check for sequential patterns
+	sequential := true
+	for i := 1; i < len(key); i++ {
+		if key[i] != key[i-1]+1 {
+			sequential = false
+			break
+		}
+	}
+	if sequential {
+		return true
+	}
+
+	// Check for reverse sequential patterns
+	reverseSequential := true
+	for i := 1; i < len(key); i++ {
+		if key[i] != key[i-1]-1 {
+			reverseSequential = false
+			break
+		}
+	}
+	if reverseSequential {
+		return true
+	}
+
+	return false
+}
+
+// secureBytes holds sensitive data with secure clearing
+type secureBytes struct {
+	data []byte
+}
+
+func newSecureBytes(data []byte) *secureBytes {
+	sb := &secureBytes{data: make([]byte, len(data))}
+	copy(sb.data, data)
+	return sb
+}
+
+func (sb *secureBytes) Data() []byte {
+	if sb == nil {
+		return nil
+	}
+	return sb.data
+}
+
+func (sb *secureBytes) Clear() {
+	if sb == nil || sb.data == nil {
+		return
+	}
+
+	// Overwrite the memory multiple times
+	for i := 0; i < 3; i++ {
+		for j := range sb.data {
+			sb.data[j] = 0
+		}
+	}
+
+	// Try to prevent compiler optimizations
+	runtime.KeepAlive(sb.data)
+
+	sb.data = nil
+}
+
+// secureWipe attempts to wipe sensitive data from memory
+func secureWipe(data []byte) {
+	if data == nil {
+		return
+	}
+
+	// Overwrite with random data, then zeros
+	for i := 0; i < 2; i++ {
+		crand.Read(data)
+	}
+
+	for i := range data {
+		data[i] = 0
+	}
+
+	// Try to prevent compiler optimizations
+	runtime.KeepAlive(data)
 }
 
 // NewHashicorpProvider creates a provider backed by the aead wrapper using a raw 32-byte key (not hex).
 func NewHashicorpProviderFromRaw(ctx context.Context, key []byte) (KMSProvider, error) {
-	if len(key) != 32 {
-		return nil, errors.New("invalid key length")
+	// Validate key entropy and strength
+	if err := validateKeyEntropy(key); err != nil {
+		return nil, fmt.Errorf("weak master key: %w", err)
 	}
+
 	w := aead.NewWrapper()
 	// configure with raw key via WithConfigMap
 	cfg := map[string]string{"key": base64.StdEncoding.EncodeToString(key), "key_id": "local"}
 	if _, err := w.SetConfig(ctx, wrapping.WithConfigMap(cfg)); err != nil {
 		return nil, fmt.Errorf("wrapper setconfig failed: %w", err)
 	}
-	return &hashicorpProvider{ctx: ctx, w: w, wrapped: make(map[string][]byte)}, nil
+	return &hashicorpProvider{ctx: ctx, w: w, wrapped: make(map[string]*secureBytes)}, nil
 }
 
 func (h *hashicorpProvider) Enabled() bool {
@@ -78,9 +227,13 @@ func (h *hashicorpProvider) CreateDEK() (string, []byte, error) {
 	}
 	kid := fmt.Sprintf("k_%d", time.Now().UnixNano())
 	h.mu.Lock()
-	h.wrapped[kid] = info.Ciphertext
+	h.wrapped[kid] = newSecureBytes(info.Ciphertext)
 	h.mu.Unlock()
-	return kid, info.Ciphertext, nil
+
+	// Clear the original ciphertext from memory
+	secureWipe(info.Ciphertext)
+
+	return kid, h.wrapped[kid].Data(), nil
 }
 
 func (h *hashicorpProvider) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
@@ -110,13 +263,13 @@ func (h *hashicorpProvider) CreateDEKForThreadWithMeta(threadID string) (string,
 // returned ciphertext is nonce||ct.
 func (h *hashicorpProvider) EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error) {
 	h.mu.RLock()
-	wrapped, ok := h.wrapped[dekID]
+	secureWrapped, ok := h.wrapped[dekID]
 	h.mu.RUnlock()
 	if !ok {
 		return nil, "", fmt.Errorf("dek not found: %s", dekID)
 	}
 	// unwrap to raw dek
-	dek, err := h.UnwrapDEK(wrapped)
+	dek, err := h.UnwrapDEK(secureWrapped.Data())
 	if err != nil {
 		return nil, "", err
 	}
@@ -142,12 +295,12 @@ func (h *hashicorpProvider) EncryptWithDEK(dekID string, plaintext, aad []byte) 
 // DecryptWithDEK decrypts a nonce||ct blob using the DEK referenced by dekID.
 func (h *hashicorpProvider) DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error) {
 	h.mu.RLock()
-	wrapped, ok := h.wrapped[dekID]
+	secureWrapped, ok := h.wrapped[dekID]
 	h.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("dek not found: %s", dekID)
 	}
-	dek, err := h.UnwrapDEK(wrapped)
+	dek, err := h.UnwrapDEK(secureWrapped.Data())
 	if err != nil {
 		return nil, err
 	}
@@ -171,12 +324,12 @@ func (h *hashicorpProvider) DecryptWithDEK(dekID string, ciphertext, aad []byte)
 // RewrapDEKForThread rewraps an existing DEK under a new KEK hex string.
 func (h *hashicorpProvider) RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error) {
 	h.mu.RLock()
-	wrapped, ok := h.wrapped[dekID]
+	secureWrapped, ok := h.wrapped[dekID]
 	h.mu.RUnlock()
 	if !ok {
 		return nil, "", "", fmt.Errorf("dek not found: %s", dekID)
 	}
-	dek, err := h.UnwrapDEK(wrapped)
+	dek, err := h.UnwrapDEK(secureWrapped.Data())
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -202,8 +355,16 @@ func (h *hashicorpProvider) RewrapDEKForThread(dekID string, newKEKHex string) (
 	}
 	// update mapping
 	h.mu.Lock()
-	h.wrapped[dekID] = newWrapped
+	h.wrapped[dekID] = newSecureBytes(newWrapped)
 	h.mu.Unlock()
+
+	// Clear the old wrapped data
+	if secureWrapped != nil {
+		secureWrapped.Clear()
+	}
+
+	// Clear the temporary newWrapped
+	secureWipe(newWrapped)
 	kid, _ := newProv.(wrapIf).KeyInfo()
 	return newWrapped, kid, "", nil
 }
@@ -228,6 +389,16 @@ func (h *hashicorpProvider) GetWrapped(keyID string) ([]byte, error) {
 func (h *hashicorpProvider) Health() error { return nil }
 
 func (h *hashicorpProvider) Close() error {
+	// Clear all secure memory
+	h.mu.Lock()
+	for _, secureData := range h.wrapped {
+		if secureData != nil {
+			secureData.Clear()
+		}
+	}
+	h.wrapped = make(map[string]*secureBytes)
+	h.mu.Unlock()
+
 	if f, ok := any(h.w).(interface {
 		Finalize(context.Context, ...wrapping.Option) error
 	}); ok {
@@ -238,13 +409,21 @@ func (h *hashicorpProvider) Close() error {
 
 // helper to create provider from hex key string
 func NewHashicorpProviderFromHex(ctx context.Context, hexKey string) (KMSProvider, error) {
+	// Validate hex key format
+	if hexKey == "" {
+		return nil, errors.New("master key cannot be empty")
+	}
+
 	b, err := hex.DecodeString(hexKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid hex format: %w", err)
 	}
-	if len(b) != 32 {
-		return nil, errors.New("hex key must be 32 bytes")
+
+	// Validate key entropy and strength
+	if err := validateKeyEntropy(b); err != nil {
+		return nil, fmt.Errorf("weak master key: %w", err)
 	}
+
 	return NewHashicorpProviderFromRaw(ctx, b)
 }
 

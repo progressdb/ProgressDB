@@ -28,6 +28,7 @@ import (
 	"progressdb/pkg/store/threads"
 )
 
+
 // auth handlers
 func Sign(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.sign")
@@ -53,9 +54,16 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	var payload struct {
 		UserID string `json:"userId"`
 	}
-	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil || payload.UserID == "" {
-		logger.Warn("invalid payload in signHandler", "error", err, "remote", ctx.RemoteAddr().String())
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid payload")
+	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil {
+		logger.Warn("invalid JSON payload in signHandler", "error", err, "remote", ctx.RemoteAddr().String())
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	// Validate user ID format and content
+	if err := ValidateUserID(payload.UserID); err != nil {
+		logger.Warn("invalid user ID in signHandler", "error", err, "user_id", payload.UserID, "remote", ctx.RemoteAddr().String())
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid user ID: %s", err.Error()))
 		return
 	}
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
@@ -172,4 +173,25 @@ func ValidateMessageThreadRelationship(message *models.Message, threadID string)
 // WriteValidationError writes a validation error response
 func WriteValidationError(ctx *fasthttp.RequestCtx, err *auth.AuthorResolutionError) {
 	router.WriteJSONError(ctx, err.Code, err.Message)
+}
+
+// ValidateUserID performs basic validation (max 36 chars)
+func ValidateUserID(userID string) error {
+	const maxLen = 36
+
+	if userID == "" {
+		return fmt.Errorf("user ID cannot be empty")
+	}
+	if len(userID) < 1 {
+		return fmt.Errorf("user ID too short")
+	}
+	if len(userID) > 36 {
+		return fmt.Errorf("user ID too long (maximum 36 characters)")
+	}
+	for _, r := range userID {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("user ID contains invalid control characters")
+		}
+	}
+	return nil
 }
