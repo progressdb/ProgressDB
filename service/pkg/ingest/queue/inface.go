@@ -52,19 +52,22 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 		}
 		newOp.Extras = newMap
 	}
-	newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
-
 	var it *QueueItem
 	if q.wal != nil && q.walBacked {
+		// WAL manages sequence - get persistent sequence from WAL
 		data, err := json.Marshal(newOp)
 		if err != nil {
 			return err
 		}
-		if err := q.wal.Write(uint64(newOp.EnqSeq), data); err != nil {
+		walSeq, err := q.wal.WriteWithSequence(data)
+		if err != nil {
 			return err
 		}
+		newOp.WalSeq = walSeq
 		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
 	} else {
+		// In-memory sequence (current behavior)
+		newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
 		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
 	}
 

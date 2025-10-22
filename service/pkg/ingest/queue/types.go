@@ -27,7 +27,8 @@ type QueueOp struct {
 	ID        string            // Record identifier
 	Payload   []byte            // Payload data (may be nil)
 	TS        int64             // Timestamp (nanoseconds)
-	EnqSeq    uint64            // Assigned sequence at enqueue
+	EnqSeq    uint64            // Assigned sequence at enqueue (used when WAL disabled)
+	WalSeq    uint64            // WAL-assigned sequence (used when WAL enabled)
 	WalOffset int64             // WAL offset, -1 if unset
 	Extras    map[string]string // Optional metadata (e.g. user id, role)
 }
@@ -89,6 +90,10 @@ type WAL interface {
 	LastIndex() (index uint64, err error)
 	TruncateFront(index uint64) error
 	Close() error
+
+	// WriteWithSequence writes data and returns the assigned sequence number.
+	// Used when WAL is enabled to provide persistent sequence generation.
+	WriteWithSequence(data []byte) (uint64, error)
 }
 
 // WALRecord holds a recovered WAL entry and its offset.
