@@ -1,8 +1,10 @@
 package index
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store/keys"
@@ -133,6 +135,139 @@ func GetUserThreads(userID string) ([]string, error) {
 		return nil, fmt.Errorf("unmarshal user threads: %w", err)
 	}
 	return indexes.Threads, nil
+}
+
+// ThreadWithTimestamp represents a thread with its creation timestamp
+type ThreadWithTimestamp struct {
+	ID        string
+	Timestamp int64
+}
+
+// GetUserThreadsCursor returns threads owned by user with cursor-based pagination
+func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, bool, error) {
+	tr := telemetry.Track("index.get_user_threads_cursor")
+	defer tr.Finish()
+
+	// Get all thread IDs for user
+	threadIDs, err := GetUserThreads(userID)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	// Get thread metadata with timestamps
+	threads := make([]ThreadWithTimestamp, 0, len(threadIDs))
+	for _, threadID := range threadIDs {
+		threadKey, err := keys.ThreadMetaKey(threadID)
+		if err != nil {
+			continue // Skip invalid thread IDs
+		}
+
+		threadData, err := GetKey(threadKey)
+		if err != nil {
+			continue // Skip threads that can't be found
+		}
+
+		var threadMeta struct {
+			CreatedAt int64 `json:"created_at"`
+		}
+		if err := json.Unmarshal([]byte(threadData), &threadMeta); err != nil {
+			continue // Skip invalid thread metadata
+		}
+
+		threads = append(threads, ThreadWithTimestamp{
+			ID:        threadID,
+			Timestamp: threadMeta.CreatedAt,
+		})
+	}
+
+	// Sort by timestamp (newest first)
+	sort.Slice(threads, func(i, j int) bool {
+		return threads[i].Timestamp > threads[j].Timestamp
+	})
+
+	// Find starting position from cursor
+	startIndex := 0
+	if cursor != "" {
+		tc, err := decodeThreadCursor(cursor)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+		}
+		if tc.UserID != userID {
+			return nil, "", false, fmt.Errorf("cursor user mismatch")
+		}
+
+		// Find the thread with the cursor timestamp
+		for i, t := range threads {
+			if t.ID == tc.ThreadID && t.Timestamp == tc.Timestamp {
+				startIndex = i + 1 // Start after the cursor position
+				break
+			}
+		}
+	}
+
+	// Extract the page
+	endIndex := startIndex + limit
+	if endIndex > len(threads) {
+		endIndex = len(threads)
+	}
+
+	if startIndex >= len(threads) {
+		return []string{}, "", false, nil
+	}
+
+	pageThreads := threads[startIndex:endIndex]
+	threadIDsOnly := make([]string, len(pageThreads))
+	for i, t := range pageThreads {
+		threadIDsOnly[i] = t.ID
+	}
+
+	// Determine if there are more threads
+	hasMore := endIndex < len(threads)
+
+	// Generate next cursor if we have more
+	var nextCursor string
+	if hasMore && len(pageThreads) > 0 {
+		lastThread := pageThreads[len(pageThreads)-1]
+		nextCursor, err = encodeThreadCursor(userID, lastThread.ID, lastThread.Timestamp)
+		if err != nil {
+			return nil, "", false, err
+		}
+	}
+
+	return threadIDsOnly, nextCursor, hasMore, nil
+}
+
+// Helper functions for cursor encoding/decoding
+func encodeThreadCursor(userID, threadID string, timestamp int64) (string, error) {
+	cursor := map[string]interface{}{
+		"user_id":   userID,
+		"thread_id": threadID,
+		"timestamp": timestamp,
+	}
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+func decodeThreadCursor(cursor string) (struct {
+	UserID    string `json:"user_id"`
+	ThreadID  string `json:"thread_id"`
+	Timestamp int64  `json:"timestamp"`
+}, error) {
+	var result struct {
+		UserID    string `json:"user_id"`
+		ThreadID  string `json:"thread_id"`
+		Timestamp int64  `json:"timestamp"`
+	}
+
+	data, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return result, err
+	}
+	err = json.Unmarshal(data, &result)
+	return result, err
 }
 
 // GetThreadParticipants returns participants in thread.

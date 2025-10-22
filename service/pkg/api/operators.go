@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
@@ -23,7 +25,6 @@ import (
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
-	"progressdb/pkg/store/messages"
 	"progressdb/pkg/store/threads"
 )
 
@@ -149,7 +150,7 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
 
 	tr.Mark("list_keys")
-	keys, err := messages.ListMessages(prefix)
+	keys, err := listKeysByPrefix(prefix)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -552,4 +553,30 @@ func getAPIKey(ctx *fasthttp.RequestCtx) string {
 		key = string(ctx.Request.Header.Peek("X-API-Key"))
 	}
 	return key
+}
+
+// listKeysByPrefix lists database keys by prefix (admin function)
+func listKeysByPrefix(prefix string) ([]string, error) {
+	if storedb.Client == nil {
+		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
+	}
+
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	var keys []string
+	prefixBytes := []byte(prefix)
+
+	for iter.SeekGE(prefixBytes); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if !bytes.HasPrefix(key, prefixBytes) {
+			break
+		}
+		keys = append(keys, string(key))
+	}
+
+	return keys, iter.Error()
 }

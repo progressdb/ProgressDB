@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strconv"
+	"strings"
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/telemetry"
@@ -64,7 +67,8 @@ func NewEnqueueRequest(ctx *fasthttp.RequestCtx, author, threadID, messageID str
 
 // Response types for standardized API responses
 type ThreadsListResponse struct {
-	Threads []models.Thread `json:"threads"`
+	Threads    []models.Thread `json:"threads"`
+	Pagination PaginationMeta  `json:"pagination"`
 }
 
 type ThreadResponse struct {
@@ -72,9 +76,10 @@ type ThreadResponse struct {
 }
 
 type MessagesListResponse struct {
-	Thread   string           `json:"thread"`
-	Messages []models.Message `json:"messages"`
-	Metadata interface{}      `json:"metadata,omitempty"`
+	Thread     string           `json:"thread"`
+	Messages   []models.Message `json:"messages"`
+	Metadata   interface{}      `json:"metadata,omitempty"`
+	Pagination PaginationMeta   `json:"pagination"`
 }
 
 type MessageResponse struct {
@@ -86,19 +91,99 @@ type ReactionsResponse struct {
 	Reactions interface{} `json:"reactions"`
 }
 
+// PaginationMeta contains pagination metadata
+type PaginationMeta struct {
+	Limit      int    `json:"limit"`
+	HasMore    bool   `json:"has_more"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	Count      int    `json:"count"`
+}
+
+// MessageCursor represents cursor data for message pagination
+type MessageCursor struct {
+	ThreadID  string `json:"thread_id"`
+	Timestamp int64  `json:"timestamp"`
+	Sequence  uint64 `json:"sequence"`
+}
+
+// ThreadCursor represents cursor data for thread pagination
+type ThreadCursor struct {
+	UserID    string `json:"user_id"`
+	Timestamp int64  `json:"timestamp"`
+	ThreadID  string `json:"thread_id"`
+}
+
+// EncodeMessageCursor encodes message cursor data to opaque token
+func EncodeMessageCursor(threadID string, timestamp int64, sequence uint64) (string, error) {
+	cursor := MessageCursor{
+		ThreadID:  threadID,
+		Timestamp: timestamp,
+		Sequence:  sequence,
+	}
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// DecodeMessageCursor decodes message cursor token to data
+func DecodeMessageCursor(cursor string) (*MessageCursor, error) {
+	data, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, err
+	}
+	var mc MessageCursor
+	err = json.Unmarshal(data, &mc)
+	if err != nil {
+		return nil, err
+	}
+	return &mc, nil
+}
+
+// EncodeThreadCursor encodes thread cursor data to opaque token
+func EncodeThreadCursor(userID, threadID string, timestamp int64) (string, error) {
+	cursor := ThreadCursor{
+		UserID:    userID,
+		Timestamp: timestamp,
+		ThreadID:  threadID,
+	}
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// DecodeThreadCursor decodes thread cursor token to data
+func DecodeThreadCursor(cursor string) (*ThreadCursor, error) {
+	data, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, err
+	}
+	var tc ThreadCursor
+	err = json.Unmarshal(data, &tc)
+	if err != nil {
+		return nil, err
+	}
+	return &tc, nil
+}
+
 // QueryParameters represents common query parameters
 type QueryParameters struct {
-	Limit int
+	Limit  int
+	Cursor string
 }
 
 // ParseQueryParameters extracts common query parameters from request
 func ParseQueryParameters(ctx *fasthttp.RequestCtx) *QueryParameters {
 	qp := &QueryParameters{
-		Limit: -1, 
+		Limit:  100, // Default limit
+		Cursor: strings.TrimSpace(string(ctx.QueryArgs().Peek("cursor"))),
 	}
 
 	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit >= 0 {
+		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
 			qp.Limit = parsedLimit
 		}
 	}

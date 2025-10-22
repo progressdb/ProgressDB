@@ -20,8 +20,10 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
+	qp := ParseQueryParameters(ctx)
+
 	tr.Mark("get_user_threads")
-	threadIDs, err := index.GetUserThreads(author)
+	threadIDs, nextCursor, hasMore, err := index.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -45,7 +47,13 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out})
+	pagination := PaginationMeta{
+		Limit:      qp.Limit,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+		Count:      len(out),
+	}
+	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out, Pagination: pagination})
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
@@ -78,12 +86,13 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
+	qp := ParseQueryParameters(ctx)
+
+	tr.Mark("validate_thread")
 	threadID, valid := ValidatePathParam(ctx, "threadID")
 	if !valid {
 		return
 	}
-
-	tr.Mark("validate_thread")
 	_, validationErr := ValidateThread(threadID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
@@ -98,7 +107,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	rawMsgs, err := message_store.ListMessages(threadID)
+	rawMsgs, nextCursor, hasMore, err := message_store.ListMessagesCursor(threadID, qp.Cursor, qp.Limit)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -115,7 +124,13 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes})
+	pagination := PaginationMeta{
+		Limit:      qp.Limit,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+		Count:      len(msgs),
+	}
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: pagination})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
