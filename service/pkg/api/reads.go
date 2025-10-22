@@ -2,99 +2,61 @@ package api
 
 import (
 	"encoding/json"
-	"sort"
-	"strconv"
-	"strings"
 
 	"progressdb/pkg/models"
-	"progressdb/pkg/telemetry"
 
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/store/db/index"
 	message_store "progressdb/pkg/store/messages"
-	thread_store "progressdb/pkg/store/threads"
+	"progressdb/pkg/store/threads"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.read_threads_list")
-	defer tr.Finish()
-
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	author, authErr := ValidateAuthor(ctx, "")
-	if authErr != nil {
-		WriteValidationError(ctx, authErr)
+	author, tr, ok := SetupReadHandler(ctx, "read_threads_list")
+	if !ok {
 		return
 	}
-
-	titleQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("title")))
-	slugQ := strings.TrimSpace(string(ctx.QueryArgs().Peek("slug")))
+	defer tr.Finish()
 
 	tr.Mark("get_user_threads")
-	var threadIDs []string
-	var err error
-
-	if author != "" {
-		threadIDs, err = index.GetUserThreads(author)
-		if err != nil {
-			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-			return
-		}
-	} else {
-		vals, err := thread_store.ListThreads()
-		if err != nil {
-			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-			return
-		}
-		threadIDs = make([]string, 0, len(vals))
-		for _, raw := range vals {
-			var th models.Thread
-			if err := json.Unmarshal([]byte(raw), &th); err != nil {
-				continue
-			}
-			threadIDs = append(threadIDs, th.ID)
-		}
+	threadIDs, err := index.GetUserThreads(author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
 	}
 
 	tr.Mark("fetch_threads")
 	out := make([]models.Thread, 0, len(threadIDs))
 	for _, threadID := range threadIDs {
-		thread, validationErr := ValidateThread(threadID, author, false)
-		if validationErr != nil {
+		threadStr, err := threads.GetThread(threadID)
+		if err != nil {
 			continue
 		}
-		if titleQ != "" && !strings.Contains(strings.ToLower(thread.Title), strings.ToLower(titleQ)) {
+		var thread models.Thread
+		if err := json.Unmarshal([]byte(threadStr), &thread); err != nil {
 			continue
 		}
-		if slugQ != "" && thread.Slug != slugQ {
+		if thread.Author != author {
 			continue
 		}
-		out = append(out, *thread)
+		out = append(out, thread)
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, struct {
-		Threads []models.Thread `json:"threads"`
-	}{Threads: out})
+	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out})
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.read_thread_item")
-	defer tr.Finish()
-
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	id := pathParam(ctx, "id")
-	if id == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
+	author, tr, ok := SetupReadHandler(ctx, "read_thread_item")
+	if !ok {
 		return
 	}
+	defer tr.Finish()
 
-	author, authErr := ValidateAuthor(ctx, "")
-	if authErr != nil {
-		WriteValidationError(ctx, authErr)
+	id, valid := ValidatePathParam(ctx, "id")
+	if !valid {
 		return
 	}
 
@@ -106,23 +68,20 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("write_response")
-	threadJSON, _ := json.Marshal(thread)
-	_, _ = ctx.Write(threadJSON)
+	_ = router.WriteJSON(ctx, ThreadResponse{Thread: *thread})
 }
 
 func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.read_thread_messages")
-	defer tr.Finish()
-
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	author, authErr := ValidateAuthor(ctx, "")
-	if authErr != nil {
-		WriteValidationError(ctx, authErr)
+	author, tr, ok := SetupReadHandler(ctx, "read_thread_messages")
+	if !ok {
 		return
 	}
+	defer tr.Finish()
 
-	threadID := pathParam(ctx, "threadID")
+	threadID, valid := ValidatePathParam(ctx, "threadID")
+	if !valid {
+		return
+	}
 
 	tr.Mark("validate_thread")
 	_, validationErr := ValidateThread(threadID, author, false)
@@ -139,135 +98,94 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	msgs, err := message_store.ListMessages(threadID)
+	rawMsgs, err := message_store.ListMessages(threadID)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
-	limit := -1
-	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit >= 0 {
-			limit = parsedLimit
-		}
-	}
-
-	// used by backends - to include deleted fields
-	includeDeleted := string(ctx.QueryArgs().Peek("include_deleted")) == "true"
-
 	tr.Mark("process_messages")
-	latest := make(map[string]models.Message)
-	authorFound := false
-
-	for _, encoded := range msgs {
-		var m models.Message
-		if err := json.Unmarshal([]byte(encoded), &m); err != nil {
+	msgs := make([]models.Message, 0, len(rawMsgs))
+	for _, raw := range rawMsgs {
+		var msg models.Message
+		if err := json.Unmarshal([]byte(raw), &msg); err != nil {
 			continue
 		}
-		current, ok := latest[m.ID]
-		if !ok || m.TS >= current.TS {
-			latest[m.ID] = m
-		}
-	}
-
-	out := make([]models.Message, 0, len(latest))
-	for _, v := range latest {
-		if v.Author == author {
-			authorFound = true
-		}
-		if v.Deleted && !includeDeleted {
-			continue
-		}
-		out = append(out, v)
-	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-
-	if limit > 0 && limit < len(out) {
-		out = out[len(out)-limit:]
-	}
-
-	if len(out) == 0 {
-		tr.Mark("encode_empty_response")
-		_ = router.WriteJSON(ctx, struct {
-			Thread   string           `json:"thread"`
-			Messages []models.Message `json:"messages"`
-			Metadata interface{}      `json:"metadata,omitempty"`
-		}{Thread: threadID, Messages: out})
-		return
-	}
-
-	if author != "" && !authorFound {
-		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "author not found in any message in this thread")
-		return
+		msgs = append(msgs, msg)
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, struct {
-		Thread   string           `json:"thread"`
-		Messages []models.Message `json:"messages"`
-		Metadata interface{}      `json:"metadata,omitempty"`
-	}{Thread: threadID, Messages: out, Metadata: threadIndexes})
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.read_thread_message")
+	author, tr, ok := SetupReadHandler(ctx, "read_thread_message")
+	if !ok {
+		return
+	}
 	defer tr.Finish()
 
-	ctx.Response.Header.Set("Content-Type", "application/json")
-
-	author, authErr := ValidateAuthor(ctx, "")
-	if authErr != nil {
-		WriteValidationError(ctx, authErr)
+	messageID, valid := ValidatePathParam(ctx, "id")
+	if !valid {
 		return
 	}
 
-	id := pathParam(ctx, "id")
-	if id == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "message id missing")
+	threadID := pathParam(ctx, "threadID")
+
+	tr.Mark("validate_thread")
+	_, validationErr := ValidateThread(threadID, author, false)
+	if validationErr != nil {
+		WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_message")
-	message, validationErr := ValidateMessage(id, author, true)
+	message, validationErr := ValidateMessage(messageID, author, true)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
+		return
+	}
+
+	tr.Mark("validate_thread_parent")
+	if relErr := ValidateMessageThreadRelationship(message, threadID); relErr != nil {
+		WriteValidationError(ctx, relErr)
 		return
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, message)
+	_ = router.WriteJSON(ctx, MessageResponse{Message: *message})
 }
 
 func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
-	tr := telemetry.Track("api.read_message_reactions")
+	author, tr, ok := SetupReadHandler(ctx, "read_message_reactions")
+	if !ok {
+		return
+	}
 	defer tr.Finish()
 
-	ctx.Response.Header.Set("Content-Type", "application/json")
+	messageID, valid := ValidatePathParam(ctx, "id")
+	if !valid {
+		return
+	}
 
-	id := pathParam(ctx, "id")
 	threadID := pathParam(ctx, "threadID")
 
-	if id == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing id")
-		return
-	}
-
-	author, authErr := ValidateAuthor(ctx, "")
-	if authErr != nil {
-		WriteValidationError(ctx, authErr)
-		return
-	}
-
-	tr.Mark("validate_message")
-	message, validationErr := ValidateMessage(id, author, false)
+	tr.Mark("validate_thread")
+	_, validationErr := ValidateThread(threadID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
 	}
 
-	if threadID != "" && message.Thread != threadID {
-		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "message not found in thread")
+	tr.Mark("validate_message")
+	message, validationErr := ValidateMessage(messageID, author, false)
+	if validationErr != nil {
+		WriteValidationError(ctx, validationErr)
+		return
+	}
+
+	if relErr := ValidateMessageThreadRelationship(message, threadID); relErr != nil {
+		WriteValidationError(ctx, relErr)
 		return
 	}
 
@@ -283,8 +201,5 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, struct {
-		ID        string      `json:"id"`
-		Reactions interface{} `json:"reactions"`
-	}{ID: id, Reactions: out})
+	_ = router.WriteJSON(ctx, ReactionsResponse{ID: messageID, Reactions: out})
 }

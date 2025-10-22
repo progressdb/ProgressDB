@@ -157,6 +157,59 @@ func ValidateAuthor(ctx *fasthttp.RequestCtx, bodyAuthor string) (string, *auth.
 	return author, nil
 }
 
+// ValidateThreadAccess validates thread access and author participation
+func ValidateThreadAccess(threadID, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
+	// First validate thread existence and basic access
+	thread, err := ValidateThread(threadID, author, requireOwnership)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we don't require ownership but need to check author participation
+	if !requireOwnership && author != "" {
+		// Check if author has participated in this thread
+		msgs, storeErr := message_store.ListMessages(threadID)
+		if storeErr != nil {
+			return nil, &auth.AuthorResolutionError{
+				Type:    "store_error",
+				Message: "failed to check thread participation",
+				Code:    fasthttp.StatusInternalServerError,
+			}
+		}
+
+		authorFound := false
+		for _, encoded := range msgs {
+			var m models.Message
+			if json.Unmarshal([]byte(encoded), &m) == nil && m.Author == author && !m.Deleted {
+				authorFound = true
+				break
+			}
+		}
+
+		if !authorFound {
+			return nil, &auth.AuthorResolutionError{
+				Type:    "forbidden",
+				Message: "author not found in any message in this thread",
+				Code:    fasthttp.StatusForbidden,
+			}
+		}
+	}
+
+	return thread, nil
+}
+
+// ValidateMessageThreadRelationship validates that a message belongs to a specific thread
+func ValidateMessageThreadRelationship(message *models.Message, threadID string) *auth.AuthorResolutionError {
+	if threadID != "" && message.Thread != threadID {
+		return &auth.AuthorResolutionError{
+			Type:    "not_found",
+			Message: "message not found in thread",
+			Code:    fasthttp.StatusNotFound,
+		}
+	}
+	return nil
+}
+
 // WriteValidationError writes a validation error response
 func WriteValidationError(ctx *fasthttp.RequestCtx, err *auth.AuthorResolutionError) {
 	router.WriteJSONError(ctx, err.Code, err.Message)

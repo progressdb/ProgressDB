@@ -45,7 +45,8 @@ export default function (data) {
   const bodyObj = {
     id: messageId,
     content: payload,
-    checksum: checksum
+    checksum: checksum,
+    body: {}
   };
   if (data.userId) bodyObj.author = data.userId;
   const body = JSON.stringify(bodyObj);
