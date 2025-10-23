@@ -86,9 +86,18 @@ func DeleteThreadMessageIndexes(threadID string) error {
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips"}
 	for _, suffix := range suffixes {
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, suffix)
-		if err != nil {
-			return err
+		var key string
+		switch suffix {
+		case "start":
+			key = keys.GenThreadMessageStart(threadID)
+		case "end":
+			key = keys.GenThreadMessageEnd(threadID)
+		case "cdeltas":
+			key = keys.GenThreadMessageCDeltas(threadID)
+		case "udeltas":
+			key = keys.GenThreadMessageUDeltas(threadID)
+		case "skips":
+			key = keys.GenThreadMessageSkips(threadID)
 		}
 		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_thread_message_index_failed", "key", key, "error", err)
@@ -100,9 +109,24 @@ func DeleteThreadMessageIndexes(threadID string) error {
 
 // GetIndexValue retrieves a single index value as a string.
 func GetIndexValue(threadID, suffix string) (string, error) {
-	key, err := keys.ThreadsToMessagesIndexKey(threadID, suffix)
-	if err != nil {
-		return "", err
+	var key string
+	switch suffix {
+	case "start":
+		key = keys.GenThreadMessageStart(threadID)
+	case "end":
+		key = keys.GenThreadMessageEnd(threadID)
+	case "cdeltas":
+		key = keys.GenThreadMessageCDeltas(threadID)
+	case "udeltas":
+		key = keys.GenThreadMessageUDeltas(threadID)
+	case "skips":
+		key = keys.GenThreadMessageSkips(threadID)
+	case "last_created_at":
+		key = keys.GenThreadMessageLC(threadID)
+	case "last_updated_at":
+		key = keys.GenThreadMessageLU(threadID)
+	default:
+		return "", fmt.Errorf("unknown index suffix: %s", suffix)
 	}
 	return GetKey(key)
 }
@@ -128,9 +152,24 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 	}
 
 	for suffix, ptr := range fields {
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, suffix)
-		if err != nil {
-			return indexes, err
+		var key string
+		switch suffix {
+		case "start":
+			key = keys.GenThreadMessageStart(threadID)
+		case "end":
+			key = keys.GenThreadMessageEnd(threadID)
+		case "cdeltas":
+			key = keys.GenThreadMessageCDeltas(threadID)
+		case "udeltas":
+			key = keys.GenThreadMessageUDeltas(threadID)
+		case "skips":
+			key = keys.GenThreadMessageSkips(threadID)
+		case "last_created_at":
+			key = keys.GenThreadMessageLC(threadID)
+		case "last_updated_at":
+			key = keys.GenThreadMessageLU(threadID)
+		default:
+			return indexes, fmt.Errorf("unknown index suffix: %s", suffix)
 		}
 		val, err := GetKey(key)
 		if err != nil {
@@ -161,9 +200,24 @@ func saveIndexes(threadID string, indexes ThreadMessageIndexes) error {
 	}
 
 	for suffix, val := range fields {
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, suffix)
-		if err != nil {
-			return err
+		var key string
+		switch suffix {
+		case "start":
+			key = keys.GenThreadMessageStart(threadID)
+		case "end":
+			key = keys.GenThreadMessageEnd(threadID)
+		case "cdeltas":
+			key = keys.GenThreadMessageCDeltas(threadID)
+		case "udeltas":
+			key = keys.GenThreadMessageUDeltas(threadID)
+		case "skips":
+			key = keys.GenThreadMessageSkips(threadID)
+		case "last_created_at":
+			key = keys.GenThreadMessageLC(threadID)
+		case "last_updated_at":
+			key = keys.GenThreadMessageLU(threadID)
+		default:
+			return fmt.Errorf("unknown index suffix: %s", suffix)
 		}
 		data, err := json.Marshal(val)
 		if err != nil {

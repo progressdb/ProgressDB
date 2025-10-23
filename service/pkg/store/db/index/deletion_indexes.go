@@ -24,10 +24,7 @@ func UpdateDeletedThreads(userID, threadID string, add bool) error {
 	tr := telemetry.Track("index.update_deleted_threads")
 	defer tr.Finish()
 
-	key, err := keys.GenDeletedThreadsKey(userID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenDeletedThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
@@ -71,10 +68,7 @@ func UpdateDeletedMessages(userID, msgID string, add bool) error {
 	tr := telemetry.Track("index.update_deleted_messages")
 	defer tr.Finish()
 
-	key, err := keys.DeletedMessagesIndexKey(userID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenDeletedMessagesKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
@@ -115,10 +109,7 @@ func UpdateDeletedMessages(userID, msgID string, add bool) error {
 
 // GetDeletedThreads returns deleted threads for user.
 func GetDeletedThreads(userID string) ([]string, error) {
-	key, err := keys.DeletedThreadsIndexKey(userID)
-	if err != nil {
-		return nil, err
-	}
+	key := keys.GenDeletedThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -137,10 +128,7 @@ func GetDeletedThreads(userID string) ([]string, error) {
 
 // GetDeletedMessages returns deleted messages for user.
 func GetDeletedMessages(userID string) ([]string, error) {
-	key, err := keys.DeletedMessagesIndexKey(userID)
-	if err != nil {
-		return nil, err
-	}
+	key := keys.GenDeletedMessagesKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -163,12 +151,8 @@ func DeleteUserDeletionIndexes(userID string) error {
 	defer tr.Finish()
 
 	keysToDelete := []string{}
-	if k, err := keys.DeletedThreadsIndexKey(userID); err == nil {
-		keysToDelete = append(keysToDelete, k)
-	}
-	if k, err := keys.DeletedMessagesIndexKey(userID); err == nil {
-		keysToDelete = append(keysToDelete, k)
-	}
+	keysToDelete = append(keysToDelete, keys.GenDeletedThreadsKey(userID))
+	keysToDelete = append(keysToDelete, keys.GenDeletedMessagesKey(userID))
 
 	for _, key := range keysToDelete {
 		if err := DeleteKey(key); err != nil {

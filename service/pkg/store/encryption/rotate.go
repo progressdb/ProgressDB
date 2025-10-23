@@ -1,7 +1,6 @@
 package encryption
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,7 +16,7 @@ import (
 )
 
 // migrates all thread messages to new DEK; backs up old data before overwriting
-func RotateThreadDEK(threadID, newKeyID string) error {
+func RotateThreadDEK(threadID string, newKeyID string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
@@ -33,21 +32,23 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	mp, merr := keys.MsgPrefix(threadID)
-	if merr != nil {
-		return merr
-	}
-	prefix := []byte(mp)
-	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
+	// Get thread message prefix for efficient iteration
+	threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
+
+	// Set up iterator bounds for efficient scanning
+	lowerBound := []byte(threadPrefix)
+	upperBound := calculateUpperBound(threadPrefix)
+
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
 
-	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
-		if !bytes.HasPrefix(iter.Key(), prefix) {
-			break
-		}
+	for iter.First(); iter.Valid(); iter.Next() {
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
 		if LikelyJSON(v) {
@@ -110,11 +111,31 @@ func RotateThreadDEK(threadID, newKeyID string) error {
 			}
 			th.KMS.KeyID = newKeyID
 			if nb, merr := json.Marshal(th); merr == nil {
-				if err := threads.SaveThread(th.ID, string(nb)); err != nil {
+				threadKey := keys.GenThreadKey(threadID)
+				if err := storedb.Client.Set([]byte(threadKey), nb, storedb.WriteOpt(true)); err != nil {
 					return fmt.Errorf("save thread key mapping failed: %w", err)
 				}
 			}
 		}
 	}
 	return iter.Error()
+}
+
+// calculateUpperBound calculates upper bound for prefix iteration
+func calculateUpperBound(prefix string) []byte {
+	prefixBytes := []byte(prefix)
+	upper := make([]byte, len(prefixBytes))
+	copy(upper, prefixBytes)
+
+	// Increment the last byte to get the upper bound
+	for i := len(upper) - 1; i >= 0; i-- {
+		if upper[i] < 0xFF {
+			upper[i]++
+			return upper
+		}
+		upper[i] = 0
+	}
+
+	// If we overflowed, return a prefix that will never match
+	return append(prefixBytes, 0xFF)
 }

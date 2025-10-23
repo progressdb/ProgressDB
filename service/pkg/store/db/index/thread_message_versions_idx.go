@@ -15,15 +15,26 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
-	baseKey := fmt.Sprintf("%s:version", msgID)
 
 	// Load existing
 	var indexes ThreadMessageIndexes
 	for _, s := range suffixes {
-		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
-		if err != nil {
-			return err
+		var key string
+		switch s {
+		case "start":
+			key = keys.GenThreadVersionStart(threadID, msgID)
+		case "end":
+			key = keys.GenThreadVersionEnd(threadID, msgID)
+		case "cdeltas":
+			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+		case "udeltas":
+			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+		case "skips":
+			key = keys.GenThreadVersionSkips(threadID, msgID)
+		case "last_created_at":
+			key = keys.GenThreadVersionLC(threadID, msgID)
+		case "last_updated_at":
+			key = keys.GenThreadVersionLU(threadID, msgID)
 		}
 		val, err := GetKey(key)
 		if err != nil {
@@ -65,10 +76,22 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 
 	// Save
 	for _, s := range suffixes {
-		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
-		if err != nil {
-			return err
+		var key string
+		switch s {
+		case "start":
+			key = keys.GenThreadVersionStart(threadID, msgID)
+		case "end":
+			key = keys.GenThreadVersionEnd(threadID, msgID)
+		case "cdeltas":
+			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+		case "udeltas":
+			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+		case "skips":
+			key = keys.GenThreadVersionSkips(threadID, msgID)
+		case "last_created_at":
+			key = keys.GenThreadVersionLC(threadID, msgID)
+		case "last_updated_at":
+			key = keys.GenThreadVersionLU(threadID, msgID)
 		}
 		var val interface{}
 		switch s {
@@ -104,13 +127,24 @@ func DeleteVersionIndexes(threadID, msgID string) error {
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
-	baseKey := fmt.Sprintf("%s:version", msgID)
 
 	for _, s := range suffixes {
-		fullSuffix := fmt.Sprintf("%s:%s", baseKey, s)
-		key, err := keys.ThreadsToMessagesIndexKey(threadID, fullSuffix)
-		if err != nil {
-			return err
+		var key string
+		switch s {
+		case "start":
+			key = keys.GenThreadVersionStart(threadID, msgID)
+		case "end":
+			key = keys.GenThreadVersionEnd(threadID, msgID)
+		case "cdeltas":
+			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+		case "udeltas":
+			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+		case "skips":
+			key = keys.GenThreadVersionSkips(threadID, msgID)
+		case "last_created_at":
+			key = keys.GenThreadVersionLC(threadID, msgID)
+		case "last_updated_at":
+			key = keys.GenThreadVersionLU(threadID, msgID)
 		}
 		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_version_index_failed", "key", key, "error", err)

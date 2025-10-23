@@ -26,10 +26,7 @@ func UpdateUserOwnership(userID, threadID string, add bool) error {
 	tr := telemetry.Track("index.update_user_ownership")
 	defer tr.Finish()
 
-	key, err := keys.UserThreadsIndexKey(userID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenUserThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
@@ -73,10 +70,7 @@ func UpdateThreadParticipants(threadID, userID string, add bool) error {
 	tr := telemetry.Track("index.update_thread_participants")
 	defer tr.Finish()
 
-	key, err := keys.ThreadParticipantsIndexKey(threadID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenThreadParticipantsKey(threadID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
@@ -117,10 +111,7 @@ func UpdateThreadParticipants(threadID, userID string, add bool) error {
 
 // GetUserThreads returns threads owned by user.
 func GetUserThreads(userID string) ([]string, error) {
-	key, err := keys.UserThreadsIndexKey(userID)
-	if err != nil {
-		return nil, err
-	}
+	key := keys.GenUserThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -157,11 +148,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	// Get thread metadata with timestamps
 	threads := make([]ThreadWithTimestamp, 0, len(threadIDs))
 	for _, threadID := range threadIDs {
-		threadKey, err := keys.ThreadMetaKey(threadID)
-		if err != nil {
-			continue // Skip invalid thread IDs
-		}
-
+		threadKey := keys.GenThreadKey(threadID)
 		threadData, err := GetKey(threadKey)
 		if err != nil {
 			continue // Skip threads that can't be found
@@ -272,10 +259,7 @@ func decodeThreadCursor(cursor string) (struct {
 
 // GetThreadParticipants returns participants in thread.
 func GetThreadParticipants(threadID string) ([]string, error) {
-	key, err := keys.ThreadParticipantsIndexKey(threadID)
-	if err != nil {
-		return nil, err
-	}
+	key := keys.GenThreadParticipantsKey(threadID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -297,10 +281,7 @@ func DeleteUserThreadIndexes(userID string) error {
 	tr := telemetry.Track("index.delete_user_thread_indexes")
 	defer tr.Finish()
 
-	key, err := keys.UserThreadsIndexKey(userID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenUserThreadsKey(userID)
 	if err := DeleteKey(key); err != nil {
 		logger.Error("delete_user_thread_index_failed", "key", key, "error", err)
 		return err
@@ -313,10 +294,7 @@ func DeleteThreadParticipantIndexes(threadID string) error {
 	tr := telemetry.Track("index.delete_thread_participant_indexes")
 	defer tr.Finish()
 
-	key, err := keys.ThreadParticipantsIndexKey(threadID)
-	if err != nil {
-		return err
-	}
+	key := keys.GenThreadParticipantsKey(threadID)
 	if err := DeleteKey(key); err != nil {
 		logger.Error("delete_thread_participant_index_failed", "key", key, "error", err)
 		return err
