@@ -49,6 +49,14 @@ func IsFinalThreadID(threadID string) bool {
 	return len(parts) == 3 && parts[0] == "thread"
 }
 
+// IsFinalMessageID checks if a message ID is a final ID (has sequence component)
+func IsFinalMessageID(messageID string) bool {
+	// Final IDs have format: msg-<timestamp>-<sequence>
+	// Provisional IDs would have format: msg-<timestamp>
+	parts := strings.Split(messageID, "-")
+	return len(parts) == 3 && parts[0] == "msg"
+}
+
 // ExtractTimestampFromProvisionalID extracts timestamp from provisional thread ID
 func ExtractTimestampFromProvisionalID(provisionalID string) (int64, error) {
 	// Expected format: thread-<timestamp>

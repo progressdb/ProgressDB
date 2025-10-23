@@ -292,37 +292,46 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 		}
 	}
 
-	// Validate message model
+	// Handle message ID generation and mapping
+	var finalMessageID string
+	var provisionalMessageID string
+
 	if msg.ID == "" {
-		return fmt.Errorf("message ID cannot be empty")
+		// Generate new message ID
+		finalMessageID = keys.GenMessageID()
+		logger.Debug("generated_message_id", "message", finalMessageID)
+	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
+		// This is a provisional ID, generate final ID and map it
+		provisionalMessageID = msg.ID
+		finalMessageID = keys.GenMessageID()
+		batchIndexManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
+		logger.Debug("mapped_provisional_message", "provisional", provisionalMessageID, "final", finalMessageID)
+	} else {
+		// This is already a final ID
+		finalMessageID = msg.ID
 	}
+
+	// Update message model with final ID
+	msg.ID = finalMessageID
 	if msg.TS == 0 {
 		msg.TS = entry.TS
 	}
 
 	// Update message thread reference to final ID
-	if msg.Thread != finalThreadID {
-		msg.Thread = finalThreadID
-		// Re-marshal the updated message model
-		updatedPayload, err := json.Marshal(msg)
-		if err != nil {
-			return fmt.Errorf("marshal updated message: %w", err)
-		}
-		// Use updated payload for storage
-		if err := batchIndexManager.SetMessageData(finalThreadID, msg.ID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("set message data: %w", err)
-		}
-		if err := batchIndexManager.AddMessageVersion(msg.ID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("add message version: %w", err)
-		}
-	} else {
-		// Use original payload
-		if err := batchIndexManager.SetMessageData(finalThreadID, msg.ID, entry.Payload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("set message data: %w", err)
-		}
-		if err := batchIndexManager.AddMessageVersion(msg.ID, entry.Payload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("add message version: %w", err)
-		}
+	msg.Thread = finalThreadID
+
+	// Re-marshal the updated message model with final IDs
+	updatedPayload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal updated message: %w", err)
+	}
+
+	// Use updated payload for storage
+	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("set message data: %w", err)
+	}
+	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("add message version: %w", err)
 	}
 
 	// Generate message key and sequence
@@ -337,7 +346,7 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 
 	// Handle user deleted messages
 	if isDelete && msg.Author != "" {
-		batchIndexManager.AddDeletedMessageToUser(msg.Author, msg.ID)
+		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
 	}
 
 	return nil
@@ -368,6 +377,12 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		}
 	}
 
+	// Resolve message ID (handles provisional → final ID conversion)
+	finalMessageID, err := batchIndexManager.GetFinalMessageID(msg.ID)
+	if err != nil {
+		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
+	}
+
 	// Generate message key for deletion tracking
 	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
 	if err != nil {
@@ -379,7 +394,7 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 
 	// Add to user's deleted messages
 	if msg.Author != "" {
-		batchIndexManager.AddDeletedMessageToUser(msg.Author, msg.ID)
+		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
 	}
 
 	return nil
@@ -412,29 +427,28 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 		}
 	}
 
+	// Resolve message ID (handles provisional → final ID conversion)
+	finalMessageID, err := batchIndexManager.GetFinalMessageID(msg.ID)
+	if err != nil {
+		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
+	}
+
 	// Update message thread reference to final ID
-	if msg.Thread != finalThreadID {
-		msg.Thread = finalThreadID
-		// Re-marshal the updated message model
-		updatedPayload, err := json.Marshal(msg)
-		if err != nil {
-			return fmt.Errorf("marshal updated message: %w", err)
-		}
-		// Use updated payload for storage
-		if err := batchIndexManager.SetMessageData(finalThreadID, msg.ID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("set message data: %w", err)
-		}
-		if err := batchIndexManager.AddMessageVersion(msg.ID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("add message version: %w", err)
-		}
-	} else {
-		// Use original payload
-		if err := batchIndexManager.SetMessageData(finalThreadID, msg.ID, entry.Payload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("set message data: %w", err)
-		}
-		if err := batchIndexManager.AddMessageVersion(msg.ID, entry.Payload, entry.TS, uint64(entry.Enq)); err != nil {
-			return fmt.Errorf("add message version: %w", err)
-		}
+	msg.Thread = finalThreadID
+	msg.ID = finalMessageID
+
+	// Re-marshal the updated message model with final IDs
+	updatedPayload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal updated message: %w", err)
+	}
+
+	// Use updated payload for storage
+	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("set message data: %w", err)
+	}
+	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("add message version: %w", err)
 	}
 
 	// Generate message key
