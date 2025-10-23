@@ -8,22 +8,25 @@ import (
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/state"
 )
 
 // ComputeWorker handles transformation of QueueOp to types.BatchEntry.
 type ComputeWorker struct {
-	queue   *qpkg.IngestQueue
-	output  chan<- types.BatchEntry
-	stop    <-chan struct{}
-	workers int
+	queue          *qpkg.IngestQueue
+	output         chan<- types.BatchEntry
+	stop           <-chan struct{}
+	workers        int
+	failedOpWriter *state.FailedOpWriter
 }
 
 // NewComputeWorker creates a new compute worker.
-func NewComputeWorker(queue *qpkg.IngestQueue, output chan<- types.BatchEntry, workers int) *ComputeWorker {
+func NewComputeWorker(queue *qpkg.IngestQueue, output chan<- types.BatchEntry, workers int, failedOpsPath string) *ComputeWorker {
 	return &ComputeWorker{
-		queue:   queue,
-		output:  output,
-		workers: workers,
+		queue:          queue,
+		output:         output,
+		workers:        workers,
+		failedOpWriter: state.NewFailedOpWriter(failedOpsPath),
 	}
 }
 
@@ -55,6 +58,10 @@ func (cw *ComputeWorker) run() {
 		entries, err := cw.compute(it.Op)
 		if err != nil {
 			logger.Error("compute_failed", "err", err, "op", it.Op.ID)
+			// write to failed ops file for recovery
+			if writeErr := cw.failedOpWriter.WriteFailedOp(it.Op, err); writeErr != nil {
+				logger.Error("failed_op_write_failed", "err", writeErr, "op", it.Op.ID)
+			}
 			it.JobDone()
 			continue
 		}

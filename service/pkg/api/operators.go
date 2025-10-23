@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
@@ -27,7 +27,6 @@ import (
 
 	"progressdb/pkg/store/threads"
 )
-
 
 // auth handlers
 func Sign(ctx *fasthttp.RequestCtx) {
@@ -156,17 +155,25 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	}
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
+	limitStr := string(ctx.QueryArgs().Peek("limit"))
+	cursor := string(ctx.QueryArgs().Peek("cursor"))
+
+	// Parse limit
+	limit := 100 // default
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
 
 	tr.Mark("list_keys")
-	keys, err := listKeysByPrefix(prefix)
+	result, err := listKeysByPrefixPaginated(prefix, limit, cursor)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, struct {
-		Keys []string `json:"keys"`
-	}{Keys: keys})
+	_ = router.WriteJSON(ctx, result)
 }
 
 func AdminGetKey(ctx *fasthttp.RequestCtx) {
@@ -563,28 +570,25 @@ func getAPIKey(ctx *fasthttp.RequestCtx) string {
 	return key
 }
 
-// listKeysByPrefix lists database keys by prefix (admin function)
-func listKeysByPrefix(prefix string) ([]string, error) {
-	if storedb.Client == nil {
-		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
-	}
+// AdminKeysResult represents paginated result for admin keys listing
+type AdminKeysResult struct {
+	Keys       []string `json:"keys"`
+	NextCursor string   `json:"next_cursor,omitempty"`
+	HasMore    bool     `json:"has_more"`
+	Count      int      `json:"count"`
+}
 
-	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
+// listKeysByPrefixPaginated lists database keys by prefix with cursor pagination (admin function)
+func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*AdminKeysResult, error) {
+	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, limit, cursor)
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
 
-	var keys []string
-	prefixBytes := []byte(prefix)
-
-	for iter.SeekGE(prefixBytes); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if !bytes.HasPrefix(key, prefixBytes) {
-			break
-		}
-		keys = append(keys, string(key))
-	}
-
-	return keys, iter.Error()
+	return &AdminKeysResult{
+		Keys:       keys,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Count:      len(keys),
+	}, nil
 }

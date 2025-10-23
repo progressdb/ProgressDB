@@ -152,7 +152,7 @@ func (a *App) Run(ctx context.Context) error {
 			"temp_index_errors", recoveryStats.TempIndexErrors)
 	}
 
-	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply)
+	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply, a.eff.DBPath)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 

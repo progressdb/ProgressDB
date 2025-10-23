@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	httpclient "progressdb/tests/utils/http"
+	"strconv"
 	"testing"
 )
 
@@ -124,14 +125,29 @@ func ListThreadMessagesAsBackend(t *testing.T, baseURL, threadID, author string,
 	return BackendGetJSON(t, baseURL, "/v1/threads/"+threadID+"/messages", author, out)
 }
 
-func AdminListKeys(t *testing.T, baseURL, prefix string) (int, struct {
-	Keys []string `json:"keys"`
+func AdminListKeysPaginated(t *testing.T, baseURL, prefix string, limit int, cursor string) (int, struct {
+	Keys       []string `json:"keys"`
+	NextCursor string   `json:"next_cursor"`
+	HasMore    bool     `json:"has_more"`
+	Count      int      `json:"count"`
 }) {
 	t.Helper()
 	var out struct {
-		Keys []string `json:"keys"`
+		Keys       []string `json:"keys"`
+		NextCursor string   `json:"next_cursor"`
+		HasMore    bool     `json:"has_more"`
+		Count      int      `json:"count"`
 	}
-	status := AdminGetJSON(t, baseURL, "/admin/keys?prefix="+url.QueryEscape(prefix), &out)
+
+	requestURL := "/admin/keys?prefix=" + url.QueryEscape(prefix)
+	if limit > 0 {
+		requestURL += "&limit=" + strconv.Itoa(limit)
+	}
+	if cursor != "" {
+		requestURL += "&cursor=" + url.QueryEscape(cursor)
+	}
+
+	status := AdminGetJSON(t, baseURL, requestURL, &out)
 	return status, out
 }
 

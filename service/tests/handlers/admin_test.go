@@ -84,11 +84,14 @@ logging:
 		t.Fatalf("encrypt-existing failed status=%d out=%v", status, encOut)
 	}
 
-	// list keys with backup prefix
+	// list keys with backup prefix (paginated)
 	var lres struct {
-		Keys []string `json:"keys"`
+		Keys       []string `json:"keys"`
+		NextCursor string   `json:"next_cursor"`
+		HasMore    bool     `json:"has_more"`
+		Count      int      `json:"count"`
 	}
-	status = utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/keys?prefix=backup:encrypt:", nil, &lres)
+	status = utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/keys?prefix=backup:encrypt:&limit=100", nil, &lres)
 	if status != 200 {
 		t.Fatalf("list keys failed status=%d", status)
 	}
@@ -111,6 +114,48 @@ logging:
 	}
 	if msg["thread"] == nil || msg["author"] == nil || msg["body"] == nil {
 		t.Fatalf("expected key JSON to contain thread, author, and body fields; got=%q", string(body))
+	}
+
+	// Test pagination functionality
+	var paginatedRes struct {
+		Keys       []string `json:"keys"`
+		NextCursor string   `json:"next_cursor"`
+		HasMore    bool     `json:"has_more"`
+		Count      int      `json:"count"`
+	}
+
+	// Request first page with limit 1
+	status = utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/keys?prefix=backup:encrypt:&limit=1", nil, &paginatedRes)
+	if status != 200 {
+		t.Fatalf("paginated list keys failed status=%d", status)
+	}
+	if len(paginatedRes.Keys) != 1 {
+		t.Fatalf("expected 1 key on first page, got %d", len(paginatedRes.Keys))
+	}
+	if paginatedRes.Count != 1 {
+		t.Fatalf("expected count=1, got %d", paginatedRes.Count)
+	}
+
+	// If we have more keys, test next page
+	if paginatedRes.HasMore && paginatedRes.NextCursor != "" {
+		var secondPage struct {
+			Keys       []string `json:"keys"`
+			NextCursor string   `json:"next_cursor"`
+			HasMore    bool     `json:"has_more"`
+			Count      int      `json:"count"`
+		}
+
+		status = utils.DoAdminJSON(t, sp.Addr, "GET", "/admin/keys?prefix=backup:encrypt:&limit=1&cursor="+paginatedRes.NextCursor, nil, &secondPage)
+		if status != 200 {
+			t.Fatalf("second page request failed status=%d", status)
+		}
+		if len(secondPage.Keys) != 1 {
+			t.Fatalf("expected 1 key on second page, got %d", len(secondPage.Keys))
+		}
+		// Ensure we get different keys on different pages
+		if secondPage.Keys[0] == paginatedRes.Keys[0] {
+			t.Fatalf("expected different keys on different pages, got same key: %s", secondPage.Keys[0])
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"progressdb/pkg/ingest/compute"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/state"
 )
 
 // Ingestor coordinates compute and apply workers.
@@ -21,7 +22,7 @@ type Ingestor struct {
 }
 
 // NewIngestor creates a new Ingestor with compute and apply workers.
-func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyConfig) *Ingestor {
+func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyConfig, dbPath string) *Ingestor {
 	if cc.WorkerCount <= 0 {
 		cc.WorkerCount = 1
 	}
@@ -35,7 +36,8 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 
 	computeBuf := make(chan types.BatchEntry, cc.BufferCapacity)
 
-	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount)
+	failedOpsPath := state.FailedOpsPath(dbPath)
+	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount, failedOpsPath)
 	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeout.Duration())
 
 	return &Ingestor{

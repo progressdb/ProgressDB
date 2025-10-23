@@ -35,11 +35,15 @@ retention:
 
 ingest:
   intake:
-    queue_capacity: 1_000_000
+    queue_capacity: 500_000
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
       segment_size: 20MB
+    recovery:
+      enabled: true
+      wal_enabled: false
+      temp_idx_enabled: false
   compute:
     worker_count: 64
     buffer_capacity: 100_000

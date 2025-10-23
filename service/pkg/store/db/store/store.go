@@ -2,6 +2,8 @@ package storedb
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -61,41 +63,209 @@ func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
-// lists all keys as strings for prefix; returns all if prefix empty
-func ListKeys(prefix string) ([]string, error) {
-	tr := telemetry.Track("db.list_keys")
+// ListKeysPaginated lists keys with cursor-based pagination (required)
+func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+	tr := telemetry.Track("db.list_keys_paginated")
 	defer tr.Finish()
 
 	if Client == nil {
-		return nil, fmt.Errorf("pebble not opened; call db.Open first")
+		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
 	}
+
+	// Set default and max limits
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
 	var pfx []byte
 	if prefix != "" {
 		pfx = []byte(prefix)
 	} else {
 		pfx = nil
 	}
+
 	iter, err := Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
-		return nil, err
+		return nil, "", false, err
 	}
 	defer iter.Close()
+
 	var out []string
-	if pfx == nil {
-		for iter.First(); iter.Valid(); iter.Next() {
-			k := append([]byte(nil), iter.Key()...)
-			out = append(out, string(k))
+	var startKey []byte
+
+	// Decode cursor to get starting position
+	if cursor != "" {
+		decodedCursor, err := decodeStoreKeysCursor(cursor)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
 		}
+		startKey = []byte(decodedCursor.LastKey)
 	} else {
-		for iter.SeekGE(pfx); iter.Valid(); iter.Next() {
-			if !bytes.HasPrefix(iter.Key(), pfx) {
-				break
-			}
-			k := append([]byte(nil), iter.Key()...)
-			out = append(out, string(k))
+		startKey = pfx
+	}
+
+	// Seek to start position
+	if startKey != nil {
+		iter.SeekGE(startKey)
+	} else {
+		iter.First()
+	}
+
+	count := 0
+	for iter.Valid() && count < limit {
+		key := iter.Key()
+		if pfx != nil && !bytes.HasPrefix(key, pfx) {
+			break
+		}
+
+		// Skip the cursor key itself when continuing pagination
+		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
+			iter.Next()
+			continue
+		}
+
+		k := append([]byte(nil), key...)
+		out = append(out, string(k))
+		count++
+
+		if count < limit {
+			iter.Next()
 		}
 	}
-	return out, iter.Error()
+
+	// Determine if more results exist
+	hasMore := iter.Valid() && (pfx == nil || bytes.HasPrefix(iter.Key(), pfx))
+
+	// Generate next cursor if we have more results
+	var nextCursor string
+	if hasMore && len(out) > 0 {
+		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
+		if err != nil {
+			return nil, "", false, fmt.Errorf("failed to encode cursor: %w", err)
+		}
+	}
+
+	return out, nextCursor, hasMore, iter.Error()
+}
+
+// ListKeysPaginated lists keys with cursor-based pagination
+func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+	tr := telemetry.Track("db.list_keys_paginated")
+	defer tr.Finish()
+
+	if Client == nil {
+		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
+	}
+
+	// Set default and max limits
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var pfx []byte
+	if prefix != "" {
+		pfx = []byte(prefix)
+	} else {
+		pfx = nil
+	}
+
+	iter, err := Client.NewIter(&pebble.IterOptions{})
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer iter.Close()
+
+	var out []string
+	var startKey []byte
+
+	// Decode cursor to get starting position
+	if cursor != "" {
+		decodedCursor, err := decodeStoreKeysCursor(cursor)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+		}
+		startKey = []byte(decodedCursor.LastKey)
+	} else {
+		startKey = pfx
+	}
+
+	// Seek to start position
+	if startKey != nil {
+		iter.SeekGE(startKey)
+	} else {
+		iter.First()
+	}
+
+	count := 0
+	for iter.Valid() && count < limit {
+		key := iter.Key()
+		if pfx != nil && !bytes.HasPrefix(key, pfx) {
+			break
+		}
+
+		// Skip the cursor key itself when continuing pagination
+		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
+			iter.Next()
+			continue
+		}
+
+		k := append([]byte(nil), key...)
+		out = append(out, string(k))
+		count++
+
+		if count < limit {
+			iter.Next()
+		}
+	}
+
+	// Determine if more results exist
+	hasMore := iter.Valid() && (pfx == nil || bytes.HasPrefix(iter.Key(), pfx))
+
+	// Generate next cursor if we have more results
+	var nextCursor string
+	if hasMore && len(out) > 0 {
+		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
+		if err != nil {
+			return nil, "", false, fmt.Errorf("failed to encode cursor: %w", err)
+		}
+	}
+
+	return out, nextCursor, hasMore, iter.Error()
+}
+
+// encodeStoreKeysCursor creates a cursor for store keys pagination
+func encodeStoreKeysCursor(lastKey string) (string, error) {
+	cursor := map[string]interface{}{
+		"last_key": lastKey,
+	}
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// decodeStoreKeysCursor decodes a cursor for store keys pagination
+func decodeStoreKeysCursor(cursor string) (struct {
+	LastKey string `json:"last_key"`
+}, error) {
+	var result struct {
+		LastKey string `json:"last_key"`
+	}
+
+	data, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return result, err
+	}
+
+	err = json.Unmarshal(data, &result)
+	return result, err
 }
 
 // returns raw value for key as string
