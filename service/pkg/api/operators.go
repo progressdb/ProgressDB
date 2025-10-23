@@ -115,7 +115,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 		if err != nil {
 			continue
 		}
-		msgCount += int64(indexes.End - indexes.Start + 1)
+		msgCount += int64(indexes.End)
 	}
 	tr.Mark("encode_response")
 	_ = router.WriteJSON(ctx, struct {
@@ -754,26 +754,66 @@ type AdminMessagesResult struct {
 
 // listUsersByPrefixPaginated lists users by prefix with cursor pagination (admin function)
 func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*AdminUsersResult, error) {
-	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, limit, cursor)
+	// User indexes are stored in IndexDB, not main store DB
+	keys, err := index.ListKeys(prefix)
 	if err != nil {
 		return nil, err
 	}
 
+	// Debug: log what keys we found
+	logger.Info("admin_list_users_debug", "prefix", prefix, "total_keys_found", len(keys), "sample_keys", func() []string {
+		if len(keys) > 5 {
+			return keys[:5]
+		}
+		return keys
+	}())
+
 	// Extract user IDs from keys like "idx:U:user123:threads"
-	users := make([]string, 0, len(keys))
+	allUsers := make([]string, 0, len(keys))
 	for _, key := range keys {
 		// key format: idx:U:userID:threads
 		parts := strings.Split(key, ":")
 		if len(parts) >= 4 && parts[0] == "idx" && parts[1] == "U" && parts[3] == "threads" {
-			users = append(users, parts[2])
+			allUsers = append(allUsers, parts[2])
 		}
 	}
 
+	// Apply cursor and limit (simple pagination)
+	start := 0
+	if cursor != "" {
+		for i, userID := range allUsers {
+			if userID == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+
+	end := start + limit
+	if end > len(allUsers) {
+		end = len(allUsers)
+	}
+
+	if start >= len(allUsers) {
+		return &AdminUsersResult{
+			Users:      []string{},
+			NextCursor: "",
+			HasMore:    false,
+			Count:      0,
+		}, nil
+	}
+
+	pagedUsers := allUsers[start:end]
+	nextCursor := ""
+	if end < len(allUsers) {
+		nextCursor = pagedUsers[len(pagedUsers)-1]
+	}
+
 	return &AdminUsersResult{
-		Users:      users,
+		Users:      pagedUsers,
 		NextCursor: nextCursor,
-		HasMore:    hasMore,
-		Count:      len(users),
+		HasMore:    end < len(allUsers),
+		Count:      len(pagedUsers),
 	}, nil
 }
 
