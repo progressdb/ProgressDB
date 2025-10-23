@@ -70,7 +70,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
 	return []types.BatchEntry{be}, nil
 }
 func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -107,7 +107,7 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageUpdate, Thread: m.Thread, MsgID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageUpdate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
 	return []types.BatchEntry{be}, nil
 }
 func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -140,7 +140,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageDelete, Thread: tomb.Thread, MsgID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
+	be := types.BatchEntry{Handler: qpkg.HandlerMessageDelete, TID: tomb.Thread, MID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
 	return []types.BatchEntry{be}, nil
 }
 
@@ -171,7 +171,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, 
 		"action":   "add",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.TID, MsgID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, TID: op.TID, MID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
 	return []types.BatchEntry{be}, nil
 }
 func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -202,7 +202,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntr
 		"action":   "delete",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.TID, MsgID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, TID: op.TID, MID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
 	return []types.BatchEntry{be}, nil
 }
 
@@ -243,7 +243,7 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	th.KMS = kmsMeta
 
 	payload, _ := json.Marshal(th)
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, Thread: th.ID, MsgID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: th.ID, MID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
 	return []types.BatchEntry{be}, nil
 }
 func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -264,7 +264,7 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		payloadCopy = make([]byte, len(op.Payload))
 		copy(payloadCopy, op.Payload)
 	}
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, Thread: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, TID: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th}
 	return []types.BatchEntry{be}, nil
 }
 func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -278,7 +278,7 @@ func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	if th.ID == "" {
 		return nil, fmt.Errorf("missing thread id for delete")
 	}
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadDelete, Thread: th.ID, Payload: []byte{}, TS: timeutil.Now().UnixNano(), Model: nil}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadDelete, TID: th.ID, Payload: []byte{}, TS: timeutil.Now().UnixNano(), Model: nil}
 	return []types.BatchEntry{be}, nil
 }
 
