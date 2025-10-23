@@ -20,6 +20,7 @@ type BatchIndexManager struct {
 	userThreads         map[string]*index.UserThreadIndexes
 	userDeletedThreads  map[string][]string // Simplified: just track thread IDs
 	userDeletedMessages map[string][]string // Simplified: just track message IDs
+	userThreadSequences map[string]uint64   // Tracks next sequence number per user for this batch
 
 	// Thread-scoped indexes
 	threadMessages     map[string]*index.ThreadMessageIndexes
@@ -34,6 +35,10 @@ type BatchIndexManager struct {
 
 	// Index DB operations
 	indexData map[string][]byte
+
+	// Thread ID resolution cache
+	provisionalToFinalIDs map[string]string // Maps provisional IDs to final IDs within this batch
+	resolvedThreadIDs     map[string]string // Cache for database-resolved thread IDs
 }
 
 // MessageVersion represents a version entry for batching
@@ -55,16 +60,108 @@ type MessageData struct {
 // NewBatchIndexManager creates a new batch index manager
 func NewBatchIndexManager() *BatchIndexManager {
 	return &BatchIndexManager{
-		userThreads:         make(map[string]*index.UserThreadIndexes),
-		userDeletedThreads:  make(map[string][]string),
-		userDeletedMessages: make(map[string][]string),
-		threadMessages:      make(map[string]*index.ThreadMessageIndexes),
-		threadParticipants:  make(map[string]*index.ThreadParticipantIndexes),
-		messageVersions:     make(map[string][]MessageVersion),
-		threadMeta:          make(map[string][]byte),
-		messageData:         make(map[string]MessageData),
-		indexData:           make(map[string][]byte),
+		userThreads:           make(map[string]*index.UserThreadIndexes),
+		userDeletedThreads:    make(map[string][]string),
+		userDeletedMessages:   make(map[string][]string),
+		userThreadSequences:   make(map[string]uint64),
+		threadMessages:        make(map[string]*index.ThreadMessageIndexes),
+		threadParticipants:    make(map[string]*index.ThreadParticipantIndexes),
+		messageVersions:       make(map[string][]MessageVersion),
+		threadMeta:            make(map[string][]byte),
+		messageData:           make(map[string]MessageData),
+		indexData:             make(map[string][]byte),
+		provisionalToFinalIDs: make(map[string]string),
+		resolvedThreadIDs:     make(map[string]string),
 	}
+}
+
+// GetNextUserThreadSequence returns the next sequence number for a user's thread
+// This tracks sequences locally during batch processing to avoid DB calls
+func (b *BatchIndexManager) GetNextUserThreadSequence(userID string) uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, exists := b.userThreadSequences[userID]; !exists {
+		// Initialize sequence for this user - will be set from DB during batch preparation
+		b.userThreadSequences[userID] = 0
+	}
+
+	b.userThreadSequences[userID]++
+	return b.userThreadSequences[userID]
+}
+
+// SetUserThreadSequence initializes the sequence number for a user from the database
+func (b *BatchIndexManager) SetUserThreadSequence(userID string, sequence uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.userThreadSequences[userID] = sequence
+}
+
+// InitializeUserSequencesFromDB loads current thread counts for all users in the batch
+func (b *BatchIndexManager) InitializeUserSequencesFromDB(userIDs []string) error {
+	for _, userID := range userIDs {
+		threads, err := index.GetUserThreads(userID)
+		if err != nil {
+			return fmt.Errorf("get user threads %s: %w", userID, err)
+		}
+		b.SetUserThreadSequence(userID, uint64(len(threads)))
+	}
+	return nil
+}
+
+// MapProvisionalToFinalID stores the mapping from provisional to final thread ID
+func (b *BatchIndexManager) MapProvisionalToFinalID(provisionalID, finalID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.provisionalToFinalIDs[provisionalID] = finalID
+}
+
+// GetFinalThreadID resolves a provisional or final thread ID to the final ID
+func (b *BatchIndexManager) GetFinalThreadID(threadID string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// If it's already a final ID, return it
+	if keys.IsFinalThreadID(threadID) {
+		return threadID, nil
+	}
+
+	// Check batch-local mapping first
+	if finalID, exists := b.provisionalToFinalIDs[threadID]; exists {
+		return finalID, nil
+	}
+
+	// Check resolution cache
+	if finalID, exists := b.resolvedThreadIDs[threadID]; exists {
+		return finalID, nil
+	}
+
+	// Need to resolve from database
+	finalID, err := b.resolveThreadIDFromDB(threadID)
+	if err != nil {
+		return "", err
+	}
+
+	// Cache the result
+	b.resolvedThreadIDs[threadID] = finalID
+	return finalID, nil
+}
+
+// resolveThreadIDFromDB looks up the final thread ID from the database using provisional prefix
+func (b *BatchIndexManager) resolveThreadIDFromDB(provisionalID string) (string, error) {
+	// Extract timestamp from provisional ID
+	timestamp, err := keys.ExtractTimestampFromProvisionalID(provisionalID)
+	if err != nil {
+		return "", fmt.Errorf("invalid provisional ID format: %w", err)
+	}
+
+	// For now, return an error - this would need to be implemented with actual database lookup
+	// In a real implementation, you would:
+	// 1. Search through user thread indexes for threads with this timestamp
+	// 2. Or have a reverse index from provisional to final IDs
+	// 3. Or query threads by timestamp prefix
+	return "", fmt.Errorf("database resolution for provisional ID %s (timestamp %d) not implemented yet", provisionalID, timestamp)
 }
 
 // AddThreadToUser adds a thread to user's ownership index
@@ -476,10 +573,13 @@ func (b *BatchIndexManager) Reset() {
 	b.userThreads = make(map[string]*index.UserThreadIndexes)
 	b.userDeletedThreads = make(map[string][]string)
 	b.userDeletedMessages = make(map[string][]string)
+	b.userThreadSequences = make(map[string]uint64)
 	b.threadMessages = make(map[string]*index.ThreadMessageIndexes)
 	b.threadParticipants = make(map[string]*index.ThreadParticipantIndexes)
 	b.messageVersions = make(map[string][]MessageVersion)
 	b.threadMeta = make(map[string][]byte)
 	b.messageData = make(map[string]MessageData)
 	b.indexData = make(map[string][]byte)
+	b.provisionalToFinalIDs = make(map[string]string)
+	b.resolvedThreadIDs = make(map[string]string)
 }
