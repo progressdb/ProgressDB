@@ -58,7 +58,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerThreadCreate,
-		TID:     "",
+		TID:     pid,
 		MID:     "",
 		Payload: payload,
 		TS:      reqtime,
@@ -167,15 +167,15 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	id := keys.GenMessageID()
 	ts := timeutil.Now().UnixNano()
 	metadata := NewRequestMetadata(ctx, author)
+	pid := keys.GenProvisionalMessageID(ts)
 
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerMessageCreate,
 		TID:     threadID,
-		MID:     id,
+		MID:     pid,
 		Payload: payload,
 		TS:      ts,
 		Extras:  metadata.ToQueueExtras(),
@@ -185,7 +185,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, map[string]string{"id": id})
+	_ = router.WriteJSON(ctx, map[string]string{"id": pid})
 }
 func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.enqueue_update_message")

@@ -21,7 +21,8 @@ func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	for _, entry := range entries {
 		threadID := entry.TID
 
-		// For thread creation operations, try to extract thread ID from payload if TID is empty
+		// For thread creation operations, the TID should already be the provisional ID
+		// But if it's empty, try to extract from payload (backward compatibility)
 		if threadID == "" && entry.Handler == queue.HandlerThreadCreate {
 			if len(entry.Payload) > 0 {
 				var thread struct {
@@ -39,10 +40,8 @@ func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 			}
 		}
 
-		if threadID == "" {
-			// Global operations or thread creation without ID - use empty string as key
-			threadID = ""
-		}
+		// Group by thread ID (provisional or final)
+		// Thread creation and related messages will have the same provisional ID
 		threadGroups[threadID] = append(threadGroups[threadID], entry)
 	}
 
@@ -131,7 +130,10 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 
 	// Store provisional ID for mapping
 	provisionalID := keys.GenProvisionalThreadID(entry.TS)
-	batchIndexManager.MapProvisionalToFinalID(provisionalID, threadID)
+	logger.Debug("thread_create_mapping", "provisional", provisionalID, "final", threadID, "entry_tid", entry.TID)
+	batchIndexManager.mu.Lock()
+	batchIndexManager.sequencerManager.MapProvisionalToFinalThreadID(provisionalID, threadID)
+	batchIndexManager.mu.Unlock()
 
 	// Update thread model with generated ID
 	thread.ID = threadID
@@ -159,61 +161,6 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 }
 
 // processThreadUpdate handles thread updates using BatchIndexManager
-func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
-	logger.Debug("process_thread_update", "thread", entry.TID)
-	// Validate entry
-	if entry.TID == "" {
-		return fmt.Errorf("thread ID required for thread update")
-	}
-	if len(entry.Payload) == 0 {
-		return fmt.Errorf("payload required for thread update")
-	}
-
-	// Resolve thread ID (handles provisional → final ID conversion)
-	finalThreadID, err := batchIndexManager.GetFinalThreadID(entry.TID)
-	if err != nil {
-		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
-	}
-
-	// Parse thread model
-	var thread models.Thread
-	if err := json.Unmarshal(entry.Payload, &thread); err != nil {
-		return fmt.Errorf("unmarshal thread: %w", err)
-	}
-
-	// Validate author is required for thread update
-	if thread.Author == "" {
-		return fmt.Errorf("author is required for thread update")
-	}
-
-	// Validate thread model
-	if thread.ID == "" {
-		thread.ID = finalThreadID
-	}
-	if thread.ID == "" {
-		return fmt.Errorf("thread ID cannot be empty")
-	}
-
-	// Update thread model with final ID if needed
-	if thread.ID != finalThreadID {
-		thread.ID = finalThreadID
-	}
-
-	// Re-marshal the updated thread model
-	updatedPayload, err := json.Marshal(thread)
-	if err != nil {
-		return fmt.Errorf("marshal updated thread: %w", err)
-	}
-
-	// Set thread metadata in batch manager
-	batchIndexManager.SetThreadMeta(thread.ID, updatedPayload)
-
-	// Update participants (author is always required)
-	batchIndexManager.AddParticipantToThread(thread.ID, thread.Author)
-
-	return nil
-}
-
 // processThreadDelete handles thread deletion using BatchIndexManager
 func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
 	logger.Debug("process_thread_delete", "thread", entry.TID)
@@ -223,7 +170,9 @@ func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	}
 
 	// Resolve thread ID (handles provisional → final ID conversion)
-	finalThreadID, err := batchIndexManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Lock()
+	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
@@ -275,10 +224,14 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	}
 
 	// Resolve thread ID (handles provisional → final ID conversion)
-	finalThreadID, err := batchIndexManager.GetFinalThreadID(entry.TID)
+	logger.Debug("message_resolve_thread", "provisional_tid", entry.TID, "handler", entry.Handler)
+	batchIndexManager.mu.Lock()
+	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
+	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
 
 	// Parse message model
 	var msg models.Message
@@ -304,7 +257,103 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 		// This is a provisional ID, generate final ID and map it
 		provisionalMessageID = msg.ID
 		finalMessageID = keys.GenMessageID()
-		batchIndexManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
+		batchIndexManager.mu.Lock()
+		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
+		batchIndexManager.mu.Unlock()
+		logger.Debug("mapped_provisional_message", "provisional", provisionalMessageID, "final", finalMessageID)
+	} else {
+		// This is already a final ID
+		finalMessageID = msg.ID
+	}
+
+	// Update message model with final ID
+	msg.ID = finalMessageID
+	if msg.TS == 0 {
+		msg.TS = entry.TS
+	}
+
+	// Update message thread reference to final ID
+	msg.Thread = finalThreadID
+
+	// Re-marshal the updated message model with final IDs
+	updatedPayload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal updated message: %w", err)
+	}
+
+	// Use updated payload for storage
+	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("set message data: %w", err)
+	}
+	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+		return fmt.Errorf("add message version: %w", err)
+	}
+
+	// Generate message key and sequence
+	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
+	if err != nil {
+		return fmt.Errorf("message key: %w", err)
+	}
+
+	// Update thread message indexes
+	isDelete := entry.Handler == queue.HandlerMessageDelete
+	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, isDelete, msgKey)
+
+	// Handle user deleted messages
+	if isDelete && msg.Author != "" {
+		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
+	}
+
+	return nil
+}
+
+func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+	logger.Debug("process_thread_update", "thread", entry.TID)
+	// Validate entry
+	if entry.TID == "" {
+		return fmt.Errorf("thread ID required for thread update")
+	}
+	if len(entry.Payload) == 0 {
+		return fmt.Errorf("payload required for thread update")
+	}
+
+	// Resolve thread ID (handles provisional → final ID conversion)
+	logger.Debug("message_resolve_thread", "provisional_tid", entry.TID, "handler", entry.Handler)
+	batchIndexManager.mu.Lock()
+	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
+	}
+	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
+
+	// Parse message model
+	var msg models.Message
+	if entry.Model != nil {
+		if m, ok := entry.Model.(*models.Message); ok {
+			msg = *m
+		}
+	} else if len(entry.Payload) > 0 {
+		if err := json.Unmarshal(entry.Payload, &msg); err != nil {
+			return fmt.Errorf("unmarshal message: %w", err)
+		}
+	}
+
+	// Handle message ID generation and mapping
+	var finalMessageID string
+	var provisionalMessageID string
+
+	if msg.ID == "" {
+		// Generate new message ID
+		finalMessageID = keys.GenMessageID()
+		logger.Debug("generated_message_id", "message", finalMessageID)
+	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
+		// This is a provisional ID, generate final ID and map it
+		provisionalMessageID = msg.ID
+		finalMessageID = keys.GenMessageID()
+		batchIndexManager.mu.Lock()
+		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
+		batchIndexManager.mu.Unlock()
 		logger.Debug("mapped_provisional_message", "provisional", provisionalMessageID, "final", finalMessageID)
 	} else {
 		// This is already a final ID
@@ -360,7 +409,9 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	}
 
 	// Resolve thread ID (handles provisional → final ID conversion)
-	finalThreadID, err := batchIndexManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Lock()
+	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
@@ -378,7 +429,9 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	}
 
 	// Resolve message ID (handles provisional → final ID conversion)
-	finalMessageID, err := batchIndexManager.GetFinalMessageID(msg.ID)
+	batchIndexManager.mu.Lock()
+	finalMessageID, err := batchIndexManager.sequencerManager.GetFinalMessageID(msg.ID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
@@ -410,7 +463,9 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	}
 
 	// Resolve thread ID (handles provisional → final ID conversion)
-	finalThreadID, err := batchIndexManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Lock()
+	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
@@ -428,7 +483,9 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	}
 
 	// Resolve message ID (handles provisional → final ID conversion)
-	finalMessageID, err := batchIndexManager.GetFinalMessageID(msg.ID)
+	batchIndexManager.mu.Lock()
+	finalMessageID, err := batchIndexManager.sequencerManager.GetFinalMessageID(msg.ID)
+	batchIndexManager.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
@@ -539,6 +596,14 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	// Group entries by thread ID for scoped processing
 	threadGroups := groupByThread(entries)
 	logger.Debug("batch_grouped", "threads", len(threadGroups))
+
+	// Debug: Log thread groups and their operations
+	for threadID, threadEntries := range threadGroups {
+		logger.Debug("thread_group", "thread_id", threadID, "operations", len(threadEntries))
+		for _, entry := range threadEntries {
+			logger.Debug("thread_group_op", "thread_id", threadID, "handler", entry.Handler, "tid", entry.TID, "mid", entry.MID)
+		}
+	}
 
 	tr.Mark("process_thread_groups")
 

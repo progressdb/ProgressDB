@@ -36,6 +36,11 @@ func GenProvisionalThreadID(ts int64) string {
 	return fmt.Sprintf("thread-%d", ts)
 }
 
+// Generate a provisional message id in the form "msg-<timestamp>", using the provided timestamp.
+func GenProvisionalMessageID(ts int64) string {
+	return fmt.Sprintf("msg-%d", ts)
+}
+
 // Generate a final thread ID with user-specific sequence in the form "thread-<timestamp>-<userSeq>"
 func GenUserThreadID(ts int64, userSeq uint64) string {
 	return fmt.Sprintf("thread-%d-%d", ts, userSeq)

@@ -3,12 +3,12 @@ package apply
 import (
 	"fmt"
 	"strings"
-	"sync"
 
-	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/logger"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
+
+	"github.com/cockroachdb/pebble"
 )
 
 // ThreadSequencer manages thread ID resolution and sequencing
@@ -21,6 +21,12 @@ type ThreadSequencer struct {
 type MessageSequencer struct {
 	provisionalToFinalIDs map[string]string // Maps provisional message IDs to final IDs within this batch
 	resolvedMessageIDs    map[string]string // Cache for database-resolved message IDs
+}
+
+// BatchSequencerManager manages both thread and message sequencers for batch processing
+type BatchSequencerManager struct {
+	threadSequencer  *ThreadSequencer
+	messageSequencer *MessageSequencer
 }
 
 // NewThreadSequencer creates a new thread sequencer
@@ -36,6 +42,14 @@ func NewMessageSequencer() *MessageSequencer {
 	return &MessageSequencer{
 		provisionalToFinalIDs: make(map[string]string),
 		resolvedMessageIDs:    make(map[string]string),
+	}
+}
+
+// NewBatchSequencerManager creates a new batch sequencer manager
+func NewBatchSequencerManager() *BatchSequencerManager {
+	return &BatchSequencerManager{
+		threadSequencer:  NewThreadSequencer(),
+		messageSequencer: NewMessageSequencer(),
 	}
 }
 
@@ -161,60 +175,35 @@ func (m *MessageSequencer) Reset() {
 	m.resolvedMessageIDs = make(map[string]string)
 }
 
-// BatchSequencerManager manages both thread and message sequencers for batch processing
-type BatchSequencerManager struct {
-	mu               sync.RWMutex
-	threadSequencer  *ThreadSequencer
-	messageSequencer *MessageSequencer
+// BatchSequencerManager methods
+
+// MapProvisionalToFinalThreadID delegates to thread sequencer
+func (bsm *BatchSequencerManager) MapProvisionalToFinalThreadID(provisionalID, finalID string) {
+	bsm.threadSequencer.MapProvisionalToFinalThreadID(provisionalID, finalID)
 }
 
-// NewBatchSequencerManager creates a new batch sequencer manager
-func NewBatchSequencerManager() *BatchSequencerManager {
-	return &BatchSequencerManager{
-		threadSequencer:  NewThreadSequencer(),
-		messageSequencer: NewMessageSequencer(),
-	}
+// GetFinalThreadID delegates to thread sequencer
+func (bsm *BatchSequencerManager) GetFinalThreadID(threadID string) (string, error) {
+	return bsm.threadSequencer.GetFinalThreadID(threadID)
 }
 
-// MapProvisionalToFinalThreadID stores the mapping from provisional to final thread ID
-func (b *BatchSequencerManager) MapProvisionalToFinalThreadID(provisionalID, finalID string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.threadSequencer.MapProvisionalToFinalThreadID(provisionalID, finalID)
+// MapProvisionalToFinalMessageID delegates to message sequencer
+func (bsm *BatchSequencerManager) MapProvisionalToFinalMessageID(provisionalID, finalID string) {
+	bsm.messageSequencer.MapProvisionalToFinalMessageID(provisionalID, finalID)
 }
 
-// GetFinalThreadID resolves a provisional or final thread ID to the final ID
-func (b *BatchSequencerManager) GetFinalThreadID(threadID string) (string, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.threadSequencer.GetFinalThreadID(threadID)
+// GetFinalMessageID delegates to message sequencer
+func (bsm *BatchSequencerManager) GetFinalMessageID(messageID string) (string, error) {
+	return bsm.messageSequencer.GetFinalMessageID(messageID)
 }
 
-// GetFinalMessageID resolves a provisional or final message ID to the final ID
-func (b *BatchSequencerManager) GetFinalMessageID(messageID string) (string, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.messageSequencer.GetFinalMessageID(messageID)
+// IsProvisionalMessageID delegates to message sequencer
+func (bsm *BatchSequencerManager) IsProvisionalMessageID(messageID string) bool {
+	return bsm.messageSequencer.IsProvisionalMessageID(messageID)
 }
 
-// MapProvisionalToFinalMessageID stores the mapping from provisional to final message ID
-func (b *BatchSequencerManager) MapProvisionalToFinalMessageID(provisionalID, finalID string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.messageSequencer.MapProvisionalToFinalMessageID(provisionalID, finalID)
-}
-
-// IsProvisionalMessageID checks if a message ID is provisional
-func (b *BatchSequencerManager) IsProvisionalMessageID(messageID string) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.messageSequencer.IsProvisionalMessageID(messageID)
-}
-
-// Reset clears all cached mappings
-func (b *BatchSequencerManager) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.threadSequencer.Reset()
-	b.messageSequencer.Reset()
+// Reset clears all sequencer state
+func (bsm *BatchSequencerManager) Reset() {
+	bsm.threadSequencer.Reset()
+	bsm.messageSequencer.Reset()
 }
