@@ -209,6 +209,8 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntr
 // thread meta op methods
 func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var th models.Thread
+
+	// handle payload verification
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
@@ -216,11 +218,8 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		// payload may be partial; we still accept and fill from op
 		th = models.Thread{}
 	}
-	// If handler generated an ID (HTTP fast-path), prefer op.TID.
-	if th.ID == "" && op.TID != "" {
-		th.ID = op.TID
-	}
-	// Ensure timestamps
+
+	// ensure timestamps
 	if th.CreatedTS == 0 {
 		th.CreatedTS = timeutil.Now().UnixNano()
 	}
@@ -228,12 +227,12 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		th.UpdatedTS = th.CreatedTS
 	}
 
-	// Validate thread
+	// validate thread
 	if err := ValidateThread(th); err != nil {
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
-	// If encryption is enabled, provision a DEK for the thread using KMS.
+	// provision DEK if needed
 	tr := telemetry.Track("ingest.thread_encryption")
 	defer tr.Finish()
 	tr.Mark("kms_provision")

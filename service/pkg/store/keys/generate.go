@@ -7,36 +7,30 @@ import (
 	"progressdb/pkg/timeutil"
 )
 
-var (
-	// global sequence counter for ID generation
-	idSeq uint64
-)
+// Global sequence counter for ID generation.
+// Down in the pipeline - this is sub scoped later with index datas
+var idSeq uint64
 
-// GetNextSequence returns the next sequence number for the given record type.
-// Currently uses a global counter, but designed for future per-user or per-type sequencing.
 func GetNextSequence(recordType string) uint64 {
 	return atomic.AddUint64(&idSeq, 1)
 }
 
-// sequencer returns the next sequence number for a given ID.
-// This enables per-ID sequencing for user-scoped key generation.
-func sequencer(id string) uint64 {
-	// For now, use global sequencing, but this can be extended to per-ID counters
-	return GetNextSequence("sequencer")
-}
-
-// GenMessageID generates a unique message ID using the current UTC nanosecond timestamp and a sequence number.
-// The format is "msg-<timestamp>-<seq>".
+// Returns a unique message ID in the form "msg-<timestamp>-<seq>".
 func GenMessageID() string {
 	n := timeutil.Now().UnixNano()
-	s := sequencer("message")
+	s := GetNextSequence("message")
 	return fmt.Sprintf("msg-%d-%d", n, s)
 }
 
-// GenThreadID generates a unique thread ID using the current UTC nanosecond timestamp and a sequence number.
-// The format is "thread-<timestamp>-<seq>".
+// Returns a unique thread ID in the form "thread-<timestamp>-<seq>".
 func GenThreadID() string {
 	n := timeutil.Now().UnixNano()
-	s := sequencer("thread")
+	s := GetNextSequence("thread")
 	return fmt.Sprintf("thread-%d-%d", n, s)
 }
+
+// Generate a provisional thread id in the form "thread-<timestamp>", using the provided timestamp.
+func GenProvisionalThreadID(ts int64) string {
+	return fmt.Sprintf("thread-%d", ts)
+}
+

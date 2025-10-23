@@ -49,16 +49,19 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	id := keys.GenThreadID()
-
 	tr.Mark("enqueue")
+
+	// enqueue
+	reqtime := timeutil.Now().UnixNano()
 	metadata := NewRequestMetadata(ctx, author)
+	pid := keys.GenProvisionalThreadID(reqtime)
+
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerThreadCreate,
-		TID:  id,
-		MID:      "",
+		TID:     "",
+		MID:     "",
 		Payload: payload,
-		TS:      timeutil.Now().UnixNano(),
+		TS:      reqtime,
 		Extras:  metadata.ToQueueExtras(),
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -66,7 +69,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, map[string]string{"id": id})
+	_ = router.WriteJSON(ctx, map[string]string{"id": pid})
 }
 func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	tr := telemetry.Track("api.enqueue_update_thread")
@@ -91,8 +94,8 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerThreadUpdate,
-		TID:  id,
-		MID:      "",
+		TID:     id,
+		MID:     "",
 		Payload: payload,
 		TS:      timeutil.Now().UnixNano(),
 		Extras:  metadata.ToQueueExtras(),
@@ -126,8 +129,8 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerThreadDelete,
-		TID:  id,
-		MID:      "",
+		TID:     id,
+		MID:     "",
 		Payload: payload,
 		TS:      timeutil.Now().UnixNano(),
 		Extras:  metadata.ToQueueExtras(),
@@ -171,8 +174,8 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerMessageCreate,
-		TID:  threadID,
-		MID:      id,
+		TID:     threadID,
+		MID:     id,
 		Payload: payload,
 		TS:      ts,
 		Extras:  metadata.ToQueueExtras(),
@@ -210,8 +213,8 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerMessageUpdate,
-		TID:  threadID,
-		MID:      id,
+		TID:     threadID,
+		MID:     id,
 		Payload: payload,
 		TS:      ts,
 		Extras:  metadata.ToQueueExtras(),
@@ -245,8 +248,8 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerMessageDelete,
-		TID:  "",
-		MID:      id,
+		TID:     "",
+		MID:     id,
 		Payload: payload,
 		TS:      timeutil.Now().UnixNano(),
 		Extras:  metadata.ToQueueExtras(),
@@ -290,8 +293,8 @@ func EnqueueAddReaction(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerReactionAdd,
-		TID:  "",
-		MID:      id,
+		TID:     "",
+		MID:     id,
 		Payload: payload,
 		TS:      ts,
 		Extras:  metadata.ToQueueExtras(),
@@ -327,8 +330,8 @@ func EnqueueDeleteReaction(ctx *fasthttp.RequestCtx) {
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerReactionDelete,
-		TID:  "",
-		MID:      id,
+		TID:     "",
+		MID:     id,
 		Payload: payload,
 		TS:      timeutil.Now().UnixNano(),
 		Extras:  metadata.ToQueueExtras(),
