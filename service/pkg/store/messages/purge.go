@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
@@ -41,14 +40,9 @@ func PurgeMessagePermanently(messageID string) error {
 			break
 		}
 		if !found {
-			// parse key: v:{msgID}:{ts}:{seq}
-			keyStr := string(vi.Key())
-			parts := strings.Split(keyStr, ":")
-			if len(parts) >= 4 {
-				seqStr := parts[3]
-				if s, err := keys.ParseKeySequence(seqStr); err == nil {
-					seq = int64(s)
-				}
+			// parse version key using proper parser
+			if s, err := keys.ParseVersionKeySequence(string(vi.Key())); err == nil {
+				seq = int64(s)
 			}
 			// unmarshal data to get thread and author
 			v := append([]byte(nil), vi.Value()...)

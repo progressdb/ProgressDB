@@ -62,7 +62,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		}
 		// Create start key using sequence to position after the cursor
 		// Since we don't have msgID, we use the thread prefix + sequence as starting point
-		startKey = []byte(fmt.Sprintf("%s:m:%s", keys.GenThreadPrvKey(threadID), keys.PadSeq(mc.Sequence+1)))
+		startKey = []byte(keys.GenThreadMessagesGEPrefix(threadID, mc.Sequence+1))
 	} else {
 		// No cursor, start from beginning
 		startKey = []byte(keys.GenAllThreadMessagesPrefix(threadID))
@@ -74,7 +74,8 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 	var ts int64
 	count := 0
 
-	// start 
+	// SeekGE(key) finds the first key that is greater than or equal to the provided key
+	// SeekGE("t:123:m:000003") will position at t:123:m:msgC:000003
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
 		key := iter.Key()
 

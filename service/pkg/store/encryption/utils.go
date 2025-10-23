@@ -115,10 +115,7 @@ func GetThreadKMS(threadID string) (*models.KMSMeta, error) {
 		return nil, nil
 	}
 
-	threadKey, err := keys.ThreadMetaKey(threadID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid thread key: %w", err)
-	}
+	threadKey := keys.GenThreadKey(threadID)
 
 	threadData, closer, err := storedb.Client.Get([]byte(threadKey))
 	if err != nil {

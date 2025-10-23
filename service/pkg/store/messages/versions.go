@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/kms"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
 	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
@@ -28,81 +25,40 @@ func ListMessageVersions(msgID string) ([]string, error) {
 		return nil, err
 	}
 	defer iter.Close()
+
 	var out []string
-	var threadKeyID string
-	var threadChecked bool
+	var kmsMeta *models.KMSMeta
+
 	for iter.SeekGE([]byte(prefix)); iter.Valid(); iter.Next() {
 		if !bytes.HasPrefix(iter.Key(), []byte(prefix)) {
 			break
 		}
+
 		v := append([]byte(nil), iter.Value()...)
-		if security.EncryptionEnabled() && !threadChecked {
-			threadChecked = true
-			var msg struct {
-				Thread string `json:"thread"`
+
+		// Get thread ID from message to fetch KMS metadata (only once)
+		if kmsMeta == nil {
+			var msg models.Message
+			if err := json.Unmarshal(v, &msg); err != nil {
+				return nil, fmt.Errorf("invalid message JSON: %w", err)
 			}
-			if err := json.Unmarshal(v, &msg); err == nil && msg.Thread != "" {
-				sthr, terr := threads.GetThread(msg.Thread)
-				if terr == nil {
-					var th struct {
-						KMS struct {
-							KeyID string `json:"key_id"`
-						} `json:"kms"`
-					}
-					if json.Unmarshal([]byte(sthr), &th) == nil {
-						threadKeyID = th.KMS.KeyID
-					}
-				}
-			} else {
+			if msg.Thread == "" {
 				return nil, fmt.Errorf("cannot determine thread for message version")
 			}
-		}
-		if security.EncryptionEnabled() {
-			if security.EncryptionHasFieldPolicy() {
-				if threadKeyID == "" {
-					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
-				}
-				var mm models.Message
-				if err := json.Unmarshal(v, &mm); err != nil {
-					return nil, fmt.Errorf("invalid message JSON: %w", err)
-				}
-				decBody, decErr := security.DecryptMessageBody(&mm, threadKeyID)
-				if decErr != nil {
-					return nil, fmt.Errorf("field decryption failed: %w", decErr)
-				}
-				mm.Body = decBody
-				nb, err := json.Marshal(mm)
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal decrypted message: %w", err)
-				}
-				v = nb
-			} else {
-				if threadKeyID == "" {
-					return nil, fmt.Errorf("encryption enabled but no thread key available for message version")
-				}
-				var mm models.Message
-				if err := json.Unmarshal(v, &mm); err == nil {
-					b, derr := security.DecryptMessageBody(&mm, threadKeyID)
-					if derr != nil {
-						return nil, fmt.Errorf("decrypt failed: %w", derr)
-					}
-					mm.Body = b
-					nb, merr := json.Marshal(mm)
-					if merr != nil {
-						return nil, fmt.Errorf("failed to marshal decrypted message: %w", merr)
-					}
-					v = nb
-				} else {
-					dec, err := kms.DecryptWithDEK(threadKeyID, v, nil)
-					if err != nil {
-						return nil, fmt.Errorf("decrypt failed: %w", err)
-					}
-					logger.Debug("decrypted_message_version", "threadKeyID", threadKeyID, "decrypted_len", len(dec))
-					v = dec
-				}
+
+			kmsMeta, err = encryption.GetThreadKMS(msg.Thread)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get thread KMS: %w", err)
 			}
 		}
-		out = append(out, string(v))
+
+		// Decrypt using encryption utils (handles both field-level and full message)
+		decrypted, err := encryption.DecryptMessageData(kmsMeta, v)
+		if err != nil {
+			return nil, fmt.Errorf("decryption failed: %w", err)
+		}
+
+		out = append(out, string(decrypted))
 	}
 	return out, iter.Error()
 }

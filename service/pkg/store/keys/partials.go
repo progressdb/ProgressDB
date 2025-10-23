@@ -12,8 +12,11 @@ const (
 	// Thread message prefix for finding all messages in a thread (missing msgID:seq)
 	ThreadMessagePrefix = "t:%s:m:"
 
-	// Thread prefix for finding all thread metadata
-	ThreadPrefix = "thread:"
+	// Thread metadata prefix for finding all thread metadata keys
+	ThreadMetadataPrefix = "t:"
+
+	// Thread message GE prefix for SeekGE operations (missing msgID, has seq)
+	ThreadMessageGEPrefix = "t:%s:m:%s"
 )
 
 // GenAllMessageVersionsPrefix returns prefix for searching all versions of a message
@@ -26,7 +29,21 @@ func GenAllThreadMessagesPrefix(threadID string) string {
 	return fmt.Sprintf(ThreadMessagePrefix, threadID)
 }
 
-// GenThreadPrefix returns prefix for searching all thread metadata
-func GenThreadPrefix() string {
-	return ThreadPrefix
+// GenThreadMetadataPrefix returns prefix for searching all thread metadata keys
+func GenThreadMetadataPrefix() string {
+	return ThreadMetadataPrefix
+}
+
+// GenThreadMessagesGEPrefix returns prefix for SeekGE operations to start from a specific sequence
+func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
+	return fmt.Sprintf(ThreadMessageGEPrefix, threadID, PadSeq(seq))
+}
+
+// ParseVersionKeySequence parses just the sequence from a version key using existing ParseVersionKey
+func ParseVersionKeySequence(key string) (uint64, error) {
+	parts, err := ParseVersionKey(key)
+	if err != nil {
+		return 0, err
+	}
+	return ParseKeySequence(parts.Seq)
 }
