@@ -1,5 +1,19 @@
 package models
 
+// ReadRequestCursorInfo represents cursor information for read requests
+type ReadRequestCursorInfo struct {
+	Cursor string `json:"cursor"`
+	Limit  int    `json:"limit"`
+}
+
+// ReadResponseCursorInfo represents cursor information for read responses
+type ReadResponseCursorInfo struct {
+	Cursor     string `json:"cursor"`
+	HasMore    bool   `json:"has_more"`
+	TotalCount uint64 `json:"total_count"` // Total messages in thread
+	LastSeq    uint64 `json:"last_seq"`    // Sequence of last message returned
+}
+
 type Message struct {
 	ID     string `json:"id"`
 	Thread string `json:"thread"`

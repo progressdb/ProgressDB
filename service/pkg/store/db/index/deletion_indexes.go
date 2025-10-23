@@ -24,7 +24,7 @@ func UpdateDeletedThreads(userID, threadID string, add bool) error {
 	tr := telemetry.Track("index.update_deleted_threads")
 	defer tr.Finish()
 
-	key, err := keys.DeletedThreadsIndexKey(userID)
+	key, err := keys.GenDeletedThreadsKey(userID)
 	if err != nil {
 		return err
 	}

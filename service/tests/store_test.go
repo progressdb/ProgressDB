@@ -24,20 +24,20 @@ func TestKeysBuildersParsers(t *testing.T) {
 
 	for _, c := range cases {
 		// MsgKey -> ParseMsgKey
-		k, err := keys.MsgKey(c.threadID, c.ts, c.seq)
+		k, err := keys.GenMsgKey(c.threadID, "test-msg", c.seq)
 		if err != nil {
-			t.Fatalf("MsgKey error: %v", err)
+			t.Fatalf("GenMsgKey error: %v", err)
 		}
-		tid, pts, pseq, perr := keys.ParseMsgKey(k)
+		tid, msgID, pseq, perr := keys.ParseMsgKey(k)
 		if perr != nil {
 			t.Fatalf("ParseMsgKey error: %v (key=%s)", perr, k)
 		}
-		if tid != c.threadID || pts != c.ts || pseq != c.seq {
-			t.Fatalf("ParseMsgKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", tid, pts, pseq, c.threadID, c.ts, c.seq)
+		if tid != c.threadID || msgID != "test-msg" || pseq != c.seq {
+			t.Fatalf("ParseMsgKey mismatch: got (%s,%s,%d) want (%s,%s,%d)", tid, msgID, pseq, c.threadID, "test-msg", c.seq)
 		}
 
 		// VersionKey -> ParseVersionKey
-		vk, err := keys.VersionKey(c.msgID, c.ts, c.seq)
+		vk, err := keys.GenVersionKey(c.msgID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("VersionKey error: %v", err)
 		}
@@ -50,7 +50,7 @@ func TestKeysBuildersParsers(t *testing.T) {
 		}
 
 		// ThreadMetaKey
-		mk, err := keys.ThreadMetaKey(c.threadID)
+		mk, err := keys.GenThreadMetaKey(c.threadID)
 		if err != nil {
 			t.Fatalf("ThreadMetaKey error: %v", err)
 		}
@@ -60,10 +60,10 @@ func TestKeysBuildersParsers(t *testing.T) {
 	}
 
 	// invalid ids
-	if _, err := keys.MsgKey("", 1, 1); err == nil {
+	if _, err := keys.GenMsgKey("", "test-msg", 1); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if _, err := keys.VersionKey("", 1, 1); err == nil {
+	if _, err := keys.GenVersionKey("", 1, 1); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }
@@ -83,7 +83,7 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 
 	for _, c := range cases {
 		// MsgKey round-trip
-		k, err := keys.MsgKey(c.threadID, c.ts, c.seq)
+		k, err := keys.GenMsgKey(c.threadID, "test-msg", c.seq)
 		if err != nil {
 			t.Fatalf("MsgKey error: %v", err)
 		}
@@ -96,7 +96,7 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 		}
 
 		// VersionKey round-trip
-		vk, err := keys.VersionKey(c.msgID, c.ts, c.seq)
+		vk, err := keys.GenVersionKey(c.msgID, c.ts, c.seq)
 		if err != nil {
 			t.Fatalf("VersionKey error: %v", err)
 		}
@@ -112,10 +112,10 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 
 func TestPrefixesAndValidators_StoreHelpers(t *testing.T) {
 	// Prefix helpers
-	if p, err := keys.MsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
+	if p, err := keys.GenMsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
 		t.Fatalf("MsgPrefix unexpected: %v %v", p, err)
 	}
-	if p, err := keys.ThreadPrefix("abc"); err != nil || p != "thread:abc:" {
+	if p, err := keys.GenThreadPrefix("abc"); err != nil || p != "thread:abc:" {
 		t.Fatalf("ThreadPrefix unexpected: %v %v", p, err)
 	}
 

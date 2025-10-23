@@ -10,6 +10,7 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/security"
 	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 
@@ -21,7 +22,7 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	if index.IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
-	prefix := fmt.Sprintf("version:msg:%s:", msgID)
+	prefix := keys.GenAllMessageVersionsPrefix(msgID)
 	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err

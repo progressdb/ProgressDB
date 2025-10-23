@@ -175,6 +175,18 @@ type QueryParameters struct {
 	Cursor string
 }
 
+// ReadRequestCursorInfo represents cursor information for read requests
+type ReadRequestCursorInfo struct {
+	Cursor string `json:"cursor"`
+	Limit  int    `json:"limit"`
+}
+
+// ReadResponseCursorInfo represents cursor information for read responses
+type ReadResponseCursorInfo struct {
+	Cursor  string `json:"cursor"`
+	HasMore bool   `json:"has_more"`
+}
+
 // ParseQueryParameters extracts common query parameters from request
 func ParseQueryParameters(ctx *fasthttp.RequestCtx) *QueryParameters {
 	qp := &QueryParameters{

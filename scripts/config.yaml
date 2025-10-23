@@ -20,7 +20,7 @@ server:
     admin: ["admin_example"]
 
 logging:
-  level: "info"
+  level: "debug"
 
 retention:
   enabled: false

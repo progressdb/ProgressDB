@@ -107,7 +107,11 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	rawMsgs, nextCursor, hasMore, err := message_store.ListMessagesCursor(threadID, qp.Cursor, qp.Limit)
+	reqCursor := ReadRequestCursorInfo{
+		Cursor: qp.Cursor,
+		Limit:  qp.Limit,
+	}
+	rawMsgs, respCursor, err := message_store.ListMessages(threadID, reqCursor)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -126,8 +130,8 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	tr.Mark("encode_response")
 	pagination := PaginationMeta{
 		Limit:      qp.Limit,
-		HasMore:    hasMore,
-		NextCursor: nextCursor,
+		HasMore:    respCursor.HasMore,
+		NextCursor: respCursor.Cursor,
 		Count:      len(msgs),
 	}
 	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: pagination})

@@ -25,10 +25,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, encryptedData []by
 	}
 
 	// read thread for decryption
-	threadKey, err := keys.ThreadMetaKey(threadID)
-	if err != nil {
-		return fmt.Errorf("invalid thread key: %w", err)
-	}
+	threadKey := keys.GenThreadKey(threadID)
 	threadData, closer, err := storedb.Client.Get([]byte(threadKey))
 	if err != nil {
 		return fmt.Errorf("failed to get thread: %w", err)
@@ -54,11 +51,8 @@ func SaveMessage(ctx context.Context, threadID, msgID string, encryptedData []by
 	seq++
 
 	// build keys
-	msgKey, err := keys.MsgKey(threadID, ts, seq)
-	if err != nil {
-		return fmt.Errorf("invalid msg key: %w", err)
-	}
-	versionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(ts), keys.FormatSeq(seq))
+	msgKey := keys.GenMessageKey(threadID, msgID, seq)
+	versionKey := keys.GenVersionKey(msgID, ts, seq)
 
 	// data is already encrypted
 	data := encryptedData
@@ -79,7 +73,7 @@ func SaveMessage(ctx context.Context, threadID, msgID string, encryptedData []by
 			return fmt.Errorf("failed to unmarshal old message: %w", err)
 		}
 		oldSeq := seq - 1
-		oldVersionKey := fmt.Sprintf("idx:versions:%s:%s-%s", msgID, keys.FormatTS(oldMsg.TS), keys.FormatSeq(oldSeq))
+		oldVersionKey := keys.GenVersionKey(msgID, oldMsg.TS, oldSeq)
 		if err := index.SaveKey(oldVersionKey, oldDataCopy); err != nil {
 			logger.Error("save_old_version_failed", "key", oldVersionKey, "error", err)
 			return err

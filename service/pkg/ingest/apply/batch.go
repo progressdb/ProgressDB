@@ -125,11 +125,11 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 
 	// Generate final thread ID with user sequence
 	userSeq := batchIndexManager.GetNextUserThreadSequence(thread.Author)
-	threadID := keys.GenUserThreadID(entry.TS, userSeq)
+	threadID := keys.GenUserThreadKey(entry.TS, userSeq)
 	logger.Debug("thread_sequence_assigned", "user", thread.Author, "thread", threadID, "sequence", userSeq)
 
 	// Store provisional ID for mapping
-	provisionalID := keys.GenProvisionalThreadID(entry.TS)
+	provisionalID := keys.GenProvThreadKey(entry.TS)
 	logger.Debug("thread_create_mapping", "provisional", provisionalID, "final", threadID, "entry_tid", entry.TID)
 
 	batchIndexManager.mu.Lock()
@@ -254,12 +254,12 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 
 	if msg.ID == "" {
 		// Generate new message ID
-		finalMessageID = keys.GenMessageID()
+		finalMessageID = keys.GenMessageKey()
 		logger.Debug("generated_message_id", "message", finalMessageID)
 	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
 		// This is a provisional ID, generate final ID and map it
 		provisionalMessageID = msg.ID
-		finalMessageID = keys.GenMessageID()
+		finalMessageID = keys.GenMessageKey()
 		batchIndexManager.mu.Lock()
 		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
 		batchIndexManager.mu.Unlock()
@@ -293,7 +293,7 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	}
 
 	// Generate message key and sequence
-	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
+	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 	if err != nil {
 		return fmt.Errorf("message key: %w", err)
 	}
@@ -349,12 +349,12 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 
 	if msg.ID == "" {
 		// Generate new message ID
-		finalMessageID = keys.GenMessageID()
+		finalMessageID = keys.GenMessageKey()
 		logger.Debug("generated_message_id", "message", finalMessageID)
 	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
 		// This is a provisional ID, generate final ID and map it
 		provisionalMessageID = msg.ID
-		finalMessageID = keys.GenMessageID()
+		finalMessageID = keys.GenMessageKey()
 		batchIndexManager.mu.Lock()
 		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
 		batchIndexManager.mu.Unlock()
@@ -388,7 +388,7 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	}
 
 	// Generate message key and sequence
-	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
+	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 	if err != nil {
 		return fmt.Errorf("message key: %w", err)
 	}
@@ -443,7 +443,7 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	}
 
 	// Generate message key for deletion tracking
-	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
+	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 	if err != nil {
 		return fmt.Errorf("message key: %w", err)
 	}
@@ -516,8 +516,8 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 		return fmt.Errorf("add message version: %w", err)
 	}
 
-	// Generate message key
-	msgKey, err := keys.MsgKey(finalThreadID, entry.TS, uint64(entry.Enq))
+	// Generate message key and sequence
+	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 	if err != nil {
 		return fmt.Errorf("message key: %w", err)
 	}

@@ -272,7 +272,7 @@ func (b *BatchIndexManager) SetMessageData(threadID string, msgID string, data [
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	key, err := keys.MsgKey(threadID, ts, seq)
+	key, err := keys.GenMsgKey(threadID, msgID, seq)
 	if err != nil {
 		return fmt.Errorf("message key generation failed: %w", err)
 	}
@@ -291,7 +291,7 @@ func (b *BatchIndexManager) AddMessageVersion(msgID string, data []byte, ts int6
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	key, err := keys.VersionKey(msgID, ts, seq)
+	key, err := keys.GenVersionKey(msgID, ts, seq)
 	if err != nil {
 		return fmt.Errorf("version key generation failed: %w", err)
 	}
@@ -353,7 +353,7 @@ func (b *BatchIndexManager) Flush() error {
 
 	// Flush thread metadata
 	for threadID, data := range b.threadMeta {
-		threadKey, err := keys.ThreadMetaKey(threadID)
+		threadKey, err := keys.GenThreadMetaKey(threadID)
 		if err != nil {
 			errors = append(errors, fmt.Errorf("thread meta key %s: %w", threadID, err))
 			continue
@@ -396,7 +396,7 @@ func (b *BatchIndexManager) Flush() error {
 				errors = append(errors, fmt.Errorf("marshal user threads %s: %w", userID, err))
 				continue
 			}
-			userKey, err := keys.UserThreadsIndexKey(userID)
+			userKey, err := keys.GenUserThreadsIndexKey(userID)
 			if err != nil {
 				errors = append(errors, fmt.Errorf("user threads key %s: %w", userID, err))
 				continue
@@ -415,7 +415,7 @@ func (b *BatchIndexManager) Flush() error {
 				errors = append(errors, fmt.Errorf("marshal deleted threads %s: %w", userID, err))
 				continue
 			}
-			deletedKey, err := keys.DeletedThreadsIndexKey(userID)
+			deletedKey, err := keys.GenDeletedThreadsIndexKey(userID)
 			if err != nil {
 				errors = append(errors, fmt.Errorf("deleted threads key %s: %w", userID, err))
 				continue
@@ -434,7 +434,7 @@ func (b *BatchIndexManager) Flush() error {
 				errors = append(errors, fmt.Errorf("marshal deleted messages %s: %w", userID, err))
 				continue
 			}
-			deletedKey, err := keys.DeletedMessagesIndexKey(userID)
+			deletedKey, err := keys.GenDeletedMessagesIndexKey(userID)
 			if err != nil {
 				errors = append(errors, fmt.Errorf("deleted messages key %s: %w", userID, err))
 				continue
@@ -447,7 +447,7 @@ func (b *BatchIndexManager) Flush() error {
 
 	// Flush thread message indexes
 	for threadID, threadIdx := range b.threadMessages {
-		threadKey, err := keys.ThreadsToMessagesIndexKey(threadID, "")
+		threadKey, err := keys.GenThreadsToMessagesIndexKey(threadID, "")
 		if err != nil {
 			errors = append(errors, fmt.Errorf("thread messages key %s: %w", threadID, err))
 			continue
@@ -479,7 +479,7 @@ func (b *BatchIndexManager) Flush() error {
 				errors = append(errors, fmt.Errorf("marshal thread participants %s: %w", threadID, err))
 				continue
 			}
-			participantKey, err := keys.ThreadParticipantsIndexKey(threadID)
+			participantKey, err := keys.GenThreadParticipantsIndexKey(threadID)
 			if err != nil {
 				errors = append(errors, fmt.Errorf("thread participants key %s: %w", threadID, err))
 				continue

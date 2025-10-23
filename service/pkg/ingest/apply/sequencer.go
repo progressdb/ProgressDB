@@ -97,7 +97,7 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 
 	// Since timestamp is unique per request, we can directly construct the thread key prefix
 	// and search for any thread that matches this timestamp
-	threadPrefix := fmt.Sprintf("thread-%d-", timestamp)
+	threadPrefix := fmt.Sprintf("thread:thread-%d:", timestamp)
 
 	// Use the store's prefix scanning capability to find the thread
 	// This is much more efficient than iterating through possible sequences
@@ -118,7 +118,7 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 			finalThreadID := string(key)
 
 			// Verify this is actually a thread metadata key
-			expectedKey, err := keys.ThreadMetaKey(finalThreadID)
+			expectedKey, err := keys.GenThreadMetaKey(finalThreadID)
 			if err == nil && string(key) == expectedKey {
 				logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", finalThreadID)
 				return finalThreadID, nil

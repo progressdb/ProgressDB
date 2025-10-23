@@ -24,7 +24,7 @@ func PurgeMessagePermanently(messageID string) error {
 	if index.IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	vprefix := fmt.Sprintf("version:msg:%s:", messageID)
+	vprefix := keys.GenAllMessageVersionsPrefix(messageID)
 	vi, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
@@ -33,7 +33,7 @@ func PurgeMessagePermanently(messageID string) error {
 
 	// find metadata from first version
 	var threadID, author string
-	var ts, seq int64
+	var seq int64
 	var versionKeys [][]byte
 	found := false
 	for vi.SeekGE([]byte(vprefix)); vi.Valid(); vi.Next() {
@@ -41,21 +41,13 @@ func PurgeMessagePermanently(messageID string) error {
 			break
 		}
 		if !found {
-			// parse key: idx:versions:{msgID}:{ts}-{seq}
+			// parse key: v:{msgID}:{ts}:{seq}
 			keyStr := string(vi.Key())
 			parts := strings.Split(keyStr, ":")
 			if len(parts) >= 4 {
-				tsSeq := parts[3]
-				i := strings.LastIndex(tsSeq, "-")
-				if i > 0 {
-					tsStr := tsSeq[:i]
-					seqStr := tsSeq[i+1:]
-					if t, err := keys.ParseTS(tsStr); err == nil {
-						ts = t
-					}
-					if s, err := keys.ParseSeq(seqStr); err == nil {
-						seq = int64(s)
-					}
+				seqStr := parts[3]
+				if s, err := keys.ParseKeySequence(seqStr); err == nil {
+					seq = int64(s)
 				}
 			}
 			// unmarshal data to get thread and author
@@ -73,11 +65,9 @@ func PurgeMessagePermanently(messageID string) error {
 
 	// delete main message from main DB
 	if found && threadID != "" {
-		msgKey, err := keys.MsgKey(threadID, ts, uint64(seq))
-		if err == nil {
-			if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
-				logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
-			}
+		msgKey := keys.GenMessageKey(threadID, "", uint64(seq))
+		if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
+			logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
 		}
 		// remove from deleted messages index
 		if author != "" {

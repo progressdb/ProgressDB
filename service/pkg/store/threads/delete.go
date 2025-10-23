@@ -21,7 +21,7 @@ func DeleteThread(threadID string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	tk, err := keys.ThreadMetaKey(threadID)
+	tk, err := keys.GenThreadMetaKey(threadID)
 	if err != nil {
 		return fmt.Errorf("invalid thread id: %w", err)
 	}

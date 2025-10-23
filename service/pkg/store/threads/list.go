@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
@@ -19,7 +20,7 @@ func ListThreads() ([]string, error) {
 	if storedb.Client == nil {
 		return nil, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	prefix := []byte("thread:")
+	prefix := []byte(keys.GenThreadPrefix())
 	tr.Mark("new_iter")
 	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {

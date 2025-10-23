@@ -8,6 +8,7 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/encryption"
 
 	storedb "progressdb/pkg/store/db/store"
@@ -36,6 +37,13 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
 
+	// get thread message indexes for total count
+	threadIndexes, err := index.GetThreadMessageIndexes(threadID)
+	if err != nil {
+		return nil, models.ReadResponseCursorInfo{}, err
+	}
+
+	// init for prefix searching
 	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
@@ -44,7 +52,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 
 	var startKey []byte
 	if reqCursor.Cursor != "" {
-		// Decode cursor to get starting position
+		// decode cursor to get starting position
 		mc, err := decodeMessageCursor(reqCursor.Cursor)
 		if err != nil {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("invalid cursor: %w", err)
@@ -52,36 +60,35 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		if mc.ThreadID != threadID {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("cursor thread mismatch")
 		}
-		// Create start key from cursor
-		startKeyStr := keys.GenMessageKey(threadID, "", mc.Sequence)
-		startKey = []byte(startKeyStr)
-		// We want to start AFTER the cursor position
-		startKey = append(startKey, 0x00) // Ensure we seek past the exact key
+		// Create start key using sequence to position after the cursor
+		// Since we don't have msgID, we use the thread prefix + sequence as starting point
+		startKey = []byte(fmt.Sprintf("%s:m:%s", keys.GenThreadPrvKey(threadID), keys.PadSeq(mc.Sequence+1)))
 	} else {
 		// No cursor, start from beginning
-		startKey = []byte(keys.GenThreadPrvKey(threadID) + ":m")
+		startKey = []byte(keys.GenAllThreadMessagesPrefix(threadID))
 	}
 
 	var out []string
 	var lastTimestamp int64
 	var lastSequence uint64
+	var ts int64
 	count := 0
 
+	// start 
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
 		key := iter.Key()
 
 		// Check if we're still in the thread's message range
-		threadPrefix := keys.GenThreadPrvKey(threadID) + ":m:"
+		threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
 		if !bytes.HasPrefix(key, []byte(threadPrefix)) {
 			break
 		}
 
-		// Parse key to extract timestamp and sequence
+		// Parse key to extract message ID and sequence
 		parsed, err := keys.ParseMessageKey(string(key))
 		if err != nil {
 			continue // Skip invalid keys
 		}
-		ts, _ := keys.ParseKeyTimestamp(parsed.Seq) // Using seq as timestamp placeholder
 		seq, _ := keys.ParseKeySequence(parsed.Seq)
 
 		v := append([]byte(nil), iter.Value()...)
@@ -90,6 +97,12 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		if err != nil {
 			logger.Error("decrypt_message_failed", "threadID", threadID, "error", err)
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("failed to decrypt message: %w", err)
+		}
+
+		// Get actual timestamp from decrypted message data
+		var msgData models.Message
+		if err := json.Unmarshal(v, &msgData); err == nil {
+			ts = msgData.TS
 		}
 
 		out = append(out, string(v))
@@ -115,8 +128,10 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 	}
 
 	respCursor := models.ReadResponseCursorInfo{
-		Cursor:  nextCursor,
-		HasMore: hasMore,
+		Cursor:     nextCursor,
+		HasMore:    hasMore,
+		TotalCount: threadIndexes.End,
+		LastSeq:    lastSequence,
 	}
 
 	return out, respCursor, iter.Error()
