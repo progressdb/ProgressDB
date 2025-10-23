@@ -125,6 +125,12 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/admin/keys", AdminListKeys)
 	r.GET("/admin/keys/{key}", AdminGetKey)
 
+	// hierarchical navigation routes
+	r.GET("/admin/users", AdminListUsers)
+	r.GET("/admin/users/{userId}/threads", AdminListUserThreads)
+	r.GET("/admin/users/{userId}/threads/{threadId}/messages", AdminListThreadMessages)
+	r.GET("/admin/users/{userId}/threads/{threadId}/messages/{messageId}", AdminGetThreadMessage)
+
 	// admin enc routes
 	r.POST("/admin/encryption/rotate-thread-dek", AdminEncryptionRotateThreadDEK)
 	r.POST("/admin/encryption/rewrap-deks", AdminEncryptionRewrapDEKs)

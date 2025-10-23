@@ -10,10 +10,10 @@ server:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
   rate_limit:
-    rps: 1000_0000
-    burst: 2000_0000
-  ip_whitelist:
-    - "127.0.0.1"
+    rps: 100_000
+    burst: 200_000
+  # ip_whitelist:
+  #   - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
@@ -35,7 +35,7 @@ retention:
 
 ingest:
   intake:
-    queue_capacity: 500_000
+    queue_capacity: 200_000
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
@@ -43,9 +43,9 @@ ingest:
     recovery:
       enabled: true
       wal_enabled: false
-      temp_idx_enabled: false
+      temp_idx_enabled: true
   compute:
-    worker_count: 64
+    worker_count: 24
     buffer_capacity: 100_000
   apply:
      batch_count: 1_000
@@ -57,7 +57,7 @@ telemetry:
   slow_threshold: 200ms
   buffer_size: 60MB
   file_max_size: 40MB
-  flush_interval: 2s
+  flush_interval: 2ms
   queue_capacity: 2048
 
 sensor:

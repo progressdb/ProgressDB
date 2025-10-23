@@ -1,41 +1,30 @@
 server:
-   address: "0.0.0.0"
-   port: 8080
-   db_path: "./database"
-   tls:
-     cert_file: ""
-     key_file: ""
-   cors:
-     allowed_origins:
-       - "http://localhost:3000"
-       - "http://127.0.0.1:3000"
-   rate_limit:
-     rps: 1000_0000
-     burst: 2000_0000
-   ip_whitelist:
-     # - "127.0.0.1"
-   api_keys:
-     backend: ["sk_example"]
-     frontend: ["pk_example"]
-     admin: ["admin_example"]
+  address: "0.0.0.0"
+  port: 8080
+  db_path: "./database"
+  tls:
+    cert_file: ""
+    key_file: ""
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  rate_limit:
+    rps: 100_000
+    burst: 200_000
+  ip_whitelist:
+    - "127.0.0.1"
+  api_keys:
+    backend: ["sk_example"]
+    frontend: ["pk_example"]
+    admin: ["admin_example"]
 
 logging:
   level: "info"
 
-encryption:
-  enabled: false
-  fields: []
-  kms:
-    mode: "embedded"
-    endpoint: "127.0.0.1:6820"
-    data_dir: "./kms-data"
-    binary: "/usr/local/bin/progressdb-kms"
-    master_key_file: ""
-    master_key_hex: ""
-
 retention:
   enabled: false
-  cron: ""
+  cron: "0 2 * * *"
   period: "24h"
   batch_size: 1000
   batch_sleep_ms: 0
@@ -46,17 +35,22 @@ retention:
 
 ingest:
   intake:
-    buffer_capacity: 8192              # Smaller queue to fit 1GB RAM
-    shutdown_poll_interval: 250ms      # Poll interval for shutdown
+    queue_capacity: 500_000
+    shutdown_poll_interval: 5ms
     wal:
-      enabled: true                    # Enable WAL for durability
-      segment_size: 20MB               # WAL segment size
+      enabled: false
+      segment_size: 20MB
+    recovery:
+      enabled: true
+      wal_enabled: false
+      temp_idx_enabled: false
   compute:
-    worker_count: 2                   # Match 2-core CPU
+    worker_count: 64
+    buffer_capacity: 100_000
   apply:
-    queue_buffer_size: 100            # Buffer for apply queue
-    flush_interval_ms: 1              # Interval to flush pending applies (ms)
-    batch_size: 10000                 # Max entries per apply batch
+     batch_count: 1_000
+     batch_timeout: 1s
+     fsync_after_batch: true
 
 telemetry:
   sample_rate: 0.001
@@ -68,10 +62,19 @@ telemetry:
 
 sensor:
   monitor:
-    poll_interval: 500ms
+    poll_interval: 60s
     disk_high_pct: 80
-    disk_low_pct: 60
+    # disk_low_pct: 60
     mem_high_pct: 80
-    cpu_high_pct: 90
     recovery_window: 5s
 
+encryption:
+  enabled: false
+  fields: []
+  kms:
+    mode: "embedded"
+    endpoint: "127.0.0.1:6820"
+    data_dir: "./kms-data"
+    binary: "/usr/local/bin/progressdb-kms"
+    master_key_file: ""
+    master_key_hex: ""

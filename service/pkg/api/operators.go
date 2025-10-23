@@ -25,7 +25,8 @@ import (
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
-	"progressdb/pkg/store/threads"
+	"progressdb/pkg/store/messages"
+	thread_store "progressdb/pkg/store/threads"
 )
 
 // auth handlers
@@ -102,10 +103,10 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	tr.Mark("list_threads")
-	threads, _ := threads.ListThreads()
+	threadList, _ := thread_store.ListThreads()
 	var msgCount int64
 	tr.Mark("count_messages")
-	for _, raw := range threads {
+	for _, raw := range threadList {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
@@ -120,7 +121,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, struct {
 		Threads  int   `json:"threads"`
 		Messages int64 `json:"messages"`
-	}{Threads: len(threads), Messages: msgCount})
+	}{Threads: len(threadList), Messages: msgCount})
 }
 
 func AdminListThreads(ctx *fasthttp.RequestCtx) {
@@ -134,7 +135,7 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	tr.Mark("list_threads")
-	vals, err := threads.ListThreads()
+	vals, err := thread_store.ListThreads()
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -205,6 +206,140 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(val))
 }
 
+// hierarchical navigation handlers
+
+func AdminListUsers(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_list_users")
+	defer tr.Finish()
+
+	if !isAdminUserRole(ctx) {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+
+	limitStr := string(ctx.QueryArgs().Peek("limit"))
+	cursor := string(ctx.QueryArgs().Peek("cursor"))
+
+	// Parse limit
+	limit := 100 // default
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	tr.Mark("list_users")
+	result, err := listUsersByPrefixPaginated("idx:U:", limit, cursor)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	tr.Mark("encode_response")
+	_ = router.WriteJSON(ctx, result)
+}
+
+func AdminListUserThreads(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_list_user_threads")
+	defer tr.Finish()
+
+	if !isAdminUserRole(ctx) {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+
+	userID := pathParam(ctx, "userId")
+	if userID == "" {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing userId")
+		return
+	}
+
+	limitStr := string(ctx.QueryArgs().Peek("limit"))
+	cursor := string(ctx.QueryArgs().Peek("cursor"))
+
+	// Parse limit
+	limit := 100 // default
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	tr.Mark("list_user_threads")
+	result, err := listThreadsForUser(userID, limit, cursor)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	tr.Mark("encode_response")
+	_ = router.WriteJSON(ctx, result)
+}
+
+func AdminListThreadMessages(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.Track("api.admin_list_thread_messages")
+	defer tr.Finish()
+
+	if !isAdminUserRole(ctx) {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+
+	userID := pathParam(ctx, "userId")
+	threadID := pathParam(ctx, "threadId")
+	if userID == "" || threadID == "" {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing userId or threadId")
+		return
+	}
+
+	limitStr := string(ctx.QueryArgs().Peek("limit"))
+	cursor := string(ctx.QueryArgs().Peek("cursor"))
+
+	// Parse limit
+	limit := 100 // default
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	tr.Mark("list_thread_messages")
+	result, err := listMessagesForThread(threadID, limit, cursor)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	tr.Mark("encode_response")
+	_ = router.WriteJSON(ctx, result)
+}
+
+func AdminGetThreadMessage(ctx *fasthttp.RequestCtx) {
+	tr := telemetry.TrackWithStrategy("api.admin_get_thread_message", telemetry.RotationStrategyPurge)
+	defer tr.Finish()
+
+	if !isAdminUserRole(ctx) {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+		return
+	}
+
+	userID := pathParam(ctx, "userId")
+	threadID := pathParam(ctx, "threadId")
+	messageID := pathParam(ctx, "messageId")
+	if userID == "" || threadID == "" || messageID == "" {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing userId, threadId, or messageId")
+		return
+	}
+
+	tr.Mark("get_message")
+	msg, err := messages.GetLatestMessage(messageID)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
+		return
+	}
+
+	tr.Mark("encode_response")
+	ctx.Response.Header.Set("Content-Type", "application/json")
+	_, _ = ctx.Write([]byte(msg))
+}
+
 // encryption handlers
 
 func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
@@ -242,12 +377,12 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	tr.Mark("update_thread")
-	if s, err := threads.GetThread(req.ThreadID); err == nil {
+	if s, err := thread_store.GetThread(req.ThreadID); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 			if payload, merr := json.Marshal(th); merr == nil {
-				_ = threads.SaveThread(th.ID, string(payload))
+				_ = thread_store.SaveThread(th.ID, string(payload))
 			}
 		}
 	}
@@ -292,7 +427,7 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 
 	keyIDs := make(map[string]struct{})
 	for _, tid := range threadsIDs {
-		if s, err := threads.GetThread(tid); err == nil {
+		if s, err := thread_store.GetThread(tid); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
 				if th.KMS != nil && th.KMS.KeyID != "" {
@@ -389,7 +524,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		go func(threadID string) {
 			defer func() { <-sem }()
 			// get thread metadata
-			stored, err := threads.GetThread(threadID)
+			stored, err := thread_store.GetThread(threadID)
 			if err != nil {
 				resCh <- result{Thread: threadID, Err: "thread not found"}
 				return
@@ -409,7 +544,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if payload, merr := json.Marshal(th); merr == nil {
-					_ = threads.SaveThread(th.ID, string(payload))
+					_ = thread_store.SaveThread(th.ID, string(payload))
 				}
 			}
 
@@ -505,7 +640,7 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	if all {
-		vals, err := threads.ListThreads()
+		vals, err := thread_store.ListThreads()
 		if err != nil {
 			return nil, err
 		}
@@ -590,5 +725,145 @@ func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*AdminK
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
 		Count:      len(keys),
+	}, nil
+}
+
+// AdminUsersResult represents paginated result for admin users listing
+type AdminUsersResult struct {
+	Users      []string `json:"users"`
+	NextCursor string   `json:"next_cursor,omitempty"`
+	HasMore    bool     `json:"has_more"`
+	Count      int      `json:"count"`
+}
+
+// AdminThreadsResult represents paginated result for admin threads listing
+type AdminThreadsResult struct {
+	Threads    []json.RawMessage `json:"threads"`
+	NextCursor string            `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+	Count      int               `json:"count"`
+}
+
+// AdminMessagesResult represents paginated result for admin messages listing
+type AdminMessagesResult struct {
+	Messages   []json.RawMessage `json:"messages"`
+	NextCursor string            `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+	Count      int               `json:"count"`
+}
+
+// listUsersByPrefixPaginated lists users by prefix with cursor pagination (admin function)
+func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*AdminUsersResult, error) {
+	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, limit, cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract user IDs from keys like "idx:U:user123:threads"
+	users := make([]string, 0, len(keys))
+	for _, key := range keys {
+		// key format: idx:U:userID:threads
+		parts := strings.Split(key, ":")
+		if len(parts) >= 4 && parts[0] == "idx" && parts[1] == "U" && parts[3] == "threads" {
+			users = append(users, parts[2])
+		}
+	}
+
+	return &AdminUsersResult{
+		Users:      users,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Count:      len(users),
+	}, nil
+}
+
+// listThreadsForUser lists threads for a specific user with pagination
+func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsResult, error) {
+	key, err := keys.UserThreadsIndexKey(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	val, err := index.GetKey(key)
+	if err != nil && !index.IsNotFound(err) {
+		return nil, err
+	}
+
+	if val == "" {
+		return &AdminThreadsResult{
+			Threads:    []json.RawMessage{},
+			NextCursor: "",
+			HasMore:    false,
+			Count:      0,
+		}, nil
+	}
+
+	var indexes index.UserThreadIndexes
+	if err := json.Unmarshal([]byte(val), &indexes); err != nil {
+		return nil, fmt.Errorf("unmarshal user threads: %w", err)
+	}
+
+	// Apply cursor and limit
+	threadIDs := indexes.Threads
+	start := 0
+	if cursor != "" {
+		for i, tid := range threadIDs {
+			if tid == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+
+	end := start + limit
+	if end > len(threadIDs) {
+		end = len(threadIDs)
+	}
+
+	if start >= len(threadIDs) {
+		return &AdminThreadsResult{
+			Threads:    []json.RawMessage{},
+			NextCursor: "",
+			HasMore:    false,
+			Count:      0,
+		}, nil
+	}
+
+	pagedThreadIDs := threadIDs[start:end]
+	threadList := make([]json.RawMessage, 0, len(pagedThreadIDs))
+
+	for _, threadID := range pagedThreadIDs {
+		threadData, err := thread_store.GetThread(threadID)
+		if err != nil {
+			continue // skip threads that can't be loaded
+		}
+		threadList = append(threadList, json.RawMessage(threadData))
+	}
+
+	nextCursor := ""
+	if end < len(threadIDs) {
+		nextCursor = threadIDs[end-1]
+	}
+
+	return &AdminThreadsResult{
+		Threads:    threadList,
+		NextCursor: nextCursor,
+		HasMore:    end < len(threadIDs),
+		Count:      len(threadList),
+	}, nil
+}
+
+// listMessagesForThread lists messages for a specific thread with pagination
+func listMessagesForThread(threadID string, limit int, cursor string) (*AdminMessagesResult, error) {
+	messages, nextCursor, hasMore, err := messages.ListMessagesCursor(threadID, cursor, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AdminMessagesResult{
+		Messages:   router.ToRawMessages(messages),
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Count:      len(messages),
 	}, nil
 }
