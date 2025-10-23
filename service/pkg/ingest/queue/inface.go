@@ -44,8 +44,8 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 
 	newOp := &QueueOp{
 		Handler: op.Handler,
-		Thread:  op.Thread,
-		ID:      op.ID,
+		TID:     op.TID,
+		MID:     op.MID,
 		Payload: op.Payload,
 		TS:      op.TS,
 	}

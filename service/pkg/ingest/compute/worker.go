@@ -50,19 +50,19 @@ func (cw *ComputeWorker) run() {
 		default:
 		}
 
-		it, ok := <-cw.queue.Out()
+		itm, ok := <-cw.queue.Out()
 		if !ok {
 			return
 		}
 
-		entries, err := cw.compute(it.Op)
+		entries, err := cw.compute(itm.Op)
 		if err != nil {
-			logger.Error("compute_failed", "err", err, "op", it.Op.ID)
+			logger.Error("compute_failed", "err", err, "op", itm.Op.MID)
 			// write to failed ops file for recovery
-			if writeErr := cw.failedOpWriter.WriteFailedOp(it.Op, err); writeErr != nil {
-				logger.Error("failed_op_write_failed", "err", writeErr, "op", it.Op.ID)
+			if writeErr := cw.failedOpWriter.WriteFailedOp(itm.Op, err); writeErr != nil {
+				logger.Error("failed_op_write_failed", "err", writeErr, "op", itm.Op.MID)
 			}
-			it.JobDone()
+			itm.JobDone()
 			continue
 		}
 
@@ -70,11 +70,11 @@ func (cw *ComputeWorker) run() {
 			select {
 			case cw.output <- entry:
 			case <-cw.stop:
-				it.JobDone()
+				itm.JobDone()
 				return
 			}
 		}
-		it.JobDone()
+		itm.JobDone()
 	}
 }
 

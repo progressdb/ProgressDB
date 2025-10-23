@@ -25,11 +25,11 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("invalid message json: %w", err)
 	}
 	// reconcile id/thread from op if present
-	if m.ID == "" && op.ID != "" {
-		m.ID = op.ID
+	if m.ID == "" && op.MID != "" {
+		m.ID = op.MID
 	}
-	if m.Thread == "" && op.Thread != "" {
-		m.Thread = op.Thread
+	if m.Thread == "" && op.TID != "" {
+		m.Thread = op.TID
 	}
 	if m.TS == 0 && op.TS != 0 {
 		m.TS = op.TS
@@ -81,11 +81,11 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	if err := json.Unmarshal(op.Payload, &m); err != nil {
 		return nil, fmt.Errorf("invalid message json: %w", err)
 	}
-	if m.ID == "" && op.ID != "" {
-		m.ID = op.ID
+	if m.ID == "" && op.MID != "" {
+		m.ID = op.MID
 	}
-	if m.Thread == "" && op.Thread != "" {
-		m.Thread = op.Thread
+	if m.Thread == "" && op.TID != "" {
+		m.Thread = op.TID
 	}
 	if m.TS == 0 {
 		m.TS = timeutil.Now().UnixNano()
@@ -117,7 +117,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	}
 	id := m.ID
 	if id == "" {
-		id = op.ID
+		id = op.MID
 	}
 	if id == "" {
 		return nil, fmt.Errorf("missing message id for delete")
@@ -146,7 +146,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 
 // reactions op methods
 func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if op.ID == "" {
+	if op.MID == "" {
 		return nil, fmt.Errorf("missing message id for reaction")
 	}
 	var p struct {
@@ -171,11 +171,11 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, 
 		"action":   "add",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, Thread: op.TID, MsgID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
 	return []types.BatchEntry{be}, nil
 }
 func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if op.ID == "" {
+	if op.MID == "" {
 		return nil, fmt.Errorf("missing message id for reaction delete")
 	}
 	var p struct {
@@ -202,7 +202,7 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntr
 		"action":   "delete",
 	}
 	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.Thread, MsgID: op.ID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, Thread: op.TID, MsgID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
 	return []types.BatchEntry{be}, nil
 }
 
@@ -216,9 +216,9 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		// payload may be partial; we still accept and fill from op
 		th = models.Thread{}
 	}
-	// If handler generated an ID (HTTP fast-path), prefer op.Thread.
-	if th.ID == "" && op.Thread != "" {
-		th.ID = op.Thread
+	// If handler generated an ID (HTTP fast-path), prefer op.TID.
+	if th.ID == "" && op.TID != "" {
+		th.ID = op.TID
 	}
 	// Ensure timestamps
 	if th.CreatedTS == 0 {
@@ -250,16 +250,16 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var th models.Thread
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
-		// best-effort: fall back to op.Thread
+		// best-effort: fall back to op.TID
 		th = models.Thread{}
 	}
-	if th.ID == "" && op.Thread != "" {
-		th.ID = op.Thread
+	if th.ID == "" && op.TID != "" {
+		th.ID = op.TID
 	}
 	if th.UpdatedTS == 0 {
 		th.UpdatedTS = timeutil.Now().UnixNano()
 	}
-	// Copy payload so returned types.BatchEntry does not alias the pooled Op buffer.
+	// Copy payload so returned types.BatchEntry does not alias the pooled op buffer.
 	var payloadCopy []byte
 	if len(op.Payload) > 0 {
 		payloadCopy = make([]byte, len(op.Payload))
@@ -274,7 +274,7 @@ func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		_ = json.Unmarshal(op.Payload, &th)
 	}
 	if th.ID == "" {
-		th.ID = op.Thread
+		th.ID = op.TID
 	}
 	if th.ID == "" {
 		return nil, fmt.Errorf("missing thread id for delete")

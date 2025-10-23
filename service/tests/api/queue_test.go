@@ -49,8 +49,8 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	// allow consumer to receive
 	select {
 	case o := <-recv:
-		if o.Op.ID != "m1" && o.Op.ID != "m2" {
-			t.Fatalf("unexpected op id: %s", o.Op.ID)
+		if o.Op.MID != "m1" && o.Op.MID != "m2" {
+			t.Fatalf("unexpected op id: %s", o.Op.MID)
 		}
 		o.JobDone()
 	case <-time.After(200 * time.Millisecond):
@@ -77,7 +77,7 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 
 	go func() {
 		for it := range q.Out() {
-			processed <- it.Op.ID
+			processed <- it.Op.MID
 			it.JobDone()
 		}
 	}()
@@ -150,7 +150,7 @@ func TestQueueOutBatches(t *testing.T) {
 	go func() {
 		var batch []string
 		for it := range q.Out() {
-			batch = append(batch, it.Op.ID)
+			batch = append(batch, it.Op.MID)
 			if len(batch) == 3 {
 				batchCh <- batch
 				batch = nil

@@ -6,7 +6,7 @@ import (
 
 // enqueuebytes: copies payload into a pooled buffer and enqueues a new op using the given fields
 func (q *IngestQueue) EnqueueBytes(handler HandlerID, thread, id string, payload []byte, ts int64) error {
-	return q.Enqueue(&QueueOp{Handler: handler, Thread: thread, ID: id, Payload: payload, TS: ts})
+	return q.Enqueue(&QueueOp{Handler: handler, TID: thread, MID: id, Payload: payload, TS: ts})
 }
 
 // len: returns current number of items in queue

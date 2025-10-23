@@ -69,13 +69,13 @@ func (fw *FailedOpWriter) WriteFailedOp(op *qpkg.QueueOp, err error) error {
 	// create failed operation record
 	failedOp := FailedOp{
 		Timestamp: time.Now(),
-		ID:        fmt.Sprintf("%s_%d", op.ID, time.Now().UnixNano()),
+		ID:        fmt.Sprintf("%s_%d", op.MID, time.Now().UnixNano()),
 		Op:        op,
 		Error:     err.Error(),
 		Retries:   0,
 		Metadata: map[string]string{
 			"handler": string(op.Handler),
-			"thread":  op.Thread,
+			"thread":  op.TID,
 		},
 	}
 

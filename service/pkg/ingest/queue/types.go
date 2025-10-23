@@ -23,8 +23,8 @@ const (
 // QueueOp represents a queue operation with metadata.
 type QueueOp struct {
 	Handler   HandlerID         // Handler to invoke
-	Thread    string            // Thread identifier
-	ID        string            // Record identifier
+	TID       string            // Thread ID
+	MID       string            // Message ID
 	Payload   []byte            // Payload data (may be nil)
 	TS        int64             // Timestamp (nanoseconds)
 	EnqSeq    uint64            // Assigned sequence at enqueue (used when WAL disabled)
