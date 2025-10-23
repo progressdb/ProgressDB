@@ -105,7 +105,7 @@ func processOperation(entry types.BatchEntry, batchIndexManager *BatchIndexManag
 
 // processThreadCreate handles thread creation using BatchIndexManager
 func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
-	logger.Debug("process_thread_create", "provisional_thread", entry.TID, "ts", entry.TS)
+	logger.Info("process_thread_create", "provisional_thread", entry.TID, "ts", entry.TS)
 
 	// Validate entry - thread ID is not required for creation as it will be generated
 	if len(entry.Payload) == 0 {
@@ -131,6 +131,7 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	// Store provisional ID for mapping
 	provisionalID := keys.GenProvisionalThreadID(entry.TS)
 	logger.Debug("thread_create_mapping", "provisional", provisionalID, "final", threadID, "entry_tid", entry.TID)
+
 	batchIndexManager.mu.Lock()
 	batchIndexManager.sequencerManager.MapProvisionalToFinalThreadID(provisionalID, threadID)
 	batchIndexManager.mu.Unlock()
@@ -174,6 +175,7 @@ func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("thread_resolution_failed", "provisional_tid", entry.TID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
 
@@ -229,6 +231,7 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("thread_resolution_failed", "provisional_tid", entry.TID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
 	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
@@ -323,6 +326,7 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("thread_resolution_failed", "provisional_tid", entry.TID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
 	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
@@ -413,6 +417,7 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("thread_resolution_failed", "provisional_tid", entry.TID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
 
@@ -433,6 +438,7 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	finalMessageID, err := batchIndexManager.sequencerManager.GetFinalMessageID(msg.ID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("message_resolution_failed", "provisional_mid", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
 
@@ -467,6 +473,7 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	finalThreadID, err := batchIndexManager.sequencerManager.GetFinalThreadID(entry.TID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("thread_resolution_failed", "provisional_tid", entry.TID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve thread ID %s: %w", entry.TID, err)
 	}
 
@@ -487,6 +494,7 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	finalMessageID, err := batchIndexManager.sequencerManager.GetFinalMessageID(msg.ID)
 	batchIndexManager.mu.Unlock()
 	if err != nil {
+		logger.Error("message_resolution_failed", "provisional_mid", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
 

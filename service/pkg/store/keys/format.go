@@ -1,210 +1,52 @@
 package keys
 
-import (
-	"fmt"
-	"strconv"
-	"strings"
-)
-
-// Key format constants and padding widths. Keep these in one place so
-// formatting/parsing stays consistent across the codebase.
 const (
-	msgKeyFmt                = "thread:%s:msg:%s-%s"
-	versionKeyFmt            = "version:msg:%s:%s-%s"
-	threadMetaFmt            = "thread:%s:meta"
-	threadsToMessagesKeyFmt  = "idx:T:%s:MS:%s"
-	userThreadsKeyFmt        = "idx:U:%s:threads"
-	threadParticipantsKeyFmt = "idx:P:%s"
-	deletedThreadsKeyFmt     = "idx:T:deleted:U:%s:list"
-	deletedMessagesKeyFmt    = "idx:M:deleted:U:%s:list"
+	// notation dictionary (lowercase for key formats):
+	// m: message
+	// t: thread
+	// v: version
+	// idx: index
+	// p: participants
+	// u: user
+	// ms: message store
 
-	tsPadWidth  = 20 // matches %020d used previously
-	seqPadWidth = 6  // matches %06d used previously
+	// provisional
+	ThreadPrvKey = "t:%s" // t:<threadID>
+
+	// primary storage key formats
+	MessageKey = "t:%s:m:%s:%s" // t:<threadID>:m:<msgID>:<seq>
+	VersionKey = "v:%s:%s:%s"   // v:<msgID>:<ts>:<seq>
+	ThreadKey  = "t:%s:meta"    // t:<threadID>:meta
+
+	// thread → message indexes
+	ThreadMessageStart   = "idx:t:%s:ms:start"   // idx:t:<thread_id>:ms:start
+	ThreadMessageEnd     = "idx:t:%s:ms:end"     // idx:t:<thread_id>:ms:end
+	ThreadMessageCDeltas = "idx:t:%s:ms:cdeltas" // idx:t:<thread_id>:ms:cdeltas
+	ThreadMessageUDeltas = "idx:t:%s:ms:udeltas" // idx:t:<thread_id>:ms:udeltas
+	ThreadMessageSkips   = "idx:t:%s:ms:skips"   // idx:t:<thread_id>:ms:skips
+	ThreadMessageLC      = "idx:t:%s:ms:lc"      // idx:t:<thread_id>:ms:lc (last created at)
+	ThreadMessageLU      = "idx:t:%s:ms:lu"      // idx:t:<thread_id>:ms:lu (last updated at)
+
+	// thread → message version indexes
+	ThreadVersionStart   = "idx:t:%s:ms:%s:vs:start"   // idx:t:<thread_id>:ms:<msg_id>:vs:start
+	ThreadVersionEnd     = "idx:t:%s:ms:%s:vs:end"     // idx:t:<thread_id>:ms:<msg_id>:vs:end
+	ThreadVersionCDeltas = "idx:t:%s:ms:%s:vs:cdeltas" // idx:t:<thread_id>:ms:<msg_id>:vs:cdeltas
+	ThreadVersionUDeltas = "idx:t:%s:ms:%s:vs:udeltas" // idx:t:<thread_id>:ms:<msg_id>:vs:udeltas
+	ThreadVersionSkips   = "idx:t:%s:ms:%s:vs:skips"   // idx:t:<thread_id>:ms:<msg_id>:vs:skips
+	ThreadVersionLC      = "idx:t:%s:ms:%s:vs:lc"      // idx:t:<thread_id>:ms:<msg_id>:vs:lc (last created at for version)
+	ThreadVersionLU      = "idx:t:%s:ms:%s:vs:lu"      // idx:t:<thread_id>:ms:<msg_id>:vs:lu (last updated at for version)
+
+	// user → thread indexes (ownership)
+	UserThreads = "idx:u:%s:threads" // idx:u:<user_id>:threads
+
+	// thread → participant indexes
+	ThreadParticipants = "idx:p:%s" // idx:p:<thread_id>
+
+	// deletion indexes
+	DeletedThreads  = "idx:t:deleted:u:%s:list" // idx:t:deleted:u:<user_id>:list
+	DeletedMessages = "idx:m:deleted:u:%s:list" // idx:m:deleted:u:<user_id>:list
+
+	// padding widths (fixed for lexicographic ordering)
+	TSPadWidth  = 20 // e.g. %020d
+	SeqPadWidth = 6  // e.g. %06d
 )
-
-// FormatTS returns a zero-padded timestamp string consistent with
-// the rest of the codebase.
-func FormatTS(ts int64) string {
-	return fmt.Sprintf("%0*d", tsPadWidth, ts)
-}
-
-// FormatSeq returns a zero-padded sequence string.
-func FormatSeq(seq uint64) string {
-	return fmt.Sprintf("%0*d", seqPadWidth, seq)
-}
-
-// ParseTS parses a padded timestamp string previously formatted with FormatTS.
-func ParseTS(s string) (int64, error) {
-	if len(s) == 0 || len(s) > tsPadWidth {
-		return 0, fmt.Errorf("ts length invalid: %s", s)
-	}
-	// allow legacy keys with fewer leading zeros by trimming left zeros
-	trimmed := strings.TrimLeft(s, "0")
-	if trimmed == "" {
-		// string was all zeros
-		return 0, nil
-	}
-	v, err := strconv.ParseInt(trimmed, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse ts: %w", err)
-	}
-	return v, nil
-}
-
-// ParseSeq parses a padded sequence string previously formatted with FormatSeq.
-func ParseSeq(s string) (uint64, error) {
-	if len(s) == 0 || len(s) > seqPadWidth {
-		return 0, fmt.Errorf("seq length invalid: %s", s)
-	}
-	trimmed := strings.TrimLeft(s, "0")
-	if trimmed == "" {
-		return 0, nil
-	}
-	v, err := strconv.ParseUint(trimmed, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse seq: %w", err)
-	}
-	return v, nil
-}
-
-// MsgKey builds a message key for a given thread, timestamp and sequence.
-// It validates threadID and returns a formatted key or an error.
-func MsgKey(threadID string, ts int64, seq uint64) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	tsStr := FormatTS(ts)
-	seqStr := FormatSeq(seq)
-	return fmt.Sprintf(msgKeyFmt, threadID, tsStr, seqStr), nil
-}
-
-// VersionKey builds a version index key for a message ID, timestamp and seq.
-func VersionKey(msgID string, ts int64, seq uint64) (string, error) {
-	if err := ValidateMsgID(msgID); err != nil {
-		return "", err
-	}
-	tsStr := FormatTS(ts)
-	seqStr := FormatSeq(seq)
-	return fmt.Sprintf(versionKeyFmt, msgID, tsStr, seqStr), nil
-}
-
-// ThreadMetaKey returns the meta key for a thread id.
-func ThreadMetaKey(threadID string) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(threadMetaFmt, threadID), nil
-}
-
-// ParseMsgKey extracts components from a message key.
-func ParseMsgKey(key string) (threadID string, ts int64, seq uint64, err error) {
-	// expected shape: thread:<threadID>:msg:<ts>-<seq>
-	parts := strings.SplitN(key, ":", 4)
-	if len(parts) != 4 || parts[0] != "thread" || parts[2] != "msg" {
-		err = fmt.Errorf("invalid msg key: %s", key)
-		return
-	}
-	threadID = parts[1]
-	if err = ValidateThreadID(threadID); err != nil {
-		return
-	}
-	tail := parts[3]
-	// split on last '-' to separate ts and seq
-	i := strings.LastIndex(tail, "-")
-	if i < 0 {
-		err = fmt.Errorf("invalid msg key tail: %s", tail)
-		return
-	}
-	tsPart := tail[:i]
-	seqPart := tail[i+1:]
-	ts, err = ParseTS(tsPart)
-	if err != nil {
-		return
-	}
-	seq, err = ParseSeq(seqPart)
-	return
-}
-
-// ParseVersionKey extracts components from a version key.
-func ParseVersionKey(key string) (msgID string, ts int64, seq uint64, err error) {
-	// expected shape: version:msg:<msgID>:<ts>-<seq>
-	parts := strings.SplitN(key, ":", 4)
-	if len(parts) != 4 || parts[0] != "version" || parts[1] != "msg" {
-		err = fmt.Errorf("invalid version key: %s", key)
-		return
-	}
-	msgID = parts[2]
-	if err = ValidateMsgID(msgID); err != nil {
-		return
-	}
-	tail := parts[3]
-	i := strings.LastIndex(tail, "-")
-	if i < 0 {
-		err = fmt.Errorf("invalid version key tail: %s", tail)
-		return
-	}
-	tsPart := tail[:i]
-	seqPart := tail[i+1:]
-	ts, err = ParseTS(tsPart)
-	if err != nil {
-		return
-	}
-	seq, err = ParseSeq(seqPart)
-	return
-}
-
-// MsgPrefix returns the prefix for message keys for a thread, e.g. "thread:<id>:msg:"
-func MsgPrefix(threadID string) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("thread:%s:msg:", threadID), nil
-}
-
-// ThreadPrefix returns the prefix for all keys under a thread, e.g. "thread:<id>:"
-func ThreadPrefix(threadID string) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("thread:%s:", threadID), nil
-}
-
-// ThreadsToMessagesIndexKey builds an index key for thread message indexes.
-func ThreadsToMessagesIndexKey(threadID, suffix string) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(threadsToMessagesKeyFmt, threadID, suffix), nil
-}
-
-// UserThreadsIndexKey builds an index key for user thread ownership.
-func UserThreadsIndexKey(userID string) (string, error) {
-	if err := ValidateUserID(userID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(userThreadsKeyFmt, userID), nil
-}
-
-// ThreadParticipantsIndexKey builds an index key for thread participants.
-func ThreadParticipantsIndexKey(threadID string) (string, error) {
-	if err := ValidateThreadID(threadID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(threadParticipantsKeyFmt, threadID), nil
-}
-
-// DeletedThreadsIndexKey builds an index key for user's deleted threads.
-func DeletedThreadsIndexKey(userID string) (string, error) {
-	if err := ValidateUserID(userID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(deletedThreadsKeyFmt, userID), nil
-}
-
-// DeletedMessagesIndexKey builds an index key for user's deleted messages.
-func DeletedMessagesIndexKey(userID string) (string, error) {
-	if err := ValidateUserID(userID); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(deletedMessagesKeyFmt, userID), nil
-}

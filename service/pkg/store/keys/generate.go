@@ -2,78 +2,100 @@ package keys
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
-	"sync/atomic"
-
-	"progressdb/pkg/timeutil"
 )
 
-// Global sequence counter for ID generation.
-// Down in the pipeline - this is sub scoped later with index datas
-var idSeq uint64
-
-func GetNextSequence(recordType string) uint64 {
-	return atomic.AddUint64(&idSeq, 1)
+// GenThreadPrvKey returns a provisional thread key: t:<threadID>
+func GenThreadPrvKey(threadID string) string {
+	return fmt.Sprintf(ThreadPrvKey, threadID)
 }
 
-// Returns a unique message ID in the form "msg-<timestamp>-<seq>".
-func GenMessageID() string {
-	n := timeutil.Now().UnixNano()
-	s := GetNextSequence("message")
-	return fmt.Sprintf("msg-%d-%d", n, s)
+// GenMessageKey returns a message key: t:<threadID>:m:<msgID>:<seq>
+func GenMessageKey(threadID, msgID string, seq uint64) string {
+	return fmt.Sprintf(MessageKey, threadID, msgID, PadSeq(seq))
 }
 
-// Returns a unique thread ID in the form "thread-<timestamp>-<seq>".
-func GenThreadID() string {
-	n := timeutil.Now().UnixNano()
-	s := GetNextSequence("thread")
-	return fmt.Sprintf("thread-%d-%d", n, s)
+// GenVersionKey returns a version key: v:<msgID>:<ts>:<seq>
+func GenVersionKey(msgID string, ts int64, seq uint64) string {
+	return fmt.Sprintf(VersionKey, msgID, PadTS(ts), PadSeq(seq))
 }
 
-// Generate a provisional thread id in the form "thread-<timestamp>", using the provided timestamp.
-func GenProvisionalThreadID(ts int64) string {
-	return fmt.Sprintf("thread-%d", ts)
+// GenThreadKey returns a thread meta key: t:<threadID>:meta
+func GenThreadKey(threadID string) string {
+	return fmt.Sprintf(ThreadKey, threadID)
 }
 
-// Generate a provisional message id in the form "msg-<timestamp>", using the provided timestamp.
-func GenProvisionalMessageID(ts int64) string {
-	return fmt.Sprintf("msg-%d", ts)
+// Thread → message indexes
+func GenThreadMessageStart(threadID string) string {
+	return fmt.Sprintf(ThreadMessageStart, threadID)
+}
+func GenThreadMessageEnd(threadID string) string {
+	return fmt.Sprintf(ThreadMessageEnd, threadID)
+}
+func GenThreadMessageCDeltas(threadID string) string {
+	return fmt.Sprintf(ThreadMessageCDeltas, threadID)
+}
+func GenThreadMessageUDeltas(threadID string) string {
+	return fmt.Sprintf(ThreadMessageUDeltas, threadID)
+}
+func GenThreadMessageSkips(threadID string) string {
+	return fmt.Sprintf(ThreadMessageSkips, threadID)
+}
+func GenThreadMessageLC(threadID string) string {
+	return fmt.Sprintf(ThreadMessageLC, threadID)
+}
+func GenThreadMessageLU(threadID string) string {
+	return fmt.Sprintf(ThreadMessageLU, threadID)
 }
 
-// Generate a final thread ID with user-specific sequence in the form "thread-<timestamp>-<userSeq>"
-func GenUserThreadID(ts int64, userSeq uint64) string {
-	return fmt.Sprintf("thread-%d-%d", ts, userSeq)
+// Thread → message version indexes
+func GenThreadVersionStart(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionStart, threadID, msgID)
+}
+func GenThreadVersionEnd(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionEnd, threadID, msgID)
+}
+func GenThreadVersionCDeltas(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionCDeltas, threadID, msgID)
+}
+func GenThreadVersionUDeltas(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionUDeltas, threadID, msgID)
+}
+func GenThreadVersionSkips(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionSkips, threadID, msgID)
+}
+func GenThreadVersionLC(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionLC, threadID, msgID)
+}
+func GenThreadVersionLU(threadID, msgID string) string {
+	return fmt.Sprintf(ThreadVersionLU, threadID, msgID)
 }
 
-// IsFinalThreadID checks if a thread ID is a final ID (has sequence component)
-func IsFinalThreadID(threadID string) bool {
-	// Final IDs have format: thread-<timestamp>-<sequence>
-	// Provisional IDs have format: thread-<timestamp>
-	parts := strings.Split(threadID, "-")
-	return len(parts) == 3 && parts[0] == "thread"
+// User → thread index (ownership)
+func GenUserThreadsKey(userID string) string {
+	return fmt.Sprintf(UserThreads, userID)
 }
 
-// IsFinalMessageID checks if a message ID is a final ID (has sequence component)
-func IsFinalMessageID(messageID string) bool {
-	// Final IDs have format: msg-<timestamp>-<sequence>
-	// Provisional IDs would have format: msg-<timestamp>
-	parts := strings.Split(messageID, "-")
-	return len(parts) == 3 && parts[0] == "msg"
+// Thread → participant indexes
+func GenThreadParticipantsKey(threadID string) string {
+	return fmt.Sprintf(ThreadParticipants, threadID)
 }
 
-// ExtractTimestampFromProvisionalID extracts timestamp from provisional thread ID
-func ExtractTimestampFromProvisionalID(provisionalID string) (int64, error) {
-	// Expected format: thread-<timestamp>
-	parts := strings.Split(provisionalID, "-")
-	if len(parts) != 2 || parts[0] != "thread" {
-		return 0, fmt.Errorf("invalid provisional thread ID format: %s", provisionalID)
-	}
+// Deletion indexes
+func GenDeletedThreadsKey(userID string) string {
+	return fmt.Sprintf(DeletedThreads, userID)
+}
+func GenDeletedMessagesKey(userID string) string {
+	return fmt.Sprintf(DeletedMessages, userID)
+}
 
-	timestamp, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid timestamp in provisional ID: %w", err)
-	}
+// --- Helper Pad functions ---
 
-	return timestamp, nil
+// PadTS returns timestamp padded for key (20 width, lexicographic sort)
+func PadTS(ts int64) string {
+	return fmt.Sprintf("%0*d", TSPadWidth, ts)
+}
+
+// PadSeq returns sequence padded for key (6 width, lexicographic sort)
+func PadSeq(seq uint64) string {
+	return fmt.Sprintf("%0*d", SeqPadWidth, seq)
 }

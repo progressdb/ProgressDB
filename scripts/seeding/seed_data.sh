@@ -111,10 +111,7 @@ EOF
         exit 1
     fi
     
-    # Wait a moment for the thread to be fully processed and get the final ID
-    sleep 0.5
-    
-    # Try to get the thread info to verify it exists and get the final ID if needed
+    # No sleep, immediately GET the thread info
     THREAD_INFO=$(curl -s -X GET "${TARGET_URL%/}/v1/threads/${THREAD_ID}" \
         -H "Authorization: Bearer ${FRONTEND_API_KEY}" \
         -H "X-User-ID: ${USER_ID}" \
@@ -131,10 +128,9 @@ EOF
 done
 
 echo ""
-echo "Waiting for thread processing to complete..."
-sleep 2  # Allow batch processing to finish
-
 echo "Creating messages..."
+
+# No post-thread creation sleep; create messages immediately
 
 # create messages for each thread
 for thread_index in "${!THREAD_IDS[@]}"; do

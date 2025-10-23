@@ -126,7 +126,7 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 		}
 	}
 
-	logger.Debug("provisional_id_not_found", "provisional", provisionalID, "timestamp", timestamp)
+	logger.Error("provisional_thread_not_found", "provisional", provisionalID, "timestamp", timestamp)
 	return "", fmt.Errorf("thread with provisional ID %s (timestamp %d) not found in database", provisionalID, timestamp)
 }
 

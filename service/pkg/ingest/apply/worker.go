@@ -75,7 +75,7 @@ func (aw *ApplyWorker) flush() {
 		return aw.buffer[i].TS < aw.buffer[j].TS
 	})
 	if err := ApplyBatchToDB(aw.buffer); err != nil {
-		logger.Error("apply_batch_failed", "err", err, "count", len(aw.buffer))
+		logger.Error("apply_batch_failed", "err", err, "batch_size", len(aw.buffer))
 	}
 	aw.buffer = aw.buffer[:0] // reset
 }

@@ -9,6 +9,7 @@ import (
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/telemetry"
@@ -49,6 +50,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 
 	// validate meets intake requirements
 	if err := ValidateMessage(m); err != nil {
+		logger.Error("message_validation_failed", "err", err, "author", m.Author, "thread", m.Thread)
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -67,6 +69,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	tr.Mark("encrypt")
 	payload, err = encryption.EncryptMessageData(m.Thread, payload)
 	if err != nil {
+		logger.Error("message_encryption_failed", "err", err, "thread", m.Thread, "msg", m.ID)
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
@@ -104,6 +107,7 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	tr.Mark("encrypt")
 	payload, err = encryption.EncryptMessageData(m.Thread, payload)
 	if err != nil {
+		logger.Error("message_encryption_failed", "err", err, "thread", m.Thread, "msg", m.ID)
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
@@ -208,13 +212,17 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntr
 
 // thread meta op methods
 func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+	logger.Debug("thread_create_started", "provisional_tid", op.TID, "payload_size", len(op.Payload))
+
 	var th models.Thread
 
 	// handle payload verification
 	if len(op.Payload) == 0 {
+		logger.Error("thread_create_empty_payload", "provisional_tid", op.TID)
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
+		logger.Error("thread_create_json_error", "provisional_tid", op.TID, "err", err)
 		// payload may be partial; we still accept and fill from op
 		th = models.Thread{}
 	}
@@ -227,8 +235,11 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		th.UpdatedTS = th.CreatedTS
 	}
 
-	// validate thread
-	if err := ValidateThread(th); err != nil {
+	logger.Debug("thread_create_pre_validation", "provisional_tid", op.TID, "author", th.Author, "title", th.Title, "created_ts", th.CreatedTS)
+
+	// validate thread (create type)
+	if err := ValidateThread(th, ValidationTypeCreate); err != nil {
+		logger.Error("thread_create_validation_failed", "err", err, "author", th.Author, "title", th.Title)
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
@@ -238,12 +249,15 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	tr.Mark("kms_provision")
 	kmsMeta, err := encryption.ProvisionThreadKMS(th.ID)
 	if err != nil {
+		logger.Error("thread_kms_provision_failed", "err", err, "thread", th.ID, "author", th.Author)
 		return nil, err
 	}
 	th.KMS = kmsMeta
 
 	payload, _ := json.Marshal(th)
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: th.ID, MID: "", Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: op.TID, Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
+
+	logger.Debug("thread_create_success", "provisional_tid", op.TID, "final_tid", th.ID, "author", th.Author)
 	return []types.BatchEntry{be}, nil
 }
 func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -297,20 +311,35 @@ func ValidateMessage(m models.Message) error {
 	return nil
 }
 
-func ValidateThread(th models.Thread) error {
+type ValidationType string
+
+const (
+	ValidationTypeCreate ValidationType = "create"
+	ValidationTypeUpdate ValidationType = "update"
+	ValidationTypeDelete ValidationType = "delete"
+)
+
+func ValidateThread(th models.Thread, validationType ValidationType) error {
 	tr := telemetry.Track("validation.validate_thread")
 	defer tr.Finish()
 
 	var errs []string
-	if th.ID == "" {
+
+	// ID is required for update/delete, but not for create
+	if validationType != ValidationTypeCreate && th.ID == "" {
 		errs = append(errs, "id is required")
 	}
-	if th.Title == "" {
+
+	// Title is required for create/update, but not for delete
+	if validationType != ValidationTypeDelete && th.Title == "" {
 		errs = append(errs, "title is required")
 	}
-	if th.Author == "" {
+
+	// Author is required for create/update, but not for delete
+	if validationType != ValidationTypeDelete && th.Author == "" {
 		errs = append(errs, "author is required")
 	}
+
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
