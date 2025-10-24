@@ -37,12 +37,8 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	th.Author = resolvedAuthor
 
 	// timestamps
-	if th.CreatedTS == 0 {
-		th.CreatedTS = timeutil.Now().UnixNano()
-	}
-	if th.UpdatedTS == 0 {
-		th.UpdatedTS = th.CreatedTS
-	}
+	th.CreatedTS = timeutil.Now().UnixNano()
+	th.UpdatedTS = th.CreatedTS
 
 	// validate
 	if err := ValidateThread(th, ValidationTypeCreate); err != nil {
@@ -110,7 +106,6 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	// sync
 	th.ID = op.TID
 	th.UpdatedTS = timeutil.Now().UnixNano()
-	// Author remains unchanged from existingThread
 
 	// copy payload so returned types.BatchEntry does not alias the pooled op buffer.
 	var payloadCopy []byte
@@ -152,27 +147,30 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
+
+	// parse
+	userID := op.Extras.UserID
+	if userID == "" {
+		return nil, fmt.Errorf("missing user identity for authorization")
+	}
+
 	var m models.Message
 	if err := json.Unmarshal(op.Payload, &m); err != nil {
 		return nil, fmt.Errorf("invalid message json: %w", err)
 	}
-	// reconcile id/thread from op if present
+
+	// validate
+	if m.Body == nil {
+		return nil, fmt.Errorf("body is required")
+	}
+
+	// sync
 	m.ID = op.MID
 	m.Thread = op.TID
 	m.TS = op.TS
+	m.Author = userID
 
-	// prefer extras identity as author if payload missing
-	if m.ID == "" || m.Author == "" {
-		return nil, fmt.Errorf("missing message id")
-	}
-
-	// validate meets intake requirements
-	if err := ValidateMessage(m); err != nil {
-		logger.Error("message_validation_failed", "err", err, "author", m.Author, "thread", m.Thread)
-		return nil, fmt.Errorf("validation failed: %w", err)
-	}
-
-	// re-marshal to ensure canonical payload
+	// serialize
 	var payload []byte
 	var err error
 	payload, err = json.Marshal(m)
@@ -180,10 +178,9 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// encrypt if enabled (handled internally by EncryptMessageData)
+	// encrypt
 	tr := telemetry.Track("ingest.message_encryption")
 	defer tr.Finish()
-
 	tr.Mark("encrypt")
 	payload, err = encryption.EncryptMessageData(m.Thread, payload)
 	if err != nil {
@@ -191,6 +188,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
+	// done
 	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
 	return []types.BatchEntry{be}, nil
 }
@@ -330,21 +328,6 @@ func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntr
 }
 
 // others
-func ValidateMessage(m models.Message) error {
-	tr := telemetry.Track("validation.validate_message")
-	defer tr.Finish()
-
-	var errs []string
-	if m.Body == nil {
-		errs = append(errs, "body is required")
-	}
-
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
-}
-
 type ValidationType string
 
 const (

@@ -23,3 +23,20 @@ func GetThread(threadID string) (string, error) {
 	}
 	return string(v), nil
 }
+
+func CheckThreadExists(threadID string) (bool, error) {
+	if storedb.Client == nil {
+		return false, fmt.Errorf("pebble not opened; call storedb.Open first")
+	}
+	tk := keys.GenThreadKey(threadID)
+
+	_, closer, err := storedb.Client.Get([]byte(tk))
+	if closer != nil {
+		defer closer.Close()
+	}
+	if err != nil {
+		// not found
+		return false, nil
+	}
+	return true, nil
+}
