@@ -13,6 +13,7 @@ var (
 	idRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]{1,256}$`)
 	// For keys, allow strict format matching
 	messageKeyRegexp           = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):m:([A-Za-z0-9._-]{1,256}):([0-9]{1,6})$`)
+	messagePrvKeyRegexp        = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):m:([A-Za-z0-9._-]{1,256})$`) // Matches MessagePrvKey = "t:%s:m:%s"
 	versionKeyRegexp           = regexp.MustCompile(`^v:([A-Za-z0-9._-]{1,256}):([0-9]{1,20}):([0-9]{1,6})$`)
 	threadKeyRegexp            = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256})$`)
 	threadPrvKeyRegexp         = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256})$`)
@@ -38,70 +39,11 @@ var (
 	deletedMessagesRegexp    = regexp.MustCompile(`^idx:m:deleted:u:([A-Za-z0-9._-]{1,256}):list$`)
 )
 
-func ValidateThreadID(id string) error {
-	if id == "" {
-		return errors.New("thread id empty")
-	}
-	if !idRegexp.MatchString(id) {
-		return fmt.Errorf("invalid thread id: %q", id)
-	}
-	return nil
-}
-
-func ValidateMsgID(id string) error {
-	if id == "" {
-		return errors.New("msg id empty")
-	}
-	if !idRegexp.MatchString(id) {
-		return fmt.Errorf("invalid msg id: %q", id)
-	}
-	return nil
-}
-
-// ValidateMessageProvisionalKey validates provisional message key format: t:<threadID>m:<msgID>
 func ValidateMessagePrvKey(key string) error {
-	// Should match pattern like: t:123m:456 or t:thread123m:msg456
-	parts := strings.Split(key, ":m:")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid provisional message key format: %q", key)
+	if !messagePrvKeyRegexp.MatchString(key) {
+		return fmt.Errorf("invalid version key format: %q", key)
 	}
-
-	threadPart := parts[0]
-	if !strings.HasPrefix(threadPart, "t:") {
-		return fmt.Errorf("invalid provisional message key format (missing thread prefix): %q", key)
-	}
-
-	threadID := threadPart[2:] // Remove "t:"
-	if threadID == "" {
-		return fmt.Errorf("empty thread ID in provisional message key: %q", key)
-	}
-
-	msgID := parts[1]
-	if msgID == "" {
-		return fmt.Errorf("empty message ID in provisional message key: %q", key)
-	}
-
-	// Validate both parts using the general ID validator
-	if err := ValidateThreadID(threadID); err != nil {
-		return fmt.Errorf("invalid thread ID in provisional message key: %w", err)
-	}
-
-	if err := ValidateMsgID(msgID); err != nil {
-		return fmt.Errorf("invalid message ID in provisional message key: %w", err)
-	}
-
 	return nil
-}
-
-// IsProvisionalMessageID checks if a message ID is in provisional format
-// Returns true if it's a raw message ID (not a full key)
-func IsProvisionalMessageID(messageID string) bool {
-	// If it contains "t:" or ":m:" it's likely a full key, not a provisional ID
-	if strings.Contains(messageID, "t:") || strings.Contains(messageID, ":m:") {
-		return false
-	}
-	// If it's a valid message ID format, it's provisional
-	return ValidateMsgID(messageID) == nil
 }
 
 func ValidateUserID(id string) error {
@@ -268,4 +210,27 @@ func ValidateDeletedMessagesKey(key string) error {
 		return fmt.Errorf("invalid deleted messages key format: %q", key)
 	}
 	return nil
+}
+
+// --- Key validation functions ---
+
+func ValidateKey(key string) error {
+	if key == "" {
+		return errors.New("key empty")
+	}
+	if !idRegexp.MatchString(key) {
+		return fmt.Errorf("invalid key: %q", key)
+	}
+	return nil
+}
+
+// IsProvisionalMessageKey checks if a message key is in provisional format
+// Returns true if it's a simple message key (not a full structured key)
+func IsProvisionalMessageKey(messageKey string) bool {
+	// If it contains "t:" or ":m:" it's likely a full structured key, not a provisional key
+	if strings.Contains(messageKey, "t:") || strings.Contains(messageKey, ":m:") {
+		return false
+	}
+	// If it's a valid simple key format, it's provisional
+	return ValidateKey(messageKey) == nil
 }

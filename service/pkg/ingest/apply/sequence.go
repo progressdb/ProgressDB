@@ -21,7 +21,7 @@ func (m *MessageSequencer) MapProvisionalToFinalMessageKey(provisionalKey, final
 }
 
 func (m *MessageSequencer) GetFinalMessageKey(messageKey string) (string, error) {
-	if keys.IsProvisionalMessageID(messageKey) {
+	if keys.IsProvisionalMessageKey(messageKey) {
 		return messageKey, nil
 	}
 	if finalKey, ok := m.provisionalToFinalKeys[messageKey]; ok {
@@ -32,7 +32,7 @@ func (m *MessageSequencer) GetFinalMessageKey(messageKey string) (string, error)
 }
 
 func (m *MessageSequencer) IsProvisionalMessageKey(messageKey string) bool {
-	return keys.IsProvisionalMessageID(messageKey)
+	return keys.IsProvisionalMessageKey(messageKey)
 }
 
 func (m *MessageSequencer) Reset() {

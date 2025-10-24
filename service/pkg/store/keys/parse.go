@@ -136,6 +136,21 @@ func ParseThreadKey(key string) (*ThreadMetaParts, error) {
 	return &ThreadMetaParts{ThreadID: parts[1]}, nil
 }
 
+// ParseMessageProvisionalKey parses provisional message keys formatted as t:<threadID>:m:<msgID>
+func ParseMessageProvisionalKey(key string) (*MessageKeyParts, error) {
+	parts := strings.Split(key, ":")
+	if len(parts) != 4 || parts[0] != "t" || parts[2] != "m" {
+		return nil, fmt.Errorf("invalid provisional message key: %s", key)
+	}
+	threadID := parts[1]
+	msgID := parts[3]
+	return &MessageKeyParts{
+		ThreadID: threadID,
+		MsgID:    msgID,
+		Seq:      "", // No sequence in provisional keys
+	}, nil
+}
+
 // ParseUserThreadsIndex parses keys formatted as idx:u:<user_id>:threads
 func ParseUserThreadsIndex(key string) (*UserThreadsIndexParts, error) {
 	parts := strings.Split(key, ":")
@@ -310,4 +325,25 @@ func ParseKeyTimestamp(s string) (int64, error) {
 
 func ParseKeySequence(s string) (uint64, error) {
 	return parsePaddedUint(s, SeqPadWidth)
+}
+
+// ExtractMessageComponents extracts thread and message components from various key formats
+func ExtractMessageComponents(threadKey, messageKey string) (threadComp, messageComp string, err error) {
+	// Extract thread component
+	if parts, err := ParseThreadKey(threadKey); err == nil {
+		threadComp = parts.ThreadID
+	} else {
+		return "", "", fmt.Errorf("extract thread component: %w", err)
+	}
+
+	// Extract message component
+	if parts, err := ParseMessageProvisionalKey(messageKey); err == nil {
+		messageComp = parts.MsgID
+	} else if IsProvisionalMessageKey(messageKey) {
+		messageComp = messageKey // It's already a simple component
+	} else {
+		return "", "", fmt.Errorf("extract message component: %w", err)
+	}
+
+	return threadComp, messageComp, nil
 }
