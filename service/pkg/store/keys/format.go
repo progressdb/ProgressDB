@@ -11,8 +11,8 @@ const (
 	// ms: message store
 
 	// provisional
-	ThreadPrvKey  = "t:%s"     // t:<threadID>
-	MessagePrvKey = "t:%sm:%s" // t:<threadID>
+	ThreadPrvKey  = "t:%s"      // t:<threadID>
+	MessagePrvKey = "t:%s:m:%s" // t:<threadID>
 
 	// primary storage key formats
 	MessageKey = "t:%s:m:%s:%s" // t:<threadID>:m:<msgID>:<seq>

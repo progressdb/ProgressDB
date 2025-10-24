@@ -26,25 +26,12 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 		return nil, fmt.Errorf("invalid message json: %w", err)
 	}
 	// reconcile id/thread from op if present
-	if m.ID == "" && op.MID != "" {
-		m.ID = op.MID
-	}
-	if m.Thread == "" && op.TID != "" {
-		m.Thread = op.TID
-	}
-	if m.TS == 0 && op.TS != 0 {
-		m.TS = op.TS
-	}
+	m.ID = op.MID
+	m.Thread = op.TID
+	m.TS = op.TS
+
 	// prefer extras identity as author if payload missing
-	if m.Author == "" {
-		if a := op.Extras["user_id"]; a != "" {
-			m.Author = a
-		}
-	}
-	if m.TS == 0 {
-		m.TS = timeutil.Now().UnixNano()
-	}
-	if m.ID == "" {
+	if m.ID == "" || m.Author == "" {
 		return nil, fmt.Errorf("missing message id")
 	}
 
@@ -84,15 +71,16 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	if err := json.Unmarshal(op.Payload, &m); err != nil {
 		return nil, fmt.Errorf("invalid message json: %w", err)
 	}
-	if m.ID == "" && op.MID != "" {
-		m.ID = op.MID
-	}
-	if m.Thread == "" && op.TID != "" {
-		m.Thread = op.TID
-	}
+
+	// set to defaults
+	m.ID = op.MID
+	m.Thread = op.TID
+
+	// if timestamp is still not set
 	if m.TS == 0 {
 		m.TS = timeutil.Now().UnixNano()
 	}
+
 	// allow partial updates; caller should provide resulting full message
 	var payload []byte
 	var err error
