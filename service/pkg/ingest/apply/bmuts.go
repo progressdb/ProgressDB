@@ -33,15 +33,23 @@ func processOperation(entry types.BatchEntry, batchIndexManager *BatchIndexManag
 // Threads
 func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
 	if entry.Author == "" {
-		return fmt.Errorf("author required for thread deletion")
+		return fmt.Errorf("author required for thread creation")
 	}
 
+	// Use Model-first optimization for thread creation
 	var thread models.Thread
-	if err := json.Unmarshal(entry.Payload, &thread); err != nil {
-		return fmt.Errorf("unmarshal thread: %w", err)
+	if entry.Model != nil {
+		if t, ok := entry.Model.(*models.Thread); ok {
+			thread = *t // Use parsed struct directly
+		}
+	} else {
+		// Fallback to payload parsing if Model not available
+		if err := json.Unmarshal(entry.Payload, &thread); err != nil {
+			return fmt.Errorf("unmarshal thread: %w", err)
+		}
 	}
 
-	// no changes - set threadKey
+	// set threadKey
 	threadKey := entry.TID
 	thread.ID = threadKey
 
@@ -86,28 +94,22 @@ func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 }
 
 func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
-	// Input validation
+	// validate
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread update")
 	}
 	if len(entry.Payload) == 0 {
 		return fmt.Errorf("payload required for thread update")
 	}
-	if len(entry.Payload) > 0 {
-		if err := json.Unmarshal(entry.Payload, &thread); err != nil {
-			return fmt.Errorf("unmarshal thread: %w", err)
-		}
+	if entry.Author == "" {
+		return fmt.Errorf("author required for thread update")
+	}
 
-	// Thread key validation
-	batchIndexManager.mu.Lock()
 	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
-		batchIndexManager.mu.Unlock()
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
 	}
-	finalThreadID := entry.TID
-	batchIndexManager.mu.Unlock()
 
-	// Thread data extraction
+	// easy data extract
 	var thread models.Thread
 	if entry.Model != nil {
 		if t, ok := entry.Model.(*models.Thread); ok {
@@ -115,23 +117,19 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 		}
 	}
 
-	// Finalize thread fields
-	thread.ID = finalThreadID
-	if thread.UpdatedTS == 0 {
-		thread.UpdatedTS = entry.TS
-	}
+	// fields
+	threadKey := entry.TID
+	thread.ID = threadKey
+	thread.UpdatedTS = entry.TS
 
-	// Serialize payload
+	// serialize
 	updatedPayload, err := json.Marshal(thread)
 	if err != nil {
 		return fmt.Errorf("marshal updated thread: %w", err)
 	}
 
-	// Update thread metadata
-	batchIndexManager.SetThreadMeta(finalThreadID, updatedPayload)
-
-	// Thread updates do not modify user indexes; participant management is separate
-	logger.Debug("thread_update_completed", "thread", finalThreadID, "author", thread.Author)
+	// sync
+	batchIndexManager.SetThreadMeta(threadKey, updatedPayload)
 	return nil
 }
 

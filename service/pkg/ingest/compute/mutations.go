@@ -23,11 +23,18 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
 
-	// parse
+	// parse (API layer already validated JSON structure)
 	var th models.Thread
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
-		th = models.Thread{}
+		return nil, fmt.Errorf("invalid thread payload: %w", err)
 	}
+
+	// Override author with resolved authenticated author (security critical)
+	resolvedAuthor := op.Extras.UserID
+	if resolvedAuthor == "" {
+		return nil, fmt.Errorf("missing resolved author from authentication")
+	}
+	th.Author = resolvedAuthor
 
 	// timestamps
 	if th.CreatedTS == 0 {
@@ -56,19 +63,54 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 
 	// send back
 	payload, _ := json.Marshal(th)
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: op.TID, Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: op.TID, Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th, Author: th.Author}
 	return []types.BatchEntry{be}, nil
 }
 func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	var th models.Thread
-	if err := json.Unmarshal(op.Payload, &th); err != nil {
-		// best-effort: fall back to op.TID
-		th = models.Thread{}
+	// verify ownership for thread update
+	threadData, err := threads.GetThread(op.TID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
+	}
+
+	var existingThread models.Thread
+	if err := json.Unmarshal([]byte(threadData), &existingThread); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal thread: %w", err)
+	}
+
+	// check if user owns the thread
+	userID := op.Extras.UserID
+	if userID == "" {
+		return nil, fmt.Errorf("missing user identity for authorization")
+	}
+	if existingThread.Author != userID {
+		return nil, fmt.Errorf("user not authorized to update this thread")
+	}
+
+	// Start with existing thread data
+	th := existingThread
+
+	// Parse partial update payload
+	var updatePayload struct {
+		Title *string `json:"title,omitempty"`
+		Slug  *string `json:"slug,omitempty"`
+	}
+	if err := json.Unmarshal(op.Payload, &updatePayload); err != nil {
+		return nil, fmt.Errorf("invalid thread update payload: %w", err)
+	}
+
+	// Apply partial updates
+	if updatePayload.Title != nil {
+		th.Title = *updatePayload.Title
+	}
+	if updatePayload.Slug != nil {
+		th.Slug = *updatePayload.Slug
 	}
 
 	// sync
 	th.ID = op.TID
 	th.UpdatedTS = timeutil.Now().UnixNano()
+	// Author remains unchanged from existingThread
 
 	// copy payload so returned types.BatchEntry does not alias the pooled op buffer.
 	var payloadCopy []byte
@@ -76,7 +118,7 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		payloadCopy = make([]byte, len(op.Payload))
 		copy(payloadCopy, op.Payload)
 	}
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, TID: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th}
+	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, TID: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th, Author: th.Author}
 	return []types.BatchEntry{be}, nil
 }
 func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {

@@ -69,7 +69,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("validate_thread")
-	thread, validationErr := ValidateThread(id, author, true)
+	thread, validationErr := ValidateReadThread(id, author, true)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
@@ -93,7 +93,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	if !valid {
 		return
 	}
-	_, validationErr := ValidateThread(threadID, author, false)
+	_, validationErr := ValidateReadThread(threadID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
@@ -152,14 +152,14 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 
 	tr.Mark("validate_thread")
-	_, validationErr := ValidateThread(threadID, author, false)
+	_, validationErr := ValidateReadThread(threadID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_message")
-	message, validationErr := ValidateMessage(messageID, author, true)
+	message, validationErr := ValidateReadMessage(messageID, author, true)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
@@ -190,14 +190,14 @@ func ReadMessageReactions(ctx *fasthttp.RequestCtx) {
 	threadID := pathParam(ctx, "threadID")
 
 	tr.Mark("validate_thread")
-	_, validationErr := ValidateThread(threadID, author, false)
+	_, validationErr := ValidateReadThread(threadID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_message")
-	message, validationErr := ValidateMessage(messageID, author, false)
+	message, validationErr := ValidateReadMessage(messageID, author, false)
 	if validationErr != nil {
 		WriteValidationError(ctx, validationErr)
 		return

@@ -88,6 +88,12 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	}
 	payload := append([]byte(nil), ctx.PostBody()...)
 
+	// Validate request
+	if err := router.ValidateUpdateThreadRequest(ctx); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
 	// Resolve author
 	author, authErr := ValidateAuthor(ctx, "")
 	if authErr != nil {
