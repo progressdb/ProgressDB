@@ -23,47 +23,38 @@ func TestKeysBuildersParsers(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		// MsgKey -> ParseMsgKey
-		k, err := keys.GenMsgKey(c.threadID, "test-msg", c.seq)
-		if err != nil {
-			t.Fatalf("GenMsgKey error: %v", err)
-		}
-		tid, msgID, pseq, perr := keys.ParseMsgKey(k)
+		// MessageKey -> ParseMessageKey
+		k := keys.GenMessageKey(c.threadID, "test-msg", c.seq)
+		parts, perr := keys.ParseMessageKey(k)
 		if perr != nil {
-			t.Fatalf("ParseMsgKey error: %v (key=%s)", perr, k)
+			t.Fatalf("ParseMessageKey error: %v (key=%s)", perr, k)
 		}
-		if tid != c.threadID || msgID != "test-msg" || pseq != c.seq {
-			t.Fatalf("ParseMsgKey mismatch: got (%s,%s,%d) want (%s,%s,%d)", tid, msgID, pseq, c.threadID, "test-msg", c.seq)
+		if parts.ThreadID != c.threadID || parts.MsgID != "test-msg" || parts.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseMessageKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", parts.ThreadID, parts.MsgID, parts.Seq, c.threadID, "test-msg", keys.PadSeq(c.seq))
 		}
 
 		// VersionKey -> ParseVersionKey
-		vk, err := keys.GenVersionKey(c.msgID, c.ts, c.seq)
-		if err != nil {
-			t.Fatalf("VersionKey error: %v", err)
-		}
-		mid, vts, vseq, verr := keys.ParseVersionKey(vk)
+		vk := keys.GenVersionKey(c.msgID, c.ts, c.seq)
+		vparts, verr := keys.ParseVersionKey(vk)
 		if verr != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", verr, vk)
 		}
-		if mid != c.msgID || vts != c.ts || vseq != c.seq {
-			t.Fatalf("ParseVersionKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", mid, vts, vseq, c.msgID, c.ts, c.seq)
+		if vparts.MsgID != c.msgID || vparts.TS != keys.PadTS(c.ts) || vparts.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", vparts.MsgID, vparts.TS, vparts.Seq, c.msgID, keys.PadTS(c.ts), keys.PadSeq(c.seq))
 		}
 
-		// ThreadMetaKey
-		mk, err := keys.GenThreadMetaKey(c.threadID)
-		if err != nil {
-			t.Fatalf("ThreadMetaKey error: %v", err)
-		}
-		if !strings.HasPrefix(mk, "thread:") || !strings.HasSuffix(mk, ":meta") {
-			t.Fatalf("ThreadMetaKey malformed: %s", mk)
+		// ThreadKey
+		mk := keys.GenThreadKey(c.threadID)
+		if !strings.HasPrefix(mk, "t:") || !strings.HasSuffix(mk, ":meta") {
+			t.Fatalf("ThreadKey malformed: %s", mk)
 		}
 	}
 
 	// invalid ids
-	if _, err := keys.GenMsgKey("", "test-msg", 1); err == nil {
+	if err := keys.ValidateThreadID(""); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if _, err := keys.GenVersionKey("", 1, 1); err == nil {
+	if err := keys.ValidateMsgID(""); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }
@@ -82,41 +73,38 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		// MsgKey round-trip
-		k, err := keys.GenMsgKey(c.threadID, "test-msg", c.seq)
+		// MessageKey round-trip
+		k := keys.GenMessageKey(c.threadID, "test-msg", c.seq)
+		parts, err := keys.ParseMessageKey(k)
 		if err != nil {
-			t.Fatalf("MsgKey error: %v", err)
+			t.Fatalf("ParseMessageKey error: %v (key=%s)", err, k)
 		}
-		tid, pts, pseq, err := keys.ParseMsgKey(k)
-		if err != nil {
-			t.Fatalf("ParseMsgKey error: %v (key=%s)", err, k)
-		}
-		if tid != c.threadID || pts != c.ts || pseq != c.seq {
-			t.Fatalf("ParseMsgKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", tid, pts, pseq, c.threadID, c.ts, c.seq)
+		parsedSeq, _ := keys.ParseKeySequence(parts.Seq)
+		if parts.ThreadID != c.threadID || parsedSeq != c.seq {
+			t.Fatalf("ParseMessageKey mismatch: got (%s,%s) want (%s,%d)", parts.ThreadID, parts.Seq, c.threadID, c.seq)
 		}
 
 		// VersionKey round-trip
-		vk, err := keys.GenVersionKey(c.msgID, c.ts, c.seq)
-		if err != nil {
-			t.Fatalf("VersionKey error: %v", err)
-		}
-		mid, vts, vseq, err := keys.ParseVersionKey(vk)
+		vk := keys.GenVersionKey(c.msgID, c.ts, c.seq)
+		vparts, err := keys.ParseVersionKey(vk)
 		if err != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
 		}
-		if mid != c.msgID || vts != c.ts || vseq != c.seq {
-			t.Fatalf("ParseVersionKey mismatch: got (%s,%d,%d) want (%s,%d,%d)", mid, vts, vseq, c.msgID, c.ts, c.seq)
+		parsedTS, _ := keys.ParseKeyTimestamp(vparts.TS)
+		parsedSeq, _ = keys.ParseKeySequence(vparts.Seq)
+		if vparts.MsgID != c.msgID || parsedTS != c.ts || parsedSeq != c.seq {
+			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%d,%d)", vparts.MsgID, vparts.TS, vparts.Seq, c.msgID, c.ts, c.seq)
 		}
 	}
 }
 
 func TestPrefixesAndValidators_StoreHelpers(t *testing.T) {
-	// Prefix helpers
-	if p, err := keys.GenMsgPrefix("abc"); err != nil || p != "thread:abc:msg:" {
-		t.Fatalf("MsgPrefix unexpected: %v %v", p, err)
+	// Prefix helpers - using thread message start as equivalent
+	if p := keys.GenThreadMessageStart("abc"); p != "idx:t:abc:ms:start" {
+		t.Fatalf("ThreadMessageStart unexpected: %s", p)
 	}
-	if p, err := keys.GenThreadPrefix("abc"); err != nil || p != "thread:abc:" {
-		t.Fatalf("ThreadPrefix unexpected: %v %v", p, err)
+	if p := keys.GenThreadKey("abc"); p != "t:abc:meta" {
+		t.Fatalf("ThreadKey unexpected: %s", p)
 	}
 
 	// validators

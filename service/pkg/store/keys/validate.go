@@ -14,6 +14,7 @@ var (
 	messageKeyRegexp           = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):m:([A-Za-z0-9._-]{1,256}):([0-9]{1,6})$`)
 	versionKeyRegexp           = regexp.MustCompile(`^v:([A-Za-z0-9._-]{1,256}):([0-9]{1,20}):([0-9]{1,6})$`)
 	threadKeyRegexp            = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):meta$`)
+	threadPrvKeyRegexp         = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256})$`)
 	threadMessageStartRegexp   = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:start$`)
 	threadMessageEndRegexp     = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:end$`)
 	threadMessageCDeltasRegexp = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:cdeltas$`)
@@ -85,6 +86,13 @@ func ValidateVersionKey(key string) error {
 func ValidateThreadKey(key string) error {
 	if !threadKeyRegexp.MatchString(key) {
 		return fmt.Errorf("invalid thread key format: %q", key)
+	}
+	return nil
+}
+
+func ValidateThreadPrvKey(key string) error {
+	if !threadPrvKeyRegexp.MatchString(key) {
+		return fmt.Errorf("invalid provisional thread key format: %q", key)
 	}
 	return nil
 }

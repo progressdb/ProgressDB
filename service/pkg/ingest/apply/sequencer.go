@@ -13,23 +13,22 @@ import (
 
 // ThreadSequencer manages thread ID resolution and sequencing
 type ThreadSequencer struct {
-	provisionalToFinalIDs map[string]string // Maps provisional IDs to final IDs within this batch
-	resolvedThreadIDs     map[string]string // Cache for database-resolved thread IDs
+	provisionalToFinalIDs map[string]string // provisional -> final, for this batch
+	resolvedThreadIDs     map[string]string // cache: provisional -> final, via DB
 }
 
 // MessageSequencer manages message ID resolution and sequencing
 type MessageSequencer struct {
-	provisionalToFinalIDs map[string]string // Maps provisional message IDs to final IDs within this batch
-	resolvedMessageIDs    map[string]string // Cache for database-resolved message IDs
+	provisionalToFinalIDs map[string]string // provisional -> final, for this batch
+	resolvedMessageIDs    map[string]string // cache: provisional -> final, via DB
 }
 
-// BatchSequencerManager manages both thread and message sequencers for batch processing
+// BatchSequencerManager manages thread and message sequencers for batch processing
 type BatchSequencerManager struct {
 	threadSequencer  *ThreadSequencer
 	messageSequencer *MessageSequencer
 }
 
-// NewThreadSequencer creates a new thread sequencer
 func NewThreadSequencer() *ThreadSequencer {
 	return &ThreadSequencer{
 		provisionalToFinalIDs: make(map[string]string),
@@ -37,7 +36,6 @@ func NewThreadSequencer() *ThreadSequencer {
 	}
 }
 
-// NewMessageSequencer creates a new message sequencer
 func NewMessageSequencer() *MessageSequencer {
 	return &MessageSequencer{
 		provisionalToFinalIDs: make(map[string]string),
@@ -45,7 +43,6 @@ func NewMessageSequencer() *MessageSequencer {
 	}
 }
 
-// NewBatchSequencerManager creates a new batch sequencer manager
 func NewBatchSequencerManager() *BatchSequencerManager {
 	return &BatchSequencerManager{
 		threadSequencer:  NewThreadSequencer(),
@@ -53,77 +50,79 @@ func NewBatchSequencerManager() *BatchSequencerManager {
 	}
 }
 
-// MapProvisionalToFinalThreadID stores the mapping from provisional to final thread ID
+// Maps a provisional thread ID to its final ID for this batch
 func (t *ThreadSequencer) MapProvisionalToFinalThreadID(provisionalID, finalID string) {
 	t.provisionalToFinalIDs[provisionalID] = finalID
 	logger.Debug("mapped_provisional_thread", "provisional", provisionalID, "final", finalID)
 }
 
-// GetFinalThreadID resolves a provisional or final thread ID to the final ID
+// Resolves a provisional or final thread ID to the final thread ID
 func (t *ThreadSequencer) GetFinalThreadID(threadID string) (string, error) {
-	// If it's already a final ID, return it
-	// For now, assume all thread IDs are final unless they look like provisional IDs
-	if !strings.HasPrefix(threadID, "t:") && strings.Contains(threadID, "-") {
-		return threadID, nil
+	// Check if it's a final thread key format: t:<threadID>:meta
+	if keys.ValidateThreadKey(threadID) == nil {
+		// Extract thread ID from final key format
+		parts, err := keys.ParseThreadMeta(threadID)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse valid thread key %s: %w", threadID, err)
+		}
+		return parts.ThreadID, nil
 	}
 
-	// Check batch-local mapping first
-	if finalID, exists := t.provisionalToFinalIDs[threadID]; exists {
+	// Check if it's a provisional thread key format: t:<threadID>
+	if keys.ValidateThreadPrvKey(threadID) == nil {
+		// Extract provisional thread ID from provisional key format
+		provisionalThreadID := threadID[2:] // Remove "t:" prefix
+
+		// Batch-local mapping
+		if finalID, ok := t.provisionalToFinalIDs[provisionalThreadID]; ok {
+			return finalID, nil
+		}
+
+		// Cached from DB
+		if finalID, ok := t.resolvedThreadIDs[provisionalThreadID]; ok {
+			return finalID, nil
+		}
+
+		// DB resolution
+		finalID, err := t.resolveThreadIDFromDB(provisionalThreadID)
+		if err != nil {
+			return "", err
+		}
+		t.resolvedThreadIDs[provisionalThreadID] = finalID
 		return finalID, nil
 	}
 
-	// Check resolution cache
-	if finalID, exists := t.resolvedThreadIDs[threadID]; exists {
-		return finalID, nil
-	}
-
-	// Need to resolve from database
-	finalID, err := t.resolveThreadIDFromDB(threadID)
-	if err != nil {
-		return "", err
-	}
-
-	// Cache the result
-	t.resolvedThreadIDs[threadID] = finalID
-	return finalID, nil
+	// Invalid key format - this should never happen
+	return "", fmt.Errorf("invalid thread ID format: %s - expected either provisional (t:<threadID>) or final (t:<threadID>:meta) format", threadID)
 }
 
-// resolveThreadIDFromDB looks up the final thread ID from the database using provisional prefix
+// Looks up the final thread ID for a provisional one in the DB
 func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, error) {
-	// Extract timestamp from provisional ID - assume format "thread-{timestamp}"
-	var timestamp int64
-	if _, err := fmt.Sscanf(provisionalID, "thread-%d", &timestamp); err != nil {
+	timestamp, err := keys.ParseProvisionalThreadID(provisionalID)
+	if err != nil {
 		return "", fmt.Errorf("invalid provisional ID format: %w", err)
 	}
+	threadID := keys.GenThreadIDFromTimestamp(timestamp)
+	threadKey := keys.GenThreadKey(threadID)
 
-	// Since timestamp is unique per request, we can directly construct the thread key prefix
-	// and search for any thread that matches this timestamp
-	threadPrefix := fmt.Sprintf("thread:thread-%d:", timestamp)
-
-	// Use the store's prefix scanning capability to find the thread
-	// This is much more efficient than iterating through possible sequences
 	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
 
-	// Seek to the prefix
-	iter.SeekGE([]byte(threadPrefix))
+	iter.SeekGE([]byte(threadKey))
 
-	// Check if we found a thread with this timestamp prefix
 	if iter.Valid() {
 		key := iter.Key()
-		if strings.HasPrefix(string(key), threadPrefix) {
-			// Extract the full thread ID from the key
-			finalThreadID := string(key)
-
-			// Verify this is actually a thread metadata key
-			expectedKey := keys.GenThreadKey(finalThreadID)
-			if string(key) == expectedKey {
-				logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", finalThreadID)
-				return finalThreadID, nil
+		if string(key) == threadKey {
+			parts, err := keys.ParseThreadMeta(string(key))
+			if err != nil {
+				return "", fmt.Errorf("failed to parse thread meta key: %w", err)
 			}
+			finalThreadID := parts.ThreadID
+			logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", finalThreadID)
+			return finalThreadID, nil
 		}
 	}
 
@@ -131,80 +130,71 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 	return "", fmt.Errorf("thread with provisional ID %s (timestamp %d) not found in database", provisionalID, timestamp)
 }
 
-// MapProvisionalToFinalMessageID stores mapping from provisional to final message ID
+// Maps a provisional message ID to its final ID for this batch
 func (m *MessageSequencer) MapProvisionalToFinalMessageID(provisionalID, finalID string) {
 	m.provisionalToFinalIDs[provisionalID] = finalID
 	logger.Debug("mapped_provisional_message", "provisional", provisionalID, "final", finalID)
 }
 
-// GetFinalMessageID resolves a provisional or final message ID to the final ID
+// Resolves a provisional or final message ID to the final message ID
 func (m *MessageSequencer) GetFinalMessageID(messageID string) (string, error) {
-	// If it's already a final ID, return it
-	// For now, assume all message IDs are final unless they look like provisional IDs
+	// If already a final message ID, return as is
 	if !strings.HasPrefix(messageID, "msg-") {
 		return messageID, nil
 	}
-
-	// Check batch-local mapping first
-	if finalID, exists := m.provisionalToFinalIDs[messageID]; exists {
+	// Batch-local
+	if finalID, ok := m.provisionalToFinalIDs[messageID]; ok {
 		return finalID, nil
 	}
-
-	// Check resolution cache
-	if finalID, exists := m.resolvedMessageIDs[messageID]; exists {
+	// Cached resolution
+	if finalID, ok := m.resolvedMessageIDs[messageID]; ok {
 		return finalID, nil
 	}
-
-	// For now, return the provisional ID if we can't resolve it
-	// In the future, we might want to add database resolution logic here
+	// Not resolved
 	logger.Debug("message_id_not_resolved", "provisional", messageID)
 	return messageID, nil
 }
 
-// IsProvisionalMessageID checks if a message ID is provisional
+// Returns true if the message ID is in provisional format
 func (m *MessageSequencer) IsProvisionalMessageID(messageID string) bool {
 	return strings.HasPrefix(messageID, "msg-")
 }
 
-// Reset clears all cached mappings
+// Resets all cached mappings in thread sequencer
 func (t *ThreadSequencer) Reset() {
 	t.provisionalToFinalIDs = make(map[string]string)
 	t.resolvedThreadIDs = make(map[string]string)
 }
 
+// Resets all cached mappings in message sequencer
 func (m *MessageSequencer) Reset() {
 	m.provisionalToFinalIDs = make(map[string]string)
 	m.resolvedMessageIDs = make(map[string]string)
 }
 
-// BatchSequencerManager methods
+// BatchSequencerManager helpers
 
-// MapProvisionalToFinalThreadID delegates to thread sequencer
 func (bsm *BatchSequencerManager) MapProvisionalToFinalThreadID(provisionalID, finalID string) {
 	bsm.threadSequencer.MapProvisionalToFinalThreadID(provisionalID, finalID)
 }
 
-// GetFinalThreadID delegates to thread sequencer
 func (bsm *BatchSequencerManager) GetFinalThreadID(threadID string) (string, error) {
 	return bsm.threadSequencer.GetFinalThreadID(threadID)
 }
 
-// MapProvisionalToFinalMessageID delegates to message sequencer
 func (bsm *BatchSequencerManager) MapProvisionalToFinalMessageID(provisionalID, finalID string) {
 	bsm.messageSequencer.MapProvisionalToFinalMessageID(provisionalID, finalID)
 }
 
-// GetFinalMessageID delegates to message sequencer
 func (bsm *BatchSequencerManager) GetFinalMessageID(messageID string) (string, error) {
 	return bsm.messageSequencer.GetFinalMessageID(messageID)
 }
 
-// IsProvisionalMessageID delegates to message sequencer
 func (bsm *BatchSequencerManager) IsProvisionalMessageID(messageID string) bool {
 	return bsm.messageSequencer.IsProvisionalMessageID(messageID)
 }
 
-// Reset clears all sequencer state
+// Resets all sequencer state
 func (bsm *BatchSequencerManager) Reset() {
 	bsm.threadSequencer.Reset()
 	bsm.messageSequencer.Reset()
