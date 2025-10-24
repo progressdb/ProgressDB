@@ -125,11 +125,11 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 
 	// Generate final thread ID with user sequence
 	userSeq := batchIndexManager.GetNextUserThreadSequence(thread.Author)
-	threadID := keys.GenUserThreadKey(entry.TS, userSeq)
+	threadID := fmt.Sprintf("thread:thread-%d:%d", entry.TS, userSeq)
 	logger.Debug("thread_sequence_assigned", "user", thread.Author, "thread", threadID, "sequence", userSeq)
 
 	// Store provisional ID for mapping
-	provisionalID := keys.GenProvThreadKey(entry.TS)
+	provisionalID := keys.GenThreadPrvKey(fmt.Sprintf("thread-%d", entry.TS))
 	logger.Debug("thread_create_mapping", "provisional", provisionalID, "final", threadID, "entry_tid", entry.TID)
 
 	batchIndexManager.mu.Lock()
@@ -254,12 +254,12 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 
 	if msg.ID == "" {
 		// Generate new message ID
-		finalMessageID = keys.GenMessageKey()
+		finalMessageID = fmt.Sprintf("msg-%d", entry.TS)
 		logger.Debug("generated_message_id", "message", finalMessageID)
 	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
 		// This is a provisional ID, generate final ID and map it
 		provisionalMessageID = msg.ID
-		finalMessageID = keys.GenMessageKey()
+		finalMessageID = fmt.Sprintf("msg-%d", entry.TS)
 		batchIndexManager.mu.Lock()
 		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
 		batchIndexManager.mu.Unlock()
@@ -293,10 +293,7 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	}
 
 	// Generate message key and sequence
-	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
-	if err != nil {
-		return fmt.Errorf("message key: %w", err)
-	}
+	msgKey := keys.GenMessageKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 
 	// Update thread message indexes
 	isDelete := entry.Handler == queue.HandlerMessageDelete
@@ -349,12 +346,12 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 
 	if msg.ID == "" {
 		// Generate new message ID
-		finalMessageID = keys.GenMessageKey()
+		finalMessageID = fmt.Sprintf("msg-%d", entry.TS)
 		logger.Debug("generated_message_id", "message", finalMessageID)
 	} else if batchIndexManager.sequencerManager.IsProvisionalMessageID(msg.ID) {
 		// This is a provisional ID, generate final ID and map it
 		provisionalMessageID = msg.ID
-		finalMessageID = keys.GenMessageKey()
+		finalMessageID = fmt.Sprintf("msg-%d", entry.TS)
 		batchIndexManager.mu.Lock()
 		batchIndexManager.sequencerManager.MapProvisionalToFinalMessageID(provisionalMessageID, finalMessageID)
 		batchIndexManager.mu.Unlock()
@@ -388,10 +385,7 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	}
 
 	// Generate message key and sequence
-	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
-	if err != nil {
-		return fmt.Errorf("message key: %w", err)
-	}
+	msgKey := keys.GenMessageKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 
 	// Update thread message indexes
 	isDelete := entry.Handler == queue.HandlerMessageDelete
@@ -443,10 +437,7 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	}
 
 	// Generate message key for deletion tracking
-	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
-	if err != nil {
-		return fmt.Errorf("message key: %w", err)
-	}
+	msgKey := keys.GenMessageKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 
 	// Update thread message indexes for deletion
 	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, msgKey)
@@ -517,10 +508,7 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	}
 
 	// Generate message key and sequence
-	msgKey, err := keys.GenMsgKey(finalThreadID, finalMessageID, uint64(entry.Enq))
-	if err != nil {
-		return fmt.Errorf("message key: %w", err)
-	}
+	msgKey := keys.GenMessageKey(finalThreadID, finalMessageID, uint64(entry.Enq))
 
 	// Update thread indexes
 	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, msgKey)

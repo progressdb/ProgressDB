@@ -103,7 +103,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	tr.Mark("list_threads")
-	threadList, _ := thread_store.ListThreads()
+	threadList, _ := listAllThreads()
 	var msgCount int64
 	tr.Mark("count_messages")
 	for _, raw := range threadList {
@@ -135,7 +135,7 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	tr.Mark("list_threads")
-	vals, err := thread_store.ListThreads()
+	vals, err := listAllThreads()
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -382,7 +382,7 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 			if payload, merr := json.Marshal(th); merr == nil {
-				_ = thread_store.SaveThread(th.ID, string(payload))
+				_ = saveThread(th.ID, string(payload))
 			}
 		}
 	}
@@ -544,16 +544,12 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if payload, merr := json.Marshal(th); merr == nil {
-					_ = thread_store.SaveThread(th.ID, string(payload))
+					_ = saveThread(th.ID, string(payload))
 				}
 			}
 
 			// get key prefix for thread messages
-			prefix, merr := keys.MsgPrefix(threadID)
-			if merr != nil {
-				resCh <- result{Thread: threadID, Err: merr.Error()}
-				return
-			}
+			prefix := fmt.Sprintf("t:%s:m:", threadID)
 
 			// create iterator for all message keys in the thread
 			iter, err := storedb.Iter()
@@ -640,7 +636,7 @@ func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 
 func determineThreadIDs(ids []string, all bool) ([]string, error) {
 	if all {
-		vals, err := thread_store.ListThreads()
+		vals, err := listAllThreads()
 		if err != nil {
 			return nil, err
 		}
@@ -819,10 +815,7 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Admin
 
 // listThreadsForUser lists threads for a specific user with pagination
 func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsResult, error) {
-	key, err := keys.UserThreadsIndexKey(userID)
-	if err != nil {
-		return nil, err
-	}
+	key := keys.GenUserThreadsKey(userID)
 
 	val, err := index.GetKey(key)
 	if err != nil && !index.IsNotFound(err) {
@@ -895,15 +888,53 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 
 // listMessagesForThread lists messages for a specific thread with pagination
 func listMessagesForThread(threadID string, limit int, cursor string) (*AdminMessagesResult, error) {
-	messages, nextCursor, hasMore, err := messages.ListMessagesCursor(threadID, cursor, limit)
+	reqCursor := models.ReadRequestCursorInfo{
+		Cursor: cursor,
+		Limit:  limit,
+	}
+	messages, respCursor, err := messages.ListMessages(threadID, reqCursor)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AdminMessagesResult{
 		Messages:   router.ToRawMessages(messages),
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
+		NextCursor: respCursor.Cursor,
+		HasMore:    respCursor.HasMore,
 		Count:      len(messages),
 	}, nil
+}
+
+// listAllThreads lists all threads in the system
+func listAllThreads() ([]string, error) {
+	// Use storedb to list all thread metadata keys
+	keys, _, _, err := storedb.ListKeys("t:", 10000, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var threadKeys []string
+	for _, key := range keys {
+		if strings.HasSuffix(key, ":meta") {
+			threadKeys = append(threadKeys, key)
+		}
+	}
+
+	// Fetch thread data for each key
+	var threads []string
+	for _, key := range threadKeys {
+		val, err := storedb.GetKey(key)
+		if err != nil {
+			continue
+		}
+		threads = append(threads, val)
+	}
+
+	return threads, nil
+}
+
+// saveThread saves thread metadata to the store
+func saveThread(threadID string, data string) error {
+	key := keys.GenThreadKey(threadID)
+	return storedb.SaveKey(key, []byte(data))
 }

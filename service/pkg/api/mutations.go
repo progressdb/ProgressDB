@@ -54,7 +54,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	// enqueue
 	reqtime := timeutil.Now().UnixNano()
 	metadata := NewRequestMetadata(ctx, author)
-	pid := keys.GenProvThreadKey(reqtime)
+	pid := keys.GenThreadPrvKey(fmt.Sprintf("%d", reqtime))
 
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerThreadCreate,
@@ -167,9 +167,9 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	ts := timeutil.Now().UnixNano()
+	reqtime := timeutil.Now().UnixNano()
 	metadata := NewRequestMetadata(ctx, author)
-	pid := keys.GenProvMessageKey(ts)
+	pid := keys.GenMessagePrvKey(threadID, fmt.Sprintf("%d", reqtime))
 
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
@@ -177,7 +177,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		TID:     threadID,
 		MID:     pid,
 		Payload: payload,
-		TS:      ts,
+		TS:      reqtime,
 		Extras:  metadata.ToQueueExtras(),
 	}); err != nil {
 		handleQueueError(ctx, err)

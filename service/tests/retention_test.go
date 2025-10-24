@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"progressdb/internal/retention"
+	"progressdb/pkg/store/keys"
 	testutils "progressdb/tests/utils"
 	utils "progressdb/tests/utils"
 )
@@ -29,7 +30,7 @@ func TestRetention_Suite(t *testing.T) {
 	t.Run("FileLeaseLifecycle", func(t *testing.T) {
 		dir := testutils.NewArtifactsDir(t, "retention-lease")
 		lock := retention.NewFileLease(dir)
-		owner := storedb.GenMessageID()
+		owner := keys.GenMessageID()
 		acq, err := lock.Acquire(owner, 2*time.Second)
 		if err != nil {
 			t.Fatalf("Acquire error: %v", err)

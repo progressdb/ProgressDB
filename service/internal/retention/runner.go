@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"progressdb/pkg/config"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 	thread_store "progressdb/pkg/store/threads"
 	"progressdb/pkg/timeutil"
@@ -95,7 +97,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	}
 	cutoff := timeutil.Now().Add(-pd)
 
-	threads, err := thread_store.ListThreads()
+	threads, err := listAllThreads()
 	if err != nil {
 		return fmt.Errorf("list threads: %w", err)
 	}
@@ -158,6 +160,34 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	}
 	logger.Info("retention_run_complete", "scanned", scanned, "purged", purged)
 	return nil
+}
+
+// listAllThreads lists all threads in the system
+func listAllThreads() ([]string, error) {
+	// Use storedb to list all thread metadata keys
+	keys, _, _, err := storedb.ListKeys("t:", 10000, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var threadKeys []string
+	for _, key := range keys {
+		if strings.HasSuffix(key, ":meta") {
+			threadKeys = append(threadKeys, key)
+		}
+	}
+
+	// Fetch thread data for each key
+	var threads []string
+	for _, key := range threadKeys {
+		val, err := storedb.GetKey(key)
+		if err != nil {
+			continue
+		}
+		threads = append(threads, val)
+	}
+
+	return threads, nil
 }
 
 func parseRetention(s string) (time.Duration, error) {

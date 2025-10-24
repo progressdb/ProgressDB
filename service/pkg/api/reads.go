@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/store/db/index"
 	message_store "progressdb/pkg/store/messages"
-	"progressdb/pkg/store/threads"
+	thread_store "progressdb/pkg/store/threads"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -32,7 +32,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	tr.Mark("fetch_threads")
 	out := make([]models.Thread, 0, len(threadIDs))
 	for _, threadID := range threadIDs {
-		threadStr, err := threads.GetThread(threadID)
+		threadStr, err := thread_store.GetThread(threadID)
 		if err != nil {
 			continue
 		}
@@ -107,7 +107,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("list_messages")
-	reqCursor := ReadRequestCursorInfo{
+	reqCursor := models.ReadRequestCursorInfo{
 		Cursor: qp.Cursor,
 		Limit:  qp.Limit,
 	}

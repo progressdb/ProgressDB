@@ -1,6 +1,7 @@
 package progressor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,9 +9,9 @@ import (
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/store/locks"
-	"progressdb/pkg/store/threads"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/timeutil"
 )
 
@@ -25,34 +26,50 @@ const defaultStoredVersion = "0.1.2"
 func migrateTo0_2_0(ctx context.Context, from, to string) error {
 	logger.Info("migration_start", "from", from, "to", to)
 
-	// Give all threads the new last seq field
-	vals, err := threads.ListThreads()
+	// Iterate through all thread metadata keys
+	threadPrefix := keys.GenThreadMetadataPrefix()
+	iter, err := storedb.Client.NewIter(nil)
 	if err != nil {
-		logger.Error("migration_list_threads_failed", "error", err)
+		logger.Error("migration_create_iterator_failed", "error", err)
 		return err
 	}
+	defer iter.Close()
 
-	for _, s := range vals {
+	for iter.SeekGE([]byte(threadPrefix)); iter.Valid(); iter.Next() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
+		key := iter.Key()
+		// Check if this is a thread metadata key (ends with ":meta")
+		if !bytes.HasSuffix(key, []byte(":meta")) {
+			continue
+		}
+
+		threadID := string(key[:len(key)-5]) // Remove ":meta" suffix
+		if threadID == "" {
+			continue
+		}
+
 		var th models.Thread
-		if err := json.Unmarshal([]byte(s), &th); err != nil {
-			logger.Error("migration_unmarshal_thread_failed", "error", err)
+		if err := json.Unmarshal(iter.Value(), &th); err != nil {
+			logger.Error("migration_unmarshal_thread_failed", "thread", threadID, "error", err)
 			continue
 		}
 		if th.LastSeq != 0 {
 			continue
 		}
 
-		max, err := locks.MaxSeqForThread(th.ID)
+		// Get the max sequence from thread message indexes
+		threadIndexes, err := index.GetThreadMessageIndexes(threadID)
 		if err != nil {
-			logger.Error("migration_maxseq_failed", "thread", th.ID, "error", err)
+			logger.Error("migration_get_indexes_failed", "thread", threadID, "error", err)
 			continue
 		}
+
+		max := threadIndexes.End
 		if max == 0 {
 			continue
 		}
@@ -60,11 +77,12 @@ func migrateTo0_2_0(ctx context.Context, from, to string) error {
 		th.LastSeq = max
 		th.UpdatedTS = timeutil.Now().UnixNano()
 		nb, _ := json.Marshal(th)
-		if err := threads.SaveThread(th.ID, string(nb)); err != nil {
-			logger.Error("migration_save_thread_failed", "thread", th.ID, "error", err)
+		threadKey := keys.GenThreadKey(threadID)
+		if err := storedb.SaveKey(threadKey, nb); err != nil {
+			logger.Error("migration_save_thread_failed", "thread", threadID, "error", err)
 			return err
 		}
-		logger.Info("migration_thread_lastseq_initialized", "thread", th.ID, "last_seq", max)
+		logger.Info("migration_thread_lastseq_initialized", "thread", threadID, "last_seq", max)
 	}
 
 	logger.Info("migration_done", "to", to)

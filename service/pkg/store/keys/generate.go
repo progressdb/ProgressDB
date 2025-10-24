@@ -1,12 +1,19 @@
 package keys
 
 import (
+	"crypto/rand"
 	"fmt"
+	"time"
 )
 
 // GenThreadPrvKey returns a provisional thread key: t:<threadID>
 func GenThreadPrvKey(threadID string) string {
 	return fmt.Sprintf(ThreadPrvKey, threadID)
+}
+
+// GenThreadPrvKey returns a provisional thread key: t:<threadID>
+func GenMessagePrvKey(threadID string, messageID string) string {
+	return fmt.Sprintf(MessagePrvKey, threadID, messageID)
 }
 
 // GenMessageKey returns a message key: t:<threadID>:m:<msgID>:<seq>
@@ -98,4 +105,18 @@ func PadTS(ts int64) string {
 // PadSeq returns sequence padded for key (6 width, lexicographic sort)
 func PadSeq(seq uint64) string {
 	return fmt.Sprintf("%0*d", SeqPadWidth, seq)
+}
+
+// GenMessageID generates a unique message ID
+func GenMessageID() string {
+	buf := make([]byte, 8)
+	rand.Read(buf)
+	return fmt.Sprintf("msg-%x-%d", buf, time.Now().UnixNano())
+}
+
+// GenThreadID generates a unique thread ID
+func GenThreadID() string {
+	buf := make([]byte, 8)
+	rand.Read(buf)
+	return fmt.Sprintf("thread-%x-%d", buf, time.Now().UnixNano())
 }

@@ -62,7 +62,8 @@ func (t *ThreadSequencer) MapProvisionalToFinalThreadID(provisionalID, finalID s
 // GetFinalThreadID resolves a provisional or final thread ID to the final ID
 func (t *ThreadSequencer) GetFinalThreadID(threadID string) (string, error) {
 	// If it's already a final ID, return it
-	if keys.IsFinalThreadID(threadID) {
+	// For now, assume all thread IDs are final unless they look like provisional IDs
+	if !strings.HasPrefix(threadID, "t:") && strings.Contains(threadID, "-") {
 		return threadID, nil
 	}
 
@@ -89,9 +90,9 @@ func (t *ThreadSequencer) GetFinalThreadID(threadID string) (string, error) {
 
 // resolveThreadIDFromDB looks up the final thread ID from the database using provisional prefix
 func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, error) {
-	// Extract timestamp from provisional ID
-	timestamp, err := keys.ExtractTimestampFromProvisionalID(provisionalID)
-	if err != nil {
+	// Extract timestamp from provisional ID - assume format "thread-{timestamp}"
+	var timestamp int64
+	if _, err := fmt.Sscanf(provisionalID, "thread-%d", &timestamp); err != nil {
 		return "", fmt.Errorf("invalid provisional ID format: %w", err)
 	}
 
@@ -118,8 +119,8 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 			finalThreadID := string(key)
 
 			// Verify this is actually a thread metadata key
-			expectedKey, err := keys.GenThreadMetaKey(finalThreadID)
-			if err == nil && string(key) == expectedKey {
+			expectedKey := keys.GenThreadKey(finalThreadID)
+			if string(key) == expectedKey {
 				logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", finalThreadID)
 				return finalThreadID, nil
 			}
@@ -139,7 +140,8 @@ func (m *MessageSequencer) MapProvisionalToFinalMessageID(provisionalID, finalID
 // GetFinalMessageID resolves a provisional or final message ID to the final ID
 func (m *MessageSequencer) GetFinalMessageID(messageID string) (string, error) {
 	// If it's already a final ID, return it
-	if keys.IsFinalMessageID(messageID) {
+	// For now, assume all message IDs are final unless they look like provisional IDs
+	if !strings.HasPrefix(messageID, "msg-") {
 		return messageID, nil
 	}
 
@@ -161,7 +163,7 @@ func (m *MessageSequencer) GetFinalMessageID(messageID string) (string, error) {
 
 // IsProvisionalMessageID checks if a message ID is provisional
 func (m *MessageSequencer) IsProvisionalMessageID(messageID string) bool {
-	return !keys.IsFinalMessageID(messageID) && strings.HasPrefix(messageID, "msg-")
+	return strings.HasPrefix(messageID, "msg-")
 }
 
 // Reset clears all cached mappings
