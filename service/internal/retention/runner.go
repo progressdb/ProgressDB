@@ -11,15 +11,19 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/store/keys"
 	thread_store "progressdb/pkg/store/threads"
 	"progressdb/pkg/timeutil"
 )
 
+// genRetentionID generates a unique identifier for retention operations
+func genRetentionID(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, timeutil.Now().UnixNano())
+}
+
 // runOnce executes a single retention run: acquire lease, scan threads, purge eligible items, write audit.
 func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath string) error {
 	ret := eff.Config.Retention
-	owner := keys.GenMessageID()
+	owner := genRetentionID("lease")
 	lock := NewFileLease(auditPath)
 	acq, err := lock.Acquire(owner, ret.LockTTL.Duration())
 	if err != nil {
@@ -80,7 +84,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 	defer hbCancel()
 
 	// open audit writer
-	runID := keys.GenMessageID()
+	runID := genRetentionID("run")
 	logger.Info("retention_run_start", "run_id", runID, "owner", owner, "dry_run", ret.DryRun)
 	// header (emit audit event via dedicated audit logger if present)
 	if logger.Audit != nil {

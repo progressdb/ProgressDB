@@ -17,7 +17,7 @@ const (
 	// primary storage key formats
 	MessageKey = "t:%s:m:%s:%s" // t:<threadID>:m:<msgID>:<seq>
 	VersionKey = "v:%s:%s:%s"   // v:<msgID>:<ts>:<seq>
-	ThreadKey  = "t:%s:meta"    // t:<threadID>:meta
+	ThreadKey  = "t:%s"         // t:<threadID>
 
 	// thread → message indexes
 	ThreadMessageStart   = "idx:t:%s:ms:start"   // idx:t:<thread_id>:ms:start

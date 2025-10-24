@@ -9,16 +9,19 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/timeutil"
 )
 
 func TestUtils_Suite(t *testing.T) {
 	// Subtest: Validate ID/slug/path helpers produce expected non-empty outputs and correct splitting.
 	t.Run("GenMessageID_Slug_Split", func(t *testing.T) {
-		id := keys.GenMessageID()
+		// Pass Now function explicitly if needed
+		nowFunc := timeutil.Now().UTC().String()
+		id := keys.GenMessageKey(nowFunc, "test", 0)
 		if id == "" {
 			t.Fatalf("expected GenMessageID to produce a value")
 		}
-		tid := keys.GenThreadID()
+		tid := keys.GenThreadKey(nowFunc)
 		if tid == "" {
 			t.Fatalf("expected GenThreadID to produce a value")
 		}

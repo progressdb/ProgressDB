@@ -48,17 +48,12 @@ func ParseVersionKeySequence(key string) (uint64, error) {
 	return ParseKeySequence(parts.Seq)
 }
 
-// ParseProvisionalThreadID extracts timestamp from provisional thread ID format "thread-{timestamp}"
+// ParseProvisionalThreadID extracts timestamp from provisional thread ID format "{timestamp}"
 func ParseProvisionalThreadID(provisionalID string) (int64, error) {
 	var timestamp int64
-	_, err := fmt.Sscanf(provisionalID, "thread-%d", &timestamp)
+	_, err := fmt.Sscanf(provisionalID, "%d", &timestamp)
 	if err != nil {
 		return 0, fmt.Errorf("invalid provisional ID format: %w", err)
 	}
 	return timestamp, nil
-}
-
-// GenThreadIDFromTimestamp generates a thread ID from timestamp using the same format as GenThreadID
-func GenThreadIDFromTimestamp(timestamp int64) string {
-	return fmt.Sprintf("thread-%x-%d", timestamp, timestamp)
 }

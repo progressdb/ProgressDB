@@ -123,13 +123,12 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 		return fmt.Errorf("author is required for thread creation")
 	}
 
-	// Generate final thread ID with user sequence
-	userSeq := batchIndexManager.GetNextUserThreadSequence(thread.Author)
-	threadID := fmt.Sprintf("thread:thread-%d:%d", entry.TS, userSeq)
-	logger.Debug("thread_sequence_assigned", "user", thread.Author, "thread", threadID, "sequence", userSeq)
+	// Generate final thread ID using official method
+	threadID := keys.GenThreadID()
+	logger.Debug("thread_generated", "user", thread.Author, "thread", threadID)
 
-	// Store provisional ID for mapping
-	provisionalID := keys.GenThreadPrvKey(fmt.Sprintf("thread-%d", entry.TS))
+	// Use the existing provisional ID from the entry for mapping
+	provisionalID := entry.TID
 	logger.Debug("thread_create_mapping", "provisional", provisionalID, "final", threadID, "entry_tid", entry.TID)
 
 	batchIndexManager.mu.Lock()

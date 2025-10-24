@@ -102,28 +102,58 @@ func (t *ThreadSequencer) resolveThreadIDFromDB(provisionalID string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("invalid provisional ID format: %w", err)
 	}
-	threadID := keys.GenThreadIDFromTimestamp(timestamp)
-	threadKey := keys.GenThreadKey(threadID)
 
+	// Look for thread metadata keys and find one created around the same timestamp
 	iter, err := storedb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
 
-	iter.SeekGE([]byte(threadKey))
+	// Start from the beginning of thread metadata keys
+	threadMetaPrefix := keys.GenThreadMetadataPrefix()
+	iter.SeekGE([]byte(threadMetaPrefix))
 
-	if iter.Valid() {
-		key := iter.Key()
-		if string(key) == threadKey {
-			parts, err := keys.ParseThreadMeta(string(key))
-			if err != nil {
-				return "", fmt.Errorf("failed to parse thread meta key: %w", err)
-			}
-			finalThreadID := parts.ThreadID
-			logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", finalThreadID)
-			return finalThreadID, nil
+	// Look for threads created within a reasonable time window of the provisional timestamp
+	const timeWindow = int64(1000000000) // 1 second in nanoseconds
+
+	var closestThreadID string
+	var smallestDiff int64 = -1
+
+	for iter.Valid() && strings.HasPrefix(string(iter.Key()), threadMetaPrefix) {
+		key := string(iter.Key())
+
+		// Parse the thread metadata key to get the thread ID
+		parts, err := keys.ParseThreadMeta(key)
+		if err != nil {
+			iter.Next()
+			continue
 		}
+
+		// Extract timestamp from the thread ID using official parsing method
+		threadID := parts.ThreadID
+		threadIDParts, parseErr := keys.ParseThreadID(threadID)
+		if parseErr != nil {
+			iter.Next()
+			continue
+		}
+		threadTimestamp := threadIDParts.Timestamp
+
+		// Check if this thread was created within the time window
+		diff := threadTimestamp - timestamp
+		if diff >= 0 && diff < timeWindow {
+			if smallestDiff == -1 || diff < smallestDiff {
+				smallestDiff = diff
+				closestThreadID = threadID
+			}
+		}
+
+		iter.Next()
+	}
+
+	if closestThreadID != "" {
+		logger.Debug("resolved_provisional_id", "provisional", provisionalID, "final", closestThreadID)
+		return closestThreadID, nil
 	}
 
 	logger.Error("provisional_thread_not_found", "provisional", provisionalID, "timestamp", timestamp)

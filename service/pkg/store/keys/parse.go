@@ -24,6 +24,11 @@ type ThreadMetaParts struct {
 	ThreadID string
 }
 
+type ThreadIDParts struct {
+	Hex       string
+	Timestamp int64
+}
+
 type UserThreadsIndexParts struct {
 	UserID string
 }
@@ -134,6 +139,24 @@ func ParseThreadMeta(key string) (*ThreadMetaParts, error) {
 		return nil, fmt.Errorf("invalid thread meta key: %s", key)
 	}
 	return &ThreadMetaParts{ThreadID: parts[1]}, nil
+}
+
+// ParseThreadID parses thread IDs formatted as thread-{hex}-{timestamp}
+func ParseThreadID(threadID string) (*ThreadIDParts, error) {
+	parts := strings.Split(threadID, "-")
+	if len(parts) != 3 || parts[0] != "thread" {
+		return nil, fmt.Errorf("invalid thread ID format: %s", threadID)
+	}
+
+	timestamp, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp in thread ID %s: %w", threadID, err)
+	}
+
+	return &ThreadIDParts{
+		Hex:       parts[1],
+		Timestamp: timestamp,
+	}, nil
 }
 
 // ParseUserThreadsIndex parses keys formatted as idx:u:<user_id>:threads
