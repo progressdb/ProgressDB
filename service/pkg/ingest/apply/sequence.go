@@ -2,6 +2,7 @@ package apply
 
 import (
 	"bytes"
+	"fmt"
 
 	"progressdb/pkg/logger"
 	storedb "progressdb/pkg/store/db/store"
@@ -79,4 +80,16 @@ func (m *MessageSequencer) IsProvisionalMessageKey(messageKey string) bool {
 
 func (m *MessageSequencer) Reset() {
 	m.provisionalToFinalKeys = make(map[string]string)
+}
+
+// Key resolution methods moved from index.go for better separation of concerns
+func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
+	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
+		return "", fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
+	}
+	return threadKey, nil
+}
+
+func (m *MessageSequencer) MapProvisionalToFinalID(provisionalID, finalID string) {
+	logger.Debug("mapped_provisional_thread", "provisional", provisionalID, "final", finalID)
 }
