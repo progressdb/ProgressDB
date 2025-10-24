@@ -11,11 +11,17 @@ func GenThreadPrvKey(threadID string) string {
 
 // GenThreadPrvKey returns a provisional thread key: t:<threadID>
 func GenMessagePrvKey(threadID string, messageID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(MessagePrvKey, threadID, messageID)
 }
 
 // GenMessageKey returns a message key: t:<threadID>:m:<msgID>:<seq>
 func GenMessageKey(threadID, msgID string, seq uint64) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(MessageKey, threadID, msgID, PadSeq(seq))
 }
 
@@ -92,8 +98,6 @@ func GenDeletedThreadsKey(userID string) string {
 func GenDeletedMessagesKey(userID string) string {
 	return fmt.Sprintf(DeletedMessages, userID)
 }
-
-// --- Helper Pad functions ---
 
 // PadTS returns timestamp padded for key (20 width, lexicographic sort)
 func PadTS(ts int64) string {

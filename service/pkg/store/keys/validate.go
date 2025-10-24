@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -13,7 +14,7 @@ var (
 	// For keys, allow strict format matching
 	messageKeyRegexp           = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):m:([A-Za-z0-9._-]{1,256}):([0-9]{1,6})$`)
 	versionKeyRegexp           = regexp.MustCompile(`^v:([A-Za-z0-9._-]{1,256}):([0-9]{1,20}):([0-9]{1,6})$`)
-	threadKeyRegexp            = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256}):meta$`)
+	threadKeyRegexp            = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256})$`)
 	threadPrvKeyRegexp         = regexp.MustCompile(`^t:([A-Za-z0-9._-]{1,256})$`)
 	threadMessageStartRegexp   = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:start$`)
 	threadMessageEndRegexp     = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:end$`)
@@ -55,6 +56,52 @@ func ValidateMsgID(id string) error {
 		return fmt.Errorf("invalid msg id: %q", id)
 	}
 	return nil
+}
+
+// ValidateMessageProvisionalKey validates provisional message key format: t:<threadID>m:<msgID>
+func ValidateMessagePrvKey(key string) error {
+	// Should match pattern like: t:123m:456 or t:thread123m:msg456
+	parts := strings.Split(key, ":m:")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid provisional message key format: %q", key)
+	}
+
+	threadPart := parts[0]
+	if !strings.HasPrefix(threadPart, "t:") {
+		return fmt.Errorf("invalid provisional message key format (missing thread prefix): %q", key)
+	}
+
+	threadID := threadPart[2:] // Remove "t:"
+	if threadID == "" {
+		return fmt.Errorf("empty thread ID in provisional message key: %q", key)
+	}
+
+	msgID := parts[1]
+	if msgID == "" {
+		return fmt.Errorf("empty message ID in provisional message key: %q", key)
+	}
+
+	// Validate both parts using the general ID validator
+	if err := ValidateThreadID(threadID); err != nil {
+		return fmt.Errorf("invalid thread ID in provisional message key: %w", err)
+	}
+
+	if err := ValidateMsgID(msgID); err != nil {
+		return fmt.Errorf("invalid message ID in provisional message key: %w", err)
+	}
+
+	return nil
+}
+
+// IsProvisionalMessageID checks if a message ID is in provisional format
+// Returns true if it's a raw message ID (not a full key)
+func IsProvisionalMessageID(messageID string) bool {
+	// If it contains "t:" or ":m:" it's likely a full key, not a provisional ID
+	if strings.Contains(messageID, "t:") || strings.Contains(messageID, ":m:") {
+		return false
+	}
+	// If it's a valid message ID format, it's provisional
+	return ValidateMsgID(messageID) == nil
 }
 
 func ValidateUserID(id string) error {
