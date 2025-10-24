@@ -49,12 +49,8 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 		Payload: op.Payload,
 		TS:      op.TS,
 	}
-	if op.Extras != nil {
-		newMap := make(map[string]string, len(op.Extras))
-		for k, v := range op.Extras {
-			newMap[k] = v
-		}
-		newOp.Extras = newMap
+	if op.Extras != (RequestMetadata{}) {
+		newOp.Extras = op.Extras
 	}
 	var it *QueueItem
 	if q.wal != nil && q.walBacked {

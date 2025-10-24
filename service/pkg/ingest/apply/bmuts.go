@@ -30,7 +30,12 @@ func processOperation(entry types.BatchEntry, batchIndexManager *BatchIndexManag
 	}
 }
 
+// Threads
 func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+	if entry.Author == "" {
+		return fmt.Errorf("author required for thread deletion")
+	}
+
 	var thread models.Thread
 	if err := json.Unmarshal(entry.Payload, &thread); err != nil {
 		return fmt.Errorf("unmarshal thread: %w", err)
@@ -58,24 +63,79 @@ func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread deletion")
 	}
+	if entry.Author == "" {
+		return fmt.Errorf("author required for thread deletion")
+	}
 	batchIndexManager.mu.Lock()
 
-	// block if anything else than provisional or finak key
+	// block if anything else than provisional or final key
 	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
 	}
 
-
 	threadKey := entry.TID
+	author := entry.Author
 
+	// sync indexes
 	batchIndexManager.mu.Unlock()
 	batchIndexManager.DeleteThreadMeta(threadKey)
 	batchIndexManager.DeleteThreadMessageIndexes(threadKey)
-	batchIndexManager.RemoveThreadFromUser(thread.Author, threadKey)
-	batchIndexManager.AddDeletedThreadToUser(thread.Author, threadKey)
+	batchIndexManager.RemoveThreadFromUser(author, threadKey)
+	batchIndexManager.AddDeletedThreadToUser(author, threadKey)
 	return nil
 }
 
+func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+	// Input validation
+	if entry.TID == "" {
+		return fmt.Errorf("thread ID required for thread update")
+	}
+	if len(entry.Payload) == 0 {
+		return fmt.Errorf("payload required for thread update")
+	}
+	if len(entry.Payload) > 0 {
+		if err := json.Unmarshal(entry.Payload, &thread); err != nil {
+			return fmt.Errorf("unmarshal thread: %w", err)
+		}
+
+	// Thread key validation
+	batchIndexManager.mu.Lock()
+	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
+		batchIndexManager.mu.Unlock()
+		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
+	}
+	finalThreadID := entry.TID
+	batchIndexManager.mu.Unlock()
+
+	// Thread data extraction
+	var thread models.Thread
+	if entry.Model != nil {
+		if t, ok := entry.Model.(*models.Thread); ok {
+			thread = *t
+		}
+	}
+
+	// Finalize thread fields
+	thread.ID = finalThreadID
+	if thread.UpdatedTS == 0 {
+		thread.UpdatedTS = entry.TS
+	}
+
+	// Serialize payload
+	updatedPayload, err := json.Marshal(thread)
+	if err != nil {
+		return fmt.Errorf("marshal updated thread: %w", err)
+	}
+
+	// Update thread metadata
+	batchIndexManager.SetThreadMeta(finalThreadID, updatedPayload)
+
+	// Thread updates do not modify user indexes; participant management is separate
+	logger.Debug("thread_update_completed", "thread", finalThreadID, "author", thread.Author)
+	return nil
+}
+
+// Messages
 func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
 	logger.Debug("process_message_save", "thread", entry.TID, "msg", entry.MID, "handler", entry.Handler)
 	if entry.TID == "" {
@@ -83,84 +143,6 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	}
 	if len(entry.Payload) == 0 && entry.Model == nil {
 		return fmt.Errorf("payload or model required for message save")
-	}
-	logger.Debug("message_resolve_thread", "provisional_tid", entry.TID, "handler", entry.Handler)
-	batchIndexManager.mu.Lock()
-	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
-		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
-	}
-	finalThreadID := entry.TID
-	batchIndexManager.mu.Unlock()
-	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
-	var msg models.Message
-	if entry.Model != nil {
-		if m, ok := entry.Model.(*models.Message); ok {
-			msg = *m
-		}
-	} else if len(entry.Payload) > 0 {
-		if err := json.Unmarshal(entry.Payload, &msg); err != nil {
-			return fmt.Errorf("unmarshal message: %w", err)
-		}
-	}
-	var finalMessageID string
-	var provisionalMessageID string
-
-	// Use entry.MID as primary source for final message ID
-	if entry.MID != "" {
-		finalMessageID = entry.MID
-		logger.Debug("using_entry_mid_as_final", "message", finalMessageID, "mid", entry.MID)
-	} else if msg.ID != "" {
-		finalMessageID = msg.ID
-		logger.Debug("using_msg_id", "message", finalMessageID)
-	} else {
-		finalMessageID = fmt.Sprintf("%d", entry.TS)
-		logger.Debug("fallback_generated_message_id", "message", finalMessageID)
-	}
-
-	// If message has a provisional ID, map it to the final ID
-	if msg.ID != "" && batchIndexManager.messageSequencer.IsProvisionalMessageKey(msg.ID) && msg.ID != finalMessageID {
-		provisionalMessageID = msg.ID
-		batchIndexManager.mu.Lock()
-		batchIndexManager.messageSequencer.MapProvisionalToFinalMessageKey(provisionalMessageID, finalMessageID)
-		batchIndexManager.mu.Unlock()
-		logger.Debug("mapped_provisional_message", "provisional", provisionalMessageID, "final", finalMessageID)
-	}
-	msg.ID = finalMessageID
-	if msg.TS == 0 {
-		msg.TS = entry.TS
-	}
-	msg.Thread = finalThreadID
-	updatedPayload, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshal updated message: %w", err)
-	}
-	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-		return fmt.Errorf("set message data: %w", err)
-	}
-	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
-		return fmt.Errorf("add message version: %w", err)
-	}
-	// Extract components from provisional keys before generating final key
-	threadComp, messageComp, err := keys.ExtractMessageComponents(finalThreadID, finalMessageID)
-	if err != nil {
-		return fmt.Errorf("extract message components: %w", err)
-	}
-	msgKey := keys.GenMessageKey(threadComp, messageComp, uint64(entry.Enq))
-	isDelete := entry.Handler == queue.HandlerMessageDelete
-	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, isDelete, msgKey)
-	if isDelete && msg.Author != "" {
-		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
-	}
-	return nil
-}
-
-func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
-	logger.Debug("process_thread_update", "thread", entry.TID)
-	if entry.TID == "" {
-		return fmt.Errorf("thread ID required for thread update")
-	}
-	if len(entry.Payload) == 0 {
-		return fmt.Errorf("payload required for thread update")
 	}
 	logger.Debug("message_resolve_thread", "provisional_tid", entry.TID, "handler", entry.Handler)
 	batchIndexManager.mu.Lock()

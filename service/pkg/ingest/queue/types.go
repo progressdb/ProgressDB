@@ -20,17 +20,25 @@ const (
 	HandlerThreadDelete   HandlerID = "thread.delete"
 )
 
+// RequestMetadata represents common metadata extracted from HTTP requests
+type RequestMetadata struct {
+	Role   string `json:"role"`
+	UserID string `json:"user_id"`
+	ReqID  string `json:"reqid"`
+	Remote string `json:"remote"`
+}
+
 // QueueOp represents a queue operation with metadata.
 type QueueOp struct {
-	Handler   HandlerID         // Handler to invoke
-	TID       string            // Thread ID
-	MID       string            // Message ID
-	Payload   []byte            // Payload data (may be nil)
-	TS        int64             // Timestamp (nanoseconds)
-	EnqSeq    uint64            // Assigned sequence at enqueue (used when WAL disabled)
-	WalSeq    uint64            // WAL-assigned sequence (used when WAL enabled)
-	WalOffset int64             // WAL offset, -1 if unset
-	Extras    map[string]string // Optional metadata (e.g. user id, role)
+	Handler   HandlerID       // Handler to invoke
+	TID       string          // Thread ID
+	MID       string          // Message ID
+	Payload   []byte          // Payload data (may be nil)
+	TS        int64           // Timestamp (nanoseconds)
+	EnqSeq    uint64          // Assigned sequence at enqueue (used when WAL disabled)
+	WalSeq    uint64          // WAL-assigned sequence (used when WAL enabled)
+	WalOffset int64           // WAL offset, -1 if unset
+	Extras    RequestMetadata // Optional metadata (e.g. user id, role)
 }
 
 // QueueItem wraps a QueueOp and buffer/queue references.

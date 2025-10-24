@@ -9,8 +9,9 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/telemetry"
 
-	"github.com/valyala/fasthttp"
 	"progressdb/pkg/api/router"
+
+	"github.com/valyala/fasthttp"
 )
 
 // RequestMetadata represents common metadata extracted from HTTP requests
@@ -21,8 +22,12 @@ type RequestMetadata struct {
 	Remote string `json:"remote"`
 }
 
-// QueueExtras represents the extras map passed to queue operations
-type QueueExtras map[string]string
+type QueueExtras struct {
+	Role   string `json:"role,omitempty"`
+	UserID string `json:"user_id"` // not omitempty, must not be empty
+	ReqID  string `json:"reqid"`   // not omitempty, must not be empty
+	Remote string `json:"remote,omitempty"`
+}
 
 // NewRequestMetadata extracts metadata from the request context
 func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadata {
@@ -34,13 +39,13 @@ func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadat
 	}
 }
 
-// ToQueueExtras converts RequestMetadata to QueueExtras format
+// ToQueueExtras converts RequestMetadata to strongly-typed QueueExtras
 func (rm *RequestMetadata) ToQueueExtras() QueueExtras {
 	return QueueExtras{
-		"role":    rm.Role,
-		"user_id": rm.UserID,
-		"reqid":   rm.ReqID,
-		"remote":  rm.Remote,
+		Role:   rm.Role,
+		UserID: rm.UserID,
+		ReqID:  rm.ReqID,
+		Remote: rm.Remote,
 	}
 }
 
