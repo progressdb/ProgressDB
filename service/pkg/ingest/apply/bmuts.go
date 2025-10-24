@@ -36,20 +36,20 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 		return fmt.Errorf("author required for thread creation")
 	}
 
-	// Use Model-first optimization for thread creation
-	var thread models.Thread
-	if entry.Model != nil {
-		if t, ok := entry.Model.(*models.Thread); ok {
-			thread = *t // Use parsed struct directly
-		}
-	} else {
-		// Fallback to payload parsing if Model not available
-		if err := json.Unmarshal(entry.Payload, &thread); err != nil {
-			return fmt.Errorf("unmarshal thread: %w", err)
-		}
+	// Require Model for thread creation (API/Compute layers ensure proper processing)
+	if entry.Model == nil {
+		return fmt.Errorf("model required for thread creation")
 	}
 
-	// set threadKey
+	thread, ok := entry.Model.(*models.Thread)
+	if !ok {
+		return fmt.Errorf("invalid model type for thread creation")
+	}
+
+	// validate and set threadKey
+	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
+		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
+	}
 	threadKey := entry.TID
 	thread.ID = threadKey
 
@@ -98,23 +98,23 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread update")
 	}
-	if len(entry.Payload) == 0 {
-		return fmt.Errorf("payload required for thread update")
-	}
 	if entry.Author == "" {
 		return fmt.Errorf("author required for thread update")
+	}
+
+	// Require Model for thread update (API/Compute layers ensure proper processing)
+	if entry.Model == nil {
+		return fmt.Errorf("model required for thread update")
 	}
 
 	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", entry.TID)
 	}
 
-	// easy data extract
-	var thread models.Thread
-	if entry.Model != nil {
-		if t, ok := entry.Model.(*models.Thread); ok {
-			thread = *t
-		}
+	// Extract Model (no fallback - compute layer ensures proper processing)
+	thread, ok := entry.Model.(*models.Thread)
+	if !ok {
+		return fmt.Errorf("invalid model type for thread update")
 	}
 
 	// fields
@@ -139,8 +139,8 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message save")
 	}
-	if len(entry.Payload) == 0 && entry.Model == nil {
-		return fmt.Errorf("payload or model required for message save")
+	if entry.Model == nil {
+		return fmt.Errorf("model required for message save")
 	}
 	logger.Debug("message_resolve_thread", "provisional_tid", entry.TID, "handler", entry.Handler)
 	batchIndexManager.mu.Lock()
@@ -150,15 +150,15 @@ func processMessageSave(entry types.BatchEntry, batchIndexManager *BatchIndexMan
 	finalThreadID := entry.TID
 	batchIndexManager.mu.Unlock()
 	logger.Debug("message_resolved_thread", "provisional", entry.TID, "final", finalThreadID)
-	var msg models.Message
-	if entry.Model != nil {
-		if m, ok := entry.Model.(*models.Message); ok {
-			msg = *m
-		}
-	} else if len(entry.Payload) > 0 {
-		if err := json.Unmarshal(entry.Payload, &msg); err != nil {
-			return fmt.Errorf("unmarshal message: %w", err)
-		}
+
+	// Require Model for message save (API/Compute layers ensure proper processing)
+	if entry.Model == nil {
+		return fmt.Errorf("model required for message save")
+	}
+
+	msg, ok := entry.Model.(*models.Message)
+	if !ok {
+		return fmt.Errorf("invalid model type for message save")
 	}
 	var finalMessageID string
 	var provisionalMessageID string
@@ -263,15 +263,15 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	}
 	finalThreadID := entry.TID
 	batchIndexManager.mu.Unlock()
-	var msg models.Message
-	if entry.Model != nil {
-		if m, ok := entry.Model.(*models.Message); ok {
-			msg = *m
-		}
-	} else if len(entry.Payload) > 0 {
-		if err := json.Unmarshal(entry.Payload, &msg); err != nil {
-			return fmt.Errorf("unmarshal message: %w", err)
-		}
+
+	// Require Model for reaction operation (API/Compute layers ensure proper processing)
+	if entry.Model == nil {
+		return fmt.Errorf("model required for reaction operation")
+	}
+
+	msg, ok := entry.Model.(*models.Message)
+	if !ok {
+		return fmt.Errorf("invalid model type for reaction operation")
 	}
 	batchIndexManager.mu.Lock()
 	finalMessageID, err := batchIndexManager.messageSequencer.GetFinalMessageKey(msg.ID)
