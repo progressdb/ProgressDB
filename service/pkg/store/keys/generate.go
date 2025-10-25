@@ -22,6 +22,12 @@ func GenMessageKey(threadID, msgID string, seq uint64) string {
 	if parts, err := ParseThreadKey(threadID); err == nil {
 		threadID = parts.ThreadID
 	}
+	// Extract message ID component from msgID parameter
+	if parts, err := ParseMessageKey(msgID); err == nil {
+		msgID = parts.MsgID
+	} else if parts, err := ParseMessageProvisionalKey(msgID); err == nil {
+		msgID = parts.MsgID
+	}
 	return fmt.Sprintf(MessageKey, threadID, msgID, PadSeq(seq))
 }
 
@@ -32,52 +38,97 @@ func GenVersionKey(msgID string, ts int64, seq uint64) string {
 
 // GenThreadKey returns a thread meta key: t:<threadID>:meta
 func GenThreadKey(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadKey, threadID)
 }
 
 // Thread → message indexes
 func GenThreadMessageStart(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageStart, threadID)
 }
 func GenThreadMessageEnd(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageEnd, threadID)
 }
 func GenThreadMessageCDeltas(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageCDeltas, threadID)
 }
 func GenThreadMessageUDeltas(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageUDeltas, threadID)
 }
 func GenThreadMessageSkips(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageSkips, threadID)
 }
 func GenThreadMessageLC(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageLC, threadID)
 }
 func GenThreadMessageLU(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadMessageLU, threadID)
 }
 
 // Thread → message version indexes
 func GenThreadVersionStart(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionStart, threadID, msgID)
 }
 func GenThreadVersionEnd(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionEnd, threadID, msgID)
 }
 func GenThreadVersionCDeltas(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionCDeltas, threadID, msgID)
 }
 func GenThreadVersionUDeltas(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionUDeltas, threadID, msgID)
 }
 func GenThreadVersionSkips(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionSkips, threadID, msgID)
 }
 func GenThreadVersionLC(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionLC, threadID, msgID)
 }
 func GenThreadVersionLU(threadID, msgID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadVersionLU, threadID, msgID)
 }
 
@@ -88,6 +139,9 @@ func GenUserThreadsKey(userID string) string {
 
 // Thread → participant indexes
 func GenThreadParticipantsKey(threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(ThreadParticipants, threadID)
 }
 

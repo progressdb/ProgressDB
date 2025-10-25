@@ -195,6 +195,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	batchProcessor := NewBatchProcessor()
 
 	// put reqs into thread groups
+	// each request by its thread_id parent
 	threadGroups := groupByThread(entries)
 	logger.Debug("batch_grouped", "threads", len(threadGroups))
 	for threadID, threadEntries := range threadGroups {
@@ -205,6 +206,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 
 	// initialize thread sequences from database
+	// load up the sequencing info per threads (or init anew)
 	threadIDs := collectThreadIDsFromGroups(threadGroups)
 	if len(threadIDs) > 0 {
 		tr.Mark("init_thread_sequences")
@@ -214,6 +216,8 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 
 	// initialize soft deleted data from database
+	// load up the deleted messsages & threads arrays per users
+	// (if there are any deletes per the user)
 	userIDs := collectUserIDsFromEntries(entries)
 	if len(userIDs) > 0 {
 		tr.Mark("init_soft_deleted_data")
@@ -223,6 +227,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 
 	// pre-load provisional key mappings from database
+	// 
 	provKeys := collectProvisionalMessageKeys(entries)
 	if len(provKeys) > 0 {
 		tr.Mark("preload_provisional_keys")

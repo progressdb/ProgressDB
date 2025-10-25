@@ -57,6 +57,8 @@ func processThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	threadKey := entry.TID
 	thread.ID = threadKey
 
+	logger.Debug("thread_final_key_resolved", "tid", entry.TID, "final_key", threadKey)
+
 	// finalize payload
 	updatedPayload, err := json.Marshal(thread)
 	if err != nil {
@@ -87,9 +89,36 @@ func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	threadKey := entry.TID
 	author := entry.Author
 
-	// sync through managers
-	batchProcessor.Data.DeleteThreadMeta(threadKey)
-	batchProcessor.Index.DeleteThreadMessageIndexes(threadKey)
+	logger.Debug("thread_final_key_resolved_for_deletion", "tid", entry.TID, "final_key", threadKey)
+
+	// Fetch existing thread data
+	threadData, err := batchProcessor.Data.GetThreadMetaCopy(threadKey)
+	if err != nil {
+		logger.Debug("thread_not_found_for_delete", "thread_id", threadKey, "error", err)
+		// Thread doesn't exist, just track deletion index
+		batchProcessor.Index.UpdateUserOwnership(author, threadKey, false)
+		batchProcessor.Index.UpdateSoftDeletedThreads(author, threadKey, true)
+		return nil
+	}
+
+	// Parse existing thread and mark as deleted
+	var thread models.Thread
+	if err := json.Unmarshal(threadData, &thread); err != nil {
+		return fmt.Errorf("unmarshal thread for delete: %w", err)
+	}
+
+	// Mark thread as deleted
+	thread.Deleted = true
+	thread.UpdatedTS = entry.TS
+
+	// Serialize updated thread
+	updatedPayload, err := json.Marshal(thread)
+	if err != nil {
+		return fmt.Errorf("marshal deleted thread: %w", err)
+	}
+
+	// Update thread data (soft delete)
+	batchProcessor.Data.SetThreadMeta(threadKey, updatedPayload)
 	batchProcessor.Index.UpdateUserOwnership(author, threadKey, false)
 	batchProcessor.Index.UpdateSoftDeletedThreads(author, threadKey, true)
 	return nil
@@ -122,6 +151,8 @@ func processThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	threadKey := entry.TID
 	thread.ID = threadKey
 	thread.UpdatedTS = entry.TS
+
+	logger.Debug("thread_final_key_resolved_for_update", "tid", entry.TID, "final_key", threadKey)
 
 	// serialize
 	updatedPayload, err := json.Marshal(thread)
@@ -163,8 +194,16 @@ func processMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor
 	}
 	threadMessageKey = resolvedID
 
+	logger.Debug("message_final_key_resolved_for_create", "msg_id", msg.ID, "provisional_or_entry_key", entry.MID, "final_key", threadMessageKey)
+
 	// sync
-	msg.ID = threadMessageKey
+	if parts, err := keys.ParseMessageKey(threadMessageKey); err == nil {
+		msg.ID = parts.MsgID
+	} else if parts, err := keys.ParseMessageProvisionalKey(threadMessageKey); err == nil {
+		msg.ID = parts.MsgID
+	} else {
+		msg.ID = threadMessageKey // fallback
+	}
 	msg.Thread = threadKey
 
 	msg.TS = entry.TS
@@ -211,8 +250,16 @@ func processMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
 
+	logger.Debug("message_final_key_resolved_for_update", "msg_id", msg.ID, "original_msg_id", entry.MID, "final_key", resolvedMessageID)
+
 	// sync
-	msg.ID = resolvedMessageID
+	if parts, err := keys.ParseMessageKey(resolvedMessageID); err == nil {
+		msg.ID = parts.MsgID
+	} else if parts, err := keys.ParseMessageProvisionalKey(resolvedMessageID); err == nil {
+		msg.ID = parts.MsgID
+	} else {
+		msg.ID = resolvedMessageID // fallback
+	}
 	msg.Thread = threadKey
 	if msg.TS == 0 {
 		msg.TS = entry.TS
@@ -264,9 +311,48 @@ func processMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor
 		logger.Error("message_delete_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
-	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, finalMessageID)
 
-	batchProcessor.Index.UpdateSoftDeletedMessages(msg.Author, finalMessageID, true)
+	logger.Debug("message_final_key_resolved_for_delete", "msg_id", msg.ID, "final_key", finalMessageID)
+
+	// Fetch existing message data
+	messageKey := keys.GenMessageKey(finalThreadID, finalMessageID, extractSequenceFromKey(finalMessageID))
+	messageData, err := batchProcessor.Data.GetMessageDataCopy(messageKey)
+	if err != nil {
+		logger.Debug("message_not_found_for_delete", "message_id", finalMessageID, "error", err)
+		return fmt.Errorf("message not found for delete: %s", finalMessageID)
+	}
+
+	// Parse existing message and mark as deleted
+	var existingMessage models.Message
+	if err := json.Unmarshal(messageData, &existingMessage); err != nil {
+		return fmt.Errorf("unmarshal message for delete: %w", err)
+	}
+
+	// Mark message as deleted
+	existingMessage.Deleted = true
+	existingMessage.TS = entry.TS
+
+	// Serialize updated message
+	updatedPayload, err := json.Marshal(existingMessage)
+	if err != nil {
+		return fmt.Errorf("marshal deleted message: %w", err)
+	}
+
+	// Extract sequence from the resolved final key
+	threadSequence := extractSequenceFromKey(finalMessageID)
+
+	// Update message data (soft delete)
+	if err := batchProcessor.Data.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
+		return fmt.Errorf("set deleted message data: %w", err)
+	}
+
+	// Create version entry for the deletion
+	versionKey := keys.GenVersionKey(finalMessageID, entry.TS, threadSequence)
+	batchProcessor.Data.SetVersionKey(versionKey, updatedPayload)
+
+	// Update indexes and track deletion
+	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, existingMessage.TS, entry.TS, true, finalMessageID)
+	batchProcessor.Index.UpdateSoftDeletedMessages(existingMessage.Author, finalMessageID, true)
 	return nil
 }
 
@@ -292,8 +378,17 @@ func processReactionOperation(entry types.BatchEntry, batchProcessor *BatchProce
 		logger.Error("message_reaction_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
+
+	logger.Debug("message_final_key_resolved_for_reaction", "msg_id", msg.ID, "original_msg_id", entry.MID, "final_key", finalMessageID)
+
 	msg.Thread = finalThreadID
-	msg.ID = finalMessageID
+	if parts, err := keys.ParseMessageKey(finalMessageID); err == nil {
+		msg.ID = parts.MsgID
+	} else if parts, err := keys.ParseMessageProvisionalKey(finalMessageID); err == nil {
+		msg.ID = parts.MsgID
+	} else {
+		msg.ID = finalMessageID // fallback
+	}
 	updatedPayload, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal updated message: %w", err)

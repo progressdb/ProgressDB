@@ -50,7 +50,6 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// api key validation and role extraction
 			role, key, hasAPIKey := validateAPIKey(ctx, cfg)
-			logger.Debug("auth_check", "role", role, "has_api_key", hasAPIKey)
 
 			var roleName string
 			switch role {

@@ -37,11 +37,59 @@ func (bp *BatchProcessor) Flush() error {
 	deletedThreads := bp.Index.GetSoftDeletedThreads()
 	deletedMessages := bp.Index.GetSoftDeletedMessages()
 
-	// Create batches
+	// Pre-load all existing data BEFORE creating batches to avoid conflicts
+	existingUserThreads := make(map[string][]string)
+	existingThreadParticipants := make(map[string][]string)
+	existingDeletedThreads := make(map[string][]string)
+	existingDeletedMessages := make(map[string][]string)
+
+	// Load existing user threads
+	for userID := range userOwnership {
+		userThreadsKey := keys.GenUserThreadsKey(userID)
+		if val, err := index.GetKey(userThreadsKey); err == nil && val != "" {
+			var indexes index.UserThreadIndexes
+			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
+				existingUserThreads[userID] = indexes.Threads
+			}
+		}
+	}
+
+	// Load existing thread participants
+	for threadID := range threadParticipants {
+		participantsKey := keys.GenThreadParticipantsKey(threadID)
+		if val, err := index.GetKey(participantsKey); err == nil && val != "" {
+			var indexes index.ThreadParticipantIndexes
+			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
+				existingThreadParticipants[threadID] = indexes.Participants
+			}
+		}
+	}
+
+	// Load existing deleted threads
+	for userID := range deletedThreads {
+		deletedThreadsKey := keys.GenSoftDeletedThreadsKey(userID)
+		if val, err := index.GetKey(deletedThreadsKey); err == nil && val != "" {
+			var indexes index.UserSoftDeletedThreads
+			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
+				existingDeletedThreads[userID] = indexes.Threads
+			}
+		}
+	}
+
+	// Load existing deleted messages
+	for userID := range deletedMessages {
+		deletedMessagesKey := keys.GenSoftDeletedMessagesKey(userID)
+		if val, err := index.GetKey(deletedMessagesKey); err == nil && val != "" {
+			var indexes index.UserSoftDeletedMessages
+			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
+				existingDeletedMessages[userID] = indexes.Messages
+			}
+		}
+	}
+
+	// Create batches AFTER all reads are complete
 	mainBatch := storedb.Client.NewBatch()
 	indexBatch := index.IndexDB.NewBatch()
-	defer mainBatch.Close()
-	defer indexBatch.Close()
 
 	var errors []error
 
@@ -99,32 +147,12 @@ func (bp *BatchProcessor) Flush() error {
 		}
 	}
 
-	// Apply both batches atomically
-	if len(errors) == 0 {
-		if err := storedb.ApplyBatch(mainBatch, true); err != nil {
-			errors = append(errors, fmt.Errorf("apply main batch: %w", err))
-		} else {
-			logger.Debug("batch_main_synced")
-		}
-		if err := storedb.ApplyIndexBatch(indexBatch, true); err != nil {
-			errors = append(errors, fmt.Errorf("apply index batch: %w", err))
-		} else {
-			logger.Debug("batch_index_synced")
-		}
-	}
-
 	// Add user ownership changes to index batch
 	for userID, threads := range userOwnership {
 		userThreadsKey := keys.GenUserThreadsKey(userID)
 
-		// Load existing user threads
-		var existingThreads []string
-		if val, err := index.GetKey(userThreadsKey); err == nil && val != "" {
-			var indexes index.UserThreadIndexes
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingThreads = indexes.Threads
-			}
-		}
+		// Use pre-loaded existing user threads
+		existingThreads := existingUserThreads[userID]
 
 		// Apply changes
 		var updatedThreads []string
@@ -166,14 +194,8 @@ func (bp *BatchProcessor) Flush() error {
 	for threadID, users := range threadParticipants {
 		participantsKey := keys.GenThreadParticipantsKey(threadID)
 
-		// Load existing participants
-		var existingParticipants []string
-		if val, err := index.GetKey(participantsKey); err == nil && val != "" {
-			var indexes index.ThreadParticipantIndexes
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingParticipants = indexes.Participants
-			}
-		}
+		// Use pre-loaded existing participants
+		existingParticipants := existingThreadParticipants[threadID]
 
 		// Apply changes
 		var updatedParticipants []string
@@ -215,19 +237,13 @@ func (bp *BatchProcessor) Flush() error {
 	for userID, threads := range deletedThreads {
 		deletedThreadsKey := keys.GenSoftDeletedThreadsKey(userID)
 
-		// Load existing deleted threads
-		var existingDeletedThreads []string
-		if val, err := index.GetKey(deletedThreadsKey); err == nil && val != "" {
-			var indexes index.UserSoftDeletedThreads
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingDeletedThreads = indexes.Threads
-			}
-		}
+		// Use pre-loaded existing deleted threads
+		existingDeletedThreadsList := existingDeletedThreads[userID]
 
 		// Apply changes
 		var updatedDeletedThreads []string
 		threadSet := make(map[string]bool)
-		for _, threadID := range existingDeletedThreads {
+		for _, threadID := range existingDeletedThreadsList {
 			threadSet[threadID] = true
 		}
 
@@ -264,14 +280,8 @@ func (bp *BatchProcessor) Flush() error {
 	for userID, messages := range deletedMessages {
 		deletedMessagesKey := keys.GenSoftDeletedMessagesKey(userID)
 
-		// Load existing deleted messages
-		var existingDeletedMessages []string
-		if val, err := index.GetKey(deletedMessagesKey); err == nil && val != "" {
-			var indexes index.UserSoftDeletedMessages
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingDeletedMessages = indexes.Messages
-			}
-		}
+		// Use pre-loaded existing deleted messages
+		existingDeletedMessages := existingDeletedMessages[userID]
 
 		// Apply changes
 		var updatedDeletedMessages []string
@@ -313,8 +323,28 @@ func (bp *BatchProcessor) Flush() error {
 		for _, err := range errors {
 			logger.Error("batch_flush_error", "err", err)
 		}
+		mainBatch.Close()
+		indexBatch.Close()
 		return fmt.Errorf("batch flush completed with %d errors", len(errors))
 	}
+
+	// Commit batches
+	if err := mainBatch.Commit(storedb.WriteOpt(true)); err != nil {
+		logger.Error("main_batch_commit_error", "err", err)
+		mainBatch.Close()
+		indexBatch.Close()
+		return fmt.Errorf("commit main batch: %w", err)
+	}
+	if err := indexBatch.Commit(index.WriteOpt(true)); err != nil {
+		logger.Error("index_batch_commit_error", "err", err)
+		mainBatch.Close()
+		indexBatch.Close()
+		return fmt.Errorf("commit index batch: %w", err)
+	}
+
+	// Close batches after successful commit
+	mainBatch.Close()
+	indexBatch.Close()
 
 	// Reset after successful flush
 	bp.Reset()

@@ -1,6 +1,7 @@
 package apply
 
 import (
+	"fmt"
 	"sync"
 
 	"progressdb/pkg/store/keys"
@@ -80,6 +81,28 @@ func (dm *DataManager) SetVersionKey(versionKey string, data []byte) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 	dm.versionKeys[versionKey] = data
+}
+
+func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+
+	data, exists := dm.threadMeta[threadID]
+	if !exists {
+		return nil, fmt.Errorf("thread meta not found: %s", threadID)
+	}
+	return append([]byte(nil), data...), nil
+}
+
+func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+
+	msgData, exists := dm.messageData[messageKey]
+	if !exists {
+		return nil, fmt.Errorf("message data not found: %s", messageKey)
+	}
+	return append([]byte(nil), msgData.Data...), nil
 }
 
 func (dm *DataManager) GetVersionKeys() map[string][]byte {
