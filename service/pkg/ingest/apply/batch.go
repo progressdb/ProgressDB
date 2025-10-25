@@ -70,45 +70,18 @@ func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
 	return sorted
 }
 
-func collectUserIDsFromBatch(entries []types.BatchEntry) []string {
-	userMap := make(map[string]bool)
-	for _, entry := range entries {
-		if entry.Handler == queue.HandlerThreadCreate || entry.Handler == queue.HandlerThreadUpdate || entry.Handler == queue.HandlerThreadDelete {
-			if len(entry.Payload) > 0 {
-				var thread struct {
-					Author string `json:"author"`
-				}
-				if err := json.Unmarshal(entry.Payload, &thread); err == nil && thread.Author != "" {
-					userMap[thread.Author] = true
-				}
-			}
-			if entry.Model != nil {
-				if thread, ok := entry.Model.(*models.Thread); ok && thread.Author != "" {
-					userMap[thread.Author] = true
-				}
-			}
-		}
-		if entry.Handler == queue.HandlerMessageCreate || entry.Handler == queue.HandlerMessageUpdate || entry.Handler == queue.HandlerMessageDelete {
-			if len(entry.Payload) > 0 {
-				var msg struct {
-					Author string `json:"author"`
-				}
-				if err := json.Unmarshal(entry.Payload, &msg); err == nil && msg.Author != "" {
-					userMap[msg.Author] = true
-				}
-			}
-			if entry.Model != nil {
-				if msg, ok := entry.Model.(*models.Message); ok && msg.Author != "" {
-					userMap[msg.Author] = true
-				}
-			}
+func collectThreadIDsFromGroups(threadGroups map[string][]types.BatchEntry) []string {
+	threadMap := make(map[string]bool)
+	for threadID := range threadGroups {
+		if threadID != "" {
+			threadMap[threadID] = true
 		}
 	}
-	userIDs := make([]string, 0, len(userMap))
-	for userID := range userMap {
-		userIDs = append(userIDs, userID)
+	threadIDs := make([]string, 0, len(threadMap))
+	for threadID := range threadMap {
+		threadIDs = append(threadIDs, threadID)
 	}
-	return userIDs
+	return threadIDs
 }
 
 func ApplyBatchToDB(entries []types.BatchEntry) error {
@@ -121,15 +94,6 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	tr.Mark("group_operations")
 	batchIndexManager := NewBatchIndexManager()
 
-	// get all users in this batch
-	userIDs := collectUserIDsFromBatch(entries)
-	if len(userIDs) > 0 {
-		tr.Mark("init_user_sequences")
-		if err := batchIndexManager.InitializeUserSequencesFromDB(userIDs); err != nil {
-			logger.Error("init_user_sequences_failed", "err", err)
-		}
-	}
-
 	// put reqs into thread groups
 	threadGroups := groupByThread(entries)
 	logger.Debug("batch_grouped", "threads", len(threadGroups))
@@ -137,6 +101,15 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		logger.Debug("thread_group", "thread_id", threadID, "operations", len(threadEntries))
 		for _, entry := range threadEntries {
 			logger.Debug("thread_group_op", "thread_id", threadID, "handler", entry.Handler, "tid", entry.TID, "mid", entry.MID)
+		}
+	}
+
+	// initialize thread sequences from database
+	threadIDs := collectThreadIDsFromGroups(threadGroups)
+	if len(threadIDs) > 0 {
+		tr.Mark("init_thread_sequences")
+		if err := batchIndexManager.InitializeThreadSequencesFromDB(threadIDs); err != nil {
+			logger.Error("init_thread_sequences_failed", "err", err)
 		}
 	}
 	tr.Mark("process_thread_groups")

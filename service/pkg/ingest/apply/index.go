@@ -12,24 +12,12 @@ import (
 )
 
 type BatchIndexManager struct {
-	mu                  sync.RWMutex
-	userThreads         map[string]*index.UserThreadIndexes
-	userDeletedThreads  map[string][]string
-	userDeletedMessages map[string][]string
-	userThreadSequences map[string]uint64
-	threadMessages      map[string]*index.ThreadMessageIndexes
-	threadParticipants  map[string]*index.ThreadParticipantIndexes
-	messageVersions     map[string][]MessageVersion
-	threadMeta          map[string][]byte
-	messageData         map[string]MessageData
-	indexData           map[string][]byte
-	messageSequencer    *MessageSequencer
-}
-type MessageVersion struct {
-	Key  string
-	Data []byte
-	TS   int64
-	Seq  uint64
+	mu               sync.RWMutex
+	threadMessages   map[string]*index.ThreadMessageIndexes
+	threadMeta       map[string][]byte
+	messageData      map[string]MessageData
+	indexData        map[string][]byte
+	messageSequencer *MessageSequencer
 }
 type MessageData struct {
 	Key  string
@@ -40,48 +28,12 @@ type MessageData struct {
 
 func NewBatchIndexManager() *BatchIndexManager {
 	return &BatchIndexManager{
-		userThreads:         make(map[string]*index.UserThreadIndexes),
-		userDeletedThreads:  make(map[string][]string),
-		userDeletedMessages: make(map[string][]string),
-		userThreadSequences: make(map[string]uint64),
-		threadMessages:      make(map[string]*index.ThreadMessageIndexes),
-		threadParticipants:  make(map[string]*index.ThreadParticipantIndexes),
-		messageVersions:     make(map[string][]MessageVersion),
-		threadMeta:          make(map[string][]byte),
-		messageData:         make(map[string]MessageData),
-		indexData:           make(map[string][]byte),
-		messageSequencer:    NewMessageSequencer(),
+		threadMessages:   make(map[string]*index.ThreadMessageIndexes),
+		threadMeta:       make(map[string][]byte),
+		messageData:      make(map[string]MessageData),
+		indexData:        make(map[string][]byte),
+		messageSequencer: NewMessageSequencer(),
 	}
-}
-
-func (b *BatchIndexManager) GetNextUserThreadSequence(userID string) uint64 {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if _, exists := b.userThreadSequences[userID]; !exists {
-		b.userThreadSequences[userID] = 0
-	}
-
-	b.userThreadSequences[userID]++
-	return b.userThreadSequences[userID]
-}
-
-func (b *BatchIndexManager) SetUserThreadSequence(userID string, sequence uint64) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.userThreadSequences[userID] = sequence
-}
-
-func (b *BatchIndexManager) InitializeUserSequencesFromDB(userIDs []string) error {
-	for _, userID := range userIDs {
-		threads, err := index.GetUserThreads(userID)
-		if err != nil {
-			return fmt.Errorf("get user threads %s: %w", userID, err)
-		}
-		b.SetUserThreadSequence(userID, uint64(len(threads)))
-	}
-	return nil
 }
 
 func (b *BatchIndexManager) InitThreadMessageIndexes(threadID string) {
@@ -132,15 +84,106 @@ func (b *BatchIndexManager) UpdateThreadMessageIndexes(threadID string, createdA
 	}
 }
 
+// InitializeThreadSequencesFromDB loads existing thread message indexes from database
+func (b *BatchIndexManager) InitializeThreadSequencesFromDB(threadIDs []string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for _, threadID := range threadIDs {
+		threadIdx, err := index.GetThreadMessageIndexes(threadID)
+		if err != nil {
+			logger.Debug("load_thread_index_failed", "thread_id", threadID, "error", err)
+			// If not found, initialize with defaults
+			b.threadMessages[threadID] = &index.ThreadMessageIndexes{
+				Start:         0,
+				End:           0,
+				Cdeltas:       []int64{},
+				Udeltas:       []int64{},
+				Skips:         []string{},
+				LastCreatedAt: 0,
+				LastUpdatedAt: 0,
+			}
+		} else {
+			b.threadMessages[threadID] = &threadIdx
+		}
+	}
+	return nil
+}
+
+// SetThreadMeta sets thread metadata
+func (b *BatchIndexManager) SetThreadMeta(threadID string, data []byte) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.threadMeta[threadID] = data
+}
+
+// DeleteThreadMeta deletes thread metadata
+func (b *BatchIndexManager) DeleteThreadMeta(threadID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.threadMeta[threadID] = nil
+}
+
+// DeleteThreadMessageIndexes deletes thread message indexes
+func (b *BatchIndexManager) DeleteThreadMessageIndexes(threadID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.threadMessages[threadID] = nil
+}
+
+// SetMessageData sets message data
+func (b *BatchIndexManager) SetMessageData(threadID, messageID string, data []byte, ts int64, seq uint64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	messageKey := keys.GenMessageKey(threadID, messageID, seq)
+	b.messageData[messageKey] = MessageData{
+		Key:  messageKey,
+		Data: data,
+		TS:   ts,
+		Seq:  seq,
+	}
+	return nil
+}
+
+// AddMessageVersion adds a message version (now uses direct index call)
+func (b *BatchIndexManager) AddMessageVersion(messageID string, data []byte, ts int64, seq uint64) error {
+	versionKey := keys.GenVersionKey(messageID, ts, seq)
+	return index.SaveKey(versionKey, data)
+}
+
+// AddThreadToUser adds thread to user (now uses direct index call)
+func (b *BatchIndexManager) AddThreadToUser(userID, threadID string) error {
+	return index.UpdateUserOwnership(userID, threadID, true)
+}
+
+// RemoveThreadFromUser removes thread from user (now uses direct index call)
+func (b *BatchIndexManager) RemoveThreadFromUser(userID, threadID string) error {
+	return index.UpdateUserOwnership(userID, threadID, false)
+}
+
+// AddParticipantToThread adds participant to thread (now uses direct index call)
+func (b *BatchIndexManager) AddParticipantToThread(threadID, userID string) error {
+	return index.UpdateThreadParticipants(threadID, userID, true)
+}
+
+// AddDeletedThreadToUser adds deleted thread to user (now uses direct index call)
+func (b *BatchIndexManager) AddDeletedThreadToUser(userID, threadID string) error {
+	return index.UpdateDeletedThreads(userID, threadID, true)
+}
+
+// AddDeletedMessageToUser adds deleted message to user (now uses direct index call)
+func (b *BatchIndexManager) AddDeletedMessageToUser(userID, messageID string) error {
+	return index.UpdateDeletedMessages(userID, messageID, true)
+}
+
 func (b *BatchIndexManager) Flush() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	logger.Debug("batch_flush_accumulated",
 		"threads", len(b.threadMeta),
-		"messages", len(b.messageData),
-		"versions", len(b.messageVersions),
-		"user_threads", len(b.userThreads))
+		"messages", len(b.messageData))
 
 	var errors []error
 
@@ -167,56 +210,6 @@ func (b *BatchIndexManager) Flush() error {
 		}
 	}
 
-	for _, versions := range b.messageVersions {
-		for _, version := range versions {
-			if err := mainBatch.Set([]byte(version.Key), version.Data, storedb.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set message version %s: %w", version.Key, err))
-			}
-		}
-	}
-
-	for userID, userIdx := range b.userThreads {
-		if userIdx != nil {
-			data, err := json.Marshal(userIdx)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal user threads %s: %w", userID, err))
-				continue
-			}
-			userKey := keys.GenUserThreadsKey(userID)
-			if err := indexBatch.Set([]byte(userKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set user threads %s: %w", userID, err))
-			}
-		}
-	}
-
-	for userID, deletedThreads := range b.userDeletedThreads {
-		if len(deletedThreads) > 0 {
-			data, err := json.Marshal(deletedThreads)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal deleted threads %s: %w", userID, err))
-				continue
-			}
-			deletedKey := keys.GenDeletedThreadsKey(userID)
-			if err := indexBatch.Set([]byte(deletedKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set deleted threads %s: %w", userID, err))
-			}
-		}
-	}
-
-	for userID, deletedMessages := range b.userDeletedMessages {
-		if len(deletedMessages) > 0 {
-			data, err := json.Marshal(deletedMessages)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal deleted messages %s: %w", userID, err))
-				continue
-			}
-			deletedKey := keys.GenDeletedMessagesKey(userID)
-			if err := indexBatch.Set([]byte(deletedKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set deleted messages %s: %w", userID, err))
-			}
-		}
-	}
-
 	for threadID, threadIdx := range b.threadMessages {
 		threadKey := keys.GenThreadMessageStart(threadID)
 
@@ -232,20 +225,6 @@ func (b *BatchIndexManager) Flush() error {
 			}
 			if err := indexBatch.Set([]byte(threadKey), data, index.WriteOpt(true)); err != nil {
 				errors = append(errors, fmt.Errorf("set thread messages %s: %w", threadID, err))
-			}
-		}
-	}
-
-	for threadID, participantIdx := range b.threadParticipants {
-		if participantIdx != nil {
-			data, err := json.Marshal(participantIdx)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal thread participants %s: %w", threadID, err))
-				continue
-			}
-			participantKey := keys.GenThreadParticipantsKey(threadID)
-			if err := indexBatch.Set([]byte(participantKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread participants %s: %w", threadID, err))
 			}
 		}
 	}
@@ -289,13 +268,7 @@ func (b *BatchIndexManager) Flush() error {
 
 // Reset clears all accumulated changes after batch completion
 func (b *BatchIndexManager) Reset() {
-	b.userThreads = make(map[string]*index.UserThreadIndexes)
-	b.userDeletedThreads = make(map[string][]string)
-	b.userDeletedMessages = make(map[string][]string)
-	b.userThreadSequences = make(map[string]uint64)
 	b.threadMessages = make(map[string]*index.ThreadMessageIndexes)
-	b.threadParticipants = make(map[string]*index.ThreadParticipantIndexes)
-	b.messageVersions = make(map[string][]MessageVersion)
 	b.threadMeta = make(map[string][]byte)
 	b.messageData = make(map[string]MessageData)
 	b.indexData = make(map[string][]byte)
