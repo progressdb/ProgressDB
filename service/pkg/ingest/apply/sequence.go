@@ -12,13 +12,13 @@ import (
 
 type MessageSequencer struct {
 	provisionalToFinalKeys map[string]string
-	batchIndexManager      *BatchIndexManager
+	indexManager           *IndexManager
 }
 
-func NewMessageSequencer(bim *BatchIndexManager) *MessageSequencer {
+func NewMessageSequencer(im *IndexManager) *MessageSequencer {
 	return &MessageSequencer{
 		provisionalToFinalKeys: make(map[string]string),
-		batchIndexManager:      bim,
+		indexManager:           im,
 	}
 }
 
@@ -108,7 +108,7 @@ func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew
 	}
 
 	// Get next sequence atomically
-	sequence := m.batchIndexManager.GetNextThreadSequence(threadID)
+	sequence := m.indexManager.GetNextThreadSequence(threadID)
 
 	// Extract message ID from finalKeyIfNew or provisionalKey
 	messageID := m.extractMessageIDFromKey(finalKeyIfNew)

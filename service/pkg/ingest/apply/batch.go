@@ -157,16 +157,8 @@ func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 }
 
 // prepopulateProvisionalCache loads existing provisional->final mappings into MessageSequencer cache
-func prepopulateProvisionalCache(batchIndexManager *BatchIndexManager, mappings map[string]string) {
-	batchIndexManager.mu.Lock()
-	defer batchIndexManager.mu.Unlock()
-
-	for provKey, finalKey := range mappings {
-		batchIndexManager.messageSequencer.provisionalToFinalKeys[provKey] = finalKey
-		logger.Debug("prepopulated_cache", "provisional", provKey, "final", finalKey)
-	}
-
-	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
+func prepopulateProvisionalCache(batchProcessor *BatchProcessor, mappings map[string]string) {
+	batchProcessor.Index.PrepopulateProvisionalCache(mappings)
 }
 
 func ApplyBatchToDB(entries []types.BatchEntry) error {
@@ -177,7 +169,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 	logger.Debug("batch_apply_start", "entries", len(entries))
 	tr.Mark("group_operations")
-	batchIndexManager := NewBatchIndexManager()
+	batchProcessor := NewBatchProcessor()
 
 	// put reqs into thread groups
 	threadGroups := groupByThread(entries)
@@ -193,7 +185,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	threadIDs := collectThreadIDsFromGroups(threadGroups)
 	if len(threadIDs) > 0 {
 		tr.Mark("init_thread_sequences")
-		if err := batchIndexManager.InitializeThreadSequencesFromDB(threadIDs); err != nil {
+		if err := batchProcessor.Index.InitializeThreadSequencesFromDB(threadIDs); err != nil {
 			logger.Error("init_thread_sequences_failed", "err", err)
 		}
 	}
@@ -206,7 +198,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		if err != nil {
 			logger.Error("preload_provisional_keys_failed", "err", err)
 		} else {
-			prepopulateProvisionalCache(batchIndexManager, mappings)
+			prepopulateProvisionalCache(batchProcessor, mappings)
 			logger.Debug("preload_provisional_keys_complete", "total_keys", len(provKeys), "found_mappings", len(mappings))
 		}
 	}
@@ -216,7 +208,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		sortedOps := sortOperationsByType(threadEntries)
 		logger.Debug("batch_processing_thread", "thread", threadID, "ops", len(sortedOps))
 		for _, op := range sortedOps {
-			if err := processOperation(op, batchIndexManager); err != nil {
+			if err := processOperation(op, batchProcessor); err != nil {
 				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", op.TID, "msg", op.MID)
 				continue
 			}
@@ -224,7 +216,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	}
 	tr.Mark("flush_batch")
 	logger.Debug("batch_flush_start")
-	if err := batchIndexManager.Flush(); err != nil {
+	if err := batchProcessor.Flush(); err != nil {
 		logger.Error("batch_flush_failed", "err", err)
 		return fmt.Errorf("batch flush failed: %w", err)
 	}

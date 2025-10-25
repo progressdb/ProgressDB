@@ -1,54 +1,42 @@
 package apply
 
 import (
-	"encoding/json"
-	"fmt"
 	"sync"
 
 	"progressdb/pkg/logger"
 	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/store/keys"
 )
 
-// Index management and batch operations
+// IndexManager handles index-only concerns and ephemeral state management
 // This file contains:
 // - Thread message index management (UpdateThreadMessageIndexes, GetNextThreadSequence)
 // - Thread sequence initialization (InitializeThreadSequencesFromDB)
-// - Batch flushing logic (Flush)
-// - Index data structures and initialization
+// - Index data structures and state access
+// - MessageSequencer integration
 
-type BatchIndexManager struct {
+type IndexManager struct {
 	mu               sync.RWMutex
 	threadMessages   map[string]*index.ThreadMessageIndexes
-	threadMeta       map[string][]byte
-	messageData      map[string]MessageData
 	indexData        map[string][]byte
 	messageSequencer *MessageSequencer
 }
-type MessageData struct {
-	Key  string
-	Data []byte
-	TS   int64
-	Seq  uint64
-}
 
-func NewBatchIndexManager() *BatchIndexManager {
-	bim := &BatchIndexManager{
+// NewIndexManager creates a new index manager with initialized state
+func NewIndexManager() *IndexManager {
+	im := &IndexManager{
 		threadMessages: make(map[string]*index.ThreadMessageIndexes),
-		threadMeta:     make(map[string][]byte),
-		messageData:    make(map[string]MessageData),
 		indexData:      make(map[string][]byte),
 	}
-	bim.messageSequencer = NewMessageSequencer(bim)
-	return bim
+	im.messageSequencer = NewMessageSequencer(im)
+	return im
 }
 
-func (b *BatchIndexManager) InitThreadMessageIndexes(threadID string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+// InitThreadMessageIndexes initializes thread message indexes for a thread
+func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
 
-	b.threadMessages[threadID] = &index.ThreadMessageIndexes{
+	im.threadMessages[threadID] = &index.ThreadMessageIndexes{
 		Start:         0,
 		End:           0,
 		Cdeltas:       []int64{},
@@ -59,11 +47,12 @@ func (b *BatchIndexManager) InitThreadMessageIndexes(threadID string) {
 	}
 }
 
-func (b *BatchIndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+// UpdateThreadMessageIndexes updates thread message indexes with new operation
+func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
 
-	idx := b.threadMessages[threadID]
+	idx := im.threadMessages[threadID]
 	if idx == nil {
 		idx = &index.ThreadMessageIndexes{
 			Start:         0,
@@ -74,7 +63,7 @@ func (b *BatchIndexManager) UpdateThreadMessageIndexes(threadID string, createdA
 			LastCreatedAt: 0,
 			LastUpdatedAt: 0,
 		}
-		b.threadMessages[threadID] = idx
+		im.threadMessages[threadID] = idx
 	}
 
 	if isDelete {
@@ -99,11 +88,11 @@ func (b *BatchIndexManager) UpdateThreadMessageIndexes(threadID string, createdA
 }
 
 // GetNextThreadSequence returns the next sequence number for a thread atomically
-func (b *BatchIndexManager) GetNextThreadSequence(threadID string) uint64 {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (im *IndexManager) GetNextThreadSequence(threadID string) uint64 {
+	im.mu.Lock()
+	defer im.mu.Unlock()
 
-	idx := b.threadMessages[threadID]
+	idx := im.threadMessages[threadID]
 	if idx == nil {
 		idx = &index.ThreadMessageIndexes{
 			Start:         0,
@@ -114,7 +103,7 @@ func (b *BatchIndexManager) GetNextThreadSequence(threadID string) uint64 {
 			LastCreatedAt: 0,
 			LastUpdatedAt: 0,
 		}
-		b.threadMessages[threadID] = idx
+		im.threadMessages[threadID] = idx
 	}
 
 	idx.End++
@@ -122,16 +111,16 @@ func (b *BatchIndexManager) GetNextThreadSequence(threadID string) uint64 {
 }
 
 // InitializeThreadSequencesFromDB loads existing thread message indexes from database
-func (b *BatchIndexManager) InitializeThreadSequencesFromDB(threadIDs []string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) error {
+	im.mu.Lock()
+	defer im.mu.Unlock()
 
 	for _, threadID := range threadIDs {
 		threadIdx, err := index.GetThreadMessageIndexes(threadID)
 		if err != nil {
 			logger.Debug("load_thread_index_failed", "thread_id", threadID, "error", err)
 			// If not found, initialize with defaults
-			b.threadMessages[threadID] = &index.ThreadMessageIndexes{
+			im.threadMessages[threadID] = &index.ThreadMessageIndexes{
 				Start:         0,
 				End:           0,
 				Cdeltas:       []int64{},
@@ -141,106 +130,67 @@ func (b *BatchIndexManager) InitializeThreadSequencesFromDB(threadIDs []string) 
 				LastUpdatedAt: 0,
 			}
 		} else {
-			b.threadMessages[threadID] = &threadIdx
+			im.threadMessages[threadID] = &threadIdx
 		}
 	}
 	return nil
 }
 
-func (b *BatchIndexManager) Flush() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+// GetThreadMessages returns current thread message indexes state
+func (im *IndexManager) GetThreadMessages() map[string]*index.ThreadMessageIndexes {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
 
-	logger.Debug("batch_flush_accumulated",
-		"threads", len(b.threadMeta),
-		"messages", len(b.messageData))
-
-	var errors []error
-
-	mainBatch := storedb.Client.NewBatch()
-	indexBatch := index.IndexDB.NewBatch()
-
-	for threadID, data := range b.threadMeta {
-		threadKey := keys.GenThreadKey(threadID)
-
-		if data == nil {
-			if err := mainBatch.Delete([]byte(threadKey), storedb.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete thread meta %s: %w", threadID, err))
-			}
-		} else {
-			if err := mainBatch.Set([]byte(threadKey), data, storedb.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread meta %s: %w", threadID, err))
-			}
-		}
+	result := make(map[string]*index.ThreadMessageIndexes)
+	for k, v := range im.threadMessages {
+		result[k] = v
 	}
-
-	for key, msgData := range b.messageData {
-		if err := mainBatch.Set([]byte(key), msgData.Data, storedb.WriteOpt(true)); err != nil {
-			errors = append(errors, fmt.Errorf("set message data %s: %w", key, err))
-		}
-	}
-
-	for threadID, threadIdx := range b.threadMessages {
-		threadKey := keys.GenThreadMessageStart(threadID)
-
-		if threadIdx == nil {
-			if err := indexBatch.Delete([]byte(threadKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete thread messages %s: %w", threadID, err))
-			}
-		} else {
-			data, err := json.Marshal(threadIdx)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal thread messages %s: %w", threadID, err))
-				continue
-			}
-			if err := indexBatch.Set([]byte(threadKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread messages %s: %w", threadID, err))
-			}
-		}
-	}
-
-	for key, data := range b.indexData {
-		if err := indexBatch.Set([]byte(key), data, index.WriteOpt(true)); err != nil {
-			errors = append(errors, fmt.Errorf("set index data %s: %w", key, err))
-		}
-	}
-
-	if len(errors) == 0 {
-		logger.Debug("batch_sync_start")
-		if err := storedb.ApplyBatch(mainBatch, true); err != nil {
-			errors = append(errors, fmt.Errorf("apply main batch: %w", err))
-		} else {
-			logger.Debug("batch_main_synced")
-		}
-		if err := storedb.ApplyIndexBatch(indexBatch, true); err != nil {
-			errors = append(errors, fmt.Errorf("apply index batch: %w", err))
-		} else {
-			logger.Debug("batch_index_synced")
-		}
-		logger.Info("batch_sync_complete")
-	}
-
-	mainBatch.Close()
-	indexBatch.Close()
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			logger.Error("batch_flush_error", "err", err)
-		}
-		return fmt.Errorf("batch flush completed with %d errors", len(errors))
-	}
-
-	b.Reset()
-	logger.Debug("batch_reset_complete")
-
-	return nil
+	return result
 }
 
-// Reset clears all accumulated changes after batch completion
-func (b *BatchIndexManager) Reset() {
-	b.threadMessages = make(map[string]*index.ThreadMessageIndexes)
-	b.threadMeta = make(map[string][]byte)
-	b.messageData = make(map[string]MessageData)
-	b.indexData = make(map[string][]byte)
-	b.messageSequencer.Reset()
+// GetIndexData returns current index data state
+func (im *IndexManager) GetIndexData() map[string][]byte {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
+
+	result := make(map[string][]byte)
+	for k, v := range im.indexData {
+		result[k] = append([]byte(nil), v...)
+	}
+	return result
+}
+
+// PrepopulateProvisionalCache loads existing provisional->final mappings into MessageSequencer cache
+func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	for provKey, finalKey := range mappings {
+		im.messageSequencer.provisionalToFinalKeys[provKey] = finalKey
+		logger.Debug("prepopulated_cache", "provisional", provKey, "final", finalKey)
+	}
+
+	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
+}
+
+// ResolveMessageID resolves a provisional message ID through the sequencer
+func (im *IndexManager) ResolveMessageID(provisionalID, fallbackID string) (string, error) {
+	return im.messageSequencer.ResolveMessageID(provisionalID, fallbackID)
+}
+
+// DeleteThreadMessageIndexes deletes thread message indexes
+func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	im.threadMessages[threadID] = nil
+}
+
+// Reset clears all accumulated index changes
+func (im *IndexManager) Reset() {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	im.threadMessages = make(map[string]*index.ThreadMessageIndexes)
+	im.indexData = make(map[string][]byte)
+	im.messageSequencer.Reset()
 }

@@ -8,32 +8,35 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 )
 
-func processOperation(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	switch entry.Handler {
 	case queue.HandlerThreadCreate:
-		return processThreadCreate(entry, batchIndexManager)
+		return processThreadCreate(entry, batchProcessor)
 	case queue.HandlerThreadUpdate:
-		return processThreadUpdate(entry, batchIndexManager)
+		return processThreadUpdate(entry, batchProcessor)
 	case queue.HandlerThreadDelete:
-		return processThreadDelete(entry, batchIndexManager)
+		return processThreadDelete(entry, batchProcessor)
 	case queue.HandlerMessageCreate:
-		return processMessageCreate(entry, batchIndexManager)
+		return processMessageCreate(entry, batchProcessor)
 	case queue.HandlerMessageUpdate:
-		return processMessageUpdate(entry, batchIndexManager)
+		return processMessageUpdate(entry, batchProcessor)
 	case queue.HandlerMessageDelete:
-		return processMessageDelete(entry, batchIndexManager)
-	case queue.HandlerReactionAdd, queue.HandlerReactionDelete:
-		return processReactionOperation(entry, batchIndexManager)
+		return processMessageDelete(entry, batchProcessor)
+	case queue.HandlerReactionAdd:
+		return processReactionOperation(entry, batchProcessor)
+	case queue.HandlerReactionDelete:
+		return processReactionOperation(entry, batchProcessor)
 	default:
-		return fmt.Errorf("unknown operation handler: %s", entry.Handler)
+		return fmt.Errorf("unknown handler: %s", entry.Handler)
 	}
 }
 
 // Threads
-func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.Author == "" {
 		return fmt.Errorf("author required for thread creation")
 	}
@@ -62,21 +65,21 @@ func processThreadCreate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	}
 
 	// update thread indexes
-	batchIndexManager.SetThreadMeta(threadKey, updatedPayload)
-	batchIndexManager.InitThreadMessageIndexes(threadKey)
-	batchIndexManager.AddThreadToUser(thread.Author, threadKey)
-	batchIndexManager.AddParticipantToThread(threadKey, thread.Author)
+	batchProcessor.Data.SetThreadMeta(threadKey, updatedPayload)
+	batchProcessor.Index.InitThreadMessageIndexes(threadKey)
+	index.UpdateUserOwnership(thread.Author, threadKey, true)
+	index.UpdateThreadParticipants(threadKey, thread.Author, true)
 	return nil
 }
 
-func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread deletion")
 	}
 	if entry.Author == "" {
 		return fmt.Errorf("author required for thread deletion")
 	}
-	batchIndexManager.mu.Lock()
+	batchProcessor.Index.mu.Lock()
 
 	// block if anything else than provisional or final key
 	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
@@ -87,15 +90,15 @@ func processThreadDelete(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	author := entry.Author
 
 	// sync indexes
-	batchIndexManager.mu.Unlock()
-	batchIndexManager.DeleteThreadMeta(threadKey)
-	batchIndexManager.DeleteThreadMessageIndexes(threadKey)
-	batchIndexManager.RemoveThreadFromUser(author, threadKey)
-	batchIndexManager.AddDeletedThreadToUser(author, threadKey)
+	batchProcessor.Index.mu.Unlock()
+	batchProcessor.Data.DeleteThreadMeta(threadKey)
+	batchProcessor.Index.DeleteThreadMessageIndexes(threadKey)
+	index.UpdateUserOwnership(author, threadKey, false)
+	index.UpdateDeletedThreads(author, threadKey, true)
 	return nil
 }
 
-func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	// validate
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread update")
@@ -130,12 +133,12 @@ func processThreadUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexMa
 	}
 
 	// sync
-	batchIndexManager.SetThreadMeta(threadKey, updatedPayload)
+	batchProcessor.Data.SetThreadMeta(threadKey, updatedPayload)
 	return nil
 }
 
 // Messages
-func processMessageCreate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message create")
 	}
@@ -156,7 +159,7 @@ func processMessageCreate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	}
 
 	// resolve
-	resolvedID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, threadMessageKey)
+	resolvedID, err := batchProcessor.Index.ResolveMessageID(msg.ID, threadMessageKey)
 	if err != nil {
 		logger.Error("message_create_resolution_failed", "msg_id", msg.ID, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
@@ -178,16 +181,16 @@ func processMessageCreate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	threadSequence := extractSequenceFromKey(threadMessageKey)
 
 	// Update thread indexes (note: sequence already incremented in ResolveMessageID)
-	batchIndexManager.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
+	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
 
 	// Store message data with thread-scoped sequence
-	if err := batchIndexManager.SetMessageData(threadKey, threadMessageKey, updatedPayload, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, threadMessageKey, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("setmessage data: %w", err)
 	}
 	return nil
 }
 
-func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	logger.Debug("process_message_update", "thread", entry.TID, "msg", entry.MID)
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message update")
@@ -205,7 +208,7 @@ func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 
 	// Resolve message ID using unified method (handles provisional/final automatically)
 	// msg.ID should always be populated for message operations
-	resolvedMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
+	resolvedMessageID, err := batchProcessor.Index.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
 		logger.Error("message_update_resolution_failed", "msg_id", msg.ID, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
@@ -226,10 +229,11 @@ func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 	// Extract sequence from the resolved final key
 	threadSequence := extractSequenceFromKey(resolvedMessageID)
 
-	if err := batchIndexManager.SetMessageData(threadKey, resolvedMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	if err := batchIndexManager.AddMessageVersion(resolvedMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
+	versionKey := keys.GenVersionKey(resolvedMessageID, entry.TS, threadSequence)
+	if err := index.SaveKey(versionKey, updatedPayload); err != nil {
 		return fmt.Errorf("add message version: %w", err)
 	}
 
@@ -239,12 +243,12 @@ func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		return fmt.Errorf("extract message components: %w", err)
 	}
 	msgKey := keys.GenMessageKey(threadComp, messageComp, threadSequence)
-	batchIndexManager.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, msgKey)
+	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, msgKey)
 
 	return nil
 }
 
-func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message deletion")
 	}
@@ -260,19 +264,18 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		}
 	}
 	// Resolve message ID using unified method (handles provisional/final automatically)
-	finalMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
+	finalMessageID, err := batchProcessor.Index.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
 		logger.Error("message_delete_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
-	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, finalMessageID)
-	if msg.Author != "" {
-		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
-	}
+	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, finalMessageID)
+
+	index.UpdateDeletedMessages(msg.Author, finalMessageID, true)
 	return nil
 }
 
-func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIndexManager) error {
+func processReactionOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	logger.Debug("process_reaction", "thread", entry.TID, "msg", entry.MID, "handler", entry.Handler)
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for reaction operation")
@@ -289,7 +292,7 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 		return fmt.Errorf("invalid model type for reaction operation")
 	}
 	// Resolve message ID using unified method (handles provisional/final automatically)
-	finalMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
+	finalMessageID, err := batchProcessor.Index.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
 		logger.Error("message_reaction_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
@@ -303,12 +306,13 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	// Extract sequence from the resolved final key
 	threadSequence := extractSequenceFromKey(finalMessageID)
 
-	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
+	versionKey := keys.GenVersionKey(finalMessageID, entry.TS, threadSequence)
+	if err := index.SaveKey(versionKey, updatedPayload); err != nil {
 		return fmt.Errorf("add message version: %w", err)
 	}
-	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, finalMessageID)
+	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, finalMessageID)
 	return nil
 }
