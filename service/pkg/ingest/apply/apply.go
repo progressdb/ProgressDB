@@ -1,7 +1,6 @@
 package apply
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -18,26 +17,8 @@ import (
 func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	threadGroups := make(map[string][]types.BatchEntry)
 	for _, entry := range entries {
-		threadID := entry.TID // primary thread identifier
+		threadID := extractTID(entry) // primary thread identifier
 
-		// If this entry is a thread creation without TID, try to extract it
-		if threadID == "" && entry.Handler == queue.HandlerThreadCreate {
-			// Try extracting thread ID from JSON payload
-			if len(entry.Payload) > 0 {
-				var thread struct {
-					ID string `json:"id"`
-				}
-				if err := json.Unmarshal(entry.Payload, &thread); err == nil && thread.ID != "" {
-					threadID = thread.ID
-				}
-			}
-			// Fallback: Try extracting thread ID from model object
-			if threadID == "" && entry.Model != nil {
-				if thread, ok := entry.Model.(*models.Thread); ok && thread.ID != "" {
-					threadID = thread.ID
-				}
-			}
-		}
 		// Group entry under its threadID (may still be "")
 		threadGroups[threadID] = append(threadGroups[threadID], entry)
 	}
@@ -48,13 +29,121 @@ func getOperationPriority(handler queue.HandlerID) int {
 	switch handler {
 	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate:
 		return 1 // Thread operations first
-	case queue.HandlerMessageCreate, queue.HandlerMessageUpdate, queue.HandlerReactionAdd, queue.HandlerReactionDelete:
+	case queue.HandlerMessageCreate, queue.HandlerMessageUpdate:
 		return 2 // Message operations second
 	case queue.HandlerThreadDelete, queue.HandlerMessageDelete:
 		return 3 // Delete operations last
 	default:
 		return 2
 	}
+}
+
+func extractTS(entry types.BatchEntry) int64 {
+	switch entry.Handler {
+	case queue.HandlerThreadCreate:
+		if th, ok := entry.Payload.(*models.Thread); ok {
+			return th.CreatedTS
+		}
+	case queue.HandlerThreadUpdate:
+		if update, ok := entry.Payload.(*models.ThreadUpdatePartial); ok && update.UpdatedTS != nil {
+			return *update.UpdatedTS
+		}
+	case queue.HandlerThreadDelete:
+		// For delete, TS is not in payload, but since no sorting issue, return 0
+		return 0
+	case queue.HandlerMessageCreate:
+		if m, ok := entry.Payload.(*models.Message); ok {
+			return m.TS
+		}
+	case queue.HandlerMessageUpdate:
+		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.TS != nil {
+			return *update.TS
+		}
+	case queue.HandlerMessageDelete:
+		if del, ok := entry.Payload.(*models.DeletePartial); ok {
+			return del.TS
+		}
+
+	}
+	return 0
+}
+
+func extractAuthor(entry types.BatchEntry) string {
+	switch entry.Handler {
+	case queue.HandlerThreadCreate:
+		if th, ok := entry.Payload.(*models.Thread); ok {
+			return th.Author
+		}
+	case queue.HandlerThreadUpdate:
+		// For update, author not in payload, but since op.Extras.UserID was used, but not available, perhaps return ""
+		return ""
+	case queue.HandlerThreadDelete:
+		// For delete, author not in payload, return ""
+		return ""
+	case queue.HandlerMessageCreate:
+		if m, ok := entry.Payload.(*models.Message); ok {
+			return m.Author
+		}
+	case queue.HandlerMessageUpdate:
+		// For update, author not in payload, return ""
+		return ""
+	case queue.HandlerMessageDelete:
+		if del, ok := entry.Payload.(*models.DeletePartial); ok {
+			return del.Author
+		}
+
+	}
+	return ""
+}
+
+func extractTID(entry types.BatchEntry) string {
+	switch entry.Handler {
+	case queue.HandlerThreadCreate:
+		if th, ok := entry.Payload.(*models.Thread); ok {
+			return th.ID
+		}
+	case queue.HandlerThreadUpdate:
+		if update, ok := entry.Payload.(*models.ThreadUpdatePartial); ok && update.ID != nil {
+			return *update.ID
+		}
+	case queue.HandlerThreadDelete:
+		if del, ok := entry.Payload.(*models.ThreadDeletePartial); ok && del.ID != nil {
+			return *del.ID
+		}
+	case queue.HandlerMessageCreate:
+		if m, ok := entry.Payload.(*models.Message); ok {
+			return m.Thread
+		}
+	case queue.HandlerMessageUpdate:
+		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.Thread != nil {
+			return *update.Thread
+		}
+	case queue.HandlerMessageDelete:
+		if del, ok := entry.Payload.(*models.DeletePartial); ok {
+			return del.Thread
+		}
+	}
+	return ""
+}
+
+func extractMID(entry types.BatchEntry) string {
+	switch entry.Handler {
+	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate, queue.HandlerThreadDelete:
+		return ""
+	case queue.HandlerMessageCreate:
+		if m, ok := entry.Payload.(*models.Message); ok {
+			return m.ID
+		}
+	case queue.HandlerMessageUpdate:
+		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.ID != nil {
+			return *update.ID
+		}
+	case queue.HandlerMessageDelete:
+		if del, ok := entry.Payload.(*models.DeletePartial); ok {
+			return del.ID
+		}
+	}
+	return ""
 }
 
 func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
@@ -66,7 +155,7 @@ func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
 		if priorityI != priorityJ {
 			return priorityI < priorityJ
 		}
-		return sorted[i].TS < sorted[j].TS
+		return extractTS(sorted[i]) < extractTS(sorted[j])
 	})
 	return sorted
 }
@@ -90,24 +179,9 @@ func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	provKeyMap := make(map[string]bool)
 
 	for _, entry := range entries {
-		// Check message ID in entry
-		if entry.MID != "" && keys.IsProvisionalMessageKey(entry.MID) {
-			provKeyMap[entry.MID] = true
-		}
-
-		// Check message ID in model
-		if entry.Model != nil {
-			if msg, ok := entry.Model.(*models.Message); ok && msg.ID != "" && keys.IsProvisionalMessageKey(msg.ID) {
-				provKeyMap[msg.ID] = true
-			}
-		}
-
 		// Check message ID in payload
-		if len(entry.Payload) > 0 {
-			var msg struct {
-				ID string `json:"id"`
-			}
-			if err := json.Unmarshal(entry.Payload, &msg); err == nil && msg.ID != "" && keys.IsProvisionalMessageKey(msg.ID) {
+		if entry.Payload != nil {
+			if msg, ok := entry.Payload.(*models.Message); ok && msg.ID != "" && keys.IsProvisionalMessageKey(msg.ID) {
 				provKeyMap[msg.ID] = true
 			}
 		}

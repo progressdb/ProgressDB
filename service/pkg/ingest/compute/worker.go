@@ -45,36 +45,36 @@ func (cw *ComputeWorker) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 func (cw *ComputeWorker) run() {
 	for {
 		select {
-		case <-cw.stop:
+		case <-cw.stop: // check for stop signal
 			return
 		default:
 		}
 
-		itm, ok := <-cw.queue.Out()
+		itm, ok := <-cw.queue.Out() // get item from queue
 		if !ok {
 			return
 		}
 
-		entries, err := cw.compute(itm.Op)
+		entries, err := cw.compute(itm.Op) // run compute function
 		if err != nil {
 			logger.Error("compute_failed", "err", err, "handler", itm.Op.Handler, "thread", itm.Op.TID, "msg", itm.Op.MID)
-			// write to failed ops file for recovery
+			// write failed op for recovery
 			if writeErr := cw.failedOpWriter.WriteFailedOp(itm.Op, err); writeErr != nil {
 				logger.Error("failed_op_write_failed", "err", writeErr, "handler", itm.Op.Handler, "thread", itm.Op.TID, "msg", itm.Op.MID)
 			}
-			itm.JobDone()
+			itm.JobDone() // mark job done on error
 			continue
 		}
 
 		for _, entry := range entries {
 			select {
-			case cw.output <- entry:
-			case <-cw.stop:
+			case cw.output <- entry: // send result to output
+			case <-cw.stop: // exit on stop
 				itm.JobDone()
 				return
 			}
 		}
-		itm.JobDone()
+		itm.JobDone() // mark job done after processing
 	}
 }
 
@@ -86,10 +86,6 @@ func (cw *ComputeWorker) compute(op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 		return ComputeMessageUpdate(context.Background(), op)
 	case qpkg.HandlerMessageDelete:
 		return ComputeMessageDelete(context.Background(), op)
-	case qpkg.HandlerReactionAdd:
-		return ComputeReactionAdd(context.Background(), op)
-	case qpkg.HandlerReactionDelete:
-		return ComputeReactionDelete(context.Background(), op)
 	case qpkg.HandlerThreadCreate:
 		return ComputeThreadCreate(context.Background(), op)
 	case qpkg.HandlerThreadUpdate:

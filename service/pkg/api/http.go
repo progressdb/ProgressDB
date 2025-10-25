@@ -108,11 +108,7 @@ func RegisterRoutes(r *router.Router) {
 	r.PUT("/v1/threads/{threadID}/messages/{id}", EnqueueUpdateMessage)
 	r.DELETE("/v1/threads/{threadID}/messages/{id}", EnqueueDeleteMessage)
 
-	// thread message reactions
-	// r.GET("/v1/threads/{threadID}/messages/{id}/versions", ListMessageVersions)
-	r.GET("/v1/threads/{threadID}/messages/{id}/reactions", ReadMessageReactions)
-	r.POST("/v1/threads/{threadID}/messages/{id}/reactions", EnqueueAddReaction)
-	r.DELETE("/v1/threads/{threadID}/messages/{id}/reactions/{identity}", EnqueueDeleteReaction)
+	// thread message reactions - REMOVED
 
 	// // helper message endpoints
 	// r.POST("/v1/messages", CreateMessage)

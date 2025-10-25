@@ -1,3 +1,5 @@
+// Performs stateless computation of mutative payloads
+
 package compute
 
 import (
@@ -19,23 +21,18 @@ import (
 
 // thread meta op methods
 func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if len(op.Payload) == 0 {
+	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
 
 	// parse
-	var th models.Thread
-	if err := json.Unmarshal(op.Payload, &th); err != nil {
-		return nil, fmt.Errorf("invalid thread payload: %w", err)
+	th, ok := op.Payload.(*models.Thread)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for thread create")
 	}
 
-	// sync
-	th.Author = op.Extras.UserID
-	th.CreatedTS = timeutil.Now().UnixNano()
-	th.UpdatedTS = th.CreatedTS
-
 	// validate
-	if err := ValidateThread(th, ValidationTypeCreate); err != nil {
+	if err := ValidateThread(*th, ValidationTypeCreate); err != nil {
 		logger.Error("thread_create_validation_failed", "err", err, "author", th.Author, "title", th.Title)
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
@@ -52,8 +49,7 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	th.KMS = kmsMeta
 
 	// send back
-	payload, _ := json.Marshal(th)
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: op.TID, Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th, Author: th.Author}
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -77,37 +73,19 @@ func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 		return nil, fmt.Errorf("user not authorized to update this thread")
 	}
 
-	// Start with existing thread data
-	th := existingThread
-
 	// Parse partial update payload
-	var updatePayload struct {
-		Title *string `json:"title,omitempty"`
-		Slug  *string `json:"slug,omitempty"`
-	}
-	if err := json.Unmarshal(op.Payload, &updatePayload); err != nil {
-		return nil, fmt.Errorf("invalid thread update payload: %w", err)
+	updatePayload, ok := op.Payload.(*models.ThreadUpdatePartial)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for thread update")
 	}
 
-	// Apply partial updates
-	if updatePayload.Title != nil {
-		th.Title = *updatePayload.Title
-	}
-	if updatePayload.Slug != nil {
-		th.Slug = *updatePayload.Slug
+	// Set updated TS if not provided
+	if updatePayload.UpdatedTS == nil {
+		ts := timeutil.Now().UnixNano()
+		updatePayload.UpdatedTS = &ts
 	}
 
-	// sync
-	th.ID = op.TID
-	th.UpdatedTS = timeutil.Now().UnixNano()
-
-	// copy payload so returned types.BatchEntry does not alias the pooled op buffer.
-	var payloadCopy []byte
-	if len(op.Payload) > 0 {
-		payloadCopy = make([]byte, len(op.Payload))
-		copy(payloadCopy, op.Payload)
-	}
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, TID: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th, Author: th.Author}
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
@@ -132,13 +110,13 @@ func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	}
 
 	// send back
-	be := types.BatchEntry{Handler: qpkg.HandlerThreadDelete, TID: op.TID, Payload: []byte{}, TS: timeutil.Now().UnixNano(), Model: nil, Author: userID}
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 
 // message op methods
 func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if len(op.Payload) == 0 {
+	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
 
@@ -148,9 +126,9 @@ func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 		return nil, fmt.Errorf("missing user identity for authorization")
 	}
 
-	var m models.Message
-	if err := json.Unmarshal(op.Payload, &m); err != nil {
-		return nil, fmt.Errorf("invalid message json: %w", err)
+	m, ok := op.Payload.(*models.Message)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for message create")
 	}
 
 	// validate
@@ -163,74 +141,29 @@ func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	m.Thread = op.TID
 	m.TS = op.TS
 	m.Author = userID
-
-	// serialize
-	var payload []byte
-	var err error
-	payload, err = json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal message: %w", err)
-	}
-
-	// encrypt
-	tr := telemetry.Track("ingest.message_encryption")
-	defer tr.Finish()
-	tr.Mark("encrypt")
-	payload, err = encryption.EncryptMessageData(m.Thread, payload)
-	if err != nil {
-		logger.Error("message_encryption_failed", "err", err, "thread", m.Thread, "msg", m.ID)
-		return nil, fmt.Errorf("failed to encrypt message: %w", err)
-	}
+	op.Payload = &m
 
 	// done
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if len(op.Payload) == 0 {
+	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
-	var m models.Message
-	if err := json.Unmarshal(op.Payload, &m); err != nil {
-		return nil, fmt.Errorf("invalid message json: %w", err)
+	if _, ok := op.Payload.(*models.MessageUpdatePartial); !ok {
+		return nil, fmt.Errorf("invalid payload type for message update")
 	}
 
-	// set to defaults
-	m.ID = op.MID
-	m.Thread = op.TID
-
-	// if timestamp is still not set
-	if m.TS == 0 {
-		m.TS = timeutil.Now().UnixNano()
-	}
-
-	// allow partial updates; caller should provide resulting full message
-	var payload []byte
-	var err error
-	payload, err = json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal message: %w", err)
-	}
-
-	// encrypt if enabled (handled internally by EncryptMessageData)
-	tr := telemetry.Track("ingest.message_encryption")
-	defer tr.Finish()
-	tr.Mark("encrypt")
-	payload, err = encryption.EncryptMessageData(m.Thread, payload)
-	if err != nil {
-		logger.Error("message_encryption_failed", "err", err, "thread", m.Thread, "msg", m.ID)
-		return nil, fmt.Errorf("failed to encrypt message: %w", err)
-	}
-
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageUpdate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	var m models.Message
-	if len(op.Payload) > 0 {
-		_ = json.Unmarshal(op.Payload, &m)
+	del, ok := op.Payload.(*models.DeletePartial)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for message delete")
 	}
-	id := m.ID
+	id := del.ID
 	if id == "" {
 		id = op.MID
 	}
@@ -238,86 +171,9 @@ func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 		return nil, fmt.Errorf("missing message id for delete")
 	}
 	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{ID: id, Deleted: true, TS: timeutil.Now().UnixNano(), Thread: m.Thread}
-	var payload []byte
-	var err error
-	payload, err = json.Marshal(tomb)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tomb: %w", err)
-	}
-
-	// encrypt if enabled (handled internally by EncryptMessageData)
-	tr := telemetry.Track("ingest.message_encryption")
-	defer tr.Finish()
-	tr.Mark("encrypt")
-	payload, err = encryption.EncryptMessageData(tomb.Thread, payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt message: %w", err)
-	}
-
-	be := types.BatchEntry{Handler: qpkg.HandlerMessageDelete, TID: tomb.Thread, MID: id, Payload: payload, TS: tomb.TS, Enq: op.EnqSeq, Model: &tomb}
-	return []types.BatchEntry{be}, nil
-}
-
-// reactions op methods
-func ComputeReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if op.MID == "" {
-		return nil, fmt.Errorf("missing message id for reaction")
-	}
-	var p struct {
-		Reaction string `json:"reaction"`
-		Identity string `json:"identity"`
-	}
-	if len(op.Payload) > 0 {
-		_ = json.Unmarshal(op.Payload, &p)
-	}
-	identity := p.Identity
-	if identity == "" && op.Extras.UserID != "" {
-		identity = op.Extras.UserID
-	}
-	if p.Reaction == "" || identity == "" {
-		return nil, fmt.Errorf("invalid reaction payload")
-	}
-
-	// Defer DB read to apply phase: prepare payload with reaction details
-	reactionPayload := map[string]string{
-		"reaction": p.Reaction,
-		"identity": identity,
-		"action":   "add",
-	}
-	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, TID: op.TID, MID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
-	return []types.BatchEntry{be}, nil
-}
-func ComputeReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	if op.MID == "" {
-		return nil, fmt.Errorf("missing message id for reaction delete")
-	}
-	var p struct {
-		Remove   string `json:"remove_reaction_for"`
-		Identity string `json:"identity"`
-	}
-	if len(op.Payload) > 0 {
-		_ = json.Unmarshal(op.Payload, &p)
-	}
-	identity := p.Remove
-	if identity == "" {
-		identity = p.Identity
-	}
-	if identity == "" && op.Extras.UserID != "" {
-		identity = op.Extras.UserID
-	}
-	if identity == "" {
-		return nil, fmt.Errorf("no identity specified for reaction delete")
-	}
-
-	// Defer DB read to apply phase: prepare payload with reaction details
-	reactionPayload := map[string]string{
-		"identity": identity,
-		"action":   "delete",
-	}
-	payload, _ := json.Marshal(reactionPayload)
-	be := types.BatchEntry{Handler: qpkg.HandlerReactionDelete, TID: op.TID, MID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
+	tomb := models.Message{ID: id, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
+	op.Payload = &tomb
+	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 

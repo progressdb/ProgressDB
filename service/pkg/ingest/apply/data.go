@@ -1,6 +1,7 @@
 package apply
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -29,10 +30,15 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (dm *DataManager) SetThreadMeta(threadID string, data []byte) {
+func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
-	dm.threadMeta[threadID] = data
+	marshaled, err := json.Marshal(data)
+	if err != nil {
+		// Handle error, but for now panic or log
+		panic(fmt.Sprintf("failed to marshal thread meta: %v", err))
+	}
+	dm.threadMeta[threadID] = marshaled
 }
 
 func (dm *DataManager) DeleteThreadMeta(threadID string) {
@@ -41,14 +47,22 @@ func (dm *DataManager) DeleteThreadMeta(threadID string) {
 	dm.threadMeta[threadID] = nil
 }
 
-func (dm *DataManager) SetMessageData(threadID, messageID string, data []byte, ts int64, seq uint64) error {
+func (dm *DataManager) SetMessageData(threadID, messageID string, data interface{}, ts int64, seq uint64) error {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
+
+	marshaled, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message data: %w", err)
+	}
+
+	// Encrypt if it's a message (not for partials or other types)
+	// TODO: Implement encryption logic here, e.g., if _, ok := data.(*models.Message); ok { encrypt marshaled }
 
 	messageKey := keys.GenMessageKey(threadID, messageID, seq)
 	dm.messageData[messageKey] = MessageData{
 		Key:  messageKey,
-		Data: data,
+		Data: marshaled,
 		TS:   ts,
 		Seq:  seq,
 	}
@@ -77,10 +91,14 @@ func (dm *DataManager) GetMessageData() map[string]MessageData {
 	return result
 }
 
-func (dm *DataManager) SetVersionKey(versionKey string, data []byte) {
+func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
-	dm.versionKeys[versionKey] = data
+	marshaled, err := json.Marshal(data)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal version data: %v", err))
+	}
+	dm.versionKeys[versionKey] = marshaled
 }
 
 func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {

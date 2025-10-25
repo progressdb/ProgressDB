@@ -91,11 +91,6 @@ type MessageResponse struct {
 	Message models.Message `json:"message"`
 }
 
-type ReactionsResponse struct {
-	ID        string      `json:"id"`
-	Reactions interface{} `json:"reactions"`
-}
-
 // PaginationMeta contains pagination metadata
 type PaginationMeta struct {
 	Limit      int    `json:"limit"`

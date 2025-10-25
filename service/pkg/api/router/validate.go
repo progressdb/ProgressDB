@@ -52,11 +52,6 @@ type MessagePayload struct {
 	Body interface{} `json:"body"`
 }
 
-type ReactionPayload struct {
-	Reaction string `json:"reaction"`
-	Identity string `json:"identity"`
-}
-
 func ValidateCreateThreadRequest(ctx *fasthttp.RequestCtx) error {
 	body := ctx.PostBody()
 	if len(body) == 0 {
@@ -126,32 +121,6 @@ func ValidateCreateMessageRequest(ctx *fasthttp.RequestCtx) error {
 
 	if payload.Body == nil {
 		result.AddError("body", "body is required")
-	}
-
-	if !result.Valid {
-		return result
-	}
-	return nil
-}
-
-func ValidateReactionRequest(ctx *fasthttp.RequestCtx) error {
-	body := ctx.PostBody()
-	if len(body) == 0 {
-		return &ValidationError{Field: "body", Message: "request body is required"}
-	}
-
-	var payload ReactionPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return &ValidationError{Field: "body", Message: fmt.Sprintf("invalid JSON: %v", err)}
-	}
-
-	result := &ValidationResult{Valid: true}
-
-	if payload.Reaction == "" {
-		result.AddError("reaction", "reaction is required")
-	}
-	if payload.Identity == "" {
-		result.AddError("identity", "identity is required")
 	}
 
 	if !result.Valid {

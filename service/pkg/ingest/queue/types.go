@@ -10,14 +10,12 @@ import (
 type HandlerID string
 
 const (
-	HandlerMessageCreate  HandlerID = "message.create"
-	HandlerMessageUpdate  HandlerID = "message.update"
-	HandlerMessageDelete  HandlerID = "message.delete"
-	HandlerReactionAdd    HandlerID = "reaction.add"
-	HandlerReactionDelete HandlerID = "reaction.delete"
-	HandlerThreadCreate   HandlerID = "thread.create"
-	HandlerThreadUpdate   HandlerID = "thread.update"
-	HandlerThreadDelete   HandlerID = "thread.delete"
+	HandlerMessageCreate HandlerID = "message.create"
+	HandlerMessageUpdate HandlerID = "message.update"
+	HandlerMessageDelete HandlerID = "message.delete"
+	HandlerThreadCreate  HandlerID = "thread.create"
+	HandlerThreadUpdate  HandlerID = "thread.update"
+	HandlerThreadDelete  HandlerID = "thread.delete"
 )
 
 // RequestMetadata represents common metadata extracted from HTTP requests
@@ -33,7 +31,7 @@ type QueueOp struct {
 	Handler   HandlerID       // Handler to invoke
 	TID       string          // Thread ID
 	MID       string          // Message ID
-	Payload   []byte          // Payload data (may be nil)
+	Payload   interface{}     // Payload data (may be nil, can be struct or []byte)
 	TS        int64           // Timestamp (nanoseconds)
 	EnqSeq    uint64          // Assigned sequence at enqueue (used when WAL disabled)
 	WalSeq    uint64          // WAL-assigned sequence (used when WAL enabled)
