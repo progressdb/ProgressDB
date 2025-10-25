@@ -33,9 +33,9 @@ var (
 	threadVersionLCRegexp      = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:([A-Za-z0-9._-]{1,256}):vs:lc$`)
 	threadVersionLURegexp      = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:([A-Za-z0-9._-]{1,256}):vs:lu$`)
 
-	userThreadsRegexp        = regexp.MustCompile(`^idx:u:([A-Za-z0-9._-]{1,256}):threads$`)
-	threadParticipantsRegexp = regexp.MustCompile(`^idx:p:([A-Za-z0-9._-]{1,256})$`)
-	softDeleteMarkerRegexp   = regexp.MustCompile(`^del:(.+)$`)
+	softDeleteMarkerRegexp  = regexp.MustCompile(`^del:(.+)$`)
+	relUserOwnsThreadRegexp = regexp.MustCompile(`^rel:u:([A-Za-z0-9._-]{1,256}):t:([A-Za-z0-9._-]{1,256})$`)
+	relThreadHasUserRegexp  = regexp.MustCompile(`^rel:t:([A-Za-z0-9._-]{1,256}):u:([A-Za-z0-9._-]{1,256})$`)
 )
 
 func ValidateMessagePrvKey(key string) error {
@@ -183,23 +183,23 @@ func ValidateThreadVersionLU(key string) error {
 	return nil
 }
 
-func ValidateUserThreadsKey(key string) error {
-	if !userThreadsRegexp.MatchString(key) {
-		return fmt.Errorf("invalid user threads key format: %q", key)
-	}
-	return nil
-}
-
-func ValidateThreadParticipantsKey(key string) error {
-	if !threadParticipantsRegexp.MatchString(key) {
-		return fmt.Errorf("invalid thread participants key format: %q", key)
-	}
-	return nil
-}
-
 func ValidateSoftDeleteMarkerKey(key string) error {
 	if !softDeleteMarkerRegexp.MatchString(key) {
 		return fmt.Errorf("invalid soft delete marker key format: %q", key)
+	}
+	return nil
+}
+
+func ValidateUserOwnsThreadKey(key string) error {
+	if !relUserOwnsThreadRegexp.MatchString(key) {
+		return fmt.Errorf("invalid user owns thread key format: %q", key)
+	}
+	return nil
+}
+
+func ValidateThreadHasUserKey(key string) error {
+	if !relThreadHasUserRegexp.MatchString(key) {
+		return fmt.Errorf("invalid thread has user key format: %q", key)
 	}
 	return nil
 }

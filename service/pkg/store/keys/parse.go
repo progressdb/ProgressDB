@@ -24,14 +24,6 @@ type ThreadMetaParts struct {
 	ThreadID string
 }
 
-type UserThreadsIndexParts struct {
-	UserID string
-}
-
-type ThreadParticipantsIndexParts struct {
-	ThreadID string
-}
-
 type DeletedThreadsIndexParts struct {
 	UserID string
 }
@@ -149,24 +141,6 @@ func ParseMessageProvisionalKey(key string) (*MessageKeyParts, error) {
 		MsgID:    msgID,
 		Seq:      "", // No sequence in provisional keys
 	}, nil
-}
-
-// ParseUserThreadsIndex parses keys formatted as idx:u:<user_id>:threads
-func ParseUserThreadsIndex(key string) (*UserThreadsIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 4 || parts[0] != "idx" || parts[1] != "u" || parts[3] != "threads" {
-		return nil, fmt.Errorf("invalid user threads index key: %s", key)
-	}
-	return &UserThreadsIndexParts{UserID: parts[2]}, nil
-}
-
-// ParseThreadParticipantsIndex parses keys formatted as idx:p:<thread_id>
-func ParseThreadParticipantsIndex(key string) (*ThreadParticipantsIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 3 || parts[0] != "idx" || parts[1] != "p" {
-		return nil, fmt.Errorf("invalid thread participants index key: %s", key)
-	}
-	return &ThreadParticipantsIndexParts{ThreadID: parts[2]}, nil
 }
 
 // ParseDeletedThreadsIndex parses keys formatted as idx:t:deleted:u:<user_id>:list

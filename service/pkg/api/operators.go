@@ -815,14 +815,13 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Admin
 
 // listThreadsForUser lists threads for a specific user with pagination
 func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsResult, error) {
-	key := keys.GenUserThreadsKey(userID)
-
-	val, err := index.GetKey(key)
-	if err != nil && !index.IsNotFound(err) {
-		return nil, err
+	// Get thread IDs using the new key-based approach
+	allThreadIDs, err := index.GetUserThreads(userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user threads: %w", err)
 	}
 
-	if val == "" {
+	if len(allThreadIDs) == 0 {
 		return &AdminThreadsResult{
 			Threads:    []json.RawMessage{},
 			NextCursor: "",
@@ -831,16 +830,10 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 		}, nil
 	}
 
-	var indexes index.UserThreadIndexes
-	if err := json.Unmarshal([]byte(val), &indexes); err != nil {
-		return nil, fmt.Errorf("unmarshal user threads: %w", err)
-	}
-
 	// Apply cursor and limit
-	threadIDs := indexes.Threads
 	start := 0
 	if cursor != "" {
-		for i, tid := range threadIDs {
+		for i, tid := range allThreadIDs {
 			if tid == cursor {
 				start = i + 1
 				break
@@ -849,40 +842,32 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 	}
 
 	end := start + limit
-	if end > len(threadIDs) {
-		end = len(threadIDs)
+	if end > len(allThreadIDs) {
+		end = len(allThreadIDs)
 	}
 
-	if start >= len(threadIDs) {
-		return &AdminThreadsResult{
-			Threads:    []json.RawMessage{},
-			NextCursor: "",
-			HasMore:    false,
-			Count:      0,
-		}, nil
-	}
-
-	pagedThreadIDs := threadIDs[start:end]
-	threadList := make([]json.RawMessage, 0, len(pagedThreadIDs))
-
-	for _, threadID := range pagedThreadIDs {
-		threadData, err := thread_store.GetThread(threadID)
-		if err != nil {
-			continue // skip threads that can't be loaded
-		}
-		threadList = append(threadList, json.RawMessage(threadData))
-	}
-
+	pageThreads := allThreadIDs[start:end]
+	hasMore := end < len(allThreadIDs)
 	nextCursor := ""
-	if end < len(threadIDs) {
-		nextCursor = threadIDs[end-1]
+	if hasMore && len(pageThreads) > 0 {
+		nextCursor = pageThreads[len(pageThreads)-1]
+	}
+
+	// Fetch thread data
+	threads := make([]json.RawMessage, 0, len(pageThreads))
+	for _, threadID := range pageThreads {
+		data, err := index.GetKey(keys.GenThreadKey(threadID))
+		if err != nil {
+			continue // Skip if thread not found
+		}
+		threads = append(threads, json.RawMessage(data))
 	}
 
 	return &AdminThreadsResult{
-		Threads:    threadList,
+		Threads:    threads,
 		NextCursor: nextCursor,
-		HasMore:    end < len(threadIDs),
-		Count:      len(threadList),
+		HasMore:    hasMore,
+		Count:      len(threads),
 	}, nil
 }
 

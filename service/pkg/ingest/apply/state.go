@@ -32,35 +32,7 @@ func (bp *BatchProcessor) Flush() error {
 	versionKeys := bp.Data.GetVersionKeys()
 	threadMessages := bp.Index.GetThreadMessages()
 	indexData := bp.Index.GetIndexData()
-	userOwnership := bp.Index.GetUserOwnership()
-	threadParticipants := bp.Index.GetThreadParticipants()
-	// Note: Soft deletes now use immediate key-based markers, so no need to track deletedThreads/deletedMessages
-
-	// Pre-load all existing data BEFORE creating batches to avoid conflicts
-	existingUserThreads := make(map[string][]string)
-	existingThreadParticipants := make(map[string][]string)
-
-	// Load existing user threads
-	for userID := range userOwnership {
-		userThreadsKey := keys.GenUserThreadsKey(userID)
-		if val, err := index.GetKey(userThreadsKey); err == nil && val != "" {
-			var indexes index.UserThreadIndexes
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingUserThreads[userID] = indexes.Threads
-			}
-		}
-	}
-
-	// Load existing thread participants
-	for threadID := range threadParticipants {
-		participantsKey := keys.GenThreadParticipantsKey(threadID)
-		if val, err := index.GetKey(participantsKey); err == nil && val != "" {
-			var indexes index.ThreadParticipantIndexes
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingThreadParticipants[threadID] = indexes.Participants
-			}
-		}
-	}
+	// Note: Ownership and participants now use immediate key-based markers, so no need to track userOwnership/threadParticipants
 
 	// Create batches AFTER all reads are complete
 	mainBatch := storedb.Client.NewBatch()
@@ -119,92 +91,6 @@ func (bp *BatchProcessor) Flush() error {
 	for key, data := range indexData {
 		if err := indexBatch.Set([]byte(key), data, index.WriteOpt(true)); err != nil {
 			errors = append(errors, fmt.Errorf("set index data %s: %w", key, err))
-		}
-	}
-
-	// Add user ownership changes to index batch
-	for userID, threads := range userOwnership {
-		userThreadsKey := keys.GenUserThreadsKey(userID)
-
-		// Use pre-loaded existing user threads
-		existingThreads := existingUserThreads[userID]
-
-		// Apply changes
-		var updatedThreads []string
-		threadSet := make(map[string]bool)
-		for _, threadID := range existingThreads {
-			threadSet[threadID] = true
-		}
-
-		for threadID, owns := range threads {
-			if owns {
-				threadSet[threadID] = true
-			} else {
-				delete(threadSet, threadID)
-			}
-		}
-
-		for threadID := range threadSet {
-			updatedThreads = append(updatedThreads, threadID)
-		}
-
-		// Add to batch
-		if len(updatedThreads) == 0 {
-			if err := indexBatch.Delete([]byte(userThreadsKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete user threads %s: %w", userID, err))
-			}
-		} else {
-			data, err := json.Marshal(index.UserThreadIndexes{Threads: updatedThreads})
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal user threads %s: %w", userID, err))
-				continue
-			}
-			if err := indexBatch.Set([]byte(userThreadsKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set user threads %s: %w", userID, err))
-			}
-		}
-	}
-
-	// Add thread participants changes to index batch
-	for threadID, users := range threadParticipants {
-		participantsKey := keys.GenThreadParticipantsKey(threadID)
-
-		// Use pre-loaded existing participants
-		existingParticipants := existingThreadParticipants[threadID]
-
-		// Apply changes
-		var updatedParticipants []string
-		userSet := make(map[string]bool)
-		for _, userID := range existingParticipants {
-			userSet[userID] = true
-		}
-
-		for userID, participates := range users {
-			if participates {
-				userSet[userID] = true
-			} else {
-				delete(userSet, userID)
-			}
-		}
-
-		for userID := range userSet {
-			updatedParticipants = append(updatedParticipants, userID)
-		}
-
-		// Add to batch
-		if len(updatedParticipants) == 0 {
-			if err := indexBatch.Delete([]byte(participantsKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete thread participants %s: %w", threadID, err))
-			}
-		} else {
-			data, err := json.Marshal(index.ThreadParticipantIndexes{Participants: updatedParticipants})
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal thread participants %s: %w", threadID, err))
-				continue
-			}
-			if err := indexBatch.Set([]byte(participantsKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread participants %s: %w", threadID, err))
-			}
 		}
 	}
 

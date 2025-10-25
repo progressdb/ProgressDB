@@ -37,14 +37,12 @@ const (
 	ThreadVersionLC      = "idx:t:%s:ms:%s:vs:lc"      // idx:t:<thread_id>:ms:<msg_id>:vs:lc (last created at for version)
 	ThreadVersionLU      = "idx:t:%s:ms:%s:vs:lu"      // idx:t:<thread_id>:ms:<msg_id>:vs:lu (last updated at for version)
 
-	// user → thread indexes (ownership)
-	UserThreads = "idx:u:%s:threads" // idx:u:<user_id>:threads
-
-	// thread → participant indexes
-	ThreadParticipants = "idx:p:%s" // idx:p:<thread_id>
-
 	// soft delete markers
 	SoftDeleteMarker = "del:%s" // del:<original_key>
+
+	// relationship markers
+	RelUserOwnsThread = "rel:u:%s:t:%s" // rel:u:<user_id>:t:<thread_id>
+	RelThreadHasUser  = "rel:t:%s:u:%s" // rel:t:<thread_id>:u:<user_id>
 
 	// padding widths (fixed for lexicographic ordering)
 	TSPadWidth  = 20 // e.g. %020d

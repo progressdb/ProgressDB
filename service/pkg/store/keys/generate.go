@@ -132,22 +132,18 @@ func GenThreadVersionLU(threadID, msgID string) string {
 	return fmt.Sprintf(ThreadVersionLU, threadID, msgID)
 }
 
-// User → thread index (ownership)
-func GenUserThreadsKey(userID string) string {
-	return fmt.Sprintf(UserThreads, userID)
-}
-
-// Thread → participant indexes
-func GenThreadParticipantsKey(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadParticipants, threadID)
-}
-
 // Soft delete markers
 func GenSoftDeleteMarkerKey(originalKey string) string {
 	return fmt.Sprintf(SoftDeleteMarker, originalKey)
+}
+
+// Relationship markers
+func GenUserOwnsThreadKey(userID, threadID string) string {
+	return fmt.Sprintf(RelUserOwnsThread, userID, threadID)
+}
+
+func GenThreadHasUserKey(threadID, userID string) string {
+	return fmt.Sprintf(RelThreadHasUser, threadID, userID)
 }
 
 // PadTS returns timestamp padded for key (20 width, lexicographic sort)

@@ -8,20 +8,16 @@ import (
 )
 
 type IndexManager struct {
-	mu                 sync.RWMutex
-	threadMessages     map[string]*index.ThreadMessageIndexes
-	indexData          map[string][]byte
-	messageSequencer   *MessageSequencer
-	userOwnership      map[string]map[string]bool // userID -> threadID -> owns
-	threadParticipants map[string]map[string]bool // threadID -> userID -> participates
+	mu               sync.RWMutex
+	threadMessages   map[string]*index.ThreadMessageIndexes
+	indexData        map[string][]byte
+	messageSequencer *MessageSequencer
 }
 
 func NewIndexManager() *IndexManager {
 	im := &IndexManager{
-		threadMessages:     make(map[string]*index.ThreadMessageIndexes),
-		indexData:          make(map[string][]byte),
-		userOwnership:      make(map[string]map[string]bool),
-		threadParticipants: make(map[string]map[string]bool),
+		threadMessages: make(map[string]*index.ThreadMessageIndexes),
+		indexData:      make(map[string][]byte),
 	}
 	im.messageSequencer = NewMessageSequencer(im)
 	return im
@@ -124,49 +120,17 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) erro
 	return nil
 }
 
-// InitializeUserOwnershipFromDB loads user ownership data for specific users
+// InitializeUserOwnershipFromDB is now a no-op since ownership uses key-based markers
+// that are checked on-demand rather than preloaded
 func (im *IndexManager) InitializeUserOwnershipFromDB(userIDs []string) error {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	for _, userID := range userIDs {
-		threads, err := index.GetUserThreads(userID)
-		if err != nil {
-			logger.Debug("load_user_ownership_failed", "user_id", userID, "error", err)
-			continue
-		}
-
-		if im.userOwnership[userID] == nil {
-			im.userOwnership[userID] = make(map[string]bool)
-		}
-
-		for _, threadID := range threads {
-			im.userOwnership[userID][threadID] = true
-		}
-	}
+	// No longer need to preload ownership data since we use key-based markers
 	return nil
 }
 
-// InitializeThreadParticipantsFromDB loads thread participants data for specific threads
+// InitializeThreadParticipantsFromDB is now a no-op since participants use key-based markers
+// that are checked on-demand rather than preloaded
 func (im *IndexManager) InitializeThreadParticipantsFromDB(threadIDs []string) error {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	for _, threadID := range threadIDs {
-		participants, err := index.GetThreadParticipants(threadID)
-		if err != nil {
-			logger.Debug("load_thread_participants_failed", "thread_id", threadID, "error", err)
-			continue
-		}
-
-		if im.threadParticipants[threadID] == nil {
-			im.threadParticipants[threadID] = make(map[string]bool)
-		}
-
-		for _, participantID := range participants {
-			im.threadParticipants[threadID][participantID] = true
-		}
-	}
+	// No longer need to preload participant data since we use key-based markers
 	return nil
 }
 
@@ -219,54 +183,32 @@ func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
 	im.threadMessages[threadID] = nil
 }
 
-// User ownership tracking methods
+// User ownership tracking methods - now use key-based markers
 func (im *IndexManager) UpdateUserOwnership(userID, threadID string, owns bool) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	if im.userOwnership[userID] == nil {
-		im.userOwnership[userID] = make(map[string]bool)
-	}
-	im.userOwnership[userID][threadID] = owns
-}
-
-func (im *IndexManager) GetUserOwnership() map[string]map[string]bool {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
-	result := make(map[string]map[string]bool)
-	for userID, threads := range im.userOwnership {
-		result[userID] = make(map[string]bool)
-		for threadID, owns := range threads {
-			result[userID][threadID] = owns
+	// Update the key-based marker immediately
+	if owns {
+		if err := index.MarkUserOwnsThread(userID, threadID); err != nil {
+			logger.Error("mark_user_owns_thread_failed", "user_id", userID, "thread_id", threadID, "error", err)
+		}
+	} else {
+		if err := index.UnmarkUserOwnsThread(userID, threadID); err != nil {
+			logger.Error("unmark_user_owns_thread_failed", "user_id", userID, "thread_id", threadID, "error", err)
 		}
 	}
-	return result
 }
 
-// Thread participants tracking methods
+// Thread participants tracking methods - now use key-based markers
 func (im *IndexManager) UpdateThreadParticipants(threadID, userID string, participates bool) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	if im.threadParticipants[threadID] == nil {
-		im.threadParticipants[threadID] = make(map[string]bool)
-	}
-	im.threadParticipants[threadID][userID] = participates
-}
-
-func (im *IndexManager) GetThreadParticipants() map[string]map[string]bool {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
-	result := make(map[string]map[string]bool)
-	for threadID, users := range im.threadParticipants {
-		result[threadID] = make(map[string]bool)
-		for userID, participates := range users {
-			result[threadID][userID] = participates
+	// Update the key-based marker immediately
+	if participates {
+		if err := index.MarkThreadHasUser(threadID, userID); err != nil {
+			logger.Error("mark_thread_has_user_failed", "thread_id", threadID, "user_id", userID, "error", err)
+		}
+	} else {
+		if err := index.UnmarkThreadHasUser(threadID, userID); err != nil {
+			logger.Error("unmark_thread_has_user_failed", "thread_id", threadID, "user_id", userID, "error", err)
 		}
 	}
-	return result
 }
 
 // Soft deleted tracking methods - now use key-based markers
@@ -303,7 +245,5 @@ func (im *IndexManager) Reset() {
 
 	im.threadMessages = make(map[string]*index.ThreadMessageIndexes)
 	im.indexData = make(map[string][]byte)
-	im.userOwnership = make(map[string]map[string]bool)
-	im.threadParticipants = make(map[string]map[string]bool)
 	im.messageSequencer.Reset()
 }
