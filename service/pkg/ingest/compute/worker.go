@@ -81,21 +81,21 @@ func (cw *ComputeWorker) run() {
 func (cw *ComputeWorker) compute(op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	switch op.Handler {
 	case qpkg.HandlerMessageCreate:
-		return MutMessageCreate(context.Background(), op)
+		return ComputeMessageCreate(context.Background(), op)
 	case qpkg.HandlerMessageUpdate:
-		return MutMessageUpdate(context.Background(), op)
+		return ComputeMessageUpdate(context.Background(), op)
 	case qpkg.HandlerMessageDelete:
-		return MutMessageDelete(context.Background(), op)
+		return ComputeMessageDelete(context.Background(), op)
 	case qpkg.HandlerReactionAdd:
-		return MutReactionAdd(context.Background(), op)
+		return ComputeReactionAdd(context.Background(), op)
 	case qpkg.HandlerReactionDelete:
-		return MutReactionDelete(context.Background(), op)
+		return ComputeReactionDelete(context.Background(), op)
 	case qpkg.HandlerThreadCreate:
-		return MutThreadCreate(context.Background(), op)
+		return ComputeThreadCreate(context.Background(), op)
 	case qpkg.HandlerThreadUpdate:
-		return MutThreadUpdate(context.Background(), op)
+		return ComputeThreadUpdate(context.Background(), op)
 	case qpkg.HandlerThreadDelete:
-		return MutThreadDelete(context.Background(), op)
+		return ComputeThreadDelete(context.Background(), op)
 	default:
 		return nil, fmt.Errorf("unknown handler: %s", op.Handler)
 	}

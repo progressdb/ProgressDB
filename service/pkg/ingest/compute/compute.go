@@ -18,25 +18,19 @@ import (
 )
 
 // thread meta op methods
-func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
 
-	// parse (API layer already validated JSON structure)
+	// parse
 	var th models.Thread
 	if err := json.Unmarshal(op.Payload, &th); err != nil {
 		return nil, fmt.Errorf("invalid thread payload: %w", err)
 	}
 
-	// Override author with resolved authenticated author (security critical)
-	resolvedAuthor := op.Extras.UserID
-	if resolvedAuthor == "" {
-		return nil, fmt.Errorf("missing resolved author from authentication")
-	}
-	th.Author = resolvedAuthor
-
-	// timestamps
+	// sync
+	th.Author = op.Extras.UserID
 	th.CreatedTS = timeutil.Now().UnixNano()
 	th.UpdatedTS = th.CreatedTS
 
@@ -46,7 +40,7 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
-	// enc DEK
+	// gen DEK - if needed
 	tr := telemetry.Track("ingest.thread_encryption")
 	defer tr.Finish()
 	tr.Mark("kms_provision")
@@ -62,7 +56,7 @@ func MutThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	be := types.BatchEntry{Handler: qpkg.HandlerThreadCreate, TID: op.TID, Payload: payload, TS: th.CreatedTS, Enq: op.EnqSeq, Model: &th, Author: th.Author}
 	return []types.BatchEntry{be}, nil
 }
-func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	// verify ownership for thread update
 	threadData, err := threads.GetThread(op.TID)
 	if err != nil {
@@ -116,7 +110,7 @@ func MutThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 	be := types.BatchEntry{Handler: qpkg.HandlerThreadUpdate, TID: th.ID, Payload: payloadCopy, TS: th.UpdatedTS, Model: &th, Author: th.Author}
 	return []types.BatchEntry{be}, nil
 }
-func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	// verify ownership
 	threadData, err := threads.GetThread(op.TID)
 	if err != nil {
@@ -143,7 +137,7 @@ func MutThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry,
 }
 
 // message op methods
-func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
@@ -192,7 +186,7 @@ func MutMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	be := types.BatchEntry{Handler: qpkg.HandlerMessageCreate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
 	return []types.BatchEntry{be}, nil
 }
-func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if len(op.Payload) == 0 {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
@@ -231,7 +225,7 @@ func MutMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 	be := types.BatchEntry{Handler: qpkg.HandlerMessageUpdate, TID: m.Thread, MID: m.ID, Payload: payload, TS: m.TS, Enq: op.EnqSeq, Model: &m}
 	return []types.BatchEntry{be}, nil
 }
-func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	var m models.Message
 	if len(op.Payload) > 0 {
 		_ = json.Unmarshal(op.Payload, &m)
@@ -266,7 +260,7 @@ func MutMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry
 }
 
 // reactions op methods
-func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if op.MID == "" {
 		return nil, fmt.Errorf("missing message id for reaction")
 	}
@@ -295,7 +289,7 @@ func MutReactionAdd(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, 
 	be := types.BatchEntry{Handler: qpkg.HandlerReactionAdd, TID: op.TID, MID: op.MID, Payload: payload, TS: timeutil.Now().UnixNano(), Enq: op.EnqSeq, Model: nil}
 	return []types.BatchEntry{be}, nil
 }
-func MutReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeReactionDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	if op.MID == "" {
 		return nil, fmt.Errorf("missing message id for reaction delete")
 	}

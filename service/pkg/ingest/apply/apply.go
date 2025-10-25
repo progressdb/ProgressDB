@@ -46,12 +46,12 @@ func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 
 func getOperationPriority(handler queue.HandlerID) int {
 	switch handler {
-	case queue.HandlerThreadCreate, queue.HandlerMessageCreate, queue.HandlerReactionAdd:
-		return 1
-	case queue.HandlerThreadUpdate, queue.HandlerMessageUpdate, queue.HandlerReactionDelete:
-		return 2
+	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate:
+		return 1 // Thread operations first
+	case queue.HandlerMessageCreate, queue.HandlerMessageUpdate, queue.HandlerReactionAdd, queue.HandlerReactionDelete:
+		return 2 // Message operations second
 	case queue.HandlerThreadDelete, queue.HandlerMessageDelete:
-		return 3
+		return 3 // Delete operations last
 	default:
 		return 2
 	}
@@ -211,7 +211,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		sortedOps := sortOperationsByType(threadEntries)
 		logger.Debug("batch_processing_thread", "thread", threadID, "ops", len(sortedOps))
 		for _, op := range sortedOps {
-			if err := processOperation(op, batchProcessor); err != nil {
+			if err := BProcOperation(op, batchProcessor); err != nil {
 				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", op.TID, "msg", op.MID)
 				continue
 			}

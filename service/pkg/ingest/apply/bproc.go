@@ -8,34 +8,35 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 )
 
-func processOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	switch entry.Handler {
 	case queue.HandlerThreadCreate:
-		return processThreadCreate(entry, batchProcessor)
+		return BProcThreadCreate(entry, batchProcessor)
 	case queue.HandlerThreadUpdate:
-		return processThreadUpdate(entry, batchProcessor)
+		return BProcThreadUpdate(entry, batchProcessor)
 	case queue.HandlerThreadDelete:
-		return processThreadDelete(entry, batchProcessor)
+		return BProcThreadDelete(entry, batchProcessor)
 	case queue.HandlerMessageCreate:
-		return processMessageCreate(entry, batchProcessor)
+		return BProcMessageCreate(entry, batchProcessor)
 	case queue.HandlerMessageUpdate:
-		return processMessageUpdate(entry, batchProcessor)
+		return BProcMessageUpdate(entry, batchProcessor)
 	case queue.HandlerMessageDelete:
-		return processMessageDelete(entry, batchProcessor)
+		return BProcMessageDelete(entry, batchProcessor)
 	case queue.HandlerReactionAdd:
-		return processReactionOperation(entry, batchProcessor)
+		return BProcReactionOperation(entry, batchProcessor)
 	case queue.HandlerReactionDelete:
-		return processReactionOperation(entry, batchProcessor)
+		return BProcReactionOperation(entry, batchProcessor)
 	default:
 		return fmt.Errorf("unknown handler: %s", entry.Handler)
 	}
 }
 
 // Threads
-func processThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.Author == "" {
 		return fmt.Errorf("author required for thread creation")
 	}
@@ -73,7 +74,7 @@ func processThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	return nil
 }
 
-func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread deletion")
 	}
@@ -124,7 +125,7 @@ func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	return nil
 }
 
-func processThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	// validate
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for thread update")
@@ -166,7 +167,7 @@ func processThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor)
 }
 
 // Messages
-func processMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message create")
 	}
@@ -181,6 +182,31 @@ func processMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor
 
 	// keys
 	threadKey := entry.TID
+	author := entry.Author
+	if author == "" {
+		return fmt.Errorf("author required for message create")
+	}
+
+	// Validate user-thread relationships (ownership or participation)
+	// Skip validation if this is a system operation or if thread creation is in the same batch
+	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	if err != nil {
+		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
+		return fmt.Errorf("failed to check thread ownership: %w", err)
+	}
+
+	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
+	if err != nil {
+		logger.Error("thread_participation_check_failed", "author", author, "thread", threadKey, "error", err)
+		return fmt.Errorf("failed to check thread participation: %w", err)
+	}
+
+	if !hasOwnership && !hasParticipation {
+		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, threadKey)
+	}
+
+	logger.Debug("thread_access_validated", "author", author, "thread", threadKey, "ownership", hasOwnership, "participation", hasParticipation)
+
 	threadMessageKey := entry.MID
 	if threadMessageKey == "" {
 		return fmt.Errorf("message ID required for create")
@@ -226,7 +252,7 @@ func processMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor
 	return nil
 }
 
-func processMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	logger.Debug("process_message_update", "thread", entry.TID, "msg", entry.MID)
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message update")
@@ -290,7 +316,7 @@ func processMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor
 	return nil
 }
 
-func processMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for message deletion")
 	}
@@ -356,7 +382,7 @@ func processMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor
 	return nil
 }
 
-func processReactionOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+func BProcReactionOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	logger.Debug("process_reaction", "thread", entry.TID, "msg", entry.MID, "handler", entry.Handler)
 	if entry.TID == "" {
 		return fmt.Errorf("thread ID required for reaction operation")

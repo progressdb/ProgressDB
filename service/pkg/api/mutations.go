@@ -6,7 +6,6 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
-	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/timeutil"
@@ -37,13 +36,13 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	payload := append([]byte(nil), ctx.PostBody()...)
 
-	// Validate request
+	// validate
 	if err := router.ValidateCreateThreadRequest(ctx); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Resolve author
+	// resolve author
 	author, authErr := ValidateAuthor(ctx, "")
 	if authErr != nil {
 		WriteValidationError(ctx, authErr)
@@ -191,30 +190,6 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	author, authErr := ValidateAuthor(ctx, "")
 	if authErr != nil {
 		WriteValidationError(ctx, authErr)
-		return
-	}
-
-	// Validate thread access - check if thread exists and user has access
-	if _, authErr := ValidateReadThread(threadID, author, false); authErr != nil {
-		WriteValidationError(ctx, authErr)
-		return
-	}
-
-	// Check user-thread relationships (ownership or participation)
-	hasOwnership, err := index.DoesUserOwnThread(author, threadID)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to check thread ownership")
-		return
-	}
-
-	hasParticipation, err := index.DoesThreadHaveUser(threadID, author)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to check thread participation")
-		return
-	}
-
-	if !hasOwnership && !hasParticipation {
-		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied: user does not have access to this thread")
 		return
 	}
 
