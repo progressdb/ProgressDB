@@ -131,6 +131,12 @@ func PurgeThreadPermanently(threadID string) error {
 		// Continue with purge
 	}
 
+	// Remove soft delete marker
+	if err := index.UnmarkSoftDeleted(threadID); err != nil {
+		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadID, "error", err)
+		// Continue with purge
+	}
+
 	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", deletedKeys)
 	return nil
 }

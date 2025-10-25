@@ -43,9 +43,8 @@ const (
 	// thread → participant indexes
 	ThreadParticipants = "idx:p:%s" // idx:p:<thread_id>
 
-	// deletion indexes
-	SoftDeletedThreads  = "idx:t:sdel:u:%s:list" // idx:t:deleted:u:<user_id>:list
-	SoftDeletedMessages = "idx:m:sdel:u:%s:list" // idx:m:deleted:u:<user_id>:list
+	// soft delete markers
+	SoftDeleteMarker = "del:%s" // del:<original_key>
 
 	// padding widths (fixed for lexicographic ordering)
 	TSPadWidth  = 20 // e.g. %020d

@@ -22,7 +22,7 @@ type ValidationResult struct {
 
 func ValidateReadThread(threadID, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
 	if author != "" {
-		deletedThreads, err := index.GetSoftDeletedThreads(author)
+		isDeleted, err := index.IsSoftDeleted(threadID)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -30,13 +30,11 @@ func ValidateReadThread(threadID, author string, requireOwnership bool) (*models
 				Code:    fasthttp.StatusInternalServerError,
 			}
 		}
-		for _, deletedID := range deletedThreads {
-			if deletedID == threadID {
-				return nil, &auth.AuthorResolutionError{
-					Type:    "thread_not_found",
-					Message: "thread not found",
-					Code:    fasthttp.StatusNotFound,
-				}
+		if isDeleted {
+			return nil, &auth.AuthorResolutionError{
+				Type:    "thread_not_found",
+				Message: "thread not found",
+				Code:    fasthttp.StatusNotFound,
 			}
 		}
 	}
@@ -80,7 +78,7 @@ func ValidateReadThread(threadID, author string, requireOwnership bool) (*models
 
 func ValidateReadMessage(messageID, author string, requireOwnership bool) (*models.Message, *auth.AuthorResolutionError) {
 	if author != "" {
-		deletedMessages, err := index.GetSoftDeletedMessages(author)
+		isDeleted, err := index.IsSoftDeleted(messageID)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -88,13 +86,11 @@ func ValidateReadMessage(messageID, author string, requireOwnership bool) (*mode
 				Code:    fasthttp.StatusInternalServerError,
 			}
 		}
-		for _, deletedID := range deletedMessages {
-			if deletedID == messageID {
-				return nil, &auth.AuthorResolutionError{
-					Type:    "message_not_found",
-					Message: "message not found",
-					Code:    fasthttp.StatusNotFound,
-				}
+		if isDeleted {
+			return nil, &auth.AuthorResolutionError{
+				Type:    "message_not_found",
+				Message: "message not found",
+				Code:    fasthttp.StatusNotFound,
 			}
 		}
 	}

@@ -145,12 +145,9 @@ func GenThreadParticipantsKey(threadID string) string {
 	return fmt.Sprintf(ThreadParticipants, threadID)
 }
 
-// Deletion indexes
-func GenSoftDeletedThreadsKey(userID string) string {
-	return fmt.Sprintf(SoftDeletedThreads, userID)
-}
-func GenSoftDeletedMessagesKey(userID string) string {
-	return fmt.Sprintf(SoftDeletedMessages, userID)
+// Soft delete markers
+func GenSoftDeleteMarkerKey(originalKey string) string {
+	return fmt.Sprintf(SoftDeleteMarker, originalKey)
 }
 
 // PadTS returns timestamp padded for key (20 width, lexicographic sort)

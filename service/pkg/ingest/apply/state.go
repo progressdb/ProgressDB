@@ -34,14 +34,11 @@ func (bp *BatchProcessor) Flush() error {
 	indexData := bp.Index.GetIndexData()
 	userOwnership := bp.Index.GetUserOwnership()
 	threadParticipants := bp.Index.GetThreadParticipants()
-	deletedThreads := bp.Index.GetSoftDeletedThreads()
-	deletedMessages := bp.Index.GetSoftDeletedMessages()
+	// Note: Soft deletes now use immediate key-based markers, so no need to track deletedThreads/deletedMessages
 
 	// Pre-load all existing data BEFORE creating batches to avoid conflicts
 	existingUserThreads := make(map[string][]string)
 	existingThreadParticipants := make(map[string][]string)
-	existingDeletedThreads := make(map[string][]string)
-	existingDeletedMessages := make(map[string][]string)
 
 	// Load existing user threads
 	for userID := range userOwnership {
@@ -61,28 +58,6 @@ func (bp *BatchProcessor) Flush() error {
 			var indexes index.ThreadParticipantIndexes
 			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
 				existingThreadParticipants[threadID] = indexes.Participants
-			}
-		}
-	}
-
-	// Load existing deleted threads
-	for userID := range deletedThreads {
-		deletedThreadsKey := keys.GenSoftDeletedThreadsKey(userID)
-		if val, err := index.GetKey(deletedThreadsKey); err == nil && val != "" {
-			var indexes index.UserSoftDeletedThreads
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingDeletedThreads[userID] = indexes.Threads
-			}
-		}
-	}
-
-	// Load existing deleted messages
-	for userID := range deletedMessages {
-		deletedMessagesKey := keys.GenSoftDeletedMessagesKey(userID)
-		if val, err := index.GetKey(deletedMessagesKey); err == nil && val != "" {
-			var indexes index.UserSoftDeletedMessages
-			if err := json.Unmarshal([]byte(val), &indexes); err == nil {
-				existingDeletedMessages[userID] = indexes.Messages
 			}
 		}
 	}
@@ -229,92 +204,6 @@ func (bp *BatchProcessor) Flush() error {
 			}
 			if err := indexBatch.Set([]byte(participantsKey), data, index.WriteOpt(true)); err != nil {
 				errors = append(errors, fmt.Errorf("set thread participants %s: %w", threadID, err))
-			}
-		}
-	}
-
-	// Add deleted threads changes to index batch
-	for userID, threads := range deletedThreads {
-		deletedThreadsKey := keys.GenSoftDeletedThreadsKey(userID)
-
-		// Use pre-loaded existing deleted threads
-		existingDeletedThreadsList := existingDeletedThreads[userID]
-
-		// Apply changes
-		var updatedDeletedThreads []string
-		threadSet := make(map[string]bool)
-		for _, threadID := range existingDeletedThreadsList {
-			threadSet[threadID] = true
-		}
-
-		for threadID, deleted := range threads {
-			if deleted {
-				threadSet[threadID] = true
-			} else {
-				delete(threadSet, threadID)
-			}
-		}
-
-		for threadID := range threadSet {
-			updatedDeletedThreads = append(updatedDeletedThreads, threadID)
-		}
-
-		// Add to batch
-		if len(updatedDeletedThreads) == 0 {
-			if err := indexBatch.Delete([]byte(deletedThreadsKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete deleted threads %s: %w", userID, err))
-			}
-		} else {
-			data, err := json.Marshal(index.UserSoftDeletedThreads{Threads: updatedDeletedThreads})
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal deleted threads %s: %w", userID, err))
-				continue
-			}
-			if err := indexBatch.Set([]byte(deletedThreadsKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set deleted threads %s: %w", userID, err))
-			}
-		}
-	}
-
-	// Add deleted messages changes to index batch
-	for userID, messages := range deletedMessages {
-		deletedMessagesKey := keys.GenSoftDeletedMessagesKey(userID)
-
-		// Use pre-loaded existing deleted messages
-		existingDeletedMessages := existingDeletedMessages[userID]
-
-		// Apply changes
-		var updatedDeletedMessages []string
-		messageSet := make(map[string]bool)
-		for _, messageID := range existingDeletedMessages {
-			messageSet[messageID] = true
-		}
-
-		for messageID, deleted := range messages {
-			if deleted {
-				messageSet[messageID] = true
-			} else {
-				delete(messageSet, messageID)
-			}
-		}
-
-		for messageID := range messageSet {
-			updatedDeletedMessages = append(updatedDeletedMessages, messageID)
-		}
-
-		// Add to batch
-		if len(updatedDeletedMessages) == 0 {
-			if err := indexBatch.Delete([]byte(deletedMessagesKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete deleted messages %s: %w", userID, err))
-			}
-		} else {
-			data, err := json.Marshal(index.UserSoftDeletedMessages{Messages: updatedDeletedMessages})
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal deleted messages %s: %w", userID, err))
-				continue
-			}
-			if err := indexBatch.Set([]byte(deletedMessagesKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set deleted messages %s: %w", userID, err))
 			}
 		}
 	}

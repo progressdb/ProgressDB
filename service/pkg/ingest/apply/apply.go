@@ -85,29 +85,6 @@ func collectThreadIDsFromGroups(threadGroups map[string][]types.BatchEntry) []st
 	return threadIDs
 }
 
-func collectUserIDsFromEntries(entries []types.BatchEntry) []string {
-	userMap := make(map[string]bool)
-	for _, entry := range entries {
-		if entry.Author != "" {
-			userMap[entry.Author] = true
-		}
-		// Also check model for author
-		if entry.Model != nil {
-			if msg, ok := entry.Model.(*models.Message); ok && msg.Author != "" {
-				userMap[msg.Author] = true
-			}
-			if thread, ok := entry.Model.(*models.Thread); ok && thread.Author != "" {
-				userMap[thread.Author] = true
-			}
-		}
-	}
-	userIDs := make([]string, 0, len(userMap))
-	for userID := range userMap {
-		userIDs = append(userIDs, userID)
-	}
-	return userIDs
-}
-
 // collectProvisionalMessageKeys extracts all provisional message keys from batch entries
 func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	provKeyMap := make(map[string]bool)
@@ -215,19 +192,8 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		}
 	}
 
-	// initialize soft deleted data from database
-	// load up the deleted messsages & threads arrays per users
-	// (if there are any deletes per the user)
-	userIDs := collectUserIDsFromEntries(entries)
-	if len(userIDs) > 0 {
-		tr.Mark("init_soft_deleted_data")
-		if err := batchProcessor.Index.InitializeSoftDeletedDataFromDB(userIDs); err != nil {
-			logger.Error("init_soft_deleted_data_failed", "err", err)
-		}
-	}
-
 	// pre-load provisional key mappings from database
-	// 
+	//
 	provKeys := collectProvisionalMessageKeys(entries)
 	if len(provKeys) > 0 {
 		tr.Mark("preload_provisional_keys")

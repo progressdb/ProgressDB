@@ -14,8 +14,6 @@ type IndexManager struct {
 	messageSequencer   *MessageSequencer
 	userOwnership      map[string]map[string]bool // userID -> threadID -> owns
 	threadParticipants map[string]map[string]bool // threadID -> userID -> participates
-	deletedThreads     map[string]map[string]bool // userID -> threadID -> deleted
-	deletedMessages    map[string]map[string]bool // userID -> messageID -> deleted
 }
 
 func NewIndexManager() *IndexManager {
@@ -24,8 +22,6 @@ func NewIndexManager() *IndexManager {
 		indexData:          make(map[string][]byte),
 		userOwnership:      make(map[string]map[string]bool),
 		threadParticipants: make(map[string]map[string]bool),
-		deletedThreads:     make(map[string]map[string]bool),
-		deletedMessages:    make(map[string]map[string]bool),
 	}
 	im.messageSequencer = NewMessageSequencer(im)
 	return im
@@ -174,41 +170,6 @@ func (im *IndexManager) InitializeThreadParticipantsFromDB(threadIDs []string) e
 	return nil
 }
 
-// InitializeSoftDeletedDataFromDB loads soft deleted threads and messages for specific users
-func (im *IndexManager) InitializeSoftDeletedDataFromDB(userIDs []string) error {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	for _, userID := range userIDs {
-		// Load soft deleted threads
-		deletedThreads, err := index.GetSoftDeletedThreads(userID)
-		if err != nil {
-			logger.Debug("load_soft_deleted_threads_failed", "user_id", userID, "error", err)
-		} else {
-			if im.deletedThreads[userID] == nil {
-				im.deletedThreads[userID] = make(map[string]bool)
-			}
-			for _, threadID := range deletedThreads {
-				im.deletedThreads[userID][threadID] = true
-			}
-		}
-
-		// Load soft deleted messages
-		deletedMessages, err := index.GetSoftDeletedMessages(userID)
-		if err != nil {
-			logger.Debug("load_soft_deleted_messages_failed", "user_id", userID, "error", err)
-		} else {
-			if im.deletedMessages[userID] == nil {
-				im.deletedMessages[userID] = make(map[string]bool)
-			}
-			for _, messageID := range deletedMessages {
-				im.deletedMessages[userID][messageID] = true
-			}
-		}
-	}
-	return nil
-}
-
 // GetThreadMessages returns current thread message indexes state
 func (im *IndexManager) GetThreadMessages() map[string]*index.ThreadMessageIndexes {
 	im.mu.RLock()
@@ -308,54 +269,31 @@ func (im *IndexManager) GetThreadParticipants() map[string]map[string]bool {
 	return result
 }
 
-// Soft deleted threads tracking methods
+// Soft deleted tracking methods - now use key-based markers
 func (im *IndexManager) UpdateSoftDeletedThreads(userID, threadID string, deleted bool) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	if im.deletedThreads[userID] == nil {
-		im.deletedThreads[userID] = make(map[string]bool)
-	}
-	im.deletedThreads[userID][threadID] = deleted
-}
-
-func (im *IndexManager) GetSoftDeletedThreads() map[string]map[string]bool {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
-	result := make(map[string]map[string]bool)
-	for userID, threads := range im.deletedThreads {
-		result[userID] = make(map[string]bool)
-		for threadID, deleted := range threads {
-			result[userID][threadID] = deleted
+	// Update the key-based marker immediately
+	if deleted {
+		if err := index.MarkSoftDeleted(threadID); err != nil {
+			logger.Error("mark_thread_soft_deleted_failed", "thread_id", threadID, "error", err)
+		}
+	} else {
+		if err := index.UnmarkSoftDeleted(threadID); err != nil {
+			logger.Error("unmark_thread_soft_deleted_failed", "thread_id", threadID, "error", err)
 		}
 	}
-	return result
 }
 
-// Soft deleted messages tracking methods
 func (im *IndexManager) UpdateSoftDeletedMessages(userID, messageID string, deleted bool) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	if im.deletedMessages[userID] == nil {
-		im.deletedMessages[userID] = make(map[string]bool)
-	}
-	im.deletedMessages[userID][messageID] = deleted
-}
-
-func (im *IndexManager) GetSoftDeletedMessages() map[string]map[string]bool {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
-	result := make(map[string]map[string]bool)
-	for userID, messages := range im.deletedMessages {
-		result[userID] = make(map[string]bool)
-		for messageID, deleted := range messages {
-			result[userID][messageID] = deleted
+	// Update the key-based marker immediately
+	if deleted {
+		if err := index.MarkSoftDeleted(messageID); err != nil {
+			logger.Error("mark_message_soft_deleted_failed", "message_id", messageID, "error", err)
+		}
+	} else {
+		if err := index.UnmarkSoftDeleted(messageID); err != nil {
+			logger.Error("unmark_message_soft_deleted_failed", "message_id", messageID, "error", err)
 		}
 	}
-	return result
 }
 
 // Reset clears all accumulated index changes
@@ -367,7 +305,5 @@ func (im *IndexManager) Reset() {
 	im.indexData = make(map[string][]byte)
 	im.userOwnership = make(map[string]map[string]bool)
 	im.threadParticipants = make(map[string]map[string]bool)
-	im.deletedThreads = make(map[string]map[string]bool)
-	im.deletedMessages = make(map[string]map[string]bool)
 	im.messageSequencer.Reset()
 }

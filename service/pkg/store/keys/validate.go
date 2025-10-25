@@ -33,10 +33,9 @@ var (
 	threadVersionLCRegexp      = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:([A-Za-z0-9._-]{1,256}):vs:lc$`)
 	threadVersionLURegexp      = regexp.MustCompile(`^idx:t:([A-Za-z0-9._-]{1,256}):ms:([A-Za-z0-9._-]{1,256}):vs:lu$`)
 
-	userThreadsRegexp         = regexp.MustCompile(`^idx:u:([A-Za-z0-9._-]{1,256}):threads$`)
-	threadParticipantsRegexp  = regexp.MustCompile(`^idx:p:([A-Za-z0-9._-]{1,256})$`)
-	softDeletedThreadsRegexp  = regexp.MustCompile(`^idx:t:sdel:u:([A-Za-z0-9._-]{1,256}):list$`)
-	softDeletedMessagesRegexp = regexp.MustCompile(`^idx:m:sdel:u:([A-Za-z0-9._-]{1,256}):list$`)
+	userThreadsRegexp        = regexp.MustCompile(`^idx:u:([A-Za-z0-9._-]{1,256}):threads$`)
+	threadParticipantsRegexp = regexp.MustCompile(`^idx:p:([A-Za-z0-9._-]{1,256})$`)
+	softDeleteMarkerRegexp   = regexp.MustCompile(`^del:(.+)$`)
 )
 
 func ValidateMessagePrvKey(key string) error {
@@ -198,16 +197,9 @@ func ValidateThreadParticipantsKey(key string) error {
 	return nil
 }
 
-func ValidateSoftDeletedThreadsKey(key string) error {
-	if !softDeletedThreadsRegexp.MatchString(key) {
-		return fmt.Errorf("invalid soft deleted threads key format: %q", key)
-	}
-	return nil
-}
-
-func ValidateSoftDeletedMessagesKey(key string) error {
-	if !softDeletedMessagesRegexp.MatchString(key) {
-		return fmt.Errorf("invalid soft deleted messages key format: %q", key)
+func ValidateSoftDeleteMarkerKey(key string) error {
+	if !softDeleteMarkerRegexp.MatchString(key) {
+		return fmt.Errorf("invalid soft delete marker key format: %q", key)
 	}
 	return nil
 }

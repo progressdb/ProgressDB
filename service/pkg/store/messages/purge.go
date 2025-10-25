@@ -31,7 +31,7 @@ func PurgeMessagePermanently(messageID string) error {
 	defer vi.Close()
 
 	// find metadata from first version
-	var threadID, author string
+	var threadID string
 	var seq int64
 	var versionKeys [][]byte
 	found := false
@@ -44,12 +44,11 @@ func PurgeMessagePermanently(messageID string) error {
 			if s, err := keys.ParseVersionKeySequence(string(vi.Key())); err == nil {
 				seq = int64(s)
 			}
-			// unmarshal data to get thread and author
+			// unmarshal data to get thread
 			v := append([]byte(nil), vi.Value()...)
 			var msg models.Message
 			if err := json.Unmarshal(v, &msg); err == nil {
 				threadID = msg.Thread
-				author = msg.Author
 				found = true
 			}
 		}
@@ -63,11 +62,9 @@ func PurgeMessagePermanently(messageID string) error {
 		if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
 			logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
 		}
-		// remove from deleted messages index
-		if author != "" {
-			if err := index.UpdateSoftDeletedMessages(author, messageID, false); err != nil {
-				logger.Error("update_deleted_messages_purge_failed", "user", author, "msg", messageID, "error", err)
-			}
+		// remove soft delete marker
+		if err := index.UnmarkSoftDeleted(messageID); err != nil {
+			logger.Error("unmark_soft_deleted_purge_failed", "msg", messageID, "error", err)
 		}
 	}
 
