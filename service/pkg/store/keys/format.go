@@ -1,14 +1,18 @@
 package keys
 
 const (
-	// notation dictionary (lowercase for key formats):
-	// m: message
-	// t: thread
-	// v: version
-	// idx: index
-	// p: participants
-	// u: user
-	// ms: message store
+	// notation dictionary for key formats:
+	// t   = thread
+	// m   = message
+	// v   = version
+	// idx = index
+	// ms  = messages
+	// u   = user
+	// p   = participant
+	// del = soft delete marker
+	// rel = relationship marker
+	// All keys are lowercase; segments are separated by ":"
+	// <...> = variable segment (e.g. <thread_id>, <msg_id>)
 
 	// provisional
 	ThreadPrvKey  = "t:%s"      // t:<threadID>

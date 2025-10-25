@@ -6,6 +6,7 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
+	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 	"progressdb/pkg/timeutil"
@@ -171,6 +172,13 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "thread id missing")
 		return
 	}
+
+	// Validate thread ID format
+	if err := keys.ValidateThreadKey(threadID); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+		return
+	}
+
 	payload := append([]byte(nil), ctx.PostBody()...)
 
 	// Validate request
@@ -186,14 +194,41 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Validate thread access - check if thread exists and user has access
+	if _, authErr := ValidateReadThread(threadID, author, false); authErr != nil {
+		WriteValidationError(ctx, authErr)
+		return
+	}
+
+	// Check user-thread relationships (ownership or participation)
+	hasOwnership, err := index.DoesUserOwnThread(author, threadID)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to check thread ownership")
+		return
+	}
+
+	hasParticipation, err := index.DoesThreadHaveUser(threadID, author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to check thread participation")
+		return
+	}
+
+	if !hasOwnership && !hasParticipation {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied: user does not have access to this thread")
+		return
+	}
+
 	reqtime := timeutil.Now().UnixNano()
 	metadata := NewRequestMetadata(ctx, author)
 	pid := keys.GenMessagePrvKey(threadID, fmt.Sprintf("%d", reqtime))
 
+	// Convert thread ID to full key format for batch processor
+	fullThreadKey := keys.GenThreadKey(threadID)
+
 	tr.Mark("enqueue")
 	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
 		Handler: queue.HandlerMessageCreate,
-		TID:     threadID,
+		TID:     fullThreadKey,
 		MID:     pid,
 		Payload: payload,
 		TS:      reqtime,
