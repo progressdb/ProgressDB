@@ -7,31 +7,30 @@ import (
 	"progressdb/pkg/store/db/index"
 )
 
-// IndexManager handles index-only concerns and ephemeral state management
-// This file contains:
-// - Thread message index management (UpdateThreadMessageIndexes, GetNextThreadSequence)
-// - Thread sequence initialization (InitializeThreadSequencesFromDB)
-// - Index data structures and state access
-// - MessageSequencer integration
-
 type IndexManager struct {
-	mu               sync.RWMutex
-	threadMessages   map[string]*index.ThreadMessageIndexes
-	indexData        map[string][]byte
-	messageSequencer *MessageSequencer
+	mu                 sync.RWMutex
+	threadMessages     map[string]*index.ThreadMessageIndexes
+	indexData          map[string][]byte
+	messageSequencer   *MessageSequencer
+	userOwnership      map[string]map[string]bool // userID -> threadID -> owns
+	threadParticipants map[string]map[string]bool // threadID -> userID -> participates
+	deletedThreads     map[string]map[string]bool // userID -> threadID -> deleted
+	deletedMessages    map[string]map[string]bool // userID -> messageID -> deleted
 }
 
-// NewIndexManager creates a new index manager with initialized state
 func NewIndexManager() *IndexManager {
 	im := &IndexManager{
-		threadMessages: make(map[string]*index.ThreadMessageIndexes),
-		indexData:      make(map[string][]byte),
+		threadMessages:     make(map[string]*index.ThreadMessageIndexes),
+		indexData:          make(map[string][]byte),
+		userOwnership:      make(map[string]map[string]bool),
+		threadParticipants: make(map[string]map[string]bool),
+		deletedThreads:     make(map[string]map[string]bool),
+		deletedMessages:    make(map[string]map[string]bool),
 	}
 	im.messageSequencer = NewMessageSequencer(im)
 	return im
 }
 
-// InitThreadMessageIndexes initializes thread message indexes for a thread
 func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
@@ -47,7 +46,6 @@ func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
 	}
 }
 
-// UpdateThreadMessageIndexes updates thread message indexes with new operation
 func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
@@ -75,13 +73,8 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, u
 		if updatedAt > idx.LastUpdatedAt {
 			idx.LastUpdatedAt = updatedAt
 		}
-		// Note: For creates, sequence is incremented in ResolveMessageID
-		// For updates/reactions, we need to increment here
-		// We can detect creates by checking if the msgKey has a sequence
-		if extractSequenceFromKey(msgKey) == 0 {
-			// This is an update/reaction, increment sequence
-			idx.End++
-		}
+		// Note: Sequence is only incremented in ResolveMessageID for new messages
+		// Updates and reactions should not increment the sequence
 		idx.Cdeltas = append(idx.Cdeltas, 1)
 		idx.Udeltas = append(idx.Udeltas, 1)
 	}
@@ -110,7 +103,6 @@ func (im *IndexManager) GetNextThreadSequence(threadID string) uint64 {
 	return idx.End
 }
 
-// InitializeThreadSequencesFromDB loads existing thread message indexes from database
 func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) error {
 	im.mu.Lock()
 	defer im.mu.Unlock()
@@ -131,6 +123,87 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) erro
 			}
 		} else {
 			im.threadMessages[threadID] = &threadIdx
+		}
+	}
+	return nil
+}
+
+// InitializeUserOwnershipFromDB loads user ownership data for specific users
+func (im *IndexManager) InitializeUserOwnershipFromDB(userIDs []string) error {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	for _, userID := range userIDs {
+		threads, err := index.GetUserThreads(userID)
+		if err != nil {
+			logger.Debug("load_user_ownership_failed", "user_id", userID, "error", err)
+			continue
+		}
+
+		if im.userOwnership[userID] == nil {
+			im.userOwnership[userID] = make(map[string]bool)
+		}
+
+		for _, threadID := range threads {
+			im.userOwnership[userID][threadID] = true
+		}
+	}
+	return nil
+}
+
+// InitializeThreadParticipantsFromDB loads thread participants data for specific threads
+func (im *IndexManager) InitializeThreadParticipantsFromDB(threadIDs []string) error {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	for _, threadID := range threadIDs {
+		participants, err := index.GetThreadParticipants(threadID)
+		if err != nil {
+			logger.Debug("load_thread_participants_failed", "thread_id", threadID, "error", err)
+			continue
+		}
+
+		if im.threadParticipants[threadID] == nil {
+			im.threadParticipants[threadID] = make(map[string]bool)
+		}
+
+		for _, participantID := range participants {
+			im.threadParticipants[threadID][participantID] = true
+		}
+	}
+	return nil
+}
+
+// InitializeSoftDeletedDataFromDB loads soft deleted threads and messages for specific users
+func (im *IndexManager) InitializeSoftDeletedDataFromDB(userIDs []string) error {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	for _, userID := range userIDs {
+		// Load soft deleted threads
+		deletedThreads, err := index.GetSoftDeletedThreads(userID)
+		if err != nil {
+			logger.Debug("load_soft_deleted_threads_failed", "user_id", userID, "error", err)
+		} else {
+			if im.deletedThreads[userID] == nil {
+				im.deletedThreads[userID] = make(map[string]bool)
+			}
+			for _, threadID := range deletedThreads {
+				im.deletedThreads[userID][threadID] = true
+			}
+		}
+
+		// Load soft deleted messages
+		deletedMessages, err := index.GetSoftDeletedMessages(userID)
+		if err != nil {
+			logger.Debug("load_soft_deleted_messages_failed", "user_id", userID, "error", err)
+		} else {
+			if im.deletedMessages[userID] == nil {
+				im.deletedMessages[userID] = make(map[string]bool)
+			}
+			for _, messageID := range deletedMessages {
+				im.deletedMessages[userID][messageID] = true
+			}
 		}
 	}
 	return nil
@@ -185,6 +258,106 @@ func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
 	im.threadMessages[threadID] = nil
 }
 
+// User ownership tracking methods
+func (im *IndexManager) UpdateUserOwnership(userID, threadID string, owns bool) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if im.userOwnership[userID] == nil {
+		im.userOwnership[userID] = make(map[string]bool)
+	}
+	im.userOwnership[userID][threadID] = owns
+}
+
+func (im *IndexManager) GetUserOwnership() map[string]map[string]bool {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
+
+	result := make(map[string]map[string]bool)
+	for userID, threads := range im.userOwnership {
+		result[userID] = make(map[string]bool)
+		for threadID, owns := range threads {
+			result[userID][threadID] = owns
+		}
+	}
+	return result
+}
+
+// Thread participants tracking methods
+func (im *IndexManager) UpdateThreadParticipants(threadID, userID string, participates bool) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if im.threadParticipants[threadID] == nil {
+		im.threadParticipants[threadID] = make(map[string]bool)
+	}
+	im.threadParticipants[threadID][userID] = participates
+}
+
+func (im *IndexManager) GetThreadParticipants() map[string]map[string]bool {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
+
+	result := make(map[string]map[string]bool)
+	for threadID, users := range im.threadParticipants {
+		result[threadID] = make(map[string]bool)
+		for userID, participates := range users {
+			result[threadID][userID] = participates
+		}
+	}
+	return result
+}
+
+// Soft deleted threads tracking methods
+func (im *IndexManager) UpdateSoftDeletedThreads(userID, threadID string, deleted bool) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if im.deletedThreads[userID] == nil {
+		im.deletedThreads[userID] = make(map[string]bool)
+	}
+	im.deletedThreads[userID][threadID] = deleted
+}
+
+func (im *IndexManager) GetSoftDeletedThreads() map[string]map[string]bool {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
+
+	result := make(map[string]map[string]bool)
+	for userID, threads := range im.deletedThreads {
+		result[userID] = make(map[string]bool)
+		for threadID, deleted := range threads {
+			result[userID][threadID] = deleted
+		}
+	}
+	return result
+}
+
+// Soft deleted messages tracking methods
+func (im *IndexManager) UpdateSoftDeletedMessages(userID, messageID string, deleted bool) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if im.deletedMessages[userID] == nil {
+		im.deletedMessages[userID] = make(map[string]bool)
+	}
+	im.deletedMessages[userID][messageID] = deleted
+}
+
+func (im *IndexManager) GetSoftDeletedMessages() map[string]map[string]bool {
+	im.mu.RLock()
+	defer im.mu.RUnlock()
+
+	result := make(map[string]map[string]bool)
+	for userID, messages := range im.deletedMessages {
+		result[userID] = make(map[string]bool)
+		for messageID, deleted := range messages {
+			result[userID][messageID] = deleted
+		}
+	}
+	return result
+}
+
 // Reset clears all accumulated index changes
 func (im *IndexManager) Reset() {
 	im.mu.Lock()
@@ -192,5 +365,9 @@ func (im *IndexManager) Reset() {
 
 	im.threadMessages = make(map[string]*index.ThreadMessageIndexes)
 	im.indexData = make(map[string][]byte)
+	im.userOwnership = make(map[string]map[string]bool)
+	im.threadParticipants = make(map[string]map[string]bool)
+	im.deletedThreads = make(map[string]map[string]bool)
+	im.deletedMessages = make(map[string]map[string]bool)
 	im.messageSequencer.Reset()
 }

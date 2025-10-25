@@ -22,7 +22,7 @@ type ValidationResult struct {
 
 func ValidateReadThread(threadID, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
 	if author != "" {
-		deletedThreads, err := index.GetDeletedThreads(author)
+		deletedThreads, err := index.GetSoftDeletedThreads(author)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -80,7 +80,7 @@ func ValidateReadThread(threadID, author string, requireOwnership bool) (*models
 
 func ValidateReadMessage(messageID, author string, requireOwnership bool) (*models.Message, *auth.AuthorResolutionError) {
 	if author != "" {
-		deletedMessages, err := index.GetDeletedMessages(author)
+		deletedMessages, err := index.GetSoftDeletedMessages(author)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",

@@ -8,7 +8,6 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 )
 
@@ -67,8 +66,8 @@ func processThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	// update thread indexes
 	batchProcessor.Data.SetThreadMeta(threadKey, updatedPayload)
 	batchProcessor.Index.InitThreadMessageIndexes(threadKey)
-	index.UpdateUserOwnership(thread.Author, threadKey, true)
-	index.UpdateThreadParticipants(threadKey, thread.Author, true)
+	batchProcessor.Index.UpdateUserOwnership(thread.Author, threadKey, true)
+	batchProcessor.Index.UpdateThreadParticipants(threadKey, thread.Author, true)
 	return nil
 }
 
@@ -79,7 +78,6 @@ func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	if entry.Author == "" {
 		return fmt.Errorf("author required for thread deletion")
 	}
-	batchProcessor.Index.mu.Lock()
 
 	// block if anything else than provisional or final key
 	if keys.ValidateThreadKey(entry.TID) != nil && keys.ValidateThreadPrvKey(entry.TID) != nil {
@@ -89,12 +87,11 @@ func processThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor)
 	threadKey := entry.TID
 	author := entry.Author
 
-	// sync indexes
-	batchProcessor.Index.mu.Unlock()
+	// sync through managers
 	batchProcessor.Data.DeleteThreadMeta(threadKey)
 	batchProcessor.Index.DeleteThreadMessageIndexes(threadKey)
-	index.UpdateUserOwnership(author, threadKey, false)
-	index.UpdateDeletedThreads(author, threadKey, true)
+	batchProcessor.Index.UpdateUserOwnership(author, threadKey, false)
+	batchProcessor.Index.UpdateSoftDeletedThreads(author, threadKey, true)
 	return nil
 }
 
@@ -233,9 +230,7 @@ func processMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor
 		return fmt.Errorf("set message data: %w", err)
 	}
 	versionKey := keys.GenVersionKey(resolvedMessageID, entry.TS, threadSequence)
-	if err := index.SaveKey(versionKey, updatedPayload); err != nil {
-		return fmt.Errorf("add message version: %w", err)
-	}
+	batchProcessor.Data.SetVersionKey(versionKey, updatedPayload)
 
 	// Update indexes (no sequence increment for updates)
 	threadComp, messageComp, err := keys.ExtractMessageComponents(threadKey, resolvedMessageID)
@@ -271,7 +266,7 @@ func processMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor
 	}
 	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, finalMessageID)
 
-	index.UpdateDeletedMessages(msg.Author, finalMessageID, true)
+	batchProcessor.Index.UpdateSoftDeletedMessages(msg.Author, finalMessageID, true)
 	return nil
 }
 
@@ -310,9 +305,7 @@ func processReactionOperation(entry types.BatchEntry, batchProcessor *BatchProce
 		return fmt.Errorf("set message data: %w", err)
 	}
 	versionKey := keys.GenVersionKey(finalMessageID, entry.TS, threadSequence)
-	if err := index.SaveKey(versionKey, updatedPayload); err != nil {
-		return fmt.Errorf("add message version: %w", err)
-	}
+	batchProcessor.Data.SetVersionKey(versionKey, updatedPayload)
 	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, finalMessageID)
 	return nil
 }

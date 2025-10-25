@@ -44,8 +44,8 @@ const (
 	ThreadParticipants = "idx:p:%s" // idx:p:<thread_id>
 
 	// deletion indexes
-	DeletedThreads  = "idx:t:deleted:u:%s:list" // idx:t:deleted:u:<user_id>:list
-	DeletedMessages = "idx:m:deleted:u:%s:list" // idx:m:deleted:u:<user_id>:list
+	SoftDeletedThreads  = "idx:t:sdel:u:%s:list" // idx:t:deleted:u:<user_id>:list
+	SoftDeletedMessages = "idx:m:sdel:u:%s:list" // idx:m:deleted:u:<user_id>:list
 
 	// padding widths (fixed for lexicographic ordering)
 	TSPadWidth  = 20 // e.g. %020d

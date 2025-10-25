@@ -9,32 +9,32 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// UserDeletedThreads holds deleted threads for a user.
-type UserDeletedThreads struct {
+// UserSoftDeletedThreads holds soft deleted threads for a user.
+type UserSoftDeletedThreads struct {
 	Threads []string `json:"threads"`
 }
 
-// UserDeletedMessages holds deleted messages for a user.
-type UserDeletedMessages struct {
+// UserSoftDeletedMessages holds soft deleted messages for a user.
+type UserSoftDeletedMessages struct {
 	Messages []string `json:"messages"`
 }
 
-// UpdateDeletedThreads adds or removes a deleted thread for user.
-func UpdateDeletedThreads(userID, threadID string, add bool) error {
-	tr := telemetry.Track("index.update_deleted_threads")
+// UpdateSoftDeletedThreads adds or removes a soft deleted thread for user.
+func UpdateSoftDeletedThreads(userID, threadID string, add bool) error {
+	tr := telemetry.Track("index.update_soft_deleted_threads")
 	defer tr.Finish()
 
-	key := keys.GenDeletedThreadsKey(userID)
+	key := keys.GenSoftDeletedThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
-	var indexes UserDeletedThreads
+	var indexes UserSoftDeletedThreads
 	if val != "" {
 		if err := json.Unmarshal([]byte(val), &indexes); err != nil {
-			return fmt.Errorf("unmarshal deleted threads: %w", err)
+			return fmt.Errorf("unmarshal soft deleted threads: %w", err)
 		}
 	}
 
@@ -58,27 +58,27 @@ func UpdateDeletedThreads(userID, threadID string, add bool) error {
 
 	data, err := json.Marshal(indexes)
 	if err != nil {
-		return fmt.Errorf("marshal deleted threads: %w", err)
+		return fmt.Errorf("marshal soft deleted threads: %w", err)
 	}
 	return SaveKey(key, data)
 }
 
-// UpdateDeletedMessages adds or removes a deleted message for user.
-func UpdateDeletedMessages(userID, msgID string, add bool) error {
-	tr := telemetry.Track("index.update_deleted_messages")
+// UpdateSoftDeletedMessages adds or removes a soft deleted message for user.
+func UpdateSoftDeletedMessages(userID, msgID string, add bool) error {
+	tr := telemetry.Track("index.update_soft_deleted_messages")
 	defer tr.Finish()
 
-	key := keys.GenDeletedMessagesKey(userID)
+	key := keys.GenSoftDeletedMessagesKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil && !IsNotFound(err) {
 		return err
 	}
 
-	var indexes UserDeletedMessages
+	var indexes UserSoftDeletedMessages
 	if val != "" {
 		if err := json.Unmarshal([]byte(val), &indexes); err != nil {
-			return fmt.Errorf("unmarshal deleted messages: %w", err)
+			return fmt.Errorf("unmarshal soft deleted messages: %w", err)
 		}
 	}
 
@@ -102,14 +102,14 @@ func UpdateDeletedMessages(userID, msgID string, add bool) error {
 
 	data, err := json.Marshal(indexes)
 	if err != nil {
-		return fmt.Errorf("marshal deleted messages: %w", err)
+		return fmt.Errorf("marshal soft deleted messages: %w", err)
 	}
 	return SaveKey(key, data)
 }
 
-// GetDeletedThreads returns deleted threads for user.
-func GetDeletedThreads(userID string) ([]string, error) {
-	key := keys.GenDeletedThreadsKey(userID)
+// GetSoftDeletedThreads returns soft deleted threads for user.
+func GetSoftDeletedThreads(userID string) ([]string, error) {
+	key := keys.GenSoftDeletedThreadsKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -119,16 +119,16 @@ func GetDeletedThreads(userID string) ([]string, error) {
 		return nil, err
 	}
 
-	var indexes UserDeletedThreads
+	var indexes UserSoftDeletedThreads
 	if err := json.Unmarshal([]byte(val), &indexes); err != nil {
-		return nil, fmt.Errorf("unmarshal deleted threads: %w", err)
+		return nil, fmt.Errorf("unmarshal soft deleted threads: %w", err)
 	}
 	return indexes.Threads, nil
 }
 
-// GetDeletedMessages returns deleted messages for user.
-func GetDeletedMessages(userID string) ([]string, error) {
-	key := keys.GenDeletedMessagesKey(userID)
+// GetSoftDeletedMessages returns soft deleted messages for user.
+func GetSoftDeletedMessages(userID string) ([]string, error) {
+	key := keys.GenSoftDeletedMessagesKey(userID)
 
 	val, err := GetKey(key)
 	if err != nil {
@@ -138,25 +138,25 @@ func GetDeletedMessages(userID string) ([]string, error) {
 		return nil, err
 	}
 
-	var indexes UserDeletedMessages
+	var indexes UserSoftDeletedMessages
 	if err := json.Unmarshal([]byte(val), &indexes); err != nil {
-		return nil, fmt.Errorf("unmarshal deleted messages: %w", err)
+		return nil, fmt.Errorf("unmarshal soft deleted messages: %w", err)
 	}
 	return indexes.Messages, nil
 }
 
-// DeleteUserDeletionIndexes removes user's deletion indexes.
-func DeleteUserDeletionIndexes(userID string) error {
-	tr := telemetry.Track("index.delete_user_deletion_indexes")
+// DeleteUserSoftDeletionIndexes removes user's soft deletion indexes.
+func DeleteUserSoftDeletionIndexes(userID string) error {
+	tr := telemetry.Track("index.delete_user_soft_deletion_indexes")
 	defer tr.Finish()
 
 	keysToDelete := []string{}
-	keysToDelete = append(keysToDelete, keys.GenDeletedThreadsKey(userID))
-	keysToDelete = append(keysToDelete, keys.GenDeletedMessagesKey(userID))
+	keysToDelete = append(keysToDelete, keys.GenSoftDeletedThreadsKey(userID))
+	keysToDelete = append(keysToDelete, keys.GenSoftDeletedMessagesKey(userID))
 
 	for _, key := range keysToDelete {
 		if err := DeleteKey(key); err != nil {
-			logger.Error("delete_user_deletion_index_failed", "key", key, "error", err)
+			logger.Error("delete_user_soft_deletion_index_failed", "key", key, "error", err)
 			return err
 		}
 	}

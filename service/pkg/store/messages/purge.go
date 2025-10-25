@@ -65,7 +65,7 @@ func PurgeMessagePermanently(messageID string) error {
 		}
 		// remove from deleted messages index
 		if author != "" {
-			if err := index.UpdateDeletedMessages(author, messageID, false); err != nil {
+			if err := index.UpdateSoftDeletedMessages(author, messageID, false); err != nil {
 				logger.Error("update_deleted_messages_purge_failed", "user", author, "msg", messageID, "error", err)
 			}
 		}
