@@ -10,6 +10,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/keys"
 
 	"progressdb/pkg/telemetry"
 )
@@ -84,6 +85,90 @@ func collectThreadIDsFromGroups(threadGroups map[string][]types.BatchEntry) []st
 	return threadIDs
 }
 
+// collectProvisionalMessageKeys extracts all provisional message keys from batch entries
+func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
+	provKeyMap := make(map[string]bool)
+
+	for _, entry := range entries {
+		// Check message ID in entry
+		if entry.MID != "" && keys.IsProvisionalMessageKey(entry.MID) {
+			provKeyMap[entry.MID] = true
+		}
+
+		// Check message ID in model
+		if entry.Model != nil {
+			if msg, ok := entry.Model.(*models.Message); ok && msg.ID != "" && keys.IsProvisionalMessageKey(msg.ID) {
+				provKeyMap[msg.ID] = true
+			}
+		}
+
+		// Check message ID in payload
+		if len(entry.Payload) > 0 {
+			var msg struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(entry.Payload, &msg); err == nil && msg.ID != "" && keys.IsProvisionalMessageKey(msg.ID) {
+				provKeyMap[msg.ID] = true
+			}
+		}
+	}
+
+	provKeys := make([]string, 0, len(provKeyMap))
+	for provKey := range provKeyMap {
+		provKeys = append(provKeys, provKey)
+	}
+	return provKeys
+}
+
+// bulkLookupProvisionalKeys looks up multiple provisional keys in database and returns existing mappings
+func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
+	mappings := make(map[string]string)
+
+	if storedb.Client == nil {
+		logger.Debug("store_not_ready_for_bulk_lookup")
+		return mappings, nil
+	}
+
+	iter, err := storedb.Client.NewIter(nil)
+	if err != nil {
+		logger.Error("bulk_lookup_iterator_failed", "error", err)
+		return mappings, err
+	}
+	defer iter.Close()
+
+	for _, provKey := range provKeys {
+		// Create prefix for provisional key + ":" to find the sequenced key
+		prefix := provKey + ":"
+
+		// Seek to the prefix
+		iter.SeekGE([]byte(prefix))
+
+		if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
+			// Found the actual sequenced key
+			finalKey := string(iter.Key())
+			mappings[provKey] = finalKey
+			logger.Debug("bulk_lookup_found_mapping", "provisional", provKey, "final", finalKey)
+		} else {
+			logger.Debug("bulk_lookup_not_found", "provisional", provKey)
+		}
+	}
+
+	return mappings, nil
+}
+
+// prepopulateProvisionalCache loads existing provisional->final mappings into MessageSequencer cache
+func prepopulateProvisionalCache(batchIndexManager *BatchIndexManager, mappings map[string]string) {
+	batchIndexManager.mu.Lock()
+	defer batchIndexManager.mu.Unlock()
+
+	for provKey, finalKey := range mappings {
+		batchIndexManager.messageSequencer.provisionalToFinalKeys[provKey] = finalKey
+		logger.Debug("prepopulated_cache", "provisional", provKey, "final", finalKey)
+	}
+
+	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
+}
+
 func ApplyBatchToDB(entries []types.BatchEntry) error {
 	tr := telemetry.Track("ingest.apply_batch")
 	defer tr.Finish()
@@ -110,6 +195,19 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		tr.Mark("init_thread_sequences")
 		if err := batchIndexManager.InitializeThreadSequencesFromDB(threadIDs); err != nil {
 			logger.Error("init_thread_sequences_failed", "err", err)
+		}
+	}
+
+	// pre-load provisional key mappings from database
+	provKeys := collectProvisionalMessageKeys(entries)
+	if len(provKeys) > 0 {
+		tr.Mark("preload_provisional_keys")
+		mappings, err := bulkLookupProvisionalKeys(provKeys)
+		if err != nil {
+			logger.Error("preload_provisional_keys_failed", "err", err)
+		} else {
+			prepopulateProvisionalCache(batchIndexManager, mappings)
+			logger.Debug("preload_provisional_keys_complete", "total_keys", len(provKeys), "found_mappings", len(mappings))
 		}
 	}
 	tr.Mark("process_thread_groups")

@@ -11,6 +11,13 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
+// Index management and batch operations
+// This file contains:
+// - Thread message index management (UpdateThreadMessageIndexes, GetNextThreadSequence)
+// - Thread sequence initialization (InitializeThreadSequencesFromDB)
+// - Batch flushing logic (Flush)
+// - Index data structures and initialization
+
 type BatchIndexManager struct {
 	mu               sync.RWMutex
 	threadMessages   map[string]*index.ThreadMessageIndexes
@@ -27,13 +34,14 @@ type MessageData struct {
 }
 
 func NewBatchIndexManager() *BatchIndexManager {
-	return &BatchIndexManager{
-		threadMessages:   make(map[string]*index.ThreadMessageIndexes),
-		threadMeta:       make(map[string][]byte),
-		messageData:      make(map[string]MessageData),
-		indexData:        make(map[string][]byte),
-		messageSequencer: NewMessageSequencer(),
+	bim := &BatchIndexManager{
+		threadMessages: make(map[string]*index.ThreadMessageIndexes),
+		threadMeta:     make(map[string][]byte),
+		messageData:    make(map[string]MessageData),
+		indexData:      make(map[string][]byte),
 	}
+	bim.messageSequencer = NewMessageSequencer(bim)
+	return bim
 }
 
 func (b *BatchIndexManager) InitThreadMessageIndexes(threadID string) {
@@ -78,10 +86,39 @@ func (b *BatchIndexManager) UpdateThreadMessageIndexes(threadID string, createdA
 		if updatedAt > idx.LastUpdatedAt {
 			idx.LastUpdatedAt = updatedAt
 		}
-		idx.End++
+		// Note: For creates, sequence is incremented in ResolveMessageID
+		// For updates/reactions, we need to increment here
+		// We can detect creates by checking if the msgKey has a sequence
+		if extractSequenceFromKey(msgKey) == 0 {
+			// This is an update/reaction, increment sequence
+			idx.End++
+		}
 		idx.Cdeltas = append(idx.Cdeltas, 1)
 		idx.Udeltas = append(idx.Udeltas, 1)
 	}
+}
+
+// GetNextThreadSequence returns the next sequence number for a thread atomically
+func (b *BatchIndexManager) GetNextThreadSequence(threadID string) uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	idx := b.threadMessages[threadID]
+	if idx == nil {
+		idx = &index.ThreadMessageIndexes{
+			Start:         0,
+			End:           0,
+			Cdeltas:       []int64{},
+			Udeltas:       []int64{},
+			Skips:         []string{},
+			LastCreatedAt: 0,
+			LastUpdatedAt: 0,
+		}
+		b.threadMessages[threadID] = idx
+	}
+
+	idx.End++
+	return idx.End
 }
 
 // InitializeThreadSequencesFromDB loads existing thread message indexes from database
@@ -108,73 +145,6 @@ func (b *BatchIndexManager) InitializeThreadSequencesFromDB(threadIDs []string) 
 		}
 	}
 	return nil
-}
-
-// SetThreadMeta sets thread metadata
-func (b *BatchIndexManager) SetThreadMeta(threadID string, data []byte) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.threadMeta[threadID] = data
-}
-
-// DeleteThreadMeta deletes thread metadata
-func (b *BatchIndexManager) DeleteThreadMeta(threadID string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.threadMeta[threadID] = nil
-}
-
-// DeleteThreadMessageIndexes deletes thread message indexes
-func (b *BatchIndexManager) DeleteThreadMessageIndexes(threadID string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.threadMessages[threadID] = nil
-}
-
-// SetMessageData sets message data
-func (b *BatchIndexManager) SetMessageData(threadID, messageID string, data []byte, ts int64, seq uint64) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	messageKey := keys.GenMessageKey(threadID, messageID, seq)
-	b.messageData[messageKey] = MessageData{
-		Key:  messageKey,
-		Data: data,
-		TS:   ts,
-		Seq:  seq,
-	}
-	return nil
-}
-
-// AddMessageVersion adds a message version (now uses direct index call)
-func (b *BatchIndexManager) AddMessageVersion(messageID string, data []byte, ts int64, seq uint64) error {
-	versionKey := keys.GenVersionKey(messageID, ts, seq)
-	return index.SaveKey(versionKey, data)
-}
-
-// AddThreadToUser adds thread to user (now uses direct index call)
-func (b *BatchIndexManager) AddThreadToUser(userID, threadID string) error {
-	return index.UpdateUserOwnership(userID, threadID, true)
-}
-
-// RemoveThreadFromUser removes thread from user (now uses direct index call)
-func (b *BatchIndexManager) RemoveThreadFromUser(userID, threadID string) error {
-	return index.UpdateUserOwnership(userID, threadID, false)
-}
-
-// AddParticipantToThread adds participant to thread (now uses direct index call)
-func (b *BatchIndexManager) AddParticipantToThread(threadID, userID string) error {
-	return index.UpdateThreadParticipants(threadID, userID, true)
-}
-
-// AddDeletedThreadToUser adds deleted thread to user (now uses direct index call)
-func (b *BatchIndexManager) AddDeletedThreadToUser(userID, threadID string) error {
-	return index.UpdateDeletedThreads(userID, threadID, true)
-}
-
-// AddDeletedMessageToUser adds deleted message to user (now uses direct index call)
-func (b *BatchIndexManager) AddDeletedMessageToUser(userID, messageID string) error {
-	return index.UpdateDeletedMessages(userID, messageID, true)
 }
 
 func (b *BatchIndexManager) Flush() error {

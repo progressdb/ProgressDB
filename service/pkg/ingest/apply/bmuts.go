@@ -143,50 +143,46 @@ func processMessageCreate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		return fmt.Errorf("model required for message create")
 	}
 
-	threadKey := entry.TID
-
 	msg, ok := entry.Model.(*models.Message)
 	if !ok {
 		return fmt.Errorf("invalid model type for message create")
 	}
 
-	// assume final key
+	// keys
+	threadKey := entry.TID
 	threadMessageKey := entry.MID
 	if threadMessageKey == "" {
 		return fmt.Errorf("message ID required for create")
 	}
 
-	// handle if provisional key
-	if msg.ID != "" && batchIndexManager.messageSequencer.IsProvisionalMessageKey(msg.ID) && msg.ID != threadMessageKey {
-		batchIndexManager.mu.Lock()
-		batchIndexManager.messageSequencer.MapProvisionalToFinalMessageKey(msg.ID, threadMessageKey)
-		batchIndexManager.mu.Unlock()
-		logger.Debug("mapped_provisional_message", "provisional", msg.ID, "final", threadMessageKey)
+	// resolve
+	resolvedID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, threadMessageKey)
+	if err != nil {
+		logger.Error("message_create_resolution_failed", "msg_id", msg.ID, "err", err)
+		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
+	threadMessageKey = resolvedID
 
 	// sync
 	msg.ID = threadMessageKey
 	msg.Thread = threadKey
-	if msg.TS == 0 {
-		msg.TS = entry.TS
-	}
+
+	msg.TS = entry.TS
 
 	updatedPayload, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal message: %w", err)
 	}
 
-	// Update thread message indexes first to get thread-scoped sequence
-	batchIndexManager.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
+	// Extract sequence from the resolved final key
+	threadSequence := extractSequenceFromKey(threadMessageKey)
 
-	// Get the thread-scoped sequence number
-	batchIndexManager.mu.Lock()
-	threadSequence := batchIndexManager.threadMessages[threadKey].End
-	batchIndexManager.mu.Unlock()
+	// Update thread indexes (note: sequence already incremented in ResolveMessageID)
+	batchIndexManager.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
 
 	// Store message data with thread-scoped sequence
 	if err := batchIndexManager.SetMessageData(threadKey, threadMessageKey, updatedPayload, entry.TS, threadSequence); err != nil {
-		return fmt.Errorf("set message data: %w", err)
+		return fmt.Errorf("setmessage data: %w", err)
 	}
 	return nil
 }
@@ -207,18 +203,12 @@ func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		return fmt.Errorf("invalid model type for message update")
 	}
 
-	provMessageKey := entry.MID
-	if provMessageKey == "" {
-		return fmt.Errorf("message ID required for update")
-	}
-
-	// Resolve provisional to final message ID if needed
-	batchIndexManager.mu.Lock()
-	resolvedMessageID, err := batchIndexManager.messageSequencer.GetFinalMessageKey(provMessageKey)
-	batchIndexManager.mu.Unlock()
+	// Resolve message ID using unified method (handles provisional/final automatically)
+	// msg.ID should always be populated for message operations
+	resolvedMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
-		logger.Error("message_resolution_failed", "provisional_mid", provMessageKey, "err", err)
-		return fmt.Errorf("resolve message ID %s: %w", provMessageKey, err)
+		logger.Error("message_update_resolution_failed", "msg_id", msg.ID, "err", err)
+		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
 
 	// sync
@@ -233,15 +223,8 @@ func processMessageUpdate(entry types.BatchEntry, batchIndexManager *BatchIndexM
 		return fmt.Errorf("marshal message: %w", err)
 	}
 
-	// For updates, get existing thread-scoped sequence (don't increment)
-	batchIndexManager.mu.Lock()
-	var threadSequence uint64
-	if threadIdx := batchIndexManager.threadMessages[threadKey]; threadIdx != nil {
-		threadSequence = threadIdx.End
-	} else {
-		threadSequence = 0
-	}
-	batchIndexManager.mu.Unlock()
+	// Extract sequence from the resolved final key
+	threadSequence := extractSequenceFromKey(resolvedMessageID)
 
 	if err := batchIndexManager.SetMessageData(threadKey, resolvedMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
@@ -276,20 +259,13 @@ func processMessageDelete(entry types.BatchEntry, batchIndexManager *BatchIndexM
 			return fmt.Errorf("unmarshal message: %w", err)
 		}
 	}
-	batchIndexManager.mu.Lock()
-	finalMessageID, err := batchIndexManager.messageSequencer.GetFinalMessageKey(msg.ID)
-	batchIndexManager.mu.Unlock()
+	// Resolve message ID using unified method (handles provisional/final automatically)
+	finalMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
-		logger.Error("message_resolution_failed", "provisional_mid", msg.ID, "handler", entry.Handler, "err", err)
+		logger.Error("message_delete_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
-	// Extract components from provisional keys before generating final key
-	threadComp, messageComp, err := keys.ExtractMessageComponents(finalThreadID, finalMessageID)
-	if err != nil {
-		return fmt.Errorf("extract message components: %w", err)
-	}
-	msgKey := keys.GenMessageKey(threadComp, messageComp, uint64(entry.Enq))
-	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, msgKey)
+	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, true, finalMessageID)
 	if msg.Author != "" {
 		batchIndexManager.AddDeletedMessageToUser(msg.Author, finalMessageID)
 	}
@@ -312,11 +288,10 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	if !ok {
 		return fmt.Errorf("invalid model type for reaction operation")
 	}
-	batchIndexManager.mu.Lock()
-	finalMessageID, err := batchIndexManager.messageSequencer.GetFinalMessageKey(msg.ID)
-	batchIndexManager.mu.Unlock()
+	// Resolve message ID using unified method (handles provisional/final automatically)
+	finalMessageID, err := batchIndexManager.messageSequencer.ResolveMessageID(msg.ID, msg.ID)
 	if err != nil {
-		logger.Error("message_resolution_failed", "provisional_mid", msg.ID, "handler", entry.Handler, "err", err)
+		logger.Error("message_reaction_resolution_failed", "msg_id", msg.ID, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message ID %s: %w", msg.ID, err)
 	}
 	msg.Thread = finalThreadID
@@ -325,18 +300,15 @@ func processReactionOperation(entry types.BatchEntry, batchIndexManager *BatchIn
 	if err != nil {
 		return fmt.Errorf("marshal updated message: %w", err)
 	}
-	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+	// Extract sequence from the resolved final key
+	threadSequence := extractSequenceFromKey(finalMessageID)
+
+	if err := batchIndexManager.SetMessageData(finalThreadID, finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, uint64(entry.Enq)); err != nil {
+	if err := batchIndexManager.AddMessageVersion(finalMessageID, updatedPayload, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("add message version: %w", err)
 	}
-	// Extract components from provisional keys before generating final key
-	threadComp, messageComp, err := keys.ExtractMessageComponents(finalThreadID, finalMessageID)
-	if err != nil {
-		return fmt.Errorf("extract message components: %w", err)
-	}
-	msgKey := keys.GenMessageKey(threadComp, messageComp, uint64(entry.Enq))
-	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, msgKey)
+	batchIndexManager.UpdateThreadMessageIndexes(finalThreadID, msg.TS, entry.TS, false, finalMessageID)
 	return nil
 }
