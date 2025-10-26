@@ -30,11 +30,16 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 	}
 }
 
-// standardized payload extraction and check
+// standardized payload extraction and check with 100kb (102400 bytes) max size
 func extractPayloadOrFail(ctx *fasthttp.RequestCtx) ([]byte, bool) {
+	const maxPayloadSize = 102400 // 100 KB
 	body := ctx.PostBody()
 	if len(body) == 0 {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "empty request payload")
+		return nil, false
+	}
+	if len(body) > maxPayloadSize {
+		router.WriteJSONError(ctx, fasthttp.StatusRequestEntityTooLarge, "request payload exceeds 100kb limit")
 		return nil, false
 	}
 	ref := make([]byte, len(body))
@@ -265,6 +270,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	messageKey := keys.GenMessagePrvKey(threadKey, fmt.Sprintf("%d", reqtime))
 	m.Author = author
 	m.Key = messageKey
+	m.Thread = threadKey
 	m.TS = reqtime
 
 	//validate

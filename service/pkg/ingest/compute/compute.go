@@ -5,9 +5,7 @@ package compute
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
@@ -15,8 +13,6 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/threads"
-	"progressdb/pkg/telemetry"
-	"progressdb/pkg/timeutil"
 )
 
 // thread meta op methods
@@ -26,35 +22,38 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	}
 
 	// parse
-	th, ok := op.Payload.(*models.Thread)
+	thread, ok := op.Payload.(*models.Thread)
 	if !ok {
 		return nil, fmt.Errorf("invalid payload type for thread create")
 	}
 
+	// sync
+	kmsMeta, err := encryption.ProvisionThreadKMS(thread.Key)
+	if err != nil {
+		logger.Error("thread_kms_provision_failed", "err", err, "thread", thread.Key, "author", thread.Author)
+		return nil, fmt.Errorf("kms provision failed: %w", err)
+	}
+	thread.KMS = kmsMeta
+
 	// validate
-	if err := ValidateThread(*th, ValidationTypeCreate); err != nil {
-		logger.Error("thread_create_validation_failed", "err", err, "author", th.Author, "title", th.Title)
+	if err := ValidateReadyForBatchEntry(thread); err != nil {
+		logger.Error("thread_create_validation_failed", "err", err, "author", thread.Author, "title", thread.Title)
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
-	// gen DEK - if needed
-	tr := telemetry.Track("ingest.thread_encryption")
-	defer tr.Finish()
-	tr.Mark("kms_provision")
-	kmsMeta, err := encryption.ProvisionThreadKMS(th.Key)
-	if err != nil {
-		logger.Error("thread_kms_provision_failed", "err", err, "thread", th.Key, "author", th.Author)
-		return nil, err
-	}
-	th.KMS = kmsMeta
-
-	// send back
+	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	// verify ownership for thread update
-	threadData, err := threads.GetThread(op.TKey)
+	// parse
+	update, ok := op.Payload.(*models.ThreadUpdatePartial)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for thread update")
+	}
+
+	// resolve
+	threadData, err := threads.GetThread(update.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}
@@ -65,32 +64,28 @@ func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	}
 
 	// check if user owns the thread
-	userID := op.Extras.UserID
-	if userID == "" {
-		return nil, fmt.Errorf("missing user identity for authorization")
-	}
-	if existingThread.Author != userID {
+	if existingThread.Author != op.Extras.UserID {
 		return nil, fmt.Errorf("user not authorized to update this thread")
 	}
 
-	// Parse partial update payload
-	updatePayload, ok := op.Payload.(*models.ThreadUpdatePartial)
-	if !ok {
-		return nil, fmt.Errorf("invalid payload type for thread update")
+	// validate
+	if err := ValidateReadyForBatchEntry(update); err != nil {
+		return nil, fmt.Errorf("thread update validation failed: %w", err)
 	}
 
-	// Set updated TS if not provided
-	if updatePayload.UpdatedTS == 0 {
-		ts := timeutil.Now().UnixNano()
-		updatePayload.UpdatedTS = ts
-	}
-
+	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	// verify ownership
-	threadData, err := threads.GetThread(op.TKey)
+	// parse
+	del, ok := op.Payload.(*models.ThreadDeletePartial)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type for thread delete")
+	}
+
+	// resolve
+	threadData, err := threads.GetThread(del.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}
@@ -101,15 +96,16 @@ func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	}
 
 	// check if user owns the thread
-	userID := op.Extras.UserID
-	if userID == "" {
-		return nil, fmt.Errorf("missing user identity for authorization")
-	}
-	if thread.Author != userID {
+	if thread.Author != op.Extras.UserID {
 		return nil, fmt.Errorf("user not authorized to delete this thread")
 	}
 
-	// send back
+	// validate
+	if err := ValidateReadyForBatchEntry(del); err != nil {
+		return nil, fmt.Errorf("thread delete validation failed: %w", err)
+	}
+
+	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
@@ -121,27 +117,15 @@ func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	}
 
 	// parse
-	userID := op.Extras.UserID
-	if userID == "" {
-		return nil, fmt.Errorf("missing user identity for authorization")
-	}
-
-	m, ok := op.Payload.(*models.Message)
+	message, ok := op.Payload.(*models.Message)
 	if !ok {
 		return nil, fmt.Errorf("invalid payload type for message create")
 	}
 
 	// validate
-	if m.Body == nil {
-		return nil, fmt.Errorf("body is required")
+	if err := ValidateReadyForBatchEntry(message); err != nil {
+		return nil, fmt.Errorf("message create validation failed: %w", err)
 	}
-
-	// sync
-	m.Key = op.MKey
-	m.Thread = op.TKey
-	m.TS = op.TS
-	m.Author = userID
-	op.Payload = &m
 
 	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
@@ -151,64 +135,39 @@ func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
-	if _, ok := op.Payload.(*models.MessageUpdatePartial); !ok {
+
+	// parse
+	update, ok := op.Payload.(*models.MessageUpdatePartial)
+	if !ok {
 		return nil, fmt.Errorf("invalid payload type for message update")
 	}
 
+	// validate
+	if err := ValidateReadyForBatchEntry(update); err != nil {
+		return nil, fmt.Errorf("message update validation failed: %w", err)
+	}
+
+	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
 func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+	// parse
 	del, ok := op.Payload.(*models.MessageDeletePartial)
 	if !ok {
 		return nil, fmt.Errorf("invalid payload type for message delete")
 	}
-	id := del.Key
-	if id == "" {
-		id = op.MKey
-	}
-	if id == "" {
-		return nil, fmt.Errorf("missing message id for delete")
-	}
+
 	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{Key: id, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
+	tomb := models.Message{Key: del.Key, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
 	op.Payload = &tomb
+
+	// validate
+	if err := ValidateReadyForBatchEntry(&tomb); err != nil {
+		return nil, fmt.Errorf("message delete validation failed: %w", err)
+	}
+
+	// done
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
-}
-
-// others
-type ValidationType string
-
-const (
-	ValidationTypeCreate ValidationType = "create"
-	ValidationTypeUpdate ValidationType = "update"
-	ValidationTypeDelete ValidationType = "delete"
-)
-
-func ValidateThread(th models.Thread, validationType ValidationType) error {
-	tr := telemetry.Track("validation.validate_thread")
-	defer tr.Finish()
-
-	var errs []string
-
-	// ID is required for update/delete, but not for create
-	if validationType != ValidationTypeCreate && th.Key == "" {
-		errs = append(errs, "id is required")
-	}
-
-	// Title is required for create/update, but not for delete
-	if validationType != ValidationTypeDelete && th.Title == "" {
-		errs = append(errs, "title is required")
-	}
-
-	// Author is required for create/update, but not for delete
-	if validationType != ValidationTypeDelete && th.Author == "" {
-		errs = append(errs, "author is required")
-	}
-
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
 }

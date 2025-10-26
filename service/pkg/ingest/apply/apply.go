@@ -17,7 +17,7 @@ import (
 func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	threadGroups := make(map[string][]types.BatchEntry)
 	for _, entry := range entries {
-		threadKey := extractTKey(entry) // primary thread identifier
+		threadKey := extractTKey(entry.QueueOp) // primary thread identifier
 
 		// Group entry under its threadKey (may still be "")
 		threadGroups[threadKey] = append(threadGroups[threadKey], entry)
@@ -96,50 +96,50 @@ func extractAuthor(entry types.BatchEntry) string {
 	return ""
 }
 
-func extractTKey(entry types.BatchEntry) string {
-	switch entry.Handler {
+func extractTKey(qop *queue.QueueOp) string {
+	switch qop.Handler {
 	case queue.HandlerThreadCreate:
-		if th, ok := entry.Payload.(*models.Thread); ok {
+		if th, ok := qop.Payload.(*models.Thread); ok {
 			return th.Key
 		}
 	case queue.HandlerThreadUpdate:
-		if update, ok := entry.Payload.(*models.ThreadUpdatePartial); ok && update.Key != "" {
+		if update, ok := qop.Payload.(*models.ThreadUpdatePartial); ok && update.Key != "" {
 			return update.Key
 		}
 	case queue.HandlerThreadDelete:
-		if del, ok := entry.Payload.(*models.ThreadDeletePartial); ok && del.Key != "" {
+		if del, ok := qop.Payload.(*models.ThreadDeletePartial); ok && del.Key != "" {
 			return del.Key
 		}
 	case queue.HandlerMessageCreate:
-		if msg, ok := entry.Payload.(*models.Message); ok {
-			return msg.Key
+		if msg, ok := qop.Payload.(*models.Message); ok {
+			return msg.Thread
 		}
 	case queue.HandlerMessageUpdate:
-		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.Key != "" {
-			return update.Key
+		if update, ok := qop.Payload.(*models.MessageUpdatePartial); ok && update.Thread != "" {
+			return update.Thread
 		}
 	case queue.HandlerMessageDelete:
-		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
-			return del.Key
+		if del, ok := qop.Payload.(*models.MessageDeletePartial); ok && del.Thread != "" {
+			return del.Thread
 		}
 	}
 	return ""
 }
 
-func extractMKey(entry types.BatchEntry) string {
-	switch entry.Handler {
+func extractMKey(qop *queue.QueueOp) string {
+	switch qop.Handler {
 	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate, queue.HandlerThreadDelete:
 		return ""
 	case queue.HandlerMessageCreate:
-		if m, ok := entry.Payload.(*models.Message); ok {
+		if m, ok := qop.Payload.(*models.Message); ok {
 			return m.Key
 		}
 	case queue.HandlerMessageUpdate:
-		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.Key != "" {
+		if update, ok := qop.Payload.(*models.MessageUpdatePartial); ok && update.Key != "" {
 			return update.Key
 		}
 	case queue.HandlerMessageDelete:
-		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
+		if del, ok := qop.Payload.(*models.MessageDeletePartial); ok {
 			return del.Key
 		}
 	}
@@ -252,7 +252,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	for threadKey, threadEntries := range threadGroups {
 		logger.Debug("thread_group", "thread_id", threadKey, "operations", len(threadEntries))
 		for _, entry := range threadEntries {
-			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", entry.TKey, "mkey", entry.MKey)
+			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", extractTKey(entry.QueueOp), "mkey", extractMKey(entry.QueueOp))
 		}
 	}
 
@@ -286,7 +286,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		logger.Debug("batch_processing_thread", "thread", threadKey, "ops", len(sortedOps))
 		for _, op := range sortedOps {
 			if err := BProcOperation(op, batchProcessor); err != nil {
-				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", op.TKey, "msg", op.MKey)
+				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", extractTKey(op.QueueOp), "msg", extractMKey(op.QueueOp))
 				continue
 			}
 		}

@@ -35,8 +35,6 @@ type QueueOp struct {
 	WalSeq    uint64          // WAL-assigned sequence (used when WAL enabled)
 	WalOffset int64           // WAL offset, -1 if unset
 	Extras    RequestMetadata // Optional metadata (e.g. user id, role)
-	TKey      string          // Thread key
-	MKey      string          // Message key
 }
 
 // QueueItem wraps a QueueOp and buffer/queue references.
