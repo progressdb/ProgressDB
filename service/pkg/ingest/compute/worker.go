@@ -57,10 +57,9 @@ func (cw *ComputeWorker) run() {
 
 		entries, err := cw.compute(itm.Op) // run compute function
 		if err != nil {
-			logger.Error("compute_failed", "err", err, "handler", itm.Op.Handler, "thread", itm.Op.TKey, "msg", itm.Op.MKey)
 			// write failed op for recovery
 			if writeErr := cw.failedOpWriter.WriteFailedOp(itm.Op, err); writeErr != nil {
-				logger.Error("failed_op_write_failed", "err", writeErr, "handler", itm.Op.Handler, "thread", itm.Op.TKey, "msg", itm.Op.MKey)
+				logger.Error("failed_op_write_failed", "err", writeErr, "handler", itm.Op.Handler)
 			}
 			itm.JobDone() // mark job done on error
 			continue

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"progressdb/pkg/ingest/apply"
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 )
@@ -66,16 +67,27 @@ func (fw *FailedOpWriter) WriteFailedOp(op *qpkg.QueueOp, err error) error {
 		fw.currentDate = date
 	}
 
+	// extract keys using apply functions
+	var key, threadKey string
+	switch op.Handler {
+	case qpkg.HandlerMessageCreate, qpkg.HandlerMessageUpdate, qpkg.HandlerMessageDelete:
+		key = apply.ExtractMKey(op)
+		threadKey = apply.ExtractTKey(op)
+	default:
+		key = apply.ExtractTKey(op)
+		threadKey = apply.ExtractTKey(op)
+	}
+
 	// create failed operation record
 	failedOp := FailedOp{
 		Timestamp: time.Now(),
-		Key:       fmt.Sprintf("%s_%d", op.MKey, time.Now().UnixNano()),
+		Key:       fmt.Sprintf("%s_%d", key, time.Now().UnixNano()),
 		Op:        op,
 		Error:     err.Error(),
 		Retries:   0,
 		Metadata: map[string]string{
 			"handler": string(op.Handler),
-			"thread":  op.TKey,
+			"thread":  threadKey,
 		},
 	}
 

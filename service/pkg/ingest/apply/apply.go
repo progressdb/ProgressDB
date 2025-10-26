@@ -17,7 +17,7 @@ import (
 func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	threadGroups := make(map[string][]types.BatchEntry)
 	for _, entry := range entries {
-		threadKey := extractTKey(entry.QueueOp) // primary thread identifier
+		threadKey := ExtractTKey(entry.QueueOp) // primary thread identifier
 
 		// Group entry under its threadKey (may still be "")
 		threadGroups[threadKey] = append(threadGroups[threadKey], entry)
@@ -96,7 +96,7 @@ func extractAuthor(entry types.BatchEntry) string {
 	return ""
 }
 
-func extractTKey(qop *queue.QueueOp) string {
+func ExtractTKey(qop *queue.QueueOp) string {
 	switch qop.Handler {
 	case queue.HandlerThreadCreate:
 		if th, ok := qop.Payload.(*models.Thread); ok {
@@ -126,7 +126,7 @@ func extractTKey(qop *queue.QueueOp) string {
 	return ""
 }
 
-func extractMKey(qop *queue.QueueOp) string {
+func ExtractMKey(qop *queue.QueueOp) string {
 	switch qop.Handler {
 	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate, queue.HandlerThreadDelete:
 		return ""
@@ -252,7 +252,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	for threadKey, threadEntries := range threadGroups {
 		logger.Debug("thread_group", "thread_id", threadKey, "operations", len(threadEntries))
 		for _, entry := range threadEntries {
-			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", extractTKey(entry.QueueOp), "mkey", extractMKey(entry.QueueOp))
+			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", ExtractTKey(entry.QueueOp), "mkey", ExtractMKey(entry.QueueOp))
 		}
 	}
 
@@ -286,7 +286,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		logger.Debug("batch_processing_thread", "thread", threadKey, "ops", len(sortedOps))
 		for _, op := range sortedOps {
 			if err := BProcOperation(op, batchProcessor); err != nil {
-				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", extractTKey(op.QueueOp), "msg", extractMKey(op.QueueOp))
+				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", ExtractTKey(op.QueueOp), "msg", ExtractMKey(op.QueueOp))
 				continue
 			}
 		}

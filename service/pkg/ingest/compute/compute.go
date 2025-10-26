@@ -37,7 +37,6 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 
 	// validate
 	if err := ValidateReadyForBatchEntry(thread); err != nil {
-		logger.Error("thread_create_validation_failed", "err", err, "author", thread.Author, "title", thread.Title)
 		return nil, fmt.Errorf("thread validation failed: %w", err)
 	}
 
@@ -98,11 +97,6 @@ func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	// check if user owns the thread
 	if thread.Author != op.Extras.UserID {
 		return nil, fmt.Errorf("user not authorized to delete this thread")
-	}
-
-	// validate
-	if err := ValidateReadyForBatchEntry(del); err != nil {
-		return nil, fmt.Errorf("thread delete validation failed: %w", err)
 	}
 
 	// done
