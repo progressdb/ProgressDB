@@ -15,7 +15,7 @@ import (
 // FailedOp represents a failed compute operation for recovery
 type FailedOp struct {
 	Timestamp time.Time         `json:"timestamp"`
-	ID        string            `json:"id"`       // unique identifier
+	Key       string            `json:"key"`      // unique key
 	Op        *qpkg.QueueOp     `json:"op"`       // original operation
 	Error     string            `json:"error"`    // error message
 	Retries   int               `json:"retries"`  // retry count
@@ -69,13 +69,13 @@ func (fw *FailedOpWriter) WriteFailedOp(op *qpkg.QueueOp, err error) error {
 	// create failed operation record
 	failedOp := FailedOp{
 		Timestamp: time.Now(),
-		ID:        fmt.Sprintf("%s_%d", op.MID, time.Now().UnixNano()),
+		Key:       fmt.Sprintf("%s_%d", op.MKey, time.Now().UnixNano()),
 		Op:        op,
 		Error:     err.Error(),
 		Retries:   0,
 		Metadata: map[string]string{
 			"handler": string(op.Handler),
-			"thread":  op.TID,
+			"thread":  op.TKey,
 		},
 	}
 
@@ -89,7 +89,7 @@ func (fw *FailedOpWriter) WriteFailedOp(op *qpkg.QueueOp, err error) error {
 		return fmt.Errorf("failed to write failed op: %w", writeErr)
 	}
 
-	logger.Error("failed_op_written", "id", failedOp.ID, "error", err, "handler", op.Handler)
+	logger.Error("failed_op_written", "id", failedOp.Key, "error", err, "handler", op.Handler)
 	return nil
 }
 

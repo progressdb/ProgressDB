@@ -32,7 +32,7 @@ func GetUserThreads(userID string) ([]string, error) {
 
 // ThreadWithTimestamp represents a thread with its creation timestamp
 type ThreadWithTimestamp struct {
-	ID        string
+	Key       string
 	Timestamp int64
 }
 
@@ -42,15 +42,15 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	defer tr.Finish()
 
 	// Get all thread IDs for user
-	threadIDs, err := GetUserThreads(userID)
+	threadKeys, err := GetUserThreads(userID)
 	if err != nil {
 		return nil, "", false, err
 	}
 
 	// Get thread metadata with timestamps
-	threads := make([]ThreadWithTimestamp, 0, len(threadIDs))
-	for _, threadID := range threadIDs {
-		threadKey := keys.GenThreadKey(threadID)
+	threads := make([]ThreadWithTimestamp, 0, len(threadKeys))
+	for _, threadKey := range threadKeys {
+		threadKey := keys.GenThreadKey(threadKey)
 		threadData, err := GetKey(threadKey)
 		if err != nil {
 			continue // Skip threads that can't be found
@@ -64,7 +64,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 		}
 
 		threads = append(threads, ThreadWithTimestamp{
-			ID:        threadID,
+			Key:       threadKey,
 			Timestamp: threadMeta.CreatedAt,
 		})
 	}
@@ -87,7 +87,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 
 		// Find the thread with the cursor timestamp
 		for i, t := range threads {
-			if t.ID == tc.ThreadID && t.Timestamp == tc.Timestamp {
+			if t.Key == tc.ThreadKey && t.Timestamp == tc.Timestamp {
 				startIndex = i + 1 // Start after the cursor position
 				break
 			}
@@ -105,9 +105,9 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	}
 
 	pageThreads := threads[startIndex:endIndex]
-	threadIDsOnly := make([]string, len(pageThreads))
+	threadKeysOnly := make([]string, len(pageThreads))
 	for i, t := range pageThreads {
-		threadIDsOnly[i] = t.ID
+		threadKeysOnly[i] = t.Key
 	}
 
 	// Determine if there are more threads
@@ -117,20 +117,20 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	var nextCursor string
 	if hasMore && len(pageThreads) > 0 {
 		lastThread := pageThreads[len(pageThreads)-1]
-		nextCursor, err = encodeThreadCursor(userID, lastThread.ID, lastThread.Timestamp)
+		nextCursor, err = encodeThreadCursor(userID, lastThread.Key, lastThread.Timestamp)
 		if err != nil {
 			return nil, "", false, err
 		}
 	}
 
-	return threadIDsOnly, nextCursor, hasMore, nil
+	return threadKeysOnly, nextCursor, hasMore, nil
 }
 
 // Helper functions for cursor encoding/decoding
-func encodeThreadCursor(userID, threadID string, timestamp int64) (string, error) {
+func encodeThreadCursor(userID, threadKey string, timestamp int64) (string, error) {
 	cursor := map[string]interface{}{
 		"user_id":   userID,
-		"thread_id": threadID,
+		"thread_id": threadKey,
 		"timestamp": timestamp,
 	}
 	data, err := json.Marshal(cursor)
@@ -142,12 +142,12 @@ func encodeThreadCursor(userID, threadID string, timestamp int64) (string, error
 
 func decodeThreadCursor(cursor string) (struct {
 	UserID    string `json:"user_id"`
-	ThreadID  string `json:"thread_id"`
+	ThreadKey string `json:"thread_key"`
 	Timestamp int64  `json:"timestamp"`
 }, error) {
 	var result struct {
 		UserID    string `json:"user_id"`
-		ThreadID  string `json:"thread_id"`
+		ThreadKey string `json:"thread_key"`
 		Timestamp int64  `json:"timestamp"`
 	}
 
@@ -160,8 +160,8 @@ func decodeThreadCursor(cursor string) (struct {
 }
 
 // GetThreadParticipants returns participants in thread using relationship key scanning.
-func GetThreadParticipants(threadID string) ([]string, error) {
-	prefix := fmt.Sprintf("rel:t:%s:u:", threadID)
+func GetThreadParticipants(threadKey string) ([]string, error) {
+	prefix := fmt.Sprintf("rel:t:%s:u:", threadKey)
 	keys, err := ListKeys(prefix)
 	if err != nil {
 		return nil, fmt.Errorf("list thread participant keys: %w", err)
@@ -171,7 +171,7 @@ func GetThreadParticipants(threadID string) ([]string, error) {
 	users := make([]string, 0, len(keys))
 	for _, key := range keys {
 		parts := strings.Split(key, ":")
-		if len(parts) >= 5 && parts[0] == "rel" && parts[1] == "t" && parts[2] == threadID && parts[3] == "u" {
+		if len(parts) >= 5 && parts[0] == "rel" && parts[1] == "t" && parts[2] == threadKey && parts[3] == "u" {
 			users = append(users, parts[4])
 		}
 	}

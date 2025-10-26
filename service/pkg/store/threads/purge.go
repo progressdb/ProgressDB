@@ -85,9 +85,9 @@ func PurgeThreadPermanently(threadID string) error {
 		if bytes.Contains(key, []byte(":m:")) {
 			value := append([]byte(nil), iter.Value()...)
 			var m models.Message
-			if err := json.Unmarshal(value, &m); err == nil && m.ID != "" {
+			if err := json.Unmarshal(value, &m); err == nil && m.Key != "" {
 				// Get version prefix for this message
-				versionPrefix := keys.GenAllMessageVersionsPrefix(m.ID)
+				versionPrefix := keys.GenAllMessageVersionsPrefix(m.Key)
 				vIter, err := storedb.Client.NewIter(&pebble.IterOptions{
 					LowerBound: []byte(versionPrefix),
 					UpperBound: calculateUpperBound(versionPrefix),

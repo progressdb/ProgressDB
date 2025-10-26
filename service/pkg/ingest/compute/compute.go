@@ -41,9 +41,9 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	tr := telemetry.Track("ingest.thread_encryption")
 	defer tr.Finish()
 	tr.Mark("kms_provision")
-	kmsMeta, err := encryption.ProvisionThreadKMS(th.ID)
+	kmsMeta, err := encryption.ProvisionThreadKMS(th.Key)
 	if err != nil {
-		logger.Error("thread_kms_provision_failed", "err", err, "thread", th.ID, "author", th.Author)
+		logger.Error("thread_kms_provision_failed", "err", err, "thread", th.Key, "author", th.Author)
 		return nil, err
 	}
 	th.KMS = kmsMeta
@@ -54,7 +54,7 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 }
 func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	// verify ownership for thread update
-	threadData, err := threads.GetThread(op.TID)
+	threadData, err := threads.GetThread(op.TKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}
@@ -80,9 +80,9 @@ func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	}
 
 	// Set updated TS if not provided
-	if updatePayload.UpdatedTS == nil {
+	if updatePayload.UpdatedTS == 0 {
 		ts := timeutil.Now().UnixNano()
-		updatePayload.UpdatedTS = &ts
+		updatePayload.UpdatedTS = ts
 	}
 
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
@@ -90,7 +90,7 @@ func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 }
 func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
 	// verify ownership
-	threadData, err := threads.GetThread(op.TID)
+	threadData, err := threads.GetThread(op.TKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}
@@ -137,8 +137,8 @@ func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	}
 
 	// sync
-	m.ID = op.MID
-	m.Thread = op.TID
+	m.Key = op.MKey
+	m.Thread = op.TKey
 	m.TS = op.TS
 	m.Author = userID
 	op.Payload = &m
@@ -159,19 +159,19 @@ func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	return []types.BatchEntry{be}, nil
 }
 func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
-	del, ok := op.Payload.(*models.DeletePartial)
+	del, ok := op.Payload.(*models.MessageDeletePartial)
 	if !ok {
 		return nil, fmt.Errorf("invalid payload type for message delete")
 	}
-	id := del.ID
+	id := del.Key
 	if id == "" {
-		id = op.MID
+		id = op.MKey
 	}
 	if id == "" {
 		return nil, fmt.Errorf("missing message id for delete")
 	}
 	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{ID: id, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
+	tomb := models.Message{Key: id, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
 	op.Payload = &tomb
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
@@ -193,7 +193,7 @@ func ValidateThread(th models.Thread, validationType ValidationType) error {
 	var errs []string
 
 	// ID is required for update/delete, but not for create
-	if validationType != ValidationTypeCreate && th.ID == "" {
+	if validationType != ValidationTypeCreate && th.Key == "" {
 		errs = append(errs, "id is required")
 	}
 

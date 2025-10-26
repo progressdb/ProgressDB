@@ -111,7 +111,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 		if err := json.Unmarshal([]byte(raw), &th); err != nil {
 			continue
 		}
-		indexes, err := index.GetThreadMessageIndexes(th.ID)
+		indexes, err := index.GetThreadMessageIndexes(th.Key)
 		if err != nil {
 			continue
 		}
@@ -382,7 +382,7 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 			if payload, merr := json.Marshal(th); merr == nil {
-				_ = saveThread(th.ID, string(payload))
+				_ = saveThread(th.Key, string(payload))
 			}
 		}
 	}
@@ -544,7 +544,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
 				if payload, merr := json.Marshal(th); merr == nil {
-					_ = saveThread(th.ID, string(payload))
+					_ = saveThread(th.Key, string(payload))
 				}
 			}
 
@@ -644,7 +644,7 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 		for _, raw := range vals {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(raw), &th); err == nil {
-				threadsOut = append(threadsOut, th.ID)
+				threadsOut = append(threadsOut, th.Key)
 			}
 		}
 		return threadsOut, nil

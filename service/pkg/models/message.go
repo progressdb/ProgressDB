@@ -15,7 +15,7 @@ type ReadResponseCursorInfo struct {
 }
 
 type Message struct {
-	ID     string `json:"id"`
+	Key    string `json:"key"`
 	Thread string `json:"thread"`
 	Author string `json:"author,omitempty"`
 	// Role represents the actor role for this message (e.g. "user", "system").
@@ -23,7 +23,7 @@ type Message struct {
 	Role string      `json:"role,omitempty"`
 	TS   int64       `json:"ts"`
 	Body interface{} `json:"body,omitempty"`
-	// Optional reply-to message ID
+	// Optional reply-to message Key
 	ReplyTo string `json:"reply_to,omitempty"`
 	// Deleted flag; soft-delete implemented as an appended tombstone version
 	Deleted bool `json:"deleted,omitempty"`

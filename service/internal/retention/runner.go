@@ -15,7 +15,7 @@ import (
 	"progressdb/pkg/timeutil"
 )
 
-// genRetentionID generates a unique identifier for retention operations
+// genRetentionID generates a unique keyentifier for retention operations
 func genRetentionID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, timeutil.Now().UnixNano())
 }
@@ -85,19 +85,19 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 
 	// open audit writer
 	runID := genRetentionID("run")
-	logger.Info("retention_run_start", "run_id", runID, "owner", owner, "dry_run", ret.DryRun)
+	logger.Info("retention_run_start", "run_key", runID, "owner", owner, "dry_run", ret.DryRun)
 	// header (emit audit event via dedicated audit logger if present)
 	if logger.Audit != nil {
-		logger.Audit.Info("retention_audit_header", "run_id", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+		logger.Audit.Info("retention_audit_header", "run_key", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
 	} else {
-		logger.Info("retention_audit_header", "run_id", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
+		logger.Info("retention_audit_header", "run_key", runID, "started_at", timeutil.Now().Format(time.RFC3339), "dry_run", ret.DryRun, "period", ret.Period)
 	}
 
 	// compute cutoff
 	pd, perr := parseRetention(ret.Period)
 	if perr != nil {
-		logger.Error("retention_invalid_period", "period", ret.Period, "error", perr)
-		return fmt.Errorf("invalid retention period: %w", perr)
+		logger.Error("retention_invalkey_period", "period", ret.Period, "error", perr)
+		return fmt.Errorf("invalkey retention period: %w", perr)
 	}
 	cutoff := timeutil.Now().Add(-pd)
 
@@ -116,51 +116,51 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 		}
 		var th models.Thread
 		if err := json.Unmarshal([]byte(ts), &th); err != nil {
-			logger.Error("retention_invalid_thread_json", "error", err)
+			logger.Error("retention_invalkey_thread_json", "error", err)
 			continue
 		}
 		scanned++
 		if th.Deleted && time.Unix(0, th.DeletedTS).Before(cutoff) {
 			// eligible
-			entry := map[string]interface{}{"item_type": "thread", "item_id": th.ID}
+			entry := map[string]interface{}{"item_type": "thread", "item_key": th.Key}
 			if ret.DryRun {
 				entry["status"] = "dry_run"
 				if logger.Audit != nil {
-					logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+					logger.Audit.Info("retention_audit_item", "run_key", runID, "item", entry)
 				} else {
-					logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+					logger.Info("retention_audit_item", "run_key", runID, "item", entry)
 				}
 				continue
 			}
 			// attempt purge
-			err := thread_store.PurgeThreadPermanently(th.ID)
+			err := thread_store.PurgeThreadPermanently(th.Key)
 			if err != nil {
 				entry["status"] = "failed"
 				entry["error"] = err.Error()
 				if logger.Audit != nil {
-					logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+					logger.Audit.Info("retention_audit_item", "run_key", runID, "item", entry)
 				} else {
-					logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+					logger.Info("retention_audit_item", "run_key", runID, "item", entry)
 				}
-				logger.Error("retention_purge_failed", "thread", th.ID, "error", err)
+				logger.Error("retention_purge_failed", "thread", th.Key, "error", err)
 				continue
 			}
 			entry["status"] = "success"
 			entry["purged_at"] = timeutil.Now().Format(time.RFC3339)
 			if logger.Audit != nil {
-				logger.Audit.Info("retention_audit_item", "run_id", runID, "item", entry)
+				logger.Audit.Info("retention_audit_item", "run_key", runID, "item", entry)
 			} else {
-				logger.Info("retention_audit_item", "run_id", runID, "item", entry)
+				logger.Info("retention_audit_item", "run_key", runID, "item", entry)
 			}
 			purged++
-			logger.Info("retention_item_purged", "type", "thread", "id", th.ID)
+			logger.Info("retention_item_purged", "type", "thread", "key", th.Key)
 		}
 	}
 
 	if logger.Audit != nil {
-		logger.Audit.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
+		logger.Audit.Info("retention_audit_footer", "run_key", runID, "scanned", scanned, "purged", purged)
 	} else {
-		logger.Info("retention_audit_footer", "run_id", runID, "scanned", scanned, "purged", purged)
+		logger.Info("retention_audit_footer", "run_key", runID, "scanned", scanned, "purged", purged)
 	}
 	logger.Info("retention_run_complete", "scanned", scanned, "purged", purged)
 	return nil
@@ -202,7 +202,7 @@ func parseRetention(s string) (time.Duration, error) {
 	if s[len(s)-1] == 'd' {
 		n := 0
 		if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
-			return 0, fmt.Errorf("invalid days retention: %w", err)
+			return 0, fmt.Errorf("invalkey days retention: %w", err)
 		}
 		return time.Duration(n) * 24 * time.Hour, nil
 	}
