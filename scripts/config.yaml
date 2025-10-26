@@ -48,7 +48,7 @@ ingest:
     worker_count: 24
     buffer_capacity: 100_000
   apply:
-     batch_count: 10_000
+     batch_count: 1_000
      batch_timeout: 1s
      fsync_after_batch: true
 

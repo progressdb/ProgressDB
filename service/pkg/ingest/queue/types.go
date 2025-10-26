@@ -29,8 +29,6 @@ type RequestMetadata struct {
 // QueueOp represents a queue operation with metadata.
 type QueueOp struct {
 	Handler   HandlerID       // Handler to invoke
-	TID       string          // Thread ID
-	MID       string          // Message ID
 	Payload   interface{}     // Payload data (may be nil, can be struct or []byte)
 	TS        int64           // Timestamp (nanoseconds)
 	EnqSeq    uint64          // Assigned sequence at enqueue (used when WAL disabled)

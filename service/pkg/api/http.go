@@ -97,16 +97,16 @@ func RegisterRoutes(r *router.Router) {
 	// thread metadata operations
 	r.POST("/v1/threads", EnqueueCreateThread)
 	r.GET("/v1/threads", ReadThreadsList)
-	r.PUT("/v1/threads/{id}", EnqueueUpdateThread)
-	r.GET("/v1/threads/{id}", ReadThreadItem)
-	r.DELETE("/v1/threads/{id}", EnqueueDeleteThread)
+	r.PUT("/v1/threads/{threadKey}", EnqueueUpdateThread)
+	r.GET("/v1/threads/{threadKey}", ReadThreadItem)
+	r.DELETE("/v1/threads/{threadKey}", EnqueueDeleteThread)
 
 	// thread message operations
-	r.POST("/v1/threads/{threadID}/messages", EnqueueCreateMessage)
-	r.GET("/v1/threads/{threadID}/messages", ReadThreadMessages)
-	r.GET("/v1/threads/{threadID}/messages/{id}", ReadThreadMessage)
-	r.PUT("/v1/threads/{threadID}/messages/{id}", EnqueueUpdateMessage)
-	r.DELETE("/v1/threads/{threadID}/messages/{id}", EnqueueDeleteMessage)
+	r.POST("/v1/threads/{threadKey}/messages", EnqueueCreateMessage)
+	r.GET("/v1/threads/{threadKey}/messages", ReadThreadMessages)
+	r.GET("/v1/threads/{threadKey}/messages/{id}", ReadThreadMessage)
+	r.PUT("/v1/threads/{threadKey}/messages/{id}", EnqueueUpdateMessage)
+	r.DELETE("/v1/threads/{threadKey}/messages/{id}", EnqueueDeleteMessage)
 
 	// thread message reactions - REMOVED
 

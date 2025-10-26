@@ -139,10 +139,16 @@ func GenSoftDeleteMarkerKey(originalKey string) string {
 
 // Relationship markers
 func GenUserOwnsThreadKey(userID, threadID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(RelUserOwnsThread, userID, threadID)
 }
 
 func GenThreadHasUserKey(threadID, userID string) string {
+	if parts, err := ParseThreadKey(threadID); err == nil {
+		threadID = parts.ThreadID
+	}
 	return fmt.Sprintf(RelThreadHasUser, threadID, userID)
 }
 
