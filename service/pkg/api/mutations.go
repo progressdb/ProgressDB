@@ -133,7 +133,6 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		WriteValidationError(ctx, authErr)
 		return
 	}
-	metadata := NewRequestMetadata(ctx, author)
 
 	// parse
 	payload, ok := extractPayloadOrFail(ctx)
@@ -146,6 +145,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread update payload")
 		return
 	}
+	metadata := NewRequestMetadata(ctx, author)
 
 	// sync
 	update.ID = threadKey
@@ -249,9 +249,6 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	metadata := NewRequestMetadata(ctx, author)
-	pid := keys.GenMessagePrvKey(threadKey, fmt.Sprintf("%d", reqtime))
-
 	// parse
 	payload, ok := extractPayloadOrFail(ctx)
 	if !ok {
@@ -262,11 +259,15 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid message payload")
 		return
 	}
+	metadata := NewRequestMetadata(ctx, author)
+
+	// sync
+	messageProvKey := keys.GenMessagePrvKey(threadKey, fmt.Sprintf("%d", reqtime))
 	m.Author = author
-	m.ID = pid
+	m.ID = messageProvKey
 	m.TS = reqtime
 
-	// Call ValidateAllFieldsNonEmpty after syncing
+	//validate
 	if err := router.ValidateAllFieldsNonEmpty(&m); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
@@ -303,8 +304,6 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	metadata := NewRequestMetadata(ctx, author)
-
 	// parse
 	payload, ok := extractPayloadOrFail(ctx)
 	if !ok {
@@ -316,9 +315,12 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid message update payload")
 		return
 	}
+	metadata := NewRequestMetadata(ctx, author)
+
+	// sync
 	update.TS = reqtime
 
-	// Call ValidateAllFieldsNonEmpty after syncing
+	//validate
 	if err := router.ValidateAllFieldsNonEmpty(&update); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
@@ -361,13 +363,14 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 
 	metadata := NewRequestMetadata(ctx, author)
 
+	// sync
 	var del models.DeletePartial
 	del.ID = id
 	del.Deleted = true
 	del.TS = reqtime
 	del.Author = author
 
-	// Call ValidateAllFieldsNonEmpty after syncing
+	//validate
 	if err := router.ValidateAllFieldsNonEmpty(&del); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
