@@ -51,12 +51,6 @@ func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) error {
 	return nil
 }
 
-func (dm *DataManager) DeleteThreadMeta(threadID string) {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
-	dm.threadMeta[threadID] = nil
-}
-
 func (dm *DataManager) SetMessageData(threadID, messageID string, data interface{}, ts int64, seq uint64) error {
 	if threadID == "" || messageID == "" {
 		return fmt.Errorf("threadID and messageID cannot be empty")

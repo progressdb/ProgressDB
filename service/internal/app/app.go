@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
@@ -33,7 +32,6 @@ type App struct {
 	rc              *kms.RemoteClient // kms
 	cancel          context.CancelFunc
 
-	srv     *http.Server
 	srvFast *fasthttp.Server
 	state   string
 

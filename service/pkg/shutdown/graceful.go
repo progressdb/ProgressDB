@@ -3,12 +3,10 @@ package shutdown
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -24,20 +22,10 @@ import (
 
 // ShutdownApp performs graceful shutdown of all app components.
 // This consolidates shutdown logic from both app.go and shutdown.go.
-func ShutdownApp(ctx context.Context, srv *http.Server, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
+func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
 	log.Printf("shutdown: requested")
 
 	// stop accepting new requests
-	if srv != nil {
-		log.Printf("shutdown: stopping HTTP server")
-		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx2); err != nil {
-			log.Printf("shutdown: http shutdown error: %v", err)
-		} else {
-			log.Printf("shutdown: http shutdown complete")
-		}
-	}
 	if srvFast != nil {
 		log.Printf("shutdown: stopping FastHTTP server")
 		if err := srvFast.Shutdown(); err != nil {

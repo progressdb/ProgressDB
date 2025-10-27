@@ -103,7 +103,28 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, threadKey)
 	}
 
+	// fetch existing
+	existingData, err := batchProcessor.Data.GetThreadMetaCopy(threadKey)
+	if err != nil {
+		return fmt.Errorf("failed to get thread for delete: %w", err)
+	}
+
+	// parse existing
+	var thread models.Thread
+	if err := json.Unmarshal(existingData, &thread); err != nil {
+		return fmt.Errorf("unmarshal existing thread: %w", err)
+	}
+
+	// apply delete
+	thread.Deleted = true
+	thread.UpdatedTS = entry.TS
+
 	// store
+	if err := batchProcessor.Data.SetThreadMeta(threadKey, &thread); err != nil {
+		return fmt.Errorf("set thread meta: %w", err)
+	}
+
+	// index
 	if err := index.MarkSoftDeleted(threadKey); err != nil {
 		return fmt.Errorf("failed to mark thread as deleted: %w", err)
 	}
