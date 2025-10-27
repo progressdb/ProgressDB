@@ -10,8 +10,8 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/store/db/index"
-	message_store "progressdb/pkg/store/messages"
-	thread_store "progressdb/pkg/store/threads"
+	message_store "progressdb/pkg/store/features/messages"
+	thread_store "progressdb/pkg/store/features/threads"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {

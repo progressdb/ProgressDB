@@ -11,7 +11,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
-	thread_store "progressdb/pkg/store/threads"
+	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/timeutil"
 )
 

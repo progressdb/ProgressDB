@@ -12,7 +12,7 @@ import (
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
-	"progressdb/pkg/store/threads"
+	"progressdb/pkg/store/features/threads"
 )
 
 // thread meta op methods

@@ -15,8 +15,8 @@ import (
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/encryption"
+	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
-	thread_store "progressdb/pkg/store/threads"
 )
 
 // AdminEncryptionRotateThreadDEK rotates the DEK for a thread

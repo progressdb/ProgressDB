@@ -15,8 +15,8 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/features/messages"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/messages"
 )
 
 func AdminHealth(ctx *fasthttp.RequestCtx) {

@@ -7,9 +7,9 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/store/features/messages"
+	"progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/messages"
-	"progressdb/pkg/store/threads"
 )
 
 type MessageData struct {
@@ -152,7 +152,6 @@ func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
 func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
-
 
 	// NOTE: no decryption, as .body is not used but replaced & stored.
 
