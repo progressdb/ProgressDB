@@ -10,10 +10,10 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/store/features/threads"
 
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/threads"
 	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
