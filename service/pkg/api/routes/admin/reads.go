@@ -149,13 +149,13 @@ func AdminGetThreadMessage(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(msg))
 }
 
-func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*AdminKeysResult, error) {
+func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*DashboardKeysResult, error) {
 	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, limit, cursor)
 	if err != nil {
 		return nil, err
 	}
 
-	return &AdminKeysResult{
+	return &DashboardKeysResult{
 		Keys:       keys,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
@@ -163,7 +163,7 @@ func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*AdminK
 	}, nil
 }
 
-func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*AdminUsersResult, error) {
+func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*DashboardUsersResult, error) {
 	relKeys, err := index.ListKeys(keys.UserThreadsRelPrefix)
 	if err != nil {
 		return nil, err
@@ -206,7 +206,7 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Admin
 	}
 
 	if start >= len(allUsers) {
-		return &AdminUsersResult{
+		return &DashboardUsersResult{
 			Users:      []string{},
 			NextCursor: "",
 			HasMore:    false,
@@ -220,7 +220,7 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Admin
 		nextCursor = pagedUsers[len(pagedUsers)-1]
 	}
 
-	return &AdminUsersResult{
+	return &DashboardUsersResult{
 		Users:      pagedUsers,
 		NextCursor: nextCursor,
 		HasMore:    end < len(allUsers),
@@ -228,7 +228,7 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Admin
 	}, nil
 }
 
-func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsResult, error) {
+func listThreadsForUser(userID string, limit int, cursor string) (*DashboardThreadsResult, error) {
 	relKeys, err := index.ListKeys(keys.GenUserThreadRelPrefix(userID))
 	if err != nil {
 		return nil, fmt.Errorf("list user threads: %w", err)
@@ -243,7 +243,7 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 	}
 
 	if len(allThreadIDs) == 0 {
-		return &AdminThreadsResult{
+		return &DashboardThreadsResult{
 			Threads:    []json.RawMessage{},
 			NextCursor: "",
 			HasMore:    false,
@@ -282,7 +282,7 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 		threads = append(threads, json.RawMessage(data))
 	}
 
-	return &AdminThreadsResult{
+	return &DashboardThreadsResult{
 		Threads:    threads,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
@@ -290,7 +290,7 @@ func listThreadsForUser(userID string, limit int, cursor string) (*AdminThreadsR
 	}, nil
 }
 
-func listMessagesForThread(threadID string, limit int, cursor string) (*AdminMessagesResult, error) {
+func listMessagesForThread(threadID string, limit int, cursor string) (*DashboardMessagesResult, error) {
 	reqCursor := models.ReadRequestCursorInfo{
 		Cursor: cursor,
 		Limit:  limit,
@@ -300,7 +300,7 @@ func listMessagesForThread(threadID string, limit int, cursor string) (*AdminMes
 		return nil, err
 	}
 
-	return &AdminMessagesResult{
+	return &DashboardMessagesResult{
 		Messages:   router.ToRawMessages(messages),
 		NextCursor: respCursor.Cursor,
 		HasMore:    respCursor.HasMore,

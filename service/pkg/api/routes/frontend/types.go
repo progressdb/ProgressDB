@@ -1,4 +1,4 @@
-package common
+package frontend
 
 import (
 	"progressdb/pkg/models"

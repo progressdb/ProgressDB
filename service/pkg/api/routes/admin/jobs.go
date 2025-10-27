@@ -107,17 +107,17 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	}
 
 	sem := make(chan struct{}, req.Parallelism)
-	resCh := make(chan RewrapResult, len(keyIDs))
+	resCh := make(chan DashboardRewrapJobResult, len(keyIDs))
 	for kid := range keyIDs {
 		sem <- struct{}{}
 		go func(id string) {
 			defer func() { <-sem }()
 			_, newKek, _, err := kms.RewrapDEKForThread(id, strings.TrimSpace(req.NewKEKHex))
 			if err != nil {
-				resCh <- RewrapResult{Key: id, Err: err.Error()}
+				resCh <- DashboardRewrapJobResult{Key: id, Error: err.Error(), Success: false}
 				return
 			}
-			resCh <- RewrapResult{Key: id, Kek: newKek}
+			resCh <- DashboardRewrapJobResult{Key: id, NewKEK: newKek, Success: true}
 		}(kid)
 	}
 	for i := 0; i < cap(sem); i++ {
@@ -130,12 +130,12 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 		if _, ok := out[res.Key]; !ok {
 			out[res.Key] = map[string]string{}
 		}
-		if res.Err != "" {
+		if !res.Success {
 			out[res.Key]["status"] = "error"
-			out[res.Key]["error"] = res.Err
+			out[res.Key]["error"] = res.Error
 		} else {
 			out[res.Key]["status"] = "ok"
-			out[res.Key]["kek_id"] = res.Kek
+			out[res.Key]["kek_id"] = res.NewKEK
 		}
 	}
 	_ = router.WriteJSON(ctx, out)
@@ -173,7 +173,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 
 	// setup concurrency controls and result channel
 	sem := make(chan struct{}, req.Parallelism)
-	resCh := make(chan EncryptResult, len(threadsIDs))
+	resCh := make(chan DashboardEncryptJobResult, len(threadsIDs))
 
 	// iterate over threads and process in parallel
 	for _, tid := range threadsIDs {
@@ -183,12 +183,12 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 			// get thread metadata
 			stored, err := thread_store.GetThread(threadID)
 			if err != nil {
-				resCh <- EncryptResult{Thread: threadID, Err: "thread not found"}
+				resCh <- DashboardEncryptJobResult{Thread: threadID, Error: "thread not found", Success: false}
 				return
 			}
 			var th models.Thread
 			if err := json.Unmarshal([]byte(stored), &th); err != nil {
-				resCh <- EncryptResult{Thread: threadID, Err: "invalid thread metadata"}
+				resCh <- DashboardEncryptJobResult{Thread: threadID, Error: "invalid thread metadata", Success: false}
 				return
 			}
 
@@ -196,7 +196,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 			if th.KMS == nil || th.KMS.KeyID == "" {
 				newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
 				if err != nil {
-					resCh <- EncryptResult{Thread: threadID, Err: "create DEK failed: " + err.Error()}
+					resCh <- DashboardEncryptJobResult{Thread: threadID, Error: "create DEK failed: " + err.Error(), Success: false}
 					return
 				}
 				th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
@@ -211,7 +211,7 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 			// create iterator for all message keys in the thread
 			iter, err := storedb.Iter()
 			if err != nil {
-				resCh <- EncryptResult{Thread: threadID, Err: err.Error()}
+				resCh <- DashboardEncryptJobResult{Thread: threadID, Error: err.Error(), Success: false}
 				return
 			}
 			defer iter.Close()
@@ -227,22 +227,22 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				if encryption.LikelyJSON(v) {
 					ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 					if err != nil {
-						resCh <- EncryptResult{Thread: threadID, Err: err.Error()}
+						resCh <- DashboardEncryptJobResult{Thread: threadID, Error: err.Error(), Success: false}
 						return
 					}
 					// backup original value
 					backupKey := append([]byte(keys.BackupEncryptPrefix), k...)
 					if err := storedb.SaveKey(string(backupKey), v); err != nil {
-						resCh <- EncryptResult{Thread: threadID, Err: err.Error()}
+						resCh <- DashboardEncryptJobResult{Thread: threadID, Error: err.Error(), Success: false}
 						return
 					}
 					if err := storedb.Set(k, ct); err != nil {
-						resCh <- EncryptResult{Thread: threadID, Err: err.Error()}
+						resCh <- DashboardEncryptJobResult{Thread: threadID, Error: err.Error(), Success: false}
 						return
 					}
 				}
 			}
-			resCh <- EncryptResult{Thread: threadID, Key: th.KMS.KeyID}
+			resCh <- DashboardEncryptJobResult{Thread: threadID, Key: th.KMS.KeyID, Success: true}
 		}(tid)
 	}
 
@@ -256,9 +256,9 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		if _, ok := out[res.Thread]; !ok {
 			out[res.Thread] = map[string]string{}
 		}
-		if res.Err != "" {
+		if !res.Success {
 			out[res.Thread]["status"] = "error"
-			out[res.Thread]["error"] = res.Err
+			out[res.Thread]["error"] = res.Error
 		} else {
 			out[res.Thread]["status"] = "ok"
 			out[res.Thread]["key_id"] = res.Key
