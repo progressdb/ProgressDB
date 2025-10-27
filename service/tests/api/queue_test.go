@@ -7,6 +7,7 @@ import (
 	"time"
 
 	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/models"
 )
 
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
@@ -49,8 +50,12 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	// allow consumer to receive
 	select {
 	case o := <-recv:
-		if o.Op.MID != "m1" && o.Op.MID != "m2" {
-			t.Fatalf("unexpected op id: %s", o.Op.MID)
+		if msg, ok := o.Op.Payload.(*models.Message); ok {
+			if msg.Key != "m1" && msg.Key != "m2" {
+				t.Fatalf("unexpected op id: %s", msg.Key)
+			}
+		} else {
+			t.Fatalf("unexpected payload type")
 		}
 		o.JobDone()
 	case <-time.After(200 * time.Millisecond):
@@ -77,7 +82,9 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 
 	go func() {
 		for it := range q.Out() {
-			processed <- it.Op.MID
+			if msg, ok := it.Op.Payload.(*models.Message); ok {
+				processed <- msg.Key
+			}
 			it.JobDone()
 		}
 	}()
@@ -150,7 +157,9 @@ func TestQueueOutBatches(t *testing.T) {
 	go func() {
 		var batch []string
 		for it := range q.Out() {
-			batch = append(batch, it.Op.MID)
+			if msg, ok := it.Op.Payload.(*models.Message); ok {
+				batch = append(batch, msg.Key)
+			}
 			if len(batch) == 3 {
 				batchCh <- batch
 				batch = nil

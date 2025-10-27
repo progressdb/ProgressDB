@@ -236,7 +236,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	// sync
 	reqtime := timeutil.Now().UnixNano()
 
-	threadKey, ok := extractParamOrFail(ctx, "id", "thread id missing")
+	threadKey, ok := extractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
@@ -303,6 +303,23 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	// sync
 	reqtime := timeutil.Now().UnixNano()
 
+	// extract
+	threadKey, ok := extractParamOrFail(ctx, "threadKey", "thread id missing")
+	if !ok {
+		return
+	}
+
+	messageKey, ok := extractParamOrFail(ctx, "id", "message id missing")
+	if !ok {
+		return
+	}
+
+	// validate
+	if err := keys.ValidateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+		return
+	}
+
 	// resolve
 	author, authErr := ValidateAuthor(ctx, "")
 	if authErr != nil {
@@ -324,6 +341,8 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	metadata := NewRequestMetadata(ctx, author)
 
 	// sync
+	update.Key = messageKey
+	update.Thread = threadKey
 	update.TS = reqtime
 
 	//validate
@@ -355,12 +374,13 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	// sync
 	reqtime := timeutil.Now().UnixNano()
 
-	messageKey, ok := extractParamOrFail(ctx, "id", "message id missing")
+	// extract
+	threadKey, ok := extractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 
-	threadKey, ok := extractParamOrFail(ctx, "thread", "thread id missing")
+	messageKey, ok := extractParamOrFail(ctx, "id", "message id missing")
 	if !ok {
 		return
 	}

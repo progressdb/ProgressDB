@@ -30,15 +30,21 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) {
+func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) error {
+	if threadID == "" {
+		return fmt.Errorf("threadID cannot be empty")
+	}
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 	marshaled, err := json.Marshal(data)
 	if err != nil {
-		// Handle error, but for now panic or log
-		panic(fmt.Sprintf("failed to marshal thread meta: %v", err))
+		return fmt.Errorf("failed to marshal thread meta: %w", err)
 	}
 	dm.threadMeta[threadID] = marshaled
+	return nil
 }
 
 func (dm *DataManager) DeleteThreadMeta(threadID string) {
@@ -48,6 +54,12 @@ func (dm *DataManager) DeleteThreadMeta(threadID string) {
 }
 
 func (dm *DataManager) SetMessageData(threadID, messageID string, data interface{}, ts int64, seq uint64) error {
+	if threadID == "" || messageID == "" {
+		return fmt.Errorf("threadID and messageID cannot be empty")
+	}
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
@@ -91,14 +103,21 @@ func (dm *DataManager) GetMessageData() map[string]MessageData {
 	return result
 }
 
-func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) {
+func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error {
+	if versionKey == "" {
+		return fmt.Errorf("versionKey cannot be empty")
+	}
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 	marshaled, err := json.Marshal(data)
 	if err != nil {
-		panic(fmt.Sprintf("failed to marshal version data: %v", err))
+		return fmt.Errorf("failed to marshal version data: %w", err)
 	}
 	dm.versionKeys[versionKey] = marshaled
+	return nil
 }
 
 func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {

@@ -72,11 +72,48 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 				errors = append(errors, "author: cannot be empty")
 			}
 		}
+	case *models.Message:
+		if v == nil {
+			errors = append(errors, "Message cannot be nil")
+		} else {
+			if v.Key == "" {
+				errors = append(errors, "key: cannot be empty")
+			}
+			if v.Thread == "" {
+				errors = append(errors, "thread: cannot be empty")
+			}
+			if v.Author == "" {
+				errors = append(errors, "author: cannot be empty")
+			}
+			if v.Body == nil {
+				errors = append(errors, "body: cannot be empty")
+			}
+			if v.TS == 0 {
+				errors = append(errors, "ts: cannot be zero")
+			}
+		}
+	case *models.Thread:
+		if v == nil {
+			errors = append(errors, "Thread cannot be nil")
+		} else {
+			if v.Key == "" {
+				errors = append(errors, "key: cannot be empty")
+			}
+			if v.Author == "" {
+				errors = append(errors, "author: cannot be empty")
+			}
+			if v.Title == "" {
+				errors = append(errors, "title: cannot be empty")
+			}
+			if v.CreatedTS == 0 {
+				errors = append(errors, "created_ts: cannot be zero")
+			}
+		}
 	default:
-		errors = append(errors, fmt.Sprintf("unsupported type for validation: %T", p))
+		errors = append(errors, "unsupported payload type for validation")
 	}
 	if len(errors) > 0 {
-		return fmt.Errorf("validation errors (%T): %s", p, strings.Join(errors, "; "))
+		return fmt.Errorf("validation errors: %s", strings.Join(errors, "; "))
 	}
 	return nil
 }

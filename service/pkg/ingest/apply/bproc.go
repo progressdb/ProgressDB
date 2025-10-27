@@ -35,22 +35,24 @@ func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) erro
 
 // Threads
 func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+	// extract
 	author := extractAuthor(entry)
 	if author == "" {
 		return fmt.Errorf("author required for thread creation")
 	}
 
-	// Require Payload for thread creation
+	// validate
 	if entry.Payload == nil {
 		return fmt.Errorf("payload required for thread creation")
 	}
 
+	// parse
 	thread, ok := entry.Payload.(*models.Thread)
 	if !ok {
 		return fmt.Errorf("invalid payload type for thread creation")
 	}
 
-	// validate and set threadKey
+	// resolve
 	threadKey := ExtractTKey(entry.QueueOp)
 	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
@@ -60,7 +62,9 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	logger.Debug("thread_final_key_resolved", "tid", threadKey, "final_key", threadKey)
 
 	// store
-	batchProcessor.Data.SetThreadMeta(threadKey, thread)
+	if err := batchProcessor.Data.SetThreadMeta(threadKey, thread); err != nil {
+		return fmt.Errorf("set thread meta: %w", err)
+	}
 	batchProcessor.Index.InitThreadMessageIndexes(threadKey)
 	batchProcessor.Index.UpdateUserOwnership(thread.Author, threadKey, true)
 	batchProcessor.Index.UpdateThreadParticipants(threadKey, thread.Author, true)
@@ -68,26 +72,26 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 }
 
 func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
-	threadKey := ExtractTKey(entry.QueueOp)
-	if threadKey == "" {
-		return fmt.Errorf("thread ID required for thread deletion")
-	}
+	// extract
 	author := extractAuthor(entry)
 	if author == "" {
 		return fmt.Errorf("author required for thread deletion")
 	}
 
-	// block if anything else than provisional or final key
+	// resolve
+	threadKey := ExtractTKey(entry.QueueOp)
+	if threadKey == "" {
+		return fmt.Errorf("thread ID required for thread deletion")
+	}
+
+	// validate
 	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
 	}
 
 	logger.Debug("thread_final_key_resolved_for_deletion", "tid", threadKey, "final_key", threadKey)
 
-	// Fetch existing thread data
-
-	// Validate user-thread relationships (ownership or participation)
-	// Skip validation if this is a system operation or if thread creation is in the same batch
+	// check access
 	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
@@ -106,13 +110,12 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 
 	logger.Debug("thread_access_validated", "author", author, "thread", threadKey, "ownership", hasOwnership, "participation", hasParticipation)
 
-	// Mark thread as soft deleted
+	// store
 	if err := index.MarkSoftDeleted(threadKey); err != nil {
 		logger.Error("thread_soft_delete_failed", "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to mark thread as deleted: %w", err)
 	}
 
-	// Remove from user ownership index
 	if hasOwnership {
 		if err := index.UnmarkUserOwnsThread(author, threadKey); err != nil {
 			logger.Error("thread_ownership_removal_failed", "author", author, "thread", threadKey, "error", err)
@@ -120,7 +123,6 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		}
 	}
 
-	// Remove from participation index
 	if hasParticipation {
 		if err := index.UnmarkThreadHasUser(threadKey, author); err != nil {
 			logger.Error("thread_participation_removal_failed", "author", author, "thread", threadKey, "error", err)
@@ -128,7 +130,6 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		}
 	}
 
-	// Clean up thread message indexes
 	if err := index.DeleteThreadMessageIndexes(threadKey); err != nil {
 		logger.Error("thread_indexes_cleanup_failed", "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to clean up thread indexes: %w", err)
@@ -185,24 +186,30 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 
 // Messages
 func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
-	threadKey := ExtractTKey(entry.QueueOp)
-	if threadKey == "" {
-		return fmt.Errorf("thread ID required for message create")
-	}
-	if entry.Payload == nil {
-		return fmt.Errorf("payload required for message create")
-	}
-
-	msg, ok := entry.Payload.(*models.Message)
-	if !ok {
-		return fmt.Errorf("invalid payload type for message create")
-	}
+	// extract
 	author := extractAuthor(entry)
 	if author == "" {
 		return fmt.Errorf("author required for message create")
 	}
 
-	// Validate user-thread relationships (ownership or participation)
+	// resolve
+	threadKey := ExtractTKey(entry.QueueOp)
+	if threadKey == "" {
+		return fmt.Errorf("thread ID required for message create")
+	}
+
+	// validate
+	if entry.Payload == nil {
+		return fmt.Errorf("payload required for message create")
+	}
+
+	// parse
+	msg, ok := entry.Payload.(*models.Message)
+	if !ok {
+		return fmt.Errorf("invalid payload type for message create")
+	}
+
+	// check access
 	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
@@ -221,36 +228,30 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 
 	logger.Debug("thread_access_validated", "author", author, "thread", threadKey, "ownership", hasOwnership, "participation", hasParticipation)
 
-	// resolve message ID
-	resolvedID, err := batchProcessor.Index.ResolveMessageID(msg.Key, msg.Key)
+	// resolve message key
+	resolvedID, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
 	if err != nil {
-		logger.Error("message_create_resolution_failed", "msg_id", msg.Key, "err", err)
-		return fmt.Errorf("resolve message ID %s: %w", msg.Key, err)
+		logger.Error("message_create_resolution_failed", "msg_key", msg.Key, "err", err)
+		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 
 	logger.Debug("message_final_key_resolved_for_create", "msg_id", msg.Key, "final_key", resolvedID)
 
 	// sync message fields
-	if parts, err := keys.ParseMessageKey(resolvedID); err == nil {
-		msg.Key = parts.MsgID
-	} else if parts, err := keys.ParseMessageProvisionalKey(resolvedID); err == nil {
-		msg.Key = parts.MsgID
-	} else {
-		msg.Key = resolvedID // fallback
-	}
+	msg.Key = resolvedID
 	msg.Thread = threadKey
 	msg.Author = author
 	if msg.TS == 0 {
 		msg.TS = entry.TS
 	}
 
-	// Extract sequence from the resolved final key
+	// extract sequence
 	threadSequence := extractSequenceFromKey(resolvedID)
 
-	// Update thread indexes (sequence already incremented in ResolveMessageID)
+	// update indexes
 	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
 
-	// Store message data with thread-scoped sequence
+	// store
 	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedID, msg, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
@@ -259,41 +260,55 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 
 func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	logger.Debug("process_message_update", "thread", ExtractTKey(entry.QueueOp), "msg", ExtractMKey(entry.QueueOp))
-	if ExtractTKey(entry.QueueOp) == "" {
-		return fmt.Errorf("thread ID required for message update")
+
+	// extract
+	author := extractAuthor(entry)
+	if author == "" {
+		return fmt.Errorf("author required for message update")
 	}
+
+	// resolve
+	threadKey := ExtractTKey(entry.QueueOp)
+	if threadKey == "" {
+		return fmt.Errorf("thread key required for message update")
+	}
+
+	messageKey := ExtractMKey(entry.QueueOp)
+
+	// validate
 	if entry.Payload == nil {
 		return fmt.Errorf("payload required for message update")
 	}
 
+	// parse
 	update, ok := entry.Payload.(*models.MessageUpdatePartial)
 	if !ok {
 		return fmt.Errorf("invalid payload type for message update")
 	}
 
-	// Resolve message ID
-	messageID := ExtractMKey(entry.QueueOp)
-	resolvedMessageID, err := batchProcessor.Index.ResolveMessageID(messageID, messageID)
+	// resolve message key
+	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey, messageKey)
 	if err != nil {
-		logger.Error("message_update_resolution_failed", "msg_id", messageID, "err", err)
-		return fmt.Errorf("resolve message ID %s: %w", messageID, err)
+		logger.Error("message_update_resolution_failed", "msg_key", messageKey, "err", err)
+		return fmt.Errorf("resolve message key %s: %w", messageKey, err)
 	}
 
-	logger.Debug("message_final_key_resolved_for_update", "msg_id", messageID, "final_key", resolvedMessageID)
+	logger.Debug("message_final_key_resolved_for_update", "msg_key", messageKey, "final_key", resolvedMessageKey)
 
-	// Fetch existing message
-	messageKey := keys.GenMessageKey(ExtractTKey(entry.QueueOp), resolvedMessageID, extractSequenceFromKey(resolvedMessageID))
-	existingData, err := batchProcessor.Data.GetMessageDataCopy(messageKey)
+	// fetch existing
+	dbMessageKey := keys.GenMessageKey(threadKey, resolvedMessageKey, extractSequenceFromKey(resolvedMessageKey))
+	existingData, err := batchProcessor.Data.GetMessageDataCopy(dbMessageKey)
 	if err != nil {
 		return fmt.Errorf("failed to get message for update: %w", err)
 	}
 
+	// parse existing
 	var msg models.Message
 	if err := json.Unmarshal(existingData, &msg); err != nil {
 		return fmt.Errorf("unmarshal existing message: %w", err)
 	}
 
-	// Apply updates
+	// apply updates
 	if update.Body != nil {
 		msg.Body = update.Body
 	}
@@ -301,78 +316,91 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		msg.TS = update.TS
 	}
 
-	// Extract sequence from the resolved final key
-	threadSequence := extractSequenceFromKey(resolvedMessageID)
+	// extract sequence
+	threadSequence := extractSequenceFromKey(resolvedMessageKey)
 
-	if err := batchProcessor.Data.SetMessageData(ExtractTKey(entry.QueueOp), resolvedMessageID, &msg, entry.TS, threadSequence); err != nil {
+	// store
+	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedMessageKey, &msg, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	versionKey := keys.GenVersionKey(resolvedMessageID, entry.TS, threadSequence)
-	batchProcessor.Data.SetVersionKey(versionKey, &msg)
+	versionKey := keys.GenVersionKey(resolvedMessageKey, entry.TS, threadSequence)
+	if err := batchProcessor.Data.SetVersionKey(versionKey, &msg); err != nil {
+		return fmt.Errorf("set version key: %w", err)
+	}
 
-	// Update indexes (no sequence increment for updates)
-	threadComp, messageComp, err := keys.ExtractMessageComponents(ExtractTKey(entry.QueueOp), resolvedMessageID)
+	// update indexes
+	threadComp, messageComp, err := keys.ExtractMessageComponents(threadKey, resolvedMessageKey)
 	if err != nil {
 		return fmt.Errorf("extract message components: %w", err)
 	}
 	msgKey := keys.GenMessageKey(threadComp, messageComp, threadSequence)
-	batchProcessor.Index.UpdateThreadMessageIndexes(ExtractTKey(entry.QueueOp), msg.TS, entry.TS, false, msgKey)
+	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, msgKey)
 
 	return nil
 }
 
 func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
-	finalThreadID := ExtractTKey(entry.QueueOp)
-	if finalThreadID == "" {
-		return fmt.Errorf("thread ID required for message deletion")
+	// extract
+	author := extractAuthor(entry)
+	if author == "" {
+		return fmt.Errorf("author required for message delete")
 	}
+
+	// resolve
+	finalThreadKey := ExtractTKey(entry.QueueOp)
+	if finalThreadKey == "" {
+		return fmt.Errorf("thread key required for message deletion")
+	}
+
 	var msg models.Message
 	if entry.Payload != nil {
 		if m, ok := entry.Payload.(*models.Message); ok {
 			msg = *m
 		}
 	}
-	// Resolve message ID using unified method (handles provisional/final automatically)
-	finalMessageID, err := batchProcessor.Index.ResolveMessageID(msg.Key, msg.Key)
+
+	// resolve message key
+	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
 	if err != nil {
-		logger.Error("message_delete_resolution_failed", "msg_id", msg.Key, "handler", entry.Handler, "err", err)
-		return fmt.Errorf("resolve message ID %s: %w", msg.Key, err)
+		logger.Error("message_delete_resolution_failed", "msg_key", msg.Key, "handler", entry.Handler, "err", err)
+		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 
-	logger.Debug("message_final_key_resolved_for_delete", "msg_id", msg.Key, "final_key", finalMessageID)
+	logger.Debug("message_final_key_resolved_for_delete", "msg_key", msg.Key, "final_key", finalMessageKey)
 
-	// Fetch existing message data
-	messageKey := keys.GenMessageKey(finalThreadID, finalMessageID, extractSequenceFromKey(finalMessageID))
+	// fetch existing
+	messageKey := keys.GenMessageKey(finalThreadKey, finalMessageKey, extractSequenceFromKey(finalMessageKey))
 	messageData, err := batchProcessor.Data.GetMessageDataCopy(messageKey)
 	if err != nil {
-		logger.Debug("message_not_found_for_delete", "message_id", finalMessageID, "error", err)
-		return fmt.Errorf("message not found for delete: %s", finalMessageID)
+		logger.Debug("message_not_found_for_delete", "message_key", finalMessageKey, "error", err)
+		return fmt.Errorf("message not found for delete: %s", finalMessageKey)
 	}
 
-	// Parse existing message and mark as deleted
+	// parse existing
 	var existingMessage models.Message
 	if err := json.Unmarshal(messageData, &existingMessage); err != nil {
 		return fmt.Errorf("unmarshal message for delete: %w", err)
 	}
 
-	// Mark message as deleted
+	// mark deleted
 	existingMessage.Deleted = true
 	existingMessage.TS = entry.TS
 
-	// Extract sequence from the resolved final key
-	threadSequence := extractSequenceFromKey(finalMessageID)
+	// extract sequence
+	threadSequence := extractSequenceFromKey(finalMessageKey)
 
-	// Update message data (soft delete)
-	if err := batchProcessor.Data.SetMessageData(finalThreadID, finalMessageID, existingMessage, entry.TS, threadSequence); err != nil {
+	// store
+	if err := batchProcessor.Data.SetMessageData(finalThreadKey, finalMessageKey, existingMessage, entry.TS, threadSequence); err != nil {
 		return fmt.Errorf("set deleted message data: %w", err)
 	}
 
-	// Create version entry for the deletion
-	versionKey := keys.GenVersionKey(finalMessageID, entry.TS, threadSequence)
-	batchProcessor.Data.SetVersionKey(versionKey, existingMessage)
+	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, threadSequence)
+	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
+		return fmt.Errorf("set version key: %w", err)
+	}
 
-	// Update indexes and track deletion
-	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadID, existingMessage.TS, entry.TS, true, finalMessageID)
-	batchProcessor.Index.UpdateSoftDeletedMessages(existingMessage.Author, finalMessageID, true)
+	// update indexes
+	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadKey, existingMessage.TS, entry.TS, true, finalMessageKey)
+	batchProcessor.Index.UpdateSoftDeletedMessages(existingMessage.Author, finalMessageKey, true)
 	return nil
 }

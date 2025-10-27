@@ -31,7 +31,7 @@ read -r -p "FRONTEND API key [${DEFAULT_FRONTEND_API_KEY}]: " FRONTEND_API_KEY
 FRONTEND_API_KEY=${FRONTEND_API_KEY:-$DEFAULT_FRONTEND_API_KEY}
 export FRONTEND_API_KEY
 
-# prompt for user id
+# prompt for user key
 read -r -p "USER_ID [${DEFAULT_USER_ID}]: " USER_ID
 USER_ID=${USER_ID:-$DEFAULT_USER_ID}
 export USER_ID
@@ -104,7 +104,7 @@ EOF
         -d "$THREAD_BODY")
     
     # extract thread ID from response
-    THREAD_ID=$(echo "$THREAD_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+    THREAD_ID=$(echo "$THREAD_RESPONSE" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
     
     if [[ -z "$THREAD_ID" ]]; then
         echo "Error creating thread $i: $THREAD_RESPONSE"
@@ -158,7 +158,7 @@ EOF
             -d "$MESSAGE_BODY")
         
         # extract message ID from response
-        MESSAGE_ID=$(echo "$MESSAGE_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+        MESSAGE_ID=$(echo "$MESSAGE_RESPONSE" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
         
         if [[ -z "$MESSAGE_ID" ]]; then
             echo "    ✗ Error creating message $j: $MESSAGE_RESPONSE"

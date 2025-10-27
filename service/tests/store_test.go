@@ -51,10 +51,10 @@ func TestKeysBuildersParsers(t *testing.T) {
 	}
 
 	// invalid ids
-	if err := keys.ValidateThreadID(""); err == nil {
+	if err := keys.ValidateThreadKey(""); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if err := keys.ValidateMsgID(""); err == nil {
+	if err := keys.ValidateMessageKey(""); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }
@@ -108,10 +108,10 @@ func TestPrefixesAndValidators_StoreHelpers(t *testing.T) {
 	}
 
 	// validators
-	if err := keys.ValidateThreadID(""); err == nil {
+	if err := keys.ValidateThreadKey(""); err == nil {
 		t.Fatalf("expected error for empty thread id")
 	}
-	if err := keys.ValidateMsgID(""); err == nil {
+	if err := keys.ValidateMessageKey(""); err == nil {
 		t.Fatalf("expected error for empty msg id")
 	}
 }

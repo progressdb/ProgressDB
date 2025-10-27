@@ -47,35 +47,38 @@ func (m *MessageSequencer) MapProvisionalToFinalID(provisionalID, finalID string
 	logger.Debug("mapped_provisional_thread", "provisional", provisionalID, "final", finalID)
 }
 
-// ResolveMessageID is the unified method for handling message ID resolution
-// Takes a message ID (provisional or final) and returns the final message ID with sequence
-// If the message ID is provisional and new, it generates a sequenced final key
-func (m *MessageSequencer) ResolveMessageID(msgID string, finalKeyIfNew string) (string, error) {
+// ResolveMessageKey is the unified method for handling message key resolution
+// Takes a message key (provisional or final) and returns the final message key with sequence
+// If the message key is provisional and new, it generates a sequenced final key
+func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string) (string, error) {
+	if msgKey == "" {
+		return "", fmt.Errorf("msgKey cannot be empty")
+	}
 	// If it's already a final key (has sequence), return as-is
-	if !keys.IsProvisionalMessageKey(msgID) {
-		logger.Debug("resolve_final_key", "msg_id", msgID)
-		return msgID, nil
+	if !keys.IsProvisionalMessageKey(msgKey) {
+		logger.Debug("resolve_final_key", "msg_key", msgKey)
+		return msgKey, nil
 	}
 
 	// For provisional keys, check cache first
-	if finalKey, ok := m.provisionalToFinalKeys[msgID]; ok {
-		logger.Debug("resolve_cache_hit", "provisional", msgID, "final", finalKey)
+	if finalKey, ok := m.provisionalToFinalKeys[msgKey]; ok {
+		logger.Debug("resolve_cache_hit", "provisional", msgKey, "final", finalKey)
 		return finalKey, nil
 	}
 
 	// Not in cache - check database
 	if storedb.Client == nil {
-		logger.Debug("resolve_store_not_ready", "provisional", msgID, "generating_new")
-		return m.generateNewSequencedKey(msgID, finalKeyIfNew)
+		logger.Debug("resolve_store_not_ready", "provisional", msgKey, "generating_new")
+		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 	}
 
 	// Create prefix for provisional key + ":" to find the sequenced key
-	prefix := msgID + ":"
+	prefix := msgKey + ":"
 
 	iter, err := storedb.Client.NewIter(nil)
 	if err != nil {
-		logger.Error("resolve_iterator_failed", "error", err, "provisional", msgID, "generating_new")
-		return m.generateNewSequencedKey(msgID, finalKeyIfNew)
+		logger.Error("resolve_iterator_failed", "error", err, "provisional", msgKey, "generating_new")
+		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 	}
 	defer iter.Close()
 
@@ -85,22 +88,22 @@ func (m *MessageSequencer) ResolveMessageID(msgID string, finalKeyIfNew string) 
 	if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
 		// Found existing final key in database
 		existingFinalKey := string(iter.Key())
-		logger.Debug("resolve_db_found", "provisional", msgID, "existing_final", existingFinalKey)
+		logger.Debug("resolve_db_found", "provisional", msgKey, "existing_final", existingFinalKey)
 
 		// Cache it for future use
-		m.provisionalToFinalKeys[msgID] = existingFinalKey
+		m.provisionalToFinalKeys[msgKey] = existingFinalKey
 		return existingFinalKey, nil
 	}
 
 	// Not found in database - this is a new provisional key
-	logger.Debug("resolve_db_not_found", "provisional", msgID, "generating_new")
-	return m.generateNewSequencedKey(msgID, finalKeyIfNew)
+	logger.Debug("resolve_db_not_found", "provisional", msgKey, "generating_new")
+	return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 }
 
 // generateNewSequencedKey creates a new sequenced key for a provisional message
 func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew string) (string, error) {
-	// Parse the thread ID from the provisional key to get sequence
-	threadID, err := m.extractThreadIDFromKey(provisionalKey)
+	// Parse the thread key from the provisional key to get sequence
+	threadKey, err := m.extractThreadKeyFromKey(provisionalKey)
 	if err != nil {
 		logger.Error("extract_thread_id_failed", "error", err, "provisional", provisionalKey)
 		m.MapProvisionalToFinalMessageKey(provisionalKey, finalKeyIfNew)
@@ -108,16 +111,16 @@ func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew
 	}
 
 	// Get next sequence atomically
-	sequence := m.indexManager.GetNextThreadSequence(threadID)
+	sequence := m.indexManager.GetNextThreadSequence(threadKey)
 
-	// Extract message ID from finalKeyIfNew or provisionalKey
-	messageID := m.extractMessageIDFromKey(finalKeyIfNew)
-	if messageID == "" {
-		messageID = m.extractMessageIDFromKey(provisionalKey)
+	// Extract message key from finalKeyIfNew or provisionalKey
+	messageKey := m.extractMessageKeyFromKey(finalKeyIfNew)
+	if messageKey == "" {
+		messageKey = m.extractMessageKeyFromKey(provisionalKey)
 	}
 
 	// Generate the final sequenced key
-	finalKey := keys.GenMessageKey(threadID, messageID, sequence)
+	finalKey := keys.GenMessageKey(threadKey, messageKey, sequence)
 
 	// Cache the mapping
 	m.MapProvisionalToFinalMessageKey(provisionalKey, finalKey)
@@ -126,8 +129,8 @@ func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew
 	return finalKey, nil
 }
 
-// extractThreadIDFromKey extracts thread ID from a provisional message key
-func (m *MessageSequencer) extractThreadIDFromKey(key string) (string, error) {
+// extractThreadKeyFromKey extracts thread key from a provisional message key
+func (m *MessageSequencer) extractThreadKeyFromKey(key string) (string, error) {
 	if parts, err := keys.ParseThreadKey(key); err == nil {
 		return parts.ThreadID, nil
 	}
@@ -137,11 +140,11 @@ func (m *MessageSequencer) extractThreadIDFromKey(key string) (string, error) {
 		return parts.ThreadID, nil
 	}
 
-	return "", fmt.Errorf("unable to extract thread ID from key: %s", key)
+	return "", fmt.Errorf("unable to extract thread key from key: %s", key)
 }
 
-// extractMessageIDFromKey extracts message ID from a key
-func (m *MessageSequencer) extractMessageIDFromKey(key string) string {
+// extractMessageKeyFromKey extracts message key from a key
+func (m *MessageSequencer) extractMessageKeyFromKey(key string) string {
 	if parts, err := keys.ParseMessageKey(key); err == nil {
 		return parts.MsgID
 	}

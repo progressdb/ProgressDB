@@ -38,11 +38,15 @@ func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
 	}
 }
 
-func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
+func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
+	if threadKey == "" {
+		logger.Error("update_thread_indexes_failed", "error", "threadKey cannot be empty")
+		return
+	}
 	im.mu.Lock()
 	defer im.mu.Unlock()
 
-	idx := im.threadMessages[threadID]
+	idx := im.threadMessages[threadKey]
 	if idx == nil {
 		idx = &index.ThreadMessageIndexes{
 			Start:         0,
@@ -53,7 +57,7 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, u
 			LastCreatedAt: 0,
 			LastUpdatedAt: 0,
 		}
-		im.threadMessages[threadID] = idx
+		im.threadMessages[threadKey] = idx
 	}
 
 	if isDelete {
@@ -73,11 +77,11 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadID string, createdAt, u
 }
 
 // GetNextThreadSequence returns the next sequence number for a thread atomically
-func (im *IndexManager) GetNextThreadSequence(threadID string) uint64 {
+func (im *IndexManager) GetNextThreadSequence(threadKey string) uint64 {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 
-	idx := im.threadMessages[threadID]
+	idx := im.threadMessages[threadKey]
 	if idx == nil {
 		idx = &index.ThreadMessageIndexes{
 			Start:         0,
@@ -88,23 +92,23 @@ func (im *IndexManager) GetNextThreadSequence(threadID string) uint64 {
 			LastCreatedAt: 0,
 			LastUpdatedAt: 0,
 		}
-		im.threadMessages[threadID] = idx
+		im.threadMessages[threadKey] = idx
 	}
 
 	idx.End++
 	return idx.End
 }
 
-func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) error {
+func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) error {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 
-	for _, threadID := range threadIDs {
-		threadIdx, err := index.GetThreadMessageIndexes(threadID)
+	for _, threadKey := range threadKeys {
+		threadIdx, err := index.GetThreadMessageIndexes(threadKey)
 		if err != nil {
-			logger.Debug("load_thread_index_failed", "thread_id", threadID, "error", err)
+			logger.Debug("load_thread_index_failed", "thread_key", threadKey, "error", err)
 			// If not found, initialize with defaults
-			im.threadMessages[threadID] = &index.ThreadMessageIndexes{
+			im.threadMessages[threadKey] = &index.ThreadMessageIndexes{
 				Start:         0,
 				End:           0,
 				Cdeltas:       []int64{},
@@ -114,7 +118,7 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadIDs []string) erro
 				LastUpdatedAt: 0,
 			}
 		} else {
-			im.threadMessages[threadID] = &threadIdx
+			im.threadMessages[threadKey] = &threadIdx
 		}
 	}
 	return nil
@@ -171,9 +175,9 @@ func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) 
 	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
 }
 
-// ResolveMessageID resolves a provisional message ID through the sequencer
-func (im *IndexManager) ResolveMessageID(provisionalID, fallbackID string) (string, error) {
-	return im.messageSequencer.ResolveMessageID(provisionalID, fallbackID)
+// ResolveMessageKey resolves a provisional message key through the sequencer
+func (im *IndexManager) ResolveMessageKey(provisionalKey, fallbackKey string) (string, error) {
+	return im.messageSequencer.ResolveMessageKey(provisionalKey, fallbackKey)
 }
 
 // DeleteThreadMessageIndexes deletes thread message indexes

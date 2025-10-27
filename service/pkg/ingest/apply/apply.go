@@ -160,7 +160,7 @@ func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
 	return sorted
 }
 
-func collectThreadIDsFromGroups(threadGroups map[string][]types.BatchEntry) []string {
+func collectThreadKeysFromGroups(threadGroups map[string][]types.BatchEntry) []string {
 	threadMap := make(map[string]bool)
 	for threadKey := range threadGroups {
 		if threadKey != "" {
@@ -174,7 +174,7 @@ func collectThreadIDsFromGroups(threadGroups map[string][]types.BatchEntry) []st
 	return threadKeys
 }
 
-// collectProvisionalMessageKeys extracts all provisional message keys from batch entries
+// extracts all provisional message keys from batch entries
 func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	provKeyMap := make(map[string]bool)
 
@@ -194,7 +194,7 @@ func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	return provKeys
 }
 
-// bulkLookupProvisionalKeys looks up multiple provisional keys in database and returns existing mappings
+// looks up multiple provisional keys in database and returns existing mappings
 func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	mappings := make(map[string]string)
 
@@ -230,7 +230,7 @@ func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	return mappings, nil
 }
 
-// prepopulateProvisionalCache loads existing provisional->final mappings into MessageSequencer cache
+// loads existing provisional->final mappings into MessageSequencer cache
 func prepopulateProvisionalCache(batchProcessor *BatchProcessor, mappings map[string]string) {
 	batchProcessor.Index.PrepopulateProvisionalCache(mappings)
 }
@@ -246,11 +246,11 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	batchProcessor := NewBatchProcessor()
 
 	// put reqs into thread groups
-	// each request by its thread_id parent
+	// each request by its thread_key parent
 	threadGroups := groupByThread(entries)
 	logger.Debug("batch_grouped", "threads", len(threadGroups))
 	for threadKey, threadEntries := range threadGroups {
-		logger.Debug("thread_group", "thread_id", threadKey, "operations", len(threadEntries))
+		logger.Debug("thread_group", "thread_key", threadKey, "operations", len(threadEntries))
 		for _, entry := range threadEntries {
 			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", ExtractTKey(entry.QueueOp), "mkey", ExtractMKey(entry.QueueOp))
 		}
@@ -258,7 +258,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 
 	// initialize thread sequences from database
 	// load up the sequencing info per threads (or init anew)
-	threadKeys := collectThreadIDsFromGroups(threadGroups)
+	threadKeys := collectThreadKeysFromGroups(threadGroups)
 	if len(threadKeys) > 0 {
 		tr.Mark("init_thread_sequences")
 		if err := batchProcessor.Index.InitializeThreadSequencesFromDB(threadKeys); err != nil {
