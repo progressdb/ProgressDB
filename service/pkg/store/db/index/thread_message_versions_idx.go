@@ -9,14 +9,12 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// UpdateVersionIndexes updates version indexes for a message.
 func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdAt, updatedAt int64) error {
 	tr := telemetry.Track("index.update_version_indexes")
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
 
-	// Load existing
 	var indexes ThreadMessageIndexes
 	for _, s := range suffixes {
 		var key string
@@ -39,7 +37,7 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		val, err := GetKey(key)
 		if err != nil {
 			if IsNotFound(err) {
-				continue // defaults
+				continue
 			}
 			return err
 		}
@@ -65,7 +63,6 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		}
 	}
 
-	// Update
 	indexes.End++
 	createdDelta := createdAt - indexes.LastCreatedAt
 	updatedDelta := updatedAt - indexes.LastUpdatedAt
@@ -74,7 +71,6 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 	indexes.LastCreatedAt = createdAt
 	indexes.LastUpdatedAt = updatedAt
 
-	// Save
 	for _, s := range suffixes {
 		var key string
 		switch s {
@@ -121,7 +117,6 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 	return nil
 }
 
-// DeleteVersionIndexes deletes version indexes for a message.
 func DeleteVersionIndexes(threadID, msgID string) error {
 	tr := telemetry.Track("index.delete_version_indexes")
 	defer tr.Finish()

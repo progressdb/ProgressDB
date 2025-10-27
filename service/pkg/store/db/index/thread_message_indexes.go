@@ -9,7 +9,6 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// ThreadMessageIndexes holds the index data for a thread's messages.
 type ThreadMessageIndexes struct {
 	Start         uint64   `json:"start"`
 	End           uint64   `json:"end"`
@@ -20,7 +19,6 @@ type ThreadMessageIndexes struct {
 	LastUpdatedAt int64    `json:"last_updated_at"`
 }
 
-// InitThreadMessageIndexes initializes the indexes for a new thread.
 func InitThreadMessageIndexes(threadID string) error {
 	tr := telemetry.Track("index.init_thread_message_indexes")
 	defer tr.Finish()
@@ -38,7 +36,6 @@ func InitThreadMessageIndexes(threadID string) error {
 	return saveIndexes(threadID, indexes)
 }
 
-// UpdateOnMessageSave updates indexes when a message is saved.
 func UpdateOnMessageSave(threadID string, createdAt, updatedAt int64) error {
 	tr := telemetry.Track("index.update_on_message_save")
 	defer tr.Finish()
@@ -48,23 +45,19 @@ func UpdateOnMessageSave(threadID string, createdAt, updatedAt int64) error {
 		return err
 	}
 
-	// Increment end
 	indexes.End++
 
-	// Append deltas
 	createdDelta := createdAt - indexes.LastCreatedAt
 	updatedDelta := updatedAt - indexes.LastUpdatedAt
 	indexes.Cdeltas = append(indexes.Cdeltas, createdDelta)
 	indexes.Udeltas = append(indexes.Udeltas, updatedDelta)
 
-	// Update last timestamps
 	indexes.LastCreatedAt = createdAt
 	indexes.LastUpdatedAt = updatedAt
 
 	return saveIndexes(threadID, indexes)
 }
 
-// UpdateOnMessageDelete updates indexes when a message is deleted.
 func UpdateOnMessageDelete(threadID, msgKey string) error {
 	tr := telemetry.Track("index.update_on_message_delete")
 	defer tr.Finish()
@@ -79,7 +72,6 @@ func UpdateOnMessageDelete(threadID, msgKey string) error {
 	return saveIndexes(threadID, indexes)
 }
 
-// DeleteThreadMessageIndexes removes all index keys for a thread.
 func DeleteThreadMessageIndexes(threadID string) error {
 	tr := telemetry.Track("index.delete_thread_message_indexes")
 	defer tr.Finish()
@@ -107,7 +99,6 @@ func DeleteThreadMessageIndexes(threadID string) error {
 	return nil
 }
 
-// GetIndexValue retrieves a single index value as a string.
 func GetIndexValue(threadID, suffix string) (string, error) {
 	var key string
 	switch suffix {
@@ -131,16 +122,13 @@ func GetIndexValue(threadID, suffix string) (string, error) {
 	return GetKey(key)
 }
 
-// GetThreadMessageIndexes loads all indexes for a thread.
 func GetThreadMessageIndexes(threadID string) (ThreadMessageIndexes, error) {
 	return loadIndexes(threadID)
 }
 
-// loadIndexes loads the indexes from the DB.
 func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 	var indexes ThreadMessageIndexes
 
-	// Load each field
 	fields := map[string]interface{}{
 		"start":           &indexes.Start,
 		"end":             &indexes.End,
@@ -174,7 +162,6 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 		val, err := GetKey(key)
 		if err != nil {
 			if IsNotFound(err) {
-				// If not found, assume default (for new threads or missing fields)
 				continue
 			}
 			return indexes, err
@@ -187,7 +174,6 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 	return indexes, nil
 }
 
-// saveIndexes saves the indexes to the DB.
 func saveIndexes(threadID string, indexes ThreadMessageIndexes) error {
 	fields := map[string]interface{}{
 		"start":           indexes.Start,
