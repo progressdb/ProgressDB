@@ -12,6 +12,7 @@ import (
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
 	thread_store "progressdb/pkg/store/features/threads"
+	"progressdb/pkg/store/pagination"
 	"progressdb/pkg/timeutil"
 )
 
@@ -169,7 +170,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 // listAllThreads lists all threads in the system
 func listAllThreads() ([]string, error) {
 	// Use storedb to list all thread metadata keys
-	keys, _, _, err := storedb.ListKeysWithPrefixPaginated("t:", 10000, "")
+	keys, _, err := storedb.ListKeysWithPrefixPaginated("t:", &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, err
 	}

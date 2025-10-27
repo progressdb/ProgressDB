@@ -2,27 +2,27 @@ package admin
 
 import (
 	"encoding/json"
-	"progressdb/pkg/api/routes/common"
+	"progressdb/pkg/store/pagination"
 )
 
 type DashboardKeysResult struct {
-	Keys       []string                   `json:"keys"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Keys       []string                       `json:"keys"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardUsersResult struct {
-	Users      []string                   `json:"users"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Users      []string                       `json:"users"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardThreadsResult struct {
-	Threads    []json.RawMessage          `json:"threads"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Threads    []json.RawMessage              `json:"threads"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardMessagesResult struct {
-	Messages   []json.RawMessage          `json:"messages"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Messages   []json.RawMessage              `json:"messages"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardRewrapJobResult struct {

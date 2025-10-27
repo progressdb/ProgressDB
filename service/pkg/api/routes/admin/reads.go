@@ -10,12 +10,12 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/features/messages"
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/pagination"
 )
 
 func Health(ctx *fasthttp.RequestCtx) {
@@ -61,7 +61,7 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 func ListKeys(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
-	paginationReq := common.ParsePaginationRequest(ctx)
+	paginationReq := pagination.ParsePaginationRequest(ctx)
 
 	result, err := listKeysByPrefixPaginated(prefix, paginationReq)
 	if err != nil {
@@ -91,9 +91,9 @@ func GetKey(ctx *fasthttp.RequestCtx) {
 }
 
 func ListUsers(ctx *fasthttp.RequestCtx) {
-	paginationReq := common.ParsePaginationRequest(ctx)
+	paginationReq := pagination.ParsePaginationRequest(ctx)
 
-	result, err := listUsersByPrefixPaginated("idx:U:", paginationReq)
+	result, err := listUsersByPrefixPaginated(keys.UserThreadsRelPrefix, paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -107,7 +107,7 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	paginationReq := common.ParsePaginationRequest(ctx)
+	paginationReq := pagination.ParsePaginationRequest(ctx)
 
 	result, err := listThreadsForUser(userID, paginationReq)
 	if err != nil {
@@ -123,7 +123,7 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	paginationReq := common.ParsePaginationRequest(ctx)
+	paginationReq := pagination.ParsePaginationRequest(ctx)
 
 	result, err := listMessagesForThread(threadID, paginationReq)
 	if err != nil {
@@ -149,21 +149,21 @@ func GetThreadMessage(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(msg))
 }
 
-func listKeysByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardKeysResult, error) {
-	keys, nextCursor, hasMore, err := storedb.ListKeysWithPrefixPaginated(prefix, paginationReq.Limit, paginationReq.Cursor)
+func listKeysByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardKeysResult, error) {
+	keys, pagination, err := storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DashboardKeysResult{
 		Keys:       keys,
-		Pagination: common.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(keys)),
+		Pagination: pagination,
 	}, nil
 }
 
-func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardUsersResult, error) {
-	// get relationship keys
-	relKeys, _, _, err := index.ListKeysWithPrefixPaginated(keys.UserThreadsRelPrefix, 10000, "")
+func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardUsersResult, error) {
+	// get relationship keys (use large limit for admin operations)
+	relKeys, _, err := index.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationR
 	if start >= len(allUsers) {
 		return &DashboardUsersResult{
 			Users:      []string{},
-			Pagination: common.NewPaginationResponse(paginationReq.Limit, false, "", 0),
+			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0),
 		}, nil
 	}
 
@@ -212,12 +212,13 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationR
 
 	return &DashboardUsersResult{
 		Users:      pagedUsers,
-		Pagination: common.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers)),
 	}, nil
 }
 
-func listThreadsForUser(userID string, paginationReq *common.PaginationRequest) (*DashboardThreadsResult, error) {
-	relKeys, _, _, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), 10000, "")
+func listThreadsForUser(userID string, paginationReq *pagination.PaginationRequest) (*DashboardThreadsResult, error) {
+	// get relationship keys (use large limit for admin operations)
+	relKeys, _, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list user threads: %w", err)
 	}
@@ -233,7 +234,7 @@ func listThreadsForUser(userID string, paginationReq *common.PaginationRequest) 
 	if len(allThreadIDs) == 0 {
 		return &DashboardThreadsResult{
 			Threads:    []json.RawMessage{},
-			Pagination: common.NewPaginationResponse(paginationReq.Limit, false, "", 0),
+			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0),
 		}, nil
 	}
 
@@ -270,11 +271,11 @@ func listThreadsForUser(userID string, paginationReq *common.PaginationRequest) 
 
 	return &DashboardThreadsResult{
 		Threads:    threads,
-		Pagination: common.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads)),
 	}, nil
 }
 
-func listMessagesForThread(threadID string, paginationReq *common.PaginationRequest) (*DashboardMessagesResult, error) {
+func listMessagesForThread(threadID string, paginationReq *pagination.PaginationRequest) (*DashboardMessagesResult, error) {
 	reqCursor := models.ReadRequestCursorInfo{
 		Cursor: paginationReq.Cursor,
 		Limit:  paginationReq.Limit,
@@ -286,12 +287,12 @@ func listMessagesForThread(threadID string, paginationReq *common.PaginationRequ
 
 	return &DashboardMessagesResult{
 		Messages:   router.ToRawMessages(messages),
-		Pagination: common.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages)),
 	}, nil
 }
 
 func listAllThreads() ([]string, error) {
-	allKeys, _, _, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), 10000, "")
+	allKeys, _, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, err
 	}

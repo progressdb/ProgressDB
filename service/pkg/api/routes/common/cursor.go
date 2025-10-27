@@ -27,12 +27,6 @@ type MessageCursor struct {
 	Sequence  uint64 `json:"sequence"`
 }
 
-type ThreadCursor struct {
-	UserID    string `json:"user_id"`
-	Timestamp int64  `json:"timestamp"`
-	ThreadID  string `json:"thread_id"`
-}
-
 func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	req := &PaginationRequest{
 		Limit:  100,
@@ -81,30 +75,4 @@ func DecodeMessageCursor(cursor string) (*MessageCursor, error) {
 		return nil, err
 	}
 	return &mc, nil
-}
-
-func EncodeThreadCursor(userID, threadID string, timestamp int64) (string, error) {
-	cursor := ThreadCursor{
-		UserID:    userID,
-		Timestamp: timestamp,
-		ThreadID:  threadID,
-	}
-	data, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-func DecodeThreadCursor(cursor string) (*ThreadCursor, error) {
-	data, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return nil, err
-	}
-	var tc ThreadCursor
-	err = json.Unmarshal(data, &tc)
-	if err != nil {
-		return nil, err
-	}
-	return &tc, nil
 }

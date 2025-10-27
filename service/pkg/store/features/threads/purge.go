@@ -11,6 +11,7 @@ import (
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -129,9 +130,18 @@ func PurgeThreadPermanently(threadID string) error {
 
 func cleanupThreadRelationships(threadID string) error {
 	ownershipPrefix := fmt.Sprintf("rel:u:")
-	ownershipKeys, _, _, err := index.ListKeysWithPrefixPaginated(ownershipPrefix, 10000, "")
-	if err != nil {
-		return fmt.Errorf("list ownership keys: %w", err)
+	var ownershipKeys []string
+	cursor := ""
+	for {
+		keys, resp, err := index.ListKeysWithPrefixPaginated(ownershipPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		if err != nil {
+			return fmt.Errorf("list ownership keys: %w", err)
+		}
+		ownershipKeys = append(ownershipKeys, keys...)
+		if !resp.HasMore {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
 	for _, key := range ownershipKeys {
@@ -143,7 +153,7 @@ func cleanupThreadRelationships(threadID string) error {
 	}
 
 	participationPrefix := fmt.Sprintf("rel:t:%s:u:", threadID)
-	participationKeys, _, _, err := index.ListKeysWithPrefixPaginated(participationPrefix, 10000, "")
+	participationKeys, _, err := index.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return fmt.Errorf("list participation keys: %w", err)
 	}

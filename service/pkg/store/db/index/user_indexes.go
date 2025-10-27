@@ -1,19 +1,19 @@
 package index
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/pagination"
 	"progressdb/pkg/telemetry"
 )
 
 func GetUserThreads(userID string) ([]string, error) {
 	prefix := fmt.Sprintf("rel:u:%s:t:", userID)
-	keys, _, _, err := ListKeysWithPrefixPaginated(prefix, 10000, "")
+	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list user ownership keys: %w", err)
 	}
@@ -32,13 +32,13 @@ type ThreadWithTimestamp struct {
 	Timestamp int64
 }
 
-func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, bool, error) {
+func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *pagination.PaginationResponse, error) {
 	tr := telemetry.Track("index.get_user_threads_cursor")
 	defer tr.Finish()
 
 	threadKeys, err := GetUserThreads(userID)
 	if err != nil {
-		return nil, "", false, err
+		return nil, nil, err
 	}
 
 	threads := make([]ThreadWithTimestamp, 0, len(threadKeys))
@@ -68,15 +68,12 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 
 	startIndex := 0
 	if cursor != "" {
-		tc, err := decodeThreadCursor(cursor)
+		lastKey, err := pagination.DecodeCursor(cursor)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
-		}
-		if tc.UserID != userID {
-			return nil, "", false, fmt.Errorf("cursor user mismatch")
+			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
 		}
 		for i, t := range threads {
-			if t.Key == tc.ThreadKey && t.Timestamp == tc.Timestamp {
+			if t.Key == lastKey {
 				startIndex = i + 1
 				break
 			}
@@ -89,7 +86,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	}
 
 	if startIndex >= len(threads) {
-		return []string{}, "", false, nil
+		return []string{}, pagination.NewPaginationResponse(limit, false, "", 0), nil
 	}
 
 	pageThreads := threads[startIndex:endIndex]
@@ -103,50 +100,15 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, string, b
 	var nextCursor string
 	if hasMore && len(pageThreads) > 0 {
 		lastThread := pageThreads[len(pageThreads)-1]
-		nextCursor, err = encodeThreadCursor(userID, lastThread.Key, lastThread.Timestamp)
-		if err != nil {
-			return nil, "", false, err
-		}
+		nextCursor = lastThread.Key
 	}
 
-	return threadKeysOnly, nextCursor, hasMore, nil
-}
-
-func encodeThreadCursor(userID, threadKey string, timestamp int64) (string, error) {
-	cursor := map[string]interface{}{
-		"user_id":   userID,
-		"thread_id": threadKey,
-		"timestamp": timestamp,
-	}
-	data, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-func decodeThreadCursor(cursor string) (struct {
-	UserID    string `json:"user_id"`
-	ThreadKey string `json:"thread_key"`
-	Timestamp int64  `json:"timestamp"`
-}, error) {
-	var result struct {
-		UserID    string `json:"user_id"`
-		ThreadKey string `json:"thread_key"`
-		Timestamp int64  `json:"timestamp"`
-	}
-
-	data, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return result, err
-	}
-	err = json.Unmarshal(data, &result)
-	return result, err
+	return threadKeysOnly, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(threadKeysOnly)), nil
 }
 
 func GetThreadParticipants(threadKey string) ([]string, error) {
 	prefix := fmt.Sprintf("rel:t:%s:u:", threadKey)
-	keys, _, _, err := ListKeysWithPrefixPaginated(prefix, 10000, "")
+	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list thread participant keys: %w", err)
 	}

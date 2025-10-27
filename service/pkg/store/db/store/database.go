@@ -2,12 +2,11 @@ package storedb
 
 import (
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"progressdb/pkg/logger"
+	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -116,11 +115,9 @@ func DeleteKey(key string) error {
 	return nil
 }
 
-
-
-func ListKeysPaginated(limit int, cursor string) ([]string, string, bool, error) {
+func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.PaginationResponse, error) {
 	if Client == nil {
-		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
+		return nil, nil, fmt.Errorf("pebble not opened; call db.Open first")
 	}
 
 	if limit <= 0 {
@@ -132,7 +129,7 @@ func ListKeysPaginated(limit int, cursor string) ([]string, string, bool, error)
 
 	iter, err := Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
-		return nil, "", false, err
+		return nil, nil, err
 	}
 	defer iter.Close()
 
@@ -140,11 +137,11 @@ func ListKeysPaginated(limit int, cursor string) ([]string, string, bool, error)
 	var startKey []byte
 
 	if cursor != "" {
-		decodedCursor, err := decodeStoreKeysCursor(cursor)
+		decodedCursor, err := pagination.DecodeCursor(cursor)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
 		}
-		startKey = []byte(decodedCursor.LastKey)
+		startKey = []byte(decodedCursor)
 	}
 
 	if startKey != nil {
@@ -175,25 +172,24 @@ func ListKeysPaginated(limit int, cursor string) ([]string, string, bool, error)
 
 	var nextCursor string
 	if hasMore && len(out) > 0 {
-		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
-		if err != nil {
-			return nil, "", false, fmt.Errorf("failed to encode cursor: %w", err)
-		}
+		nextCursor = string(iter.Key())
 	}
 
-	return out, nextCursor, hasMore, iter.Error()
+	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out)), iter.Error()
 }
 
-func ListKeysWithPrefixPaginated(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationRequest) ([]string, *pagination.PaginationResponse, error) {
 	if Client == nil {
-		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
+		return nil, nil, fmt.Errorf("pebble not opened; call db.Open first")
 	}
 
+	limit := req.Limit
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 100 {
-		limit = 100
+	// Allow larger limits for admin operations that need bulk data
+	if limit > 1000 {
+		limit = 1000
 	}
 
 	var pfx []byte
@@ -205,19 +201,19 @@ func ListKeysWithPrefixPaginated(prefix string, limit int, cursor string) ([]str
 
 	iter, err := Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
-		return nil, "", false, err
+		return nil, nil, err
 	}
 	defer iter.Close()
 
 	var out []string
 	var startKey []byte
 
-	if cursor != "" {
-		decodedCursor, err := decodeStoreKeysCursor(cursor)
+	if req.Cursor != "" {
+		decodedCursor, err := pagination.DecodeCursor(req.Cursor)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
 		}
-		startKey = []byte(decodedCursor.LastKey)
+		startKey = []byte(decodedCursor)
 	} else {
 		startKey = pfx
 	}
@@ -235,7 +231,7 @@ func ListKeysWithPrefixPaginated(prefix string, limit int, cursor string) ([]str
 			break
 		}
 
-		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
+		if req.Cursor != "" && count == 0 && bytes.Equal(key, startKey) {
 			iter.Next()
 			continue
 		}
@@ -253,38 +249,8 @@ func ListKeysWithPrefixPaginated(prefix string, limit int, cursor string) ([]str
 
 	var nextCursor string
 	if hasMore && len(out) > 0 {
-		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
-		if err != nil {
-			return nil, "", false, fmt.Errorf("failed to encode cursor: %w", err)
-		}
+		nextCursor = string(iter.Key())
 	}
 
-	return out, nextCursor, hasMore, iter.Error()
-}
-
-func encodeStoreKeysCursor(lastKey string) (string, error) {
-	cursor := map[string]interface{}{
-		"last_key": lastKey,
-	}
-	data, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-func decodeStoreKeysCursor(cursor string) (struct {
-	LastKey string `json:"last_key"`
-}, error) {
-	var result struct {
-		LastKey string `json:"last_key"`
-	}
-
-	data, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return result, err
-	}
-
-	err = json.Unmarshal(data, &result)
-	return result, err
+	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out)), iter.Error()
 }

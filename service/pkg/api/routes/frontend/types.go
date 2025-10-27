@@ -1,8 +1,8 @@
 package frontend
 
 import (
-	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/pagination"
 )
 
 type QueueExtras struct {
@@ -21,8 +21,8 @@ type EnqueueRequest struct {
 }
 
 type ThreadsListResponse struct {
-	Threads    []models.Thread            `json:"threads"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Threads    []models.Thread                `json:"threads"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type ThreadResponse struct {
@@ -30,10 +30,10 @@ type ThreadResponse struct {
 }
 
 type MessagesListResponse struct {
-	Thread     string                     `json:"thread"`
-	Messages   []models.Message           `json:"messages"`
-	Metadata   interface{}                `json:"metadata,omitempty"`
-	Pagination *common.PaginationResponse `json:"pagination"`
+	Thread     string                         `json:"thread"`
+	Messages   []models.Message               `json:"messages"`
+	Metadata   interface{}                    `json:"metadata,omitempty"`
+	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type MessageResponse struct {

@@ -12,6 +12,7 @@ import (
 	"progressdb/pkg/store/db/index"
 	message_store "progressdb/pkg/store/features/messages"
 	thread_store "progressdb/pkg/store/features/threads"
+	"progressdb/pkg/store/pagination"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -21,10 +22,10 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	qp := common.ParsePaginationRequest(ctx)
+	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")
-	threadIDs, nextCursor, hasMore, err := index.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
+	threadIDs, paginationResp, err := index.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -48,8 +49,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	pagination := common.NewPaginationResponse(qp.Limit, hasMore, nextCursor, len(out))
-	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out, Pagination: pagination})
+	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out, Pagination: paginationResp})
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
@@ -82,7 +82,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	qp := common.ParsePaginationRequest(ctx)
+	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("validate_thread")
 	threadID, valid := common.ValidatePathParam(ctx, "threadID")
@@ -124,8 +124,8 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	pagination := common.NewPaginationResponse(qp.Limit, respCursor.HasMore, respCursor.Cursor, len(msgs))
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: pagination})
+	paginationResp := pagination.NewPaginationResponse(qp.Limit, respCursor.HasMore, respCursor.Cursor, len(msgs))
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: paginationResp})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
