@@ -143,11 +143,11 @@ func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
 	defer dm.mu.RUnlock()
 
 	data, exists := dm.threadMeta[threadID]
-	if exists {
+	if exists && data != nil {
 		return append([]byte(nil), data...), nil
 	}
 
-	// Not in batch, fetch from DB
+	// Not in batch or deleted, fetch from DB
 	dataStr, err := threads.GetThread(threadID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get thread from DB: %w", err)

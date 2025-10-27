@@ -285,6 +285,21 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("invalid payload type for message update")
 	}
 
+	// check access
+	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	if err != nil {
+		return fmt.Errorf("failed to check thread ownership: %w", err)
+	}
+
+	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
+	if err != nil {
+		return fmt.Errorf("failed to check thread participation: %w", err)
+	}
+
+	if !hasOwnership && !hasParticipation {
+		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, threadKey)
+	}
+
 	// resolve message key
 	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey, messageKey)
 	if err != nil {

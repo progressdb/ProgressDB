@@ -75,18 +75,15 @@ func extractAuthor(entry types.BatchEntry) string {
 			return th.Author
 		}
 	case queue.HandlerThreadUpdate:
-		// For update, author not in payload, but since op.Extras.UserID was used, but not available, perhaps return ""
-		return ""
+		return entry.QueueOp.Extras.UserID
 	case queue.HandlerThreadDelete:
-		// For delete, author not in payload, return ""
-		return ""
+		return entry.QueueOp.Extras.UserID
 	case queue.HandlerMessageCreate:
 		if m, ok := entry.Payload.(*models.Message); ok {
 			return m.Author
 		}
 	case queue.HandlerMessageUpdate:
-		// For update, author not in payload, return ""
-		return ""
+		return entry.QueueOp.Extras.UserID
 	case queue.HandlerMessageDelete:
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
 			return del.Author
