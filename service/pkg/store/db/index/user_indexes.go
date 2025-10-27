@@ -13,7 +13,7 @@ import (
 
 func GetUserThreads(userID string) ([]string, error) {
 	prefix := fmt.Sprintf("rel:u:%s:t:", userID)
-	keys, err := ListKeys(prefix)
+	keys, _, _, err := ListKeysWithPrefixPaginated(prefix, 10000, "")
 	if err != nil {
 		return nil, fmt.Errorf("list user ownership keys: %w", err)
 	}
@@ -146,7 +146,7 @@ func decodeThreadCursor(cursor string) (struct {
 
 func GetThreadParticipants(threadKey string) ([]string, error) {
 	prefix := fmt.Sprintf("rel:t:%s:u:", threadKey)
-	keys, err := ListKeys(prefix)
+	keys, _, _, err := ListKeysWithPrefixPaginated(prefix, 10000, "")
 	if err != nil {
 		return nil, fmt.Errorf("list thread participant keys: %w", err)
 	}

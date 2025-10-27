@@ -129,7 +129,7 @@ func PurgeThreadPermanently(threadID string) error {
 
 func cleanupThreadRelationships(threadID string) error {
 	ownershipPrefix := fmt.Sprintf("rel:u:")
-	ownershipKeys, err := index.ListKeys(ownershipPrefix)
+	ownershipKeys, _, _, err := index.ListKeysWithPrefixPaginated(ownershipPrefix, 10000, "")
 	if err != nil {
 		return fmt.Errorf("list ownership keys: %w", err)
 	}
@@ -143,7 +143,7 @@ func cleanupThreadRelationships(threadID string) error {
 	}
 
 	participationPrefix := fmt.Sprintf("rel:t:%s:u:", threadID)
-	participationKeys, err := index.ListKeys(participationPrefix)
+	participationKeys, _, _, err := index.ListKeysWithPrefixPaginated(participationPrefix, 10000, "")
 	if err != nil {
 		return fmt.Errorf("list participation keys: %w", err)
 	}

@@ -11,7 +11,6 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/routes/common"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
@@ -19,12 +18,12 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
-func AdminHealth(ctx *fasthttp.RequestCtx) {
+func Health(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	_, _ = ctx.WriteString(`{"status":"ok","service":"progressdb"}`)
 }
 
-func AdminStats(ctx *fasthttp.RequestCtx) {
+func Stats(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	threadList, _ := listAllThreads()
@@ -46,7 +45,7 @@ func AdminStats(ctx *fasthttp.RequestCtx) {
 	}{Threads: len(threadList), Messages: msgCount})
 }
 
-func AdminListThreads(ctx *fasthttp.RequestCtx) {
+func ListThreads(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
 	vals, err := listAllThreads()
@@ -59,7 +58,7 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 	}{Threads: router.ToRawMessages(vals)})
 }
 
-func AdminListKeys(ctx *fasthttp.RequestCtx) {
+func ListKeys(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
 	paginationReq := common.ParsePaginationRequest(ctx)
@@ -72,7 +71,7 @@ func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, result)
 }
 
-func AdminGetKey(ctx *fasthttp.RequestCtx) {
+func GetKey(ctx *fasthttp.RequestCtx) {
 	keyEnc, ok := extractParamOrFail(ctx, "key", "missing key")
 	if !ok {
 		return
@@ -91,7 +90,7 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(val))
 }
 
-func AdminListUsers(ctx *fasthttp.RequestCtx) {
+func ListUsers(ctx *fasthttp.RequestCtx) {
 	paginationReq := common.ParsePaginationRequest(ctx)
 
 	result, err := listUsersByPrefixPaginated("idx:U:", paginationReq)
@@ -102,7 +101,7 @@ func AdminListUsers(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, result)
 }
 
-func AdminListUserThreads(ctx *fasthttp.RequestCtx) {
+func ListUserThreads(ctx *fasthttp.RequestCtx) {
 	userID, ok := extractParamOrFail(ctx, "userId", "missing userId")
 	if !ok {
 		return
@@ -118,7 +117,7 @@ func AdminListUserThreads(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, result)
 }
 
-func AdminListThreadMessages(ctx *fasthttp.RequestCtx) {
+func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	threadID, ok := extractParamOrFail(ctx, "threadId", "missing threadId")
 	if !ok {
 		return
@@ -134,7 +133,7 @@ func AdminListThreadMessages(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, result)
 }
 
-func AdminGetThreadMessage(ctx *fasthttp.RequestCtx) {
+func GetThreadMessage(ctx *fasthttp.RequestCtx) {
 	messageID, ok := extractParamOrFail(ctx, "messageId", "missing messageId")
 	if !ok {
 		return
@@ -151,7 +150,7 @@ func AdminGetThreadMessage(ctx *fasthttp.RequestCtx) {
 }
 
 func listKeysByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardKeysResult, error) {
-	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, paginationReq.Limit, paginationReq.Cursor)
+	keys, nextCursor, hasMore, err := storedb.ListKeysWithPrefixPaginated(prefix, paginationReq.Limit, paginationReq.Cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -163,17 +162,11 @@ func listKeysByPrefixPaginated(prefix string, paginationReq *common.PaginationRe
 }
 
 func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardUsersResult, error) {
-	relKeys, err := index.ListKeys(keys.UserThreadsRelPrefix)
+	// get relationship keys
+	relKeys, _, _, err := index.ListKeysWithPrefixPaginated(keys.UserThreadsRelPrefix, 10000, "")
 	if err != nil {
 		return nil, err
 	}
-
-	logger.Info("admin_list_users_debug", "prefix", keys.UserThreadsRelPrefix, "total_keys_found", len(relKeys), "sample_keys", func() []string {
-		if len(relKeys) > 5 {
-			return relKeys[:5]
-		}
-		return relKeys
-	}())
 
 	userSet := make(map[string]struct{})
 	for _, key := range relKeys {
@@ -224,7 +217,7 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationR
 }
 
 func listThreadsForUser(userID string, paginationReq *common.PaginationRequest) (*DashboardThreadsResult, error) {
-	relKeys, err := index.ListKeys(keys.GenUserThreadRelPrefix(userID))
+	relKeys, _, _, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), 10000, "")
 	if err != nil {
 		return nil, fmt.Errorf("list user threads: %w", err)
 	}
@@ -298,7 +291,7 @@ func listMessagesForThread(threadID string, paginationReq *common.PaginationRequ
 }
 
 func listAllThreads() ([]string, error) {
-	allKeys, _, _, err := storedb.ListKeys(keys.GenThreadMetadataPrefix(), 10000, "")
+	allKeys, _, _, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), 10000, "")
 	if err != nil {
 		return nil, err
 	}

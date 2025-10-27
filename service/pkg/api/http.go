@@ -117,22 +117,22 @@ func RegisterRoutes(r *router.Router) {
 	// r.GET("/v1/messages", ListMessages)
 
 	// admin data routes
-	r.GET("/admin/health", adminRoutes.AdminHealth)
-	r.GET("/admin/stats", adminRoutes.AdminStats)
-	r.GET("/admin/keys", adminRoutes.AdminListKeys)
-	r.GET("/admin/keys/{key}", adminRoutes.AdminGetKey)
+	r.GET("/admin/health", adminRoutes.Health)
+	r.GET("/admin/stats", adminRoutes.Stats)
+	r.GET("/admin/keys", adminRoutes.ListKeys)
+	r.GET("/admin/keys/{key}", adminRoutes.GetKey)
 
 	// admin hierarchical navigation routes
-	r.GET("/admin/users", adminRoutes.AdminListUsers)
-	r.GET("/admin/users/{userId}/threads", adminRoutes.AdminListUserThreads)
-	r.GET("/admin/users/{userId}/threads/{threadKey}/messages", adminRoutes.AdminListThreadMessages)
-	r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{id}", adminRoutes.AdminGetThreadMessage)
+	r.GET("/admin/users", adminRoutes.ListUsers)
+	r.GET("/admin/users/{userId}/threads", adminRoutes.ListUserThreads)
+	r.GET("/admin/users/{userId}/threads/{threadKey}/messages", adminRoutes.ListThreadMessages)
+	r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{id}", adminRoutes.GetThreadMessage)
 
 	// admin enc routes
-	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.AdminEncryptionRotateThreadDEK)
-	r.POST("/admin/encryption/rewrap-deks", adminRoutes.AdminEncryptionRewrapDEKs)
-	r.POST("/admin/encryption/encrypt-existing", adminRoutes.AdminEncryptionEncryptExisting)
-	r.POST("/admin/encryption/generate-kek", adminRoutes.AdminEncryptionGenerateKEK)
+	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.EncryptionRotateThreadDEK)
+	r.POST("/admin/encryption/rewrap-deks", adminRoutes.EncryptionRewrapDEKs)
+	r.POST("/admin/encryption/encrypt-existing", adminRoutes.EncryptionEncryptExisting)
+	r.POST("/admin/encryption/generate-kek", adminRoutes.EncryptionGenerateKEK)
 
 	// admin debug routes
 	r.GET("/admin/debug/prometheus", wrapHTTPHandler(promhttp.Handler()))

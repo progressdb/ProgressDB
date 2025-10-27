@@ -58,7 +58,7 @@ func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
-func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+func ListKeysPaginated(limit int, cursor string) ([]string, string, bool, error) {
 	if Client == nil {
 		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
 	}
@@ -68,13 +68,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 	}
 	if limit > 100 {
 		limit = 100
-	}
-
-	var pfx []byte
-	if prefix != "" {
-		pfx = []byte(prefix)
-	} else {
-		pfx = nil
 	}
 
 	iter, err := Client.NewIter(&pebble.IterOptions{})
@@ -92,8 +85,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
 		}
 		startKey = []byte(decodedCursor.LastKey)
-	} else {
-		startKey = pfx
 	}
 
 	if startKey != nil {
@@ -105,9 +96,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 	count := 0
 	for iter.Valid() && count < limit {
 		key := iter.Key()
-		if pfx != nil && !bytes.HasPrefix(key, pfx) {
-			break
-		}
 
 		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
 			iter.Next()
@@ -123,7 +111,7 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 		}
 	}
 
-	hasMore := iter.Valid() && (pfx == nil || bytes.HasPrefix(iter.Key(), pfx))
+	hasMore := iter.Valid()
 
 	var nextCursor string
 	if hasMore && len(out) > 0 {
@@ -136,7 +124,7 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 	return out, nextCursor, hasMore, iter.Error()
 }
 
-func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+func ListKeysWithPrefixPaginated(prefix string, limit int, cursor string) ([]string, string, bool, error) {
 	if Client == nil {
 		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
 	}

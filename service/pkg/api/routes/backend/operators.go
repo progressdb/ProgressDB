@@ -14,7 +14,6 @@ import (
 	"progressdb/pkg/logger"
 )
 
-// auth handlers
 func Sign(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
@@ -71,7 +70,6 @@ func getAuthorizationAPIKey(ctx *fasthttp.RequestCtx) string {
 	return key
 }
 
-// ValidateUserID validates the user ID format
 func ValidateUserID(userID string) error {
 	if userID == "" {
 		return fmt.Errorf("user ID cannot be empty")
@@ -79,6 +77,5 @@ func ValidateUserID(userID string) error {
 	if len(userID) > 100 {
 		return fmt.Errorf("user ID too long")
 	}
-	// Add more validation as needed
 	return nil
 }

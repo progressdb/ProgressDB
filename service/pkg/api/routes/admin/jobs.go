@@ -19,8 +19,8 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
-// AdminEncryptionRotateThreadDEK rotates the DEK for a thread
-func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
+// EncryptionRotateThreadDEK rotates the DEK for a thread
+func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	var req struct {
 		ThreadID string `json:"thread_id"`
 	}
@@ -58,8 +58,8 @@ func AdminEncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 	auditLog("admin_rotate_thread_dek", map[string]interface{}{"thread_id": req.ThreadID, "new_key": newKeyID, "status": "ok"})
 }
 
-// AdminEncryptionRewrapDEKs rewraps DEKs with a new KEK
-func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
+// EncryptionRewrapDEKs rewraps DEKs with a new KEK
+func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	var req struct {
 		ThreadIDs   []string `json:"thread_ids"`
 		All         bool     `json:"all"`
@@ -142,8 +142,8 @@ func AdminEncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	auditSummary("admin_rewrap_deks", len(threadsIDs), len(keyIDs), out)
 }
 
-// AdminEncryptionEncryptExisting encrypts existing unencrypted messages
-func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
+// EncryptionEncryptExisting encrypts existing unencrypted messages
+func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	// decode request body
 	var req struct {
 		ThreadIDs   []string `json:"thread_ids"`
@@ -269,8 +269,8 @@ func AdminEncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	auditSummary("admin_encrypt_existing", len(threadsIDs), 0, out)
 }
 
-// AdminEncryptionGenerateKEK generates a new KEK
-func AdminEncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
+// EncryptionGenerateKEK generates a new KEK
+func EncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to generate key")

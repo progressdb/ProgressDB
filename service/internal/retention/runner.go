@@ -169,7 +169,7 @@ func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath st
 // listAllThreads lists all threads in the system
 func listAllThreads() ([]string, error) {
 	// Use storedb to list all thread metadata keys
-	keys, _, _, err := storedb.ListKeys("t:", 10000, "")
+	keys, _, _, err := storedb.ListKeysWithPrefixPaginated("t:", 10000, "")
 	if err != nil {
 		return nil, err
 	}
