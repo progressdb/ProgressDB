@@ -1,15 +1,9 @@
 package frontend
 
 import (
+	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/models"
 )
-
-type RequestMetadata struct {
-	Role   string `json:"role"`
-	UserID string `json:"user_id"`
-	ReqID  string `json:"reqid"`
-	Remote string `json:"remote"`
-}
 
 type QueueExtras struct {
 	Role   string `json:"role,omitempty"`
@@ -27,8 +21,8 @@ type EnqueueRequest struct {
 }
 
 type ThreadsListResponse struct {
-	Threads    []models.Thread `json:"threads"`
-	Pagination PaginationMeta  `json:"pagination"`
+	Threads    []models.Thread            `json:"threads"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type ThreadResponse struct {
@@ -36,21 +30,14 @@ type ThreadResponse struct {
 }
 
 type MessagesListResponse struct {
-	Thread     string           `json:"thread"`
-	Messages   []models.Message `json:"messages"`
-	Metadata   interface{}      `json:"metadata,omitempty"`
-	Pagination PaginationMeta   `json:"pagination"`
+	Thread     string                     `json:"thread"`
+	Messages   []models.Message           `json:"messages"`
+	Metadata   interface{}                `json:"metadata,omitempty"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type MessageResponse struct {
 	Message models.Message `json:"message"`
-}
-
-type PaginationMeta struct {
-	Limit      int    `json:"limit"`
-	HasMore    bool   `json:"has_more"`
-	NextCursor string `json:"next_cursor,omitempty"`
-	Count      int    `json:"count"`
 }
 
 type MessageCursor struct {
@@ -63,11 +50,6 @@ type ThreadCursor struct {
 	UserID    string `json:"user_id"`
 	Timestamp int64  `json:"timestamp"`
 	ThreadID  string `json:"thread_id"`
-}
-
-type QueryParameters struct {
-	Limit  int
-	Cursor string
 }
 
 type ReadRequestCursorInfo struct {

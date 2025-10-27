@@ -1,11 +1,8 @@
 package common
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/config"
@@ -83,6 +80,7 @@ func PathParam(ctx *fasthttp.RequestCtx, param string) string {
 	return ""
 }
 
+// NewRequestMetadata extracts metadata from the request context
 func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadata {
 	return &RequestMetadata{
 		Role:   string(ctx.Request.Header.Peek("X-Role-Name")),
@@ -92,6 +90,7 @@ func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadat
 	}
 }
 
+// ToQueueExtras converts RequestMetadata to strongly-typed QueueExtras
 func (rm *RequestMetadata) ToQueueExtras() QueueExtras {
 	return QueueExtras{
 		Role:   rm.Role,
@@ -101,84 +100,17 @@ func (rm *RequestMetadata) ToQueueExtras() QueueExtras {
 	}
 }
 
+// NewEnqueueRequest creates a standardized enqueue request
 func NewEnqueueRequest(ctx *fasthttp.RequestCtx, author, threadID, messageID string, payload []byte) *EnqueueRequest {
 	metadata := NewRequestMetadata(ctx, author)
 	return &EnqueueRequest{
 		Thread:  threadID,
 		ID:      messageID,
 		Payload: payload,
-		TS:      0,
+		TS:      0, // Will be set by caller
 		Extras:  metadata.ToQueueExtras(),
 	}
 }
-
-func EncodeMessageCursor(threadID string, timestamp int64, sequence uint64) (string, error) {
-	cursor := MessageCursor{
-		ThreadID:  threadID,
-		Timestamp: timestamp,
-		Sequence:  sequence,
-	}
-	data, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-func DecodeMessageCursor(cursor string) (*MessageCursor, error) {
-	data, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return nil, err
-	}
-	var mc MessageCursor
-	err = json.Unmarshal(data, &mc)
-	if err != nil {
-		return nil, err
-	}
-	return &mc, nil
-}
-
-func EncodeThreadCursor(userID, threadID string, timestamp int64) (string, error) {
-	cursor := ThreadCursor{
-		UserID:    userID,
-		Timestamp: timestamp,
-		ThreadID:  threadID,
-	}
-	data, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-func DecodeThreadCursor(cursor string) (*ThreadCursor, error) {
-	data, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return nil, err
-	}
-	var tc ThreadCursor
-	err = json.Unmarshal(data, &tc)
-	if err != nil {
-		return nil, err
-	}
-	return &tc, nil
-}
-
-func ParseQueryParameters(ctx *fasthttp.RequestCtx) *QueryParameters {
-	qp := &QueryParameters{
-		Limit:  100,
-		Cursor: strings.TrimSpace(string(ctx.QueryArgs().Peek("cursor"))),
-	}
-
-	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
-			qp.Limit = parsedLimit
-		}
-	}
-
-	return qp
-}
-
 func ValidatePathParam(ctx *fasthttp.RequestCtx, paramName string) (string, bool) {
 	value := PathParam(ctx, paramName)
 	if value == "" {

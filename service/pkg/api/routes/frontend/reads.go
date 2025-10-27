@@ -21,7 +21,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	qp := common.ParseQueryParameters(ctx)
+	qp := common.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")
 	threadIDs, nextCursor, hasMore, err := index.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
@@ -48,13 +48,8 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	pagination := common.PaginationMeta{
-		Limit:      qp.Limit,
-		HasMore:    hasMore,
-		NextCursor: nextCursor,
-		Count:      len(out),
-	}
-	_ = router.WriteJSON(ctx, common.ThreadsListResponse{Threads: out, Pagination: pagination})
+	pagination := common.NewPaginationResponse(qp.Limit, hasMore, nextCursor, len(out))
+	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out, Pagination: pagination})
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
@@ -77,7 +72,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("write_response")
-	_ = router.WriteJSON(ctx, common.ThreadResponse{Thread: *thread})
+	_ = router.WriteJSON(ctx, ThreadResponse{Thread: *thread})
 }
 
 func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
@@ -87,7 +82,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	qp := common.ParseQueryParameters(ctx)
+	qp := common.ParsePaginationRequest(ctx)
 
 	tr.Mark("validate_thread")
 	threadID, valid := common.ValidatePathParam(ctx, "threadID")
@@ -129,13 +124,8 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	pagination := common.PaginationMeta{
-		Limit:      qp.Limit,
-		HasMore:    respCursor.HasMore,
-		NextCursor: respCursor.Cursor,
-		Count:      len(msgs),
-	}
-	_ = router.WriteJSON(ctx, common.MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: pagination})
+	pagination := common.NewPaginationResponse(qp.Limit, respCursor.HasMore, respCursor.Cursor, len(msgs))
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: pagination})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
@@ -173,5 +163,5 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, common.MessageResponse{Message: *message})
+	_ = router.WriteJSON(ctx, MessageResponse{Message: *message})
 }

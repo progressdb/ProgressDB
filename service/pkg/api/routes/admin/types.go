@@ -1,33 +1,28 @@
 package admin
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"progressdb/pkg/api/routes/common"
+)
 
 type DashboardKeysResult struct {
-	Keys       []string `json:"keys"`
-	NextCursor string   `json:"next_cursor,omitempty"`
-	HasMore    bool     `json:"has_more"`
-	Count      int      `json:"count"`
+	Keys       []string                   `json:"keys"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type DashboardUsersResult struct {
-	Users      []string `json:"users"`
-	NextCursor string   `json:"next_cursor,omitempty"`
-	HasMore    bool     `json:"has_more"`
-	Count      int      `json:"count"`
+	Users      []string                   `json:"users"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type DashboardThreadsResult struct {
-	Threads    []json.RawMessage `json:"threads"`
-	NextCursor string            `json:"next_cursor,omitempty"`
-	HasMore    bool              `json:"has_more"`
-	Count      int               `json:"count"`
+	Threads    []json.RawMessage          `json:"threads"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type DashboardMessagesResult struct {
-	Messages   []json.RawMessage `json:"messages"`
-	NextCursor string            `json:"next_cursor,omitempty"`
-	HasMore    bool              `json:"has_more"`
-	Count      int               `json:"count"`
+	Messages   []json.RawMessage          `json:"messages"`
+	Pagination *common.PaginationResponse `json:"pagination"`
 }
 
 type DashboardRewrapJobResult struct {

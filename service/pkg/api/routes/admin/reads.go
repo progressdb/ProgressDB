@@ -10,6 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
@@ -61,9 +62,9 @@ func AdminListThreads(ctx *fasthttp.RequestCtx) {
 func AdminListKeys(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
-	limit, cursor := extractCursorInfoParams(ctx)
+	paginationReq := common.ParsePaginationRequest(ctx)
 
-	result, err := listKeysByPrefixPaginated(prefix, limit, cursor)
+	result, err := listKeysByPrefixPaginated(prefix, paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -91,9 +92,9 @@ func AdminGetKey(ctx *fasthttp.RequestCtx) {
 }
 
 func AdminListUsers(ctx *fasthttp.RequestCtx) {
-	limit, cursor := extractCursorInfoParams(ctx)
+	paginationReq := common.ParsePaginationRequest(ctx)
 
-	result, err := listUsersByPrefixPaginated("idx:U:", limit, cursor)
+	result, err := listUsersByPrefixPaginated("idx:U:", paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -107,9 +108,9 @@ func AdminListUserThreads(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	limit, cursor := extractCursorInfoParams(ctx)
+	paginationReq := common.ParsePaginationRequest(ctx)
 
-	result, err := listThreadsForUser(userID, limit, cursor)
+	result, err := listThreadsForUser(userID, paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -123,9 +124,9 @@ func AdminListThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	limit, cursor := extractCursorInfoParams(ctx)
+	paginationReq := common.ParsePaginationRequest(ctx)
 
-	result, err := listMessagesForThread(threadID, limit, cursor)
+	result, err := listMessagesForThread(threadID, paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -149,21 +150,19 @@ func AdminGetThreadMessage(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(msg))
 }
 
-func listKeysByPrefixPaginated(prefix string, limit int, cursor string) (*DashboardKeysResult, error) {
-	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, limit, cursor)
+func listKeysByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardKeysResult, error) {
+	keys, nextCursor, hasMore, err := storedb.ListKeys(prefix, paginationReq.Limit, paginationReq.Cursor)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DashboardKeysResult{
 		Keys:       keys,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-		Count:      len(keys),
+		Pagination: common.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(keys)),
 	}, nil
 }
 
-func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*DashboardUsersResult, error) {
+func listUsersByPrefixPaginated(prefix string, paginationReq *common.PaginationRequest) (*DashboardUsersResult, error) {
 	relKeys, err := index.ListKeys(keys.UserThreadsRelPrefix)
 	if err != nil {
 		return nil, err
@@ -191,16 +190,16 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Dashb
 	sort.Strings(allUsers)
 
 	start := 0
-	if cursor != "" {
+	if paginationReq.Cursor != "" {
 		for i, userID := range allUsers {
-			if userID == cursor {
+			if userID == paginationReq.Cursor {
 				start = i + 1
 				break
 			}
 		}
 	}
 
-	end := start + limit
+	end := start + paginationReq.Limit
 	if end > len(allUsers) {
 		end = len(allUsers)
 	}
@@ -208,9 +207,7 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Dashb
 	if start >= len(allUsers) {
 		return &DashboardUsersResult{
 			Users:      []string{},
-			NextCursor: "",
-			HasMore:    false,
-			Count:      0,
+			Pagination: common.NewPaginationResponse(paginationReq.Limit, false, "", 0),
 		}, nil
 	}
 
@@ -222,13 +219,11 @@ func listUsersByPrefixPaginated(prefix string, limit int, cursor string) (*Dashb
 
 	return &DashboardUsersResult{
 		Users:      pagedUsers,
-		NextCursor: nextCursor,
-		HasMore:    end < len(allUsers),
-		Count:      len(pagedUsers),
+		Pagination: common.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers)),
 	}, nil
 }
 
-func listThreadsForUser(userID string, limit int, cursor string) (*DashboardThreadsResult, error) {
+func listThreadsForUser(userID string, paginationReq *common.PaginationRequest) (*DashboardThreadsResult, error) {
 	relKeys, err := index.ListKeys(keys.GenUserThreadRelPrefix(userID))
 	if err != nil {
 		return nil, fmt.Errorf("list user threads: %w", err)
@@ -245,23 +240,21 @@ func listThreadsForUser(userID string, limit int, cursor string) (*DashboardThre
 	if len(allThreadIDs) == 0 {
 		return &DashboardThreadsResult{
 			Threads:    []json.RawMessage{},
-			NextCursor: "",
-			HasMore:    false,
-			Count:      0,
+			Pagination: common.NewPaginationResponse(paginationReq.Limit, false, "", 0),
 		}, nil
 	}
 
 	start := 0
-	if cursor != "" {
+	if paginationReq.Cursor != "" {
 		for i, tid := range allThreadIDs {
-			if tid == cursor {
+			if tid == paginationReq.Cursor {
 				start = i + 1
 				break
 			}
 		}
 	}
 
-	end := start + limit
+	end := start + paginationReq.Limit
 	if end > len(allThreadIDs) {
 		end = len(allThreadIDs)
 	}
@@ -284,16 +277,14 @@ func listThreadsForUser(userID string, limit int, cursor string) (*DashboardThre
 
 	return &DashboardThreadsResult{
 		Threads:    threads,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-		Count:      len(threads),
+		Pagination: common.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads)),
 	}, nil
 }
 
-func listMessagesForThread(threadID string, limit int, cursor string) (*DashboardMessagesResult, error) {
+func listMessagesForThread(threadID string, paginationReq *common.PaginationRequest) (*DashboardMessagesResult, error) {
 	reqCursor := models.ReadRequestCursorInfo{
-		Cursor: cursor,
-		Limit:  limit,
+		Cursor: paginationReq.Cursor,
+		Limit:  paginationReq.Limit,
 	}
 	messages, respCursor, err := messages.ListMessages(threadID, reqCursor)
 	if err != nil {
@@ -302,9 +293,7 @@ func listMessagesForThread(threadID string, limit int, cursor string) (*Dashboar
 
 	return &DashboardMessagesResult{
 		Messages:   router.ToRawMessages(messages),
-		NextCursor: respCursor.Cursor,
-		HasMore:    respCursor.HasMore,
-		Count:      len(messages),
+		Pagination: common.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages)),
 	}, nil
 }
 
