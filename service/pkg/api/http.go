@@ -1,12 +1,14 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"runtime"
 
 	"progressdb/pkg/api/router"
+	adminRoutes "progressdb/pkg/api/routes/admin"
+	backendRoutes "progressdb/pkg/api/routes/backend"
+	frontendRoutes "progressdb/pkg/api/routes/frontend"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -90,23 +92,23 @@ func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
 // RegisterRoutes wires all API routes onto the provided router.
 func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
-	r.POST("/_sign", Sign)
-	r.POST("/v1/_sign", Sign)
-	r.POST("/v1/sign", Sign)
+	r.POST("/_sign", backendRoutes.Sign)
+	r.POST("/v1/_sign", backendRoutes.Sign)
+	r.POST("/v1/sign", backendRoutes.Sign)
 
 	// thread metadata operations
-	r.POST("/v1/threads", EnqueueCreateThread)
-	r.GET("/v1/threads", ReadThreadsList)
-	r.PUT("/v1/threads/{threadKey}", EnqueueUpdateThread)
-	r.GET("/v1/threads/{threadKey}", ReadThreadItem)
-	r.DELETE("/v1/threads/{threadKey}", EnqueueDeleteThread)
+	r.POST("/v1/threads", frontendRoutes.EnqueueCreateThread)
+	r.GET("/v1/threads", frontendRoutes.ReadThreadsList)
+	r.PUT("/v1/threads/{threadKey}", frontendRoutes.EnqueueUpdateThread)
+	r.GET("/v1/threads/{threadKey}", frontendRoutes.ReadThreadItem)
+	r.DELETE("/v1/threads/{threadKey}", frontendRoutes.EnqueueDeleteThread)
 
 	// thread message operations
-	r.POST("/v1/threads/{threadKey}/messages", EnqueueCreateMessage)
-	r.GET("/v1/threads/{threadKey}/messages", ReadThreadMessages)
-	r.GET("/v1/threads/{threadKey}/messages/{id}", ReadThreadMessage)
-	r.PUT("/v1/threads/{threadKey}/messages/{id}", EnqueueUpdateMessage)
-	r.DELETE("/v1/threads/{threadKey}/messages/{id}", EnqueueDeleteMessage)
+	r.POST("/v1/threads/{threadKey}/messages", frontendRoutes.EnqueueCreateMessage)
+	r.GET("/v1/threads/{threadKey}/messages", frontendRoutes.ReadThreadMessages)
+	r.GET("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.ReadThreadMessage)
+	r.PUT("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueUpdateMessage)
+	r.DELETE("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueDeleteMessage)
 
 	// thread message reactions - REMOVED
 
@@ -115,23 +117,23 @@ func RegisterRoutes(r *router.Router) {
 	// r.GET("/v1/messages", ListMessages)
 
 	// admin data routes
-	r.GET("/admin/health", AdminHealth)
-	r.GET("/admin/stats", AdminStats)
-	r.GET("/admin/threads", AdminListThreads)
-	r.GET("/admin/keys", AdminListKeys)
-	r.GET("/admin/keys/{key}", AdminGetKey)
+	r.GET("/admin/health", adminRoutes.AdminHealth)
+	r.GET("/admin/stats", adminRoutes.AdminStats)
+	r.GET("/admin/threads", adminRoutes.AdminListThreads)
+	r.GET("/admin/keys", adminRoutes.AdminListKeys)
+	r.GET("/admin/keys/{key}", adminRoutes.AdminGetKey)
 
 	// hierarchical navigation routes
-	r.GET("/admin/users", AdminListUsers)
-	r.GET("/admin/users/{userId}/threads", AdminListUserThreads)
-	r.GET("/admin/users/{userId}/threads/{threadId}/messages", AdminListThreadMessages)
-	r.GET("/admin/users/{userId}/threads/{threadId}/messages/{messageId}", AdminGetThreadMessage)
+	r.GET("/admin/users", adminRoutes.AdminListUsers)
+	r.GET("/admin/users/{userId}/threads", adminRoutes.AdminListUserThreads)
+	r.GET("/admin/users/{userId}/threads/{threadId}/messages", adminRoutes.AdminListThreadMessages)
+	r.GET("/admin/users/{userId}/threads/{threadId}/messages/{messageId}", adminRoutes.AdminGetThreadMessage)
 
 	// admin enc routes
-	r.POST("/admin/encryption/rotate-thread-dek", AdminEncryptionRotateThreadDEK)
-	r.POST("/admin/encryption/rewrap-deks", AdminEncryptionRewrapDEKs)
-	r.POST("/admin/encryption/encrypt-existing", AdminEncryptionEncryptExisting)
-	r.POST("/admin/encryption/generate-kek", AdminEncryptionGenerateKEK)
+	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.AdminEncryptionRotateThreadDEK)
+	r.POST("/admin/encryption/rewrap-deks", adminRoutes.AdminEncryptionRewrapDEKs)
+	r.POST("/admin/encryption/encrypt-existing", adminRoutes.AdminEncryptionEncryptExisting)
+	r.POST("/admin/encryption/generate-kek", adminRoutes.AdminEncryptionGenerateKEK)
 
 	// admin debug routes
 	r.GET("/admin/debug/prometheus", wrapHTTPHandler(promhttp.Handler()))
@@ -147,14 +149,4 @@ func Handler() fasthttp.RequestHandler {
 	r := router.New()
 	RegisterRoutes(r)
 	return r.Handler
-}
-
-func pathParam(ctx *fasthttp.RequestCtx, key string) string {
-	if v := ctx.UserValue(key); v != nil {
-		if s, ok := v.(string); ok {
-			return s
-		}
-		return fmt.Sprint(v)
-	}
-	return ""
 }

@@ -39,6 +39,18 @@ func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
 	return fmt.Sprintf(ThreadMessageGEPrefix, threadID, PadSeq(seq))
 }
 
+// Relationship prefixes
+const (
+	UserThreadsRelPrefix = "rel:u:"
+	// Backup prefix
+	BackupEncryptPrefix = "backup:encrypt:"
+)
+
+// GenUserThreadRelPrefix returns prefix for listing threads owned by a user
+func GenUserThreadRelPrefix(userID string) string {
+	return fmt.Sprintf("rel:u:%s:t:", userID)
+}
+
 // ParseVersionKeySequence parses just the sequence from a version key using existing ParseVersionKey
 func ParseVersionKeySequence(key string) (uint64, error) {
 	parts, err := ParseVersionKey(key)
