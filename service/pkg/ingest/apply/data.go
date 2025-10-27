@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	"progressdb/pkg/models"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/messages"
 )
 
 type MessageData struct {
@@ -69,7 +72,12 @@ func (dm *DataManager) SetMessageData(threadID, messageID string, data interface
 	}
 
 	// Encrypt if it's a message (not for partials or other types)
-	// TODO: Implement encryption logic here, e.g., if _, ok := data.(*models.Message); ok { encrypt marshaled }
+	if _, ok := data.(*models.Message); ok {
+		marshaled, err = encryption.EncryptMessageData(threadID, marshaled)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt message data: %w", err)
+		}
+	}
 
 	messageKey := keys.GenMessageKey(threadID, messageID, seq)
 	dm.messageData[messageKey] = MessageData{
@@ -116,6 +124,15 @@ func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error 
 	if err != nil {
 		return fmt.Errorf("failed to marshal version data: %w", err)
 	}
+
+	// Encrypt if it's a message
+	if msg, ok := data.(*models.Message); ok {
+		marshaled, err = encryption.EncryptMessageData(msg.Thread, marshaled)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt version data: %w", err)
+		}
+	}
+
 	dm.versionKeys[versionKey] = marshaled
 	return nil
 }
@@ -136,10 +153,29 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 	defer dm.mu.RUnlock()
 
 	msgData, exists := dm.messageData[messageKey]
-	if !exists {
-		return nil, fmt.Errorf("message data not found: %s", messageKey)
+	if exists {
+		// Decrypt batch data
+		parsed, err := keys.ParseMessageKey(messageKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse message key: %w", err)
+		}
+		kmsMeta, err := encryption.GetThreadKMS(parsed.ThreadID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get thread KMS: %w", err)
+		}
+		decrypted, err := encryption.DecryptMessageData(kmsMeta, msgData.Data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt message data: %w", err)
+		}
+		return append([]byte(nil), decrypted...), nil
 	}
-	return append([]byte(nil), msgData.Data...), nil
+
+	// Not in batch, fetch from DB
+	data, err := messages.GetLatestMessage(messageKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message from DB: %w", err)
+	}
+	return []byte(data), nil
 }
 
 func (dm *DataManager) GetVersionKeys() map[string][]byte {

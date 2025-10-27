@@ -7,10 +7,10 @@ import (
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/threads"
 )
 
 func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
@@ -59,12 +59,12 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 	thread.Key = threadKey
 
-	logger.Debug("thread_final_key_resolved", "tid", threadKey, "final_key", threadKey)
-
 	// store
 	if err := batchProcessor.Data.SetThreadMeta(threadKey, thread); err != nil {
 		return fmt.Errorf("set thread meta: %w", err)
 	}
+
+	// index
 	batchProcessor.Index.InitThreadMessageIndexes(threadKey)
 	batchProcessor.Index.UpdateUserOwnership(thread.Author, threadKey, true)
 	batchProcessor.Index.UpdateThreadParticipants(threadKey, thread.Author, true)
@@ -89,18 +89,14 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
 	}
 
-	logger.Debug("thread_final_key_resolved_for_deletion", "tid", threadKey, "final_key", threadKey)
-
 	// check access
 	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
-		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
 	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
 	if err != nil {
-		logger.Error("thread_participation_check_failed", "author", author, "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to check thread participation: %w", err)
 	}
 
@@ -108,62 +104,57 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, threadKey)
 	}
 
-	logger.Debug("thread_access_validated", "author", author, "thread", threadKey, "ownership", hasOwnership, "participation", hasParticipation)
-
 	// store
 	if err := index.MarkSoftDeleted(threadKey); err != nil {
-		logger.Error("thread_soft_delete_failed", "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to mark thread as deleted: %w", err)
 	}
 
 	if hasOwnership {
 		if err := index.UnmarkUserOwnsThread(author, threadKey); err != nil {
-			logger.Error("thread_ownership_removal_failed", "author", author, "thread", threadKey, "error", err)
 			return fmt.Errorf("failed to remove thread ownership: %w", err)
 		}
 	}
 
 	if hasParticipation {
 		if err := index.UnmarkThreadHasUser(threadKey, author); err != nil {
-			logger.Error("thread_participation_removal_failed", "author", author, "thread", threadKey, "error", err)
 			return fmt.Errorf("failed to remove thread participation: %w", err)
 		}
 	}
 
 	if err := index.DeleteThreadMessageIndexes(threadKey); err != nil {
-		logger.Error("thread_indexes_cleanup_failed", "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to clean up thread indexes: %w", err)
 	}
 
-	logger.Debug("thread_deleted_successfully", "thread", threadKey)
 	return nil
 }
 
 func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
+	// extract
 	author := extractAuthor(entry)
 	if author == "" {
 		return fmt.Errorf("author required for thread update")
 	}
 
+	// validate
 	if entry.Payload == nil {
 		return fmt.Errorf("payload required for thread update")
 	}
 
+	// parse
 	update, ok := entry.Payload.(*models.ThreadUpdatePartial)
 	if !ok {
 		return fmt.Errorf("invalid payload type for thread update")
 	}
 
-	// validate thread key
+	// resolve
 	threadKey := ExtractTKey(entry.QueueOp)
 	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
-		return fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
+		return fmt.Errorf("invalid thread key format: %s - expected t:<threadKey>", threadKey)
 	}
 
-	// Validate user-thread relationships (must be owner for updates)
+	// check access
 	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
-		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
@@ -171,17 +162,40 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		return fmt.Errorf("access denied: only thread owner can update thread %s", threadKey)
 	}
 
-	logger.Debug("thread_update_access_validated", "author", author, "thread", threadKey)
+	// fetch existing
+	existingData, err := batchProcessor.Data.GetThreadMetaCopy(threadKey)
+	if err != nil {
+		// Not in batch, fetch from DB
+		data, err := threads.GetThread(threadKey)
+		if err != nil {
+			return fmt.Errorf("failed to get thread for update: %w", err)
+		}
+		existingData = []byte(data)
+	}
 
-	// For now, thread updates are not fully implemented since we can't retrieve existing thread data
-	// This would require adding a GetThreadMeta method to the DataManager
-	// For the partial update, we'd need to:
-	// 1. Get existing thread data
-	// 2. Apply the partial updates
-	// 3. Store the updated thread data
+	// parse existing
+	var thread models.Thread
+	if err := json.Unmarshal(existingData, &thread); err != nil {
+		return fmt.Errorf("unmarshal existing thread: %w", err)
+	}
 
-	logger.Warn("thread_update_not_fully_implemented", "thread", threadKey, "update", update)
-	return fmt.Errorf("thread update not fully implemented")
+	// apply updates
+	if update.Title != "" {
+		thread.Title = update.Title
+	}
+	if update.Slug != "" {
+		thread.Slug = update.Slug
+	}
+	if update.UpdatedTS != 0 {
+		thread.UpdatedTS = update.UpdatedTS
+	}
+
+	// store
+	if err := batchProcessor.Data.SetThreadMeta(threadKey, &thread); err != nil {
+		return fmt.Errorf("set thread meta: %w", err)
+	}
+
+	return nil
 }
 
 // Messages
@@ -212,13 +226,11 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// check access
 	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
-		logger.Error("thread_ownership_check_failed", "author", author, "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
 	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
 	if err != nil {
-		logger.Error("thread_participation_check_failed", "author", author, "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to check thread participation: %w", err)
 	}
 
@@ -226,19 +238,13 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, threadKey)
 	}
 
-	logger.Debug("thread_access_validated", "author", author, "thread", threadKey, "ownership", hasOwnership, "participation", hasParticipation)
-
 	// resolve message key
 	resolvedID, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
 	if err != nil {
-		logger.Error("message_create_resolution_failed", "msg_key", msg.Key, "err", err)
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 
-	logger.Debug("message_final_key_resolved_for_create", "msg_id", msg.Key, "final_key", resolvedID)
-
 	// sync message fields
-	msg.Key = resolvedID
 	msg.Thread = threadKey
 	msg.Author = author
 	if msg.TS == 0 {
@@ -247,8 +253,9 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 
 	// extract sequence
 	threadSequence := extractSequenceFromKey(resolvedID)
+	msg.Key = keys.GenMessageKey(threadKey, resolvedID, threadSequence)
 
-	// update indexes
+	// index
 	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
 
 	// store
@@ -259,8 +266,6 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 }
 
 func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
-	logger.Debug("process_message_update", "thread", ExtractTKey(entry.QueueOp), "msg", ExtractMKey(entry.QueueOp))
-
 	// extract
 	author := extractAuthor(entry)
 	if author == "" {
@@ -289,11 +294,8 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// resolve message key
 	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey, messageKey)
 	if err != nil {
-		logger.Error("message_update_resolution_failed", "msg_key", messageKey, "err", err)
 		return fmt.Errorf("resolve message key %s: %w", messageKey, err)
 	}
-
-	logger.Debug("message_final_key_resolved_for_update", "msg_key", messageKey, "final_key", resolvedMessageKey)
 
 	// fetch existing
 	dbMessageKey := keys.GenMessageKey(threadKey, resolvedMessageKey, extractSequenceFromKey(resolvedMessageKey))
@@ -328,7 +330,7 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("set version key: %w", err)
 	}
 
-	// update indexes
+	// indexes
 	threadComp, messageComp, err := keys.ExtractMessageComponents(threadKey, resolvedMessageKey)
 	if err != nil {
 		return fmt.Errorf("extract message components: %w", err)
@@ -362,17 +364,13 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// resolve message key
 	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
 	if err != nil {
-		logger.Error("message_delete_resolution_failed", "msg_key", msg.Key, "handler", entry.Handler, "err", err)
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
-
-	logger.Debug("message_final_key_resolved_for_delete", "msg_key", msg.Key, "final_key", finalMessageKey)
 
 	// fetch existing
 	messageKey := keys.GenMessageKey(finalThreadKey, finalMessageKey, extractSequenceFromKey(finalMessageKey))
 	messageData, err := batchProcessor.Data.GetMessageDataCopy(messageKey)
 	if err != nil {
-		logger.Debug("message_not_found_for_delete", "message_key", finalMessageKey, "error", err)
 		return fmt.Errorf("message not found for delete: %s", finalMessageKey)
 	}
 
