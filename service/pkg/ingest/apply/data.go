@@ -153,26 +153,12 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
 
+
+	// NOTE: no decryption, as .body is not used but replaced & stored.
+
 	msgData, exists := dm.messageData[messageKey]
 	if exists {
-		// Decrypt batch data
-		parsed, err := keys.ParseMessageKey(messageKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse message key: %w", err)
-		}
-		threadData, err := dm.GetThreadMetaCopy(parsed.ThreadID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get thread meta: %w", err)
-		}
-		var thread models.Thread
-		if err := json.Unmarshal(threadData, &thread); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal thread: %w", err)
-		}
-		decrypted, err := encryption.DecryptMessageData(thread.KMS, msgData.Data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt message data: %w", err)
-		}
-		return append([]byte(nil), decrypted...), nil
+		return append([]byte(nil), msgData.Data...), nil
 	}
 
 	// Not in batch, fetch from DB

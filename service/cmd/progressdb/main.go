@@ -36,7 +36,7 @@ func main() {
 	flags := config.ParseConfigFlags()
 	if !flags.Set["db"] {
 		if root := state.ArtifactRoot(); root != "" {
-			flags.DB = filepath.Join(root, ".database")
+			flags.DB = filepath.Join(root, "database")
 		}
 	}
 
@@ -57,7 +57,7 @@ func main() {
 	}
 	if strings.TrimSpace(eff.DBPath) == "" {
 		if root := state.ArtifactRoot(); root != "" {
-			eff.DBPath = filepath.Join(root, ".database")
+			eff.DBPath = filepath.Join(root, "database")
 		}
 	}
 

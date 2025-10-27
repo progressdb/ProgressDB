@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/config"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
@@ -30,21 +31,43 @@ func handleQueueError(ctx *fasthttp.RequestCtx, err error) {
 	}
 }
 
-// standardized payload extraction and check with 100kb (102400 bytes) max size
+// standardized payload extraction and check with configurable max size
 func extractPayloadOrFail(ctx *fasthttp.RequestCtx) ([]byte, bool) {
-	const maxPayloadSize = 102400 // 100 KB
+	maxPayloadSize := config.GetMaxPayloadSize()
 	body := ctx.PostBody()
 	if len(body) == 0 {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "empty request payload")
 		return nil, false
 	}
-	if len(body) > maxPayloadSize {
-		router.WriteJSONError(ctx, fasthttp.StatusRequestEntityTooLarge, "request payload exceeds 100kb limit")
+	if int64(len(body)) > maxPayloadSize {
+		router.WriteJSONError(ctx, fasthttp.StatusRequestEntityTooLarge, fmt.Sprintf("request payload exceeds %d bytes limit", maxPayloadSize))
 		return nil, false
 	}
 	ref := make([]byte, len(body))
 	copy(ref, body)
 	return ref, true
+}
+
+// validateThreadKey validates thread key format (supports both provisional and final)
+func validateThreadKey(key string) error {
+	if err := keys.ValidateThreadKey(key); err == nil {
+		return nil
+	}
+	if err := keys.ValidateThreadPrvKey(key); err == nil {
+		return nil
+	}
+	return fmt.Errorf("invalid thread key format")
+}
+
+// validateMessageKey validates message key format (supports both provisional and final)
+func validateMessageKey(key string) error {
+	if err := keys.ValidateMessageKey(key); err == nil {
+		return nil
+	}
+	if err := keys.ValidateMessagePrvKey(key); err == nil {
+		return nil
+	}
+	return fmt.Errorf("invalid message key format")
 }
 
 // Standardized path param extraction; auto-writes error and returns (string, bool)
@@ -127,8 +150,8 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	}
 
 	// validate
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+	if err := validateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -190,8 +213,8 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	// validate
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+	if err := validateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -242,8 +265,8 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	// validate
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+	if err := validateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -315,8 +338,12 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	// validate
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+	if err := validateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateMessageKey(messageKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -386,8 +413,12 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	// validate
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread id format")
+	if err := validateThreadKey(threadKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateMessageKey(messageKey); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 

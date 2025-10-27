@@ -24,6 +24,7 @@ server:
    address: "0.0.0.0"
    port: 8080
    db_path: "./data"
+   max_payload_size: "100KB"
    tls:
      cert_file: ""      # path to TLS cert file (enable TLS when set)
      key_file: ""       # path to TLS key file
@@ -83,6 +84,10 @@ Configuration reference (option → explanation → env var)
 - `server.db_path` / `storage.db_path`
   - What it does: path to the Pebble DB files. Must be persistent and writable by the server process.
   - Env var: `PROGRESSDB_DB_PATH`.
+
+- `server.max_payload_size`
+  - What it does: maximum size of request payloads (e.g., message bodies) in bytes. Accepts human-readable formats like "100KB" or "1MB". Default is 100KB.
+  - Env var: `PROGRESSDB_MAX_PAYLOAD_SIZE`.
 
 - `server.tls.cert_file`, `server.tls.key_file`
   - What it does: when both are set the server enables TLS. Provide full filesystem paths to the cert and key.

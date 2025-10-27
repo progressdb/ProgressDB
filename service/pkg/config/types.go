@@ -12,8 +12,9 @@ import (
 
 // RuntimeConfig holds runtime key sets for use by other packages.
 type RuntimeConfig struct {
-	BackendKeys map[string]struct{}
-	SigningKeys map[string]struct{}
+	BackendKeys    map[string]struct{}
+	SigningKeys    map[string]struct{}
+	MaxPayloadSize int64
 }
 
 // Config is the main configuration struct.
@@ -29,14 +30,15 @@ type Config struct {
 
 // ServerConfig holds http, tls, and security settings.
 type ServerConfig struct {
-	Address     string       `yaml:"address,default=0.0.0.0"`
-	Port        int          `yaml:"port,default=8080"`
-	DBPath      string       `yaml:"db_path,default=./database"`
-	TLS         TLSConfig    `yaml:"tls"`
-	CORS        CORSConfig   `yaml:"cors"`
-	RateLimit   RateConfig   `yaml:"rate_limit"`
-	IPWhitelist []string     `yaml:"ip_whitelist"`
-	APIKeys     APIKeyConfig `yaml:"api_keys"`
+	Address        string       `yaml:"address,default=0.0.0.0"`
+	Port           int          `yaml:"port,default=8080"`
+	DBPath         string       `yaml:"db_path,default=./database"`
+	MaxPayloadSize SizeBytes    `yaml:"max_payload_size,default=100KB"`
+	TLS            TLSConfig    `yaml:"tls"`
+	CORS           CORSConfig   `yaml:"cors"`
+	RateLimit      RateConfig   `yaml:"rate_limit"`
+	IPWhitelist    []string     `yaml:"ip_whitelist"`
+	APIKeys        APIKeyConfig `yaml:"api_keys"`
 }
 
 // TLSConfig holds TLS certificate configuration.

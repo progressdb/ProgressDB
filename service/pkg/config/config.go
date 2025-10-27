@@ -12,45 +12,6 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Defaults and limits for queue/WAL configuration
-// const (
-// 	defaultQueueCapacity    = 4 * 1024 * 1024        // 4M for higher buffer
-// 	defaultWALMaxFileSize   = 2 * 1024 * 1024 * 1024 // 2 GiB
-// 	defaultWALBatchInterval = 10 * time.Millisecond
-// 	defaultWALBatchSize     = 4096
-// 	minWALFileSize          = 1 * 1024 * 1024 // 1 MiB
-// 	minWALBatchInterval     = 1 * time.Millisecond
-// 	defaultCompressMinBytes = 512
-// 	// Ingest/ingestor defaults
-// 	defaultIngestorWorkerCount          = 48
-// 	defaultIngestorApplyQueueBufferSize = 100
-// 	defaultIngestorMaxBatchSize         = 10000
-// 	defaultIngestorFlushIntervalMs      = 1
-
-// 	// Queue defaults
-// 	defaultQueueBatchSize        = 131072
-// 	defaultDrainPollInterval     = 250 * time.Microsecond
-// 	defaultMaxPooledBufferBytes  = 3 * 1024 * 1024 * 1024 // 3 GiB
-// 	defaultQueueTruncateInterval = 60 * time.Second
-// 	// Retention defaults
-// 	defaultRetentionLockTTL = 300 * time.Second
-// 	defaultRetentionCron    = "0 2 * * *" // Default to daily at 02:00
-// 	// telemetry defaults
-// 	defaultTelemetrySampleRate    = 0.001
-// 	defaultTelemetrySlowMs        = 200
-// 	defaultTelemetryBufferSize    = 60 * 1024 * 1024 // 60MB
-// 	defaultTelemetryFileMaxSize   = 40 * 1024 * 1024 // 40MB
-// 	defaultTelemetryFlushMs       = 2000             // 2 seconds
-// 	defaultTelemetryQueueCapacity = 2048
-// 	// sensor defaults
-// 	defaultSensorPollInterval   = 500 * time.Millisecond
-// 	defaultSensorDiskHighPct    = 80
-// 	defaultSensorDiskLowPct     = 60
-// 	defaultSensorMemHighPct     = 80
-// 	defaultSensorCPUHighPct     = 90
-// 	defaultSensorRecoveryWindow = 5 * time.Second
-// )
-
 var (
 	runtimeMu  sync.RWMutex
 	runtimeCfg *RuntimeConfig
@@ -89,6 +50,16 @@ func GetSigningKeys() map[string]struct{} {
 		out[k] = struct{}{}
 	}
 	return out
+}
+
+// GetMaxPayloadSize returns the maximum payload size in bytes.
+func GetMaxPayloadSize() int64 {
+	runtimeMu.RLock()
+	defer runtimeMu.RUnlock()
+	if runtimeCfg == nil {
+		return 102400 // default 100KB
+	}
+	return runtimeCfg.MaxPayloadSize
 }
 
 // Addr returns the HTTP server address as host:port.

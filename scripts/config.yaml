@@ -2,6 +2,7 @@ server:
   address: "0.0.0.0"
   port: 8080
   db_path: "./database"
+  max_payload_size: "200KB"
   tls:
     cert_file: ""
     key_file: ""

@@ -76,7 +76,11 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	)
 
 	// setup runtime keys
-	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
+	runtimeCfg := &config.RuntimeConfig{
+		BackendKeys:    map[string]struct{}{},
+		SigningKeys:    map[string]struct{}{},
+		MaxPayloadSize: eff.Config.Server.MaxPayloadSize.Int64(),
+	}
 	for _, k := range eff.Config.Server.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
 		runtimeCfg.SigningKeys[k] = struct{}{}
