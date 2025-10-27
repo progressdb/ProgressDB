@@ -17,14 +17,12 @@ var (
 	runtimeCfg *RuntimeConfig
 )
 
-// SetRuntime sets the global runtime config.
 func SetRuntime(rc *RuntimeConfig) {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
 	runtimeCfg = rc
 }
 
-// GetBackendKeys returns a copy of backend API keys.
 func GetBackendKeys() map[string]struct{} {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
@@ -38,7 +36,6 @@ func GetBackendKeys() map[string]struct{} {
 	return out
 }
 
-// GetSigningKeys returns a copy of signing keys.
 func GetSigningKeys() map[string]struct{} {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
@@ -52,17 +49,15 @@ func GetSigningKeys() map[string]struct{} {
 	return out
 }
 
-// GetMaxPayloadSize returns the maximum payload size in bytes.
 func GetMaxPayloadSize() int64 {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
-	if runtimeCfg == nil {
-		return 102400 // default 100KB
+	if runtimeCfg == nil || runtimeCfg.MaxPayloadSize == 0 {
+		return 102400
 	}
 	return runtimeCfg.MaxPayloadSize
 }
 
-// Addr returns the HTTP server address as host:port.
 func (c *Config) Addr() string {
 	addr := c.Server.Address
 	if addr == "" {
@@ -75,7 +70,6 @@ func (c *Config) Addr() string {
 	return fmt.Sprintf("%s:%d", addr, port)
 }
 
-// LoadConfigFile reads and parses a config file.
 func LoadConfigFile(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -91,7 +85,6 @@ func LoadConfigFile(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate validates values in the config and applies any runtime-specific logic.
 func (c *Config) ValidateConfig() error {
 	numCPU := runtime.NumCPU()
 	runtime.GOMAXPROCS(numCPU)
@@ -101,16 +94,12 @@ func (c *Config) ValidateConfig() error {
 		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
 		cc.WorkerCount = numCPU
 	}
-
-	// Validate user-passed retention cron for correctness.
 	if !gronx.IsValid(c.Retention.Cron) {
 		return fmt.Errorf("invalid retention cron expression: %s", c.Retention.Cron)
 	}
-
 	return nil
 }
 
-// ResolveConfigPath returns the config file path, preferring flag, then env.
 func ResolveConfigPath(flagPath string, flagSet bool) string {
 	if flagSet {
 		return flagPath

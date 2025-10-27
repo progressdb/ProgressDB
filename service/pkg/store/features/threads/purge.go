@@ -129,7 +129,7 @@ func PurgeThreadPermanently(threadID string) error {
 }
 
 func cleanupThreadRelationships(threadID string) error {
-	ownershipPrefix := fmt.Sprintf("rel:u:")
+	ownershipPrefix := keys.UserThreadsRelPrefix
 	var ownershipKeys []string
 	cursor := ""
 	for {
@@ -152,10 +152,19 @@ func cleanupThreadRelationships(threadID string) error {
 		}
 	}
 
-	participationPrefix := fmt.Sprintf("rel:t:%s:u:", threadID)
-	participationKeys, _, err := index.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
-	if err != nil {
-		return fmt.Errorf("list participation keys: %w", err)
+	participationPrefix := keys.GenThreadUserRelPrefix(threadID)
+	var participationKeys []string
+	cursor = ""
+	for {
+		keys, resp, err := index.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		if err != nil {
+			return fmt.Errorf("list participation keys: %w", err)
+		}
+		participationKeys = append(participationKeys, keys...)
+		if !resp.HasMore {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
 	for _, key := range participationKeys {

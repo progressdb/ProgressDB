@@ -22,32 +22,30 @@ const (
 	BackupEncryptPrefix  = "backup:encrypt:"
 )
 
-// GenAllMessageVersionsPrefix returns prefix for searching all versions of a message
 func GenAllMessageVersionsPrefix(msgID string) string {
 	return fmt.Sprintf(VersionPrefix, msgID)
 }
 
-// GenAllThreadMessagesPrefix returns prefix for searching all messages in a thread
 func GenAllThreadMessagesPrefix(threadID string) string {
 	return fmt.Sprintf(ThreadMessagePrefix, threadID)
 }
 
-// GenThreadMetadataPrefix returns prefix for searching all thread metadata keys
 func GenThreadMetadataPrefix() string {
 	return ThreadMetadataPrefix
 }
 
-// GenThreadMessagesGEPrefix returns prefix for SeekGE operations to start from a specific sequence
 func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
 	return fmt.Sprintf(ThreadMessageGEPrefix, threadID, PadSeq(seq))
 }
 
-// GenUserThreadRelPrefix returns prefix for listing threads owned by a user
 func GenUserThreadRelPrefix(userID string) string {
 	return fmt.Sprintf("rel:u:%s:t:", userID)
 }
 
-// ParseVersionKeySequence parses just the sequence from a version key using existing ParseVersionKey
+func GenThreadUserRelPrefix(threadID string) string {
+	return fmt.Sprintf("rel:t:%s:u:", threadID)
+}
+
 func ParseVersionKeySequence(key string) (uint64, error) {
 	parts, err := ParseVersionKey(key)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/config"
+	"progressdb/pkg/logger"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/telemetry"
 
@@ -15,15 +16,20 @@ import (
 func ExtractPayloadOrFail(ctx *fasthttp.RequestCtx) ([]byte, bool) {
 	maxPayloadSize := config.GetMaxPayloadSize()
 	body := ctx.PostBody()
-	if len(body) == 0 {
+	bodyLen := int64(len(body))
+
+	// Log the body length
+	logger.Info("ExtractPayloadOrFail.body_length", bodyLen)
+
+	if bodyLen == 0 {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "empty request payload")
 		return nil, false
 	}
-	if int64(len(body)) > maxPayloadSize {
+	if bodyLen > maxPayloadSize {
 		router.WriteJSONError(ctx, fasthttp.StatusRequestEntityTooLarge, fmt.Sprintf("request payload exceeds %d bytes limit", maxPayloadSize))
 		return nil, false
 	}
-	ref := make([]byte, len(body))
+	ref := make([]byte, bodyLen)
 	copy(ref, body)
 	return ref, true
 }

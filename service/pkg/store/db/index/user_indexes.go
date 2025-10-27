@@ -12,7 +12,7 @@ import (
 )
 
 func GetUserThreads(userID string) ([]string, error) {
-	prefix := fmt.Sprintf("rel:u:%s:t:", userID)
+	prefix := keys.GenUserThreadRelPrefix(userID)
 	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list user ownership keys: %w", err)
@@ -107,7 +107,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *paginati
 }
 
 func GetThreadParticipants(threadKey string) ([]string, error) {
-	prefix := fmt.Sprintf("rel:t:%s:u:", threadKey)
+	prefix := keys.GenThreadUserRelPrefix(threadKey)
 	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list thread participant keys: %w", err)

@@ -149,6 +149,7 @@ func GetThreadMessage(ctx *fasthttp.RequestCtx) {
 	_, _ = ctx.Write([]byte(msg))
 }
 
+// helpers
 func listKeysByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardKeysResult, error) {
 	keys, pagination, err := storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
 	if err != nil {
@@ -162,14 +163,23 @@ func listKeysByPrefixPaginated(prefix string, paginationReq *pagination.Paginati
 }
 
 func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardUsersResult, error) {
-	// get relationship keys (use large limit for admin operations)
-	relKeys, _, err := index.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
-	if err != nil {
-		return nil, err
+	// get all relationship keys by paginating through them
+	var allRelKeys []string
+	cursor := ""
+	for {
+		relKeys, resp, err := index.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		if err != nil {
+			return nil, err
+		}
+		allRelKeys = append(allRelKeys, relKeys...)
+		if !resp.HasMore {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
 	userSet := make(map[string]struct{})
-	for _, key := range relKeys {
+	for _, key := range allRelKeys {
 		parts := strings.Split(key, ":")
 		if len(parts) >= 4 && parts[0] == "rel" && parts[1] == "u" && parts[3] == "t" {
 			userSet[parts[2]] = struct{}{}
@@ -217,14 +227,23 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.Paginat
 }
 
 func listThreadsForUser(userID string, paginationReq *pagination.PaginationRequest) (*DashboardThreadsResult, error) {
-	// get relationship keys (use large limit for admin operations)
-	relKeys, _, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
-	if err != nil {
-		return nil, fmt.Errorf("list user threads: %w", err)
+	// get all relationship keys by paginating through them
+	var allRelKeys []string
+	cursor := ""
+	for {
+		relKeys, resp, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		if err != nil {
+			return nil, fmt.Errorf("list user threads: %w", err)
+		}
+		allRelKeys = append(allRelKeys, relKeys...)
+		if !resp.HasMore {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
-	allThreadIDs := make([]string, 0, len(relKeys))
-	for _, key := range relKeys {
+	allThreadIDs := make([]string, 0, len(allRelKeys))
+	for _, key := range allRelKeys {
 		parts := strings.Split(key, ":")
 		if len(parts) >= 4 && parts[0] == "rel" && parts[1] == "u" && parts[2] == userID && parts[3] == "t" {
 			allThreadIDs = append(allThreadIDs, parts[4])
@@ -292,9 +311,18 @@ func listMessagesForThread(threadID string, paginationReq *pagination.Pagination
 }
 
 func listAllThreads() ([]string, error) {
-	allKeys, _, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
-	if err != nil {
-		return nil, err
+	var allKeys []string
+	cursor := ""
+	for {
+		keys, resp, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		if err != nil {
+			return nil, err
+		}
+		allKeys = append(allKeys, keys...)
+		if !resp.HasMore {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
 	var threadKeys []string
