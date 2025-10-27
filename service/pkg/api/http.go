@@ -119,15 +119,14 @@ func RegisterRoutes(r *router.Router) {
 	// admin data routes
 	r.GET("/admin/health", adminRoutes.AdminHealth)
 	r.GET("/admin/stats", adminRoutes.AdminStats)
-	r.GET("/admin/threads", adminRoutes.AdminListThreads)
 	r.GET("/admin/keys", adminRoutes.AdminListKeys)
 	r.GET("/admin/keys/{key}", adminRoutes.AdminGetKey)
 
-	// hierarchical navigation routes
+	// admin hierarchical navigation routes
 	r.GET("/admin/users", adminRoutes.AdminListUsers)
 	r.GET("/admin/users/{userId}/threads", adminRoutes.AdminListUserThreads)
-	r.GET("/admin/users/{userId}/threads/{threadId}/messages", adminRoutes.AdminListThreadMessages)
-	r.GET("/admin/users/{userId}/threads/{threadId}/messages/{messageId}", adminRoutes.AdminGetThreadMessage)
+	r.GET("/admin/users/{userId}/threads/{threadKey}/messages", adminRoutes.AdminListThreadMessages)
+	r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{id}", adminRoutes.AdminGetThreadMessage)
 
 	// admin enc routes
 	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.AdminEncryptionRotateThreadDEK)

@@ -8,19 +8,17 @@ import (
 	"fmt"
 
 	"progressdb/pkg/logger"
-	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
 )
 
 var Client *pebble.DB
-var StoreDBPath string // Leave this alone as instructed
+var StoreDBPath string
 var walDisabled bool
 
-// opens/creates pebble Client with WAL settings
 func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	if Client != nil {
-		return nil // already opened
+		return nil
 	}
 	var err error
 	opts := &pebble.Options{
@@ -37,11 +35,10 @@ func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
-	StoreDBPath = path // keep this unchanged
+	StoreDBPath = path
 	return nil
 }
 
-// closes opened pebble Client
 func Close() error {
 	if Client == nil {
 		return nil
@@ -53,26 +50,19 @@ func Close() error {
 	return nil
 }
 
-// returns true if Client is opened
 func Ready() bool {
 	return Client != nil
 }
 
-// returns true if error is pebble.ErrNotFound
 func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
-// ListKeysPaginated lists keys with cursor-based pagination (required)
 func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, error) {
-	tr := telemetry.Track("db.list_keys_paginated")
-	defer tr.Finish()
-
 	if Client == nil {
 		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
 	}
 
-	// Set default and max limits
 	if limit <= 0 {
 		limit = 100
 	}
@@ -96,7 +86,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 	var out []string
 	var startKey []byte
 
-	// Decode cursor to get starting position
 	if cursor != "" {
 		decodedCursor, err := decodeStoreKeysCursor(cursor)
 		if err != nil {
@@ -107,7 +96,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 		startKey = pfx
 	}
 
-	// Seek to start position
 	if startKey != nil {
 		iter.SeekGE(startKey)
 	} else {
@@ -121,7 +109,6 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 			break
 		}
 
-		// Skip the cursor key itself when continuing pagination
 		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
 			iter.Next()
 			continue
@@ -136,10 +123,8 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 		}
 	}
 
-	// Determine if more results exist
 	hasMore := iter.Valid() && (pfx == nil || bytes.HasPrefix(iter.Key(), pfx))
 
-	// Generate next cursor if we have more results
 	var nextCursor string
 	if hasMore && len(out) > 0 {
 		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
@@ -151,16 +136,11 @@ func ListKeys(prefix string, limit int, cursor string) ([]string, string, bool, 
 	return out, nextCursor, hasMore, iter.Error()
 }
 
-// ListKeysPaginated lists keys with cursor-based pagination
 func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, string, bool, error) {
-	tr := telemetry.Track("db.list_keys_paginated")
-	defer tr.Finish()
-
 	if Client == nil {
 		return nil, "", false, fmt.Errorf("pebble not opened; call db.Open first")
 	}
 
-	// Set default and max limits
 	if limit <= 0 {
 		limit = 100
 	}
@@ -184,7 +164,6 @@ func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, strin
 	var out []string
 	var startKey []byte
 
-	// Decode cursor to get starting position
 	if cursor != "" {
 		decodedCursor, err := decodeStoreKeysCursor(cursor)
 		if err != nil {
@@ -195,7 +174,6 @@ func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, strin
 		startKey = pfx
 	}
 
-	// Seek to start position
 	if startKey != nil {
 		iter.SeekGE(startKey)
 	} else {
@@ -209,7 +187,6 @@ func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, strin
 			break
 		}
 
-		// Skip the cursor key itself when continuing pagination
 		if cursor != "" && count == 0 && bytes.Equal(key, startKey) {
 			iter.Next()
 			continue
@@ -224,10 +201,8 @@ func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, strin
 		}
 	}
 
-	// Determine if more results exist
 	hasMore := iter.Valid() && (pfx == nil || bytes.HasPrefix(iter.Key(), pfx))
 
-	// Generate next cursor if we have more results
 	var nextCursor string
 	if hasMore && len(out) > 0 {
 		nextCursor, err = encodeStoreKeysCursor(string(iter.Key()))
@@ -239,7 +214,6 @@ func ListKeysPaginated(prefix string, limit int, cursor string) ([]string, strin
 	return out, nextCursor, hasMore, iter.Error()
 }
 
-// encodeStoreKeysCursor creates a cursor for store keys pagination
 func encodeStoreKeysCursor(lastKey string) (string, error) {
 	cursor := map[string]interface{}{
 		"last_key": lastKey,
@@ -251,7 +225,6 @@ func encodeStoreKeysCursor(lastKey string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-// decodeStoreKeysCursor decodes a cursor for store keys pagination
 func decodeStoreKeysCursor(cursor string) (struct {
 	LastKey string `json:"last_key"`
 }, error) {
@@ -268,15 +241,10 @@ func decodeStoreKeysCursor(cursor string) (struct {
 	return result, err
 }
 
-// returns raw value for key as string
 func GetKey(key string) (string, error) {
-	tr := telemetry.TrackWithStrategy("db.get_key", telemetry.RotationStrategyPurge)
-	defer tr.Finish()
-
 	if Client == nil {
 		return "", fmt.Errorf("pebble not opened; call db.Open first")
 	}
-	tr.Mark("get")
 	v, closer, err := Client.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
@@ -293,7 +261,6 @@ func GetKey(key string) (string, error) {
 	return string(v), nil
 }
 
-// stores arbitrary key/value (namespace caution: e.g. "kms:dek:")
 func SaveKey(key string, value []byte) error {
 	if Client == nil {
 		return fmt.Errorf("pebble not opened; call db.Open first")
@@ -306,7 +273,6 @@ func SaveKey(key string, value []byte) error {
 	return nil
 }
 
-// returns iterator, caller must close
 func Iter() (*pebble.Iterator, error) {
 	if Client == nil {
 		return nil, fmt.Errorf("pebble not opened; call db.Open first")
@@ -314,7 +280,6 @@ func Iter() (*pebble.Iterator, error) {
 	return Client.NewIter(&pebble.IterOptions{})
 }
 
-// writes key (bytes) as is, for admin use
 func Set(key, value []byte) error {
 	if Client == nil {
 		return fmt.Errorf("pebble not opened; call db.Open first")
@@ -322,7 +287,6 @@ func Set(key, value []byte) error {
 	return Client.Set(key, value, WriteOpt(true))
 }
 
-// removes key
 func DeleteKey(key string) error {
 	if Client == nil {
 		return fmt.Errorf("pebble not opened; call db.Open first")

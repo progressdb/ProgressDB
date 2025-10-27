@@ -17,6 +17,9 @@ const (
 
 	// Thread message GE prefix for SeekGE operations (missing msgID, has seq)
 	ThreadMessageGEPrefix = "t:%s:m:%s"
+
+	UserThreadsRelPrefix = "rel:u:"
+	BackupEncryptPrefix  = "backup:encrypt:"
 )
 
 // GenAllMessageVersionsPrefix returns prefix for searching all versions of a message
@@ -38,13 +41,6 @@ func GenThreadMetadataPrefix() string {
 func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
 	return fmt.Sprintf(ThreadMessageGEPrefix, threadID, PadSeq(seq))
 }
-
-// Relationship prefixes
-const (
-	UserThreadsRelPrefix = "rel:u:"
-	// Backup prefix
-	BackupEncryptPrefix = "backup:encrypt:"
-)
 
 // GenUserThreadRelPrefix returns prefix for listing threads owned by a user
 func GenUserThreadRelPrefix(userID string) string {

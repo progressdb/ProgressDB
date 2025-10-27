@@ -26,7 +26,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	key := getAPIKey(ctx)
+	key := getAuthorizationAPIKey(ctx)
 	if key == "" {
 		logger.Warn("missing api key in signHandler", "remote", ctx.RemoteAddr().String())
 		router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "missing api key")
@@ -59,7 +59,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func getAPIKey(ctx *fasthttp.RequestCtx) string {
+func getAuthorizationAPIKey(ctx *fasthttp.RequestCtx) string {
 	auth := string(ctx.Request.Header.Peek("Authorization"))
 	var key string
 	if len(auth) > 7 && (auth[:7] == "Bearer " || auth[:7] == "bearer ") {

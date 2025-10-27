@@ -14,7 +14,6 @@ import (
 
 var PendingWrites uint64
 
-// applies batch; sync forces fsync if true, else async write
 func ApplyBatch(batch *pebble.Batch, sync bool) error {
 	if Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
@@ -30,7 +29,6 @@ func ApplyBatch(batch *pebble.Batch, sync bool) error {
 	return err
 }
 
-// increments pending write counter by n
 func RecordWrite(n int) {
 	if n <= 0 {
 		return
@@ -38,22 +36,18 @@ func RecordWrite(n int) {
 	atomic.AddUint64(&PendingWrites, uint64(n))
 }
 
-// returns count of pending writes since last sync
 func GetPendingWrites() uint64 {
 	return atomic.LoadUint64(&PendingWrites)
 }
 
-// resets pending write counter
 func ResetPendingWrites() {
 	atomic.StoreUint64(&PendingWrites, 0)
 }
 
-// resets pending write counter
 func ResetIndexPendingWrites() {
 	atomic.StoreUint64(&index.IndexPendingWrites, 0)
 }
 
-// writes marker key, forces WAL fsync unless disabled (group-commit)
 func ForceSync() error {
 	if Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
@@ -71,7 +65,6 @@ func ForceSync() error {
 	return nil
 }
 
-// chooses sync/no-sync writeOptions, always disables sync if WAL disabled
 func WriteOpt(requestSync bool) *pebble.WriteOptions {
 	if requestSync && !walDisabled {
 		return pebble.Sync
@@ -79,7 +72,6 @@ func WriteOpt(requestSync bool) *pebble.WriteOptions {
 	return pebble.NoSync
 }
 
-// applies batch; sync forces fsync if true, else async write
 func ApplyIndexBatch(batch *pebble.Batch, sync bool) error {
 	if index.IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
@@ -92,7 +84,6 @@ func ApplyIndexBatch(batch *pebble.Batch, sync bool) error {
 	return nil
 }
 
-// increments pending write counter by n
 func RecordIndexWrite(n int) {
 	if n <= 0 {
 		return
@@ -100,12 +91,10 @@ func RecordIndexWrite(n int) {
 	atomic.AddUint64(&index.IndexPendingWrites, uint64(n))
 }
 
-// returns pending write count
 func IndexPendingWrites() uint64 {
 	return atomic.LoadUint64(&index.IndexPendingWrites)
 }
 
-// sets key/value in index DB
 func SetIndexKey(key, val []byte) error {
 	if index.IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
@@ -120,12 +109,10 @@ func SetIndexKey(key, val []byte) error {
 	return nil
 }
 
-// returns count of pending writes since last sync
 func GetIndexPendingWrites() uint64 {
 	return atomic.LoadUint64(&index.IndexPendingWrites)
 }
 
-// writes marker key, forces WAL fsync unless disabled (group-commit)
 func ForceIndexSync() error {
 	if index.IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")

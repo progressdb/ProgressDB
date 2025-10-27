@@ -15,7 +15,6 @@ var IndexDBPath string
 var IndexWALDisabled bool
 var IndexPendingWrites uint64
 
-// opens/creates pebble DB with WAL settings for index storage
 func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	var err error
 	opts := &pebble.Options{
@@ -36,7 +35,6 @@ func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	return nil
 }
 
-// closes opened pebble DB
 func Close() error {
 	if IndexDB == nil {
 		return nil
@@ -48,17 +46,14 @@ func Close() error {
 	return nil
 }
 
-// returns true if DB is opened
 func Ready() bool {
 	return IndexDB != nil
 }
 
-// returns true if error is pebble.ErrNotFound
 func IsNotFound(err error) bool {
 	return errors.Is(err, pebble.ErrNotFound)
 }
 
-// lists all keys as strings for prefix; returns all if prefix empty
 func ListKeys(prefix string) ([]string, error) {
 	if IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
@@ -92,7 +87,6 @@ func ListKeys(prefix string) ([]string, error) {
 	return out, iter.Error()
 }
 
-// returns raw value for key as string
 func GetKey(key string) (string, error) {
 	if IndexDB == nil {
 		return "", fmt.Errorf("pebble not opened; call Open first")
@@ -113,7 +107,6 @@ func GetKey(key string) (string, error) {
 	return string(v), nil
 }
 
-// stores arbitrary key/value (namespace caution: e.g. "idx:author:")
 func SaveKey(key string, value []byte) error {
 	if IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
@@ -126,7 +119,6 @@ func SaveKey(key string, value []byte) error {
 	return nil
 }
 
-// returns iterator, caller must close
 func DBIter() (*pebble.Iterator, error) {
 	if IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
@@ -134,7 +126,6 @@ func DBIter() (*pebble.Iterator, error) {
 	return IndexDB.NewIter(&pebble.IterOptions{})
 }
 
-// writes key (bytes) as is, for admin use
 func DBSet(key, value []byte) error {
 	if IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
@@ -142,7 +133,6 @@ func DBSet(key, value []byte) error {
 	return IndexDB.Set(key, value, WriteOpt(true))
 }
 
-// removes key
 func DeleteKey(key string) error {
 	if IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
@@ -155,7 +145,6 @@ func DeleteKey(key string) error {
 	return nil
 }
 
-// chooses sync/no-sync writeOptions, always disables sync if WAL disabled
 func WriteOpt(requestSync bool) *pebble.WriteOptions {
 	if requestSync && !IndexWALDisabled {
 		return pebble.Sync
