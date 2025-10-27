@@ -10,7 +10,6 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/threads"
 )
 
 func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
@@ -165,12 +164,7 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	// fetch existing
 	existingData, err := batchProcessor.Data.GetThreadMetaCopy(threadKey)
 	if err != nil {
-		// Not in batch, fetch from DB
-		data, err := threads.GetThread(threadKey)
-		if err != nil {
-			return fmt.Errorf("failed to get thread for update: %w", err)
-		}
-		existingData = []byte(data)
+		return fmt.Errorf("failed to get thread for update: %w", err)
 	}
 
 	// parse existing

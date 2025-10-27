@@ -9,6 +9,7 @@ import (
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/messages"
+	"progressdb/pkg/store/threads"
 )
 
 type MessageData struct {
@@ -142,10 +143,16 @@ func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
 	defer dm.mu.RUnlock()
 
 	data, exists := dm.threadMeta[threadID]
-	if !exists {
-		return nil, fmt.Errorf("thread meta not found: %s", threadID)
+	if exists {
+		return append([]byte(nil), data...), nil
 	}
-	return append([]byte(nil), data...), nil
+
+	// Not in batch, fetch from DB
+	dataStr, err := threads.GetThread(threadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get thread from DB: %w", err)
+	}
+	return []byte(dataStr), nil
 }
 
 func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
@@ -159,11 +166,15 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse message key: %w", err)
 		}
-		kmsMeta, err := encryption.GetThreadKMS(parsed.ThreadID)
+		threadData, err := dm.GetThreadMetaCopy(parsed.ThreadID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get thread KMS: %w", err)
+			return nil, fmt.Errorf("failed to get thread meta: %w", err)
 		}
-		decrypted, err := encryption.DecryptMessageData(kmsMeta, msgData.Data)
+		var thread models.Thread
+		if err := json.Unmarshal(threadData, &thread); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal thread: %w", err)
+		}
+		decrypted, err := encryption.DecryptMessageData(thread.KMS, msgData.Data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt message data: %w", err)
 		}
