@@ -11,8 +11,8 @@ import (
 
 	"progressdb/pkg/api"
 	"progressdb/pkg/api/auth"
-	"progressdb/pkg/banner"
 	"progressdb/pkg/config"
+	"progressdb/pkg/config/banner"
 )
 
 // printBanner prints the startup banner and build info.
