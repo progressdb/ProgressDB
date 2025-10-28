@@ -10,8 +10,8 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/sensor"
 	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
@@ -22,7 +22,7 @@ import (
 
 // ShutdownApp performs graceful shutdown of all app components.
 // This consolidates shutdown logic from both app.go and shutdown.go.
-func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *state.Sensor) error {
+func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
 	log.Printf("shutdown: requested")
 
 	// stop accepting new requests
