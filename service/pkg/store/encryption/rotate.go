@@ -7,7 +7,6 @@ import (
 
 	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
@@ -15,7 +14,6 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// migrates all thread messages to new DEK; backs up old data before overwriting
 func RotateThreadDEK(threadID string, newKeyID string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
@@ -32,10 +30,7 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	// Get thread message prefix for efficient iteration
 	threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
-
-	// Set up iterator bounds for efficient scanning
 	lowerBound := []byte(threadPrefix)
 	upperBound := calculateUpperBound(threadPrefix)
 
@@ -54,7 +49,7 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 		if LikelyJSON(v) {
 			var mm models.Message
 			if err := json.Unmarshal(v, &mm); err == nil {
-				decBody, derr := security.DecryptMessageBody(&mm, oldKeyID)
+				decBody, derr := DecryptMessageBody(&mm, oldKeyID)
 				if derr != nil {
 					return fmt.Errorf("decrypt message failed: %w", derr)
 				}
@@ -121,13 +116,11 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 	return iter.Error()
 }
 
-// calculateUpperBound calculates upper bound for prefix iteration
 func calculateUpperBound(prefix string) []byte {
 	prefixBytes := []byte(prefix)
 	upper := make([]byte, len(prefixBytes))
 	copy(upper, prefixBytes)
 
-	// Increment the last byte to get the upper bound
 	for i := len(upper) - 1; i >= 0; i-- {
 		if upper[i] < 0xFF {
 			upper[i]++
@@ -136,6 +129,5 @@ func calculateUpperBound(prefix string) []byte {
 		upper[i] = 0
 	}
 
-	// If we overflowed, return a prefix that will never match
 	return append(prefixBytes, 0xFF)
 }

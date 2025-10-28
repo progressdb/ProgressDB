@@ -18,8 +18,8 @@ import (
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
 	"progressdb/pkg/kms"
-	"progressdb/pkg/security"
 	"progressdb/pkg/state"
+	"progressdb/pkg/store/encryption"
 )
 
 // app groups server state and components.
@@ -191,5 +191,5 @@ func initFieldPolicy(eff config.EffectiveConfigResult) error {
 	for _, path := range fieldPaths {
 		fields = append(fields, path)
 	}
-	return security.SetEncryptionFieldPolicy(fields)
+	return encryption.SetEncryptionFieldPolicy(fields)
 }

@@ -8,7 +8,6 @@ import (
 	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
-	"progressdb/pkg/security"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 )
@@ -29,7 +28,7 @@ func LikelyJSON(b []byte) bool { return likelyJSON(b) }
 
 // EncryptMessageData encrypts message data if encryption is enabled, fetching KMS meta automatically.
 func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
-	if !security.EncryptionEnabled() {
+	if !EncryptionEnabled() {
 		return data, nil
 	}
 
@@ -38,7 +37,7 @@ func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if security.EncryptionHasFieldPolicy() {
+	if EncryptionHasFieldPolicy() {
 		var msg models.Message
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
@@ -46,7 +45,7 @@ func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
 		// For field policy, we need the full thread? Wait, security.EncryptMessageBody takes thread, but perhaps it only uses KMS.
 		// Assuming it can take a thread with only KMS.
 		fakeThread := &models.Thread{KMS: kmsMeta}
-		encBody, err := security.EncryptMessageBody(&msg, *fakeThread)
+		encBody, err := EncryptMessageBody(&msg, *fakeThread)
 		if err != nil {
 			return nil, err
 		}
@@ -60,7 +59,7 @@ func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
 
 // DecryptMessageData decrypts message data if encryption is enabled.
 func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
-	if !security.EncryptionEnabled() {
+	if !EncryptionEnabled() {
 		return data, nil
 	}
 
@@ -68,12 +67,12 @@ func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("no KMS key ID for thread")
 	}
 
-	if security.EncryptionHasFieldPolicy() {
+	if EncryptionHasFieldPolicy() {
 		var msg models.Message
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
 		}
-		decBody, err := security.DecryptMessageBody(&msg, kmsMeta.KeyID)
+		decBody, err := DecryptMessageBody(&msg, kmsMeta.KeyID)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +85,7 @@ func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 
 // ProvisionThreadKMS provisions a DEK for the thread if encryption is enabled and KMS provider is available.
 func ProvisionThreadKMS(threadID string) (*models.KMSMeta, error) {
-	if !security.EncryptionEnabled() {
+	if !EncryptionEnabled() {
 		return nil, nil
 	}
 
@@ -111,7 +110,7 @@ func ProvisionThreadKMS(threadID string) (*models.KMSMeta, error) {
 
 // GetThreadKMS retrieves only the KMS metadata for a thread without loading the full thread data.
 func GetThreadKMS(threadID string) (*models.KMSMeta, error) {
-	if !security.EncryptionEnabled() {
+	if !EncryptionEnabled() {
 		return nil, nil
 	}
 

@@ -34,7 +34,8 @@ func NewRemoteClient(addr string) *RemoteClient {
 
 func (r *RemoteClient) Health() error { return r.HealthCheck() }
 
-func (r *RemoteClient) Close() error { return nil }
+func (r *RemoteClient) Close() error  { return nil }
+func (r *RemoteClient) Enabled() bool { return true }
 
 func (r *RemoteClient) HealthCheck() error {
 	paths := []string{"/healthz", "/health"}
