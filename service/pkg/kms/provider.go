@@ -11,21 +11,18 @@ var (
 	provider   KMSProvider
 )
 
-// RegisterKMSProvider registers the active provider for the server.
 func RegisterKMSProvider(p KMSProvider) {
 	providerMu.Lock()
 	defer providerMu.Unlock()
 	provider = p
 }
 
-// UnregisterKMSProvider removes any registered provider.
 func UnregisterKMSProvider() {
 	providerMu.Lock()
 	defer providerMu.Unlock()
 	provider = nil
 }
 
-// IsProviderEnabled reports whether a provider is registered and enabled.
 func IsProviderEnabled() bool {
 	providerMu.RLock()
 	p := provider
@@ -36,7 +33,6 @@ func IsProviderEnabled() bool {
 	return p.Enabled()
 }
 
-// CreateDEKForThread requests a DEK scoped to the provided threadID via the provider.
 func CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
 	providerMu.RLock()
 	p := provider
@@ -53,7 +49,6 @@ func CreateDEKForThread(threadID string) (string, []byte, string, string, error)
 	return "", nil, "", "", errors.New("provider does not support CreateDEKForThread")
 }
 
-// EncryptWithDEK encrypts using a DEK referenced by dekID via the provider.
 func EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error) {
 	providerMu.RLock()
 	p := provider
@@ -70,7 +65,6 @@ func EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error)
 	return nil, "", errors.New("provider does not support EncryptWithDEK")
 }
 
-// DecryptWithDEK decrypts a ciphertext blob using the provider.
 func DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error) {
 	providerMu.RLock()
 	p := provider
@@ -95,7 +89,6 @@ func DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error) {
 	return nil, errors.New("provider does not support DecryptWithDEK")
 }
 
-// GetWrappedDEK requests wrapped blob for key id from provider.
 func GetWrappedDEK(keyID string) ([]byte, error) {
 	providerMu.RLock()
 	p := provider
@@ -112,7 +105,6 @@ func GetWrappedDEK(keyID string) ([]byte, error) {
 	return nil, errors.New("provider does not support GetWrapped")
 }
 
-// UnwrapDEK delegates to provider to unwrap a wrapped DEK.
 func UnwrapDEK(wrapped []byte) ([]byte, error) {
 	providerMu.RLock()
 	p := provider
@@ -129,7 +121,6 @@ func UnwrapDEK(wrapped []byte) ([]byte, error) {
 	return nil, errors.New("provider does not support UnwrapDEK")
 }
 
-// RewrapDEKForThread asks provider to rewrap an existing DEK under new KEK hex.
 func RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error) {
 	providerMu.RLock()
 	p := provider

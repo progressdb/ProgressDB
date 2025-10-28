@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"progressdb/pkg/store/keys"
 	utils "progressdb/tests/utils"
 )
 
@@ -49,7 +50,7 @@ func TestAuthorization_Suite(t *testing.T) {
 		}
 
 		// admin visibility is via the admin key endpoint for the thread meta
-		utils.WaitForAdminKeyVisible(t, sp.Addr, "thread:"+tid+":meta", 5*time.Second)
+		utils.WaitForAdminKeyVisible(t, sp.Addr, keys.GenThreadKey(tid), 5*time.Second)
 		var out map[string]interface{}
 		gstatus := utils.FrontendGetJSON(t, sp.Addr, "/v1/threads/"+tid, "alice", &out)
 		if gstatus == 200 {

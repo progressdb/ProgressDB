@@ -24,22 +24,22 @@ const (
 	ThreadKey  = "t:%s"         // t:<threadID>
 
 	// thread → message indexes
-	ThreadMessageStart   = "idx:t:%s:ms:start"   // idx:t:<thread_id>:ms:start
-	ThreadMessageEnd     = "idx:t:%s:ms:end"     // idx:t:<thread_id>:ms:end
+	ThreadMessageStart = "idx:t:%s:ms:start" // idx:t:<thread_id>:ms:start
+	ThreadMessageEnd   = "idx:t:%s:ms:end"   // idx:t:<thread_id>:ms:end
 	ThreadMessageCDeltas = "idx:t:%s:ms:cdeltas" // idx:t:<thread_id>:ms:cdeltas
 	ThreadMessageUDeltas = "idx:t:%s:ms:udeltas" // idx:t:<thread_id>:ms:udeltas
-	ThreadMessageSkips   = "idx:t:%s:ms:skips"   // idx:t:<thread_id>:ms:skips
-	ThreadMessageLC      = "idx:t:%s:ms:lc"      // idx:t:<thread_id>:ms:lc (last created at)
-	ThreadMessageLU      = "idx:t:%s:ms:lu"      // idx:t:<thread_id>:ms:lu (last updated at)
+	ThreadMessageSkips = "idx:t:%s:ms:skips" // idx:t:<thread_id>:ms:skips
+	ThreadMessageLC    = "idx:t:%s:ms:lc"    // idx:t:<thread_id>:ms:lc (last created at)
+	ThreadMessageLU    = "idx:t:%s:ms:lu"    // idx:t:<thread_id>:ms:lu (last updated at)
 
 	// thread → message version indexes
-	ThreadVersionStart   = "idx:t:%s:ms:%s:vs:start"   // idx:t:<thread_id>:ms:<msg_id>:vs:start
-	ThreadVersionEnd     = "idx:t:%s:ms:%s:vs:end"     // idx:t:<thread_id>:ms:<msg_id>:vs:end
+	ThreadVersionStart = "idx:t:%s:ms:%s:vs:start" // idx:t:<thread_id>:ms:<msg_id>:vs:start
+	ThreadVersionEnd   = "idx:t:%s:ms:%s:vs:end"   // idx:t:<thread_id>:ms:<msg_id>:vs:end
 	ThreadVersionCDeltas = "idx:t:%s:ms:%s:vs:cdeltas" // idx:t:<thread_id>:ms:<msg_id>:vs:cdeltas
 	ThreadVersionUDeltas = "idx:t:%s:ms:%s:vs:udeltas" // idx:t:<thread_id>:ms:<msg_id>:vs:udeltas
-	ThreadVersionSkips   = "idx:t:%s:ms:%s:vs:skips"   // idx:t:<thread_id>:ms:<msg_id>:vs:skips
-	ThreadVersionLC      = "idx:t:%s:ms:%s:vs:lc"      // idx:t:<thread_id>:ms:<msg_id>:vs:lc (last created at for version)
-	ThreadVersionLU      = "idx:t:%s:ms:%s:vs:lu"      // idx:t:<thread_id>:ms:<msg_id>:vs:lu (last updated at for version)
+	ThreadVersionSkips = "idx:t:%s:ms:%s:vs:skips" // idx:t:<thread_id>:ms:<msg_id>:vs:skips
+	ThreadVersionLC    = "idx:t:%s:ms:%s:vs:lc"    // idx:t:<thread_id>:ms:<msg_id>:vs:lc (last created at for version)
+	ThreadVersionLU    = "idx:t:%s:ms:%s:vs:lu"    // idx:t:<thread_id>:ms:<msg_id>:vs:lu (last updated at for version)
 
 	// soft delete markers
 	SoftDeleteMarker = "del:%s" // del:<original_key>

@@ -18,8 +18,26 @@ const (
 	// Thread message GE prefix for SeekGE operations (missing msgID, has seq)
 	ThreadMessageGEPrefix = "t:%s:m:%s"
 
+	// Just user relationships
 	UserThreadsRelPrefix = "rel:u:"
-	BackupEncryptPrefix  = "backup:encrypt:"
+
+	// Backup before encryption
+	BackupEncryptPrefix = "backup:encrypt:"
+
+	// WALMetaNextSequenceKey is the key for storing next sequence in WAL metadata
+	WALMetaNextSequenceKey = "meta:next_sequence"
+
+	// TempIndexKeyFormat is the format for temporary index keys during recovery
+	TempIndexKeyFormat = "temp_idx:%s:%s"
+
+	// RecoveryIndexKeyFormat is the format for final index keys during recovery
+	RecoveryIndexKeyFormat = "idx:%s:%s"
+
+	// TempIndexPrefix is the prefix for temporary index keys
+	TempIndexPrefix = "temp_idx:"
+
+	// TempIndexUpperBound is the upper bound for temporary index key scans
+	TempIndexUpperBound = "temp_idx;"
 )
 
 func GenAllMessageVersionsPrefix(msgID string) string {

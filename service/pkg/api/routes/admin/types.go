@@ -34,8 +34,25 @@ type DashboardRewrapJobResult struct {
 }
 
 type DashboardEncryptJobResult struct {
-	Thread  string `json:"thread"`
 	Key     string `json:"key"`
+	DEKKey  string `json:"dek_key"`
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
+}
+
+type EncryptionRotateRequest struct {
+	Key string `json:"key"`
+}
+
+type EncryptionRewrapRequest struct {
+	Keys        []string `json:"keys"`
+	All         bool     `json:"all"`
+	NewKEKHex   string   `json:"new_kek_hex"`
+	Parallelism int      `json:"parallelism"`
+}
+
+type EncryptionEncryptRequest struct {
+	Keys        []string `json:"keys"`
+	All         bool     `json:"all"`
+	Parallelism int      `json:"parallelism"`
 }

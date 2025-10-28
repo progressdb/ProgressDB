@@ -63,6 +63,11 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, 
 	if isDelete {
 		idx.Skips = append(idx.Skips, msgKey)
 	} else {
+		createdDelta := createdAt - idx.LastCreatedAt
+		updatedDelta := updatedAt - idx.LastUpdatedAt
+		idx.Cdeltas = append(idx.Cdeltas, createdDelta)
+		idx.Udeltas = append(idx.Udeltas, updatedDelta)
+
 		if idx.LastCreatedAt == 0 || createdAt < idx.LastCreatedAt {
 			idx.LastCreatedAt = createdAt
 		}
@@ -71,8 +76,6 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, 
 		}
 		// Note: Sequence is only incremented in ResolveMessageID for new messages
 		// Updates and reactions should not increment the sequence
-		idx.Cdeltas = append(idx.Cdeltas, 1)
-		idx.Udeltas = append(idx.Udeltas, 1)
 	}
 }
 

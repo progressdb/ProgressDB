@@ -70,19 +70,69 @@ func (bp *BatchProcessor) Flush() error {
 
 	// Write thread indexes to index DB
 	for threadID, threadIdx := range threadMessages {
-		threadKey := keys.GenThreadMessageStart(threadID)
 		if threadIdx == nil {
-			if err := indexBatch.Delete([]byte(threadKey), index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete thread messages %s: %w", threadID, err))
+			// Delete all index keys for this thread
+			suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
+			for _, suffix := range suffixes {
+				var key string
+				switch suffix {
+				case "start":
+					key = keys.GenThreadMessageStart(threadID)
+				case "end":
+					key = keys.GenThreadMessageEnd(threadID)
+				case "cdeltas":
+					key = keys.GenThreadMessageCDeltas(threadID)
+				case "udeltas":
+					key = keys.GenThreadMessageUDeltas(threadID)
+				case "skips":
+					key = keys.GenThreadMessageSkips(threadID)
+				case "last_created_at":
+					key = keys.GenThreadMessageLC(threadID)
+				case "last_updated_at":
+					key = keys.GenThreadMessageLU(threadID)
+				}
+				if err := indexBatch.Delete([]byte(key), index.WriteOpt(true)); err != nil {
+					errors = append(errors, fmt.Errorf("delete thread index %s %s: %w", suffix, threadID, err))
+				}
 			}
 		} else {
-			data, err := json.Marshal(threadIdx)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("marshal thread messages %s: %w", threadID, err))
-				continue
+			// Save each field to its respective key
+			fields := map[string]interface{}{
+				"start":           threadIdx.Start,
+				"end":             threadIdx.End,
+				"cdeltas":         threadIdx.Cdeltas,
+				"udeltas":         threadIdx.Udeltas,
+				"skips":           threadIdx.Skips,
+				"last_created_at": threadIdx.LastCreatedAt,
+				"last_updated_at": threadIdx.LastUpdatedAt,
 			}
-			if err := indexBatch.Set([]byte(threadKey), data, index.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread messages %s: %w", threadID, err))
+
+			for suffix, val := range fields {
+				var key string
+				switch suffix {
+				case "start":
+					key = keys.GenThreadMessageStart(threadID)
+				case "end":
+					key = keys.GenThreadMessageEnd(threadID)
+				case "cdeltas":
+					key = keys.GenThreadMessageCDeltas(threadID)
+				case "udeltas":
+					key = keys.GenThreadMessageUDeltas(threadID)
+				case "skips":
+					key = keys.GenThreadMessageSkips(threadID)
+				case "last_created_at":
+					key = keys.GenThreadMessageLC(threadID)
+				case "last_updated_at":
+					key = keys.GenThreadMessageLU(threadID)
+				}
+				data, err := json.Marshal(val)
+				if err != nil {
+					errors = append(errors, fmt.Errorf("marshal thread index %s %s: %w", suffix, threadID, err))
+					continue
+				}
+				if err := indexBatch.Set([]byte(key), data, index.WriteOpt(true)); err != nil {
+					errors = append(errors, fmt.Errorf("set thread index %s %s: %w", suffix, threadID, err))
+				}
 			}
 		}
 	}

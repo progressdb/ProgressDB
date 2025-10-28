@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// Struct types for returns
-
 type MessageKeyParts struct {
 	ThreadID string
 	MsgID    string
@@ -32,8 +30,6 @@ type DeletedMessagesIndexParts struct {
 	UserID string
 }
 
-// --- New Struct Types for LU/CU Index Parsers ---
-
 type ThreadMessageLUIndexParts struct {
 	ThreadID string
 }
@@ -48,10 +44,6 @@ type ThreadVersionLCIndexParts struct {
 	ThreadID string
 	MsgID    string
 }
-
-// -----------------
-// Padding Utilities
-// -----------------
 
 func parsePaddedInt(s string, width int) (int64, error) {
 	if len(s) == 0 || len(s) > width {
@@ -83,11 +75,6 @@ func parsePaddedUint(s string, width int) (uint64, error) {
 	return v, nil
 }
 
-// ------------
-// Key Parsers
-// ------------
-
-// ParseMessageKey parses keys formatted as t:<threadID>:m:<msgID>:<seq>
 func ParseMessageKey(key string) (*MessageKeyParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "t" || parts[2] != "m" {
@@ -103,7 +90,6 @@ func ParseMessageKey(key string) (*MessageKeyParts, error) {
 	}, nil
 }
 
-// ParseVersionKey parses keys formatted as v:<msgID>:<ts>:<seq>
 func ParseVersionKey(key string) (*VersionKeyParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 4 || parts[0] != "v" {
@@ -119,7 +105,6 @@ func ParseVersionKey(key string) (*VersionKeyParts, error) {
 	}, nil
 }
 
-// ParseThreadMeta parses keys formatted as t:<threadID>
 func ParseThreadKey(key string) (*ThreadMetaParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 2 || parts[0] != "t" {
@@ -128,7 +113,6 @@ func ParseThreadKey(key string) (*ThreadMetaParts, error) {
 	return &ThreadMetaParts{ThreadID: parts[1]}, nil
 }
 
-// ParseMessageProvisionalKey parses provisional message keys formatted as t:<threadID>:m:<msgID>
 func ParseMessageProvisionalKey(key string) (*MessageKeyParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 4 || parts[0] != "t" || parts[2] != "m" {
@@ -139,11 +123,10 @@ func ParseMessageProvisionalKey(key string) (*MessageKeyParts, error) {
 	return &MessageKeyParts{
 		ThreadID: threadID,
 		MsgID:    msgID,
-		Seq:      "", // No sequence in provisional keys
+		Seq:      "",
 	}, nil
 }
 
-// ParseDeletedThreadsIndex parses keys formatted as idx:t:deleted:u:<user_id>:list
 func ParseDeletedThreadsIndex(key string) (*DeletedThreadsIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 6 || parts[0] != "idx" || parts[1] != "t" || parts[2] != "deleted" || parts[3] != "u" || parts[5] != "list" {
@@ -152,7 +135,6 @@ func ParseDeletedThreadsIndex(key string) (*DeletedThreadsIndexParts, error) {
 	return &DeletedThreadsIndexParts{UserID: parts[4]}, nil
 }
 
-// ParseDeletedMessagesIndex parses keys formatted as idx:m:deleted:u:<user_id>:list
 func ParseDeletedMessagesIndex(key string) (*DeletedMessagesIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 6 || parts[0] != "idx" || parts[1] != "m" || parts[2] != "deleted" || parts[3] != "u" || parts[5] != "list" {
@@ -161,9 +143,6 @@ func ParseDeletedMessagesIndex(key string) (*DeletedMessagesIndexParts, error) {
 	return &DeletedMessagesIndexParts{UserID: parts[4]}, nil
 }
 
-// --- Additional Parsers for Thread/Message Indexes ---
-
-// ParseThreadMessageStart parses keys formatted as idx:t:<thread_id>:ms:start
 func ParseThreadMessageStart(key string) (threadID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "start" {
@@ -172,7 +151,6 @@ func ParseThreadMessageStart(key string) (threadID string, err error) {
 	return parts[2], nil
 }
 
-// ParseThreadMessageEnd parses keys formatted as idx:t:<thread_id>:ms:end
 func ParseThreadMessageEnd(key string) (threadID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "end" {
@@ -181,7 +159,6 @@ func ParseThreadMessageEnd(key string) (threadID string, err error) {
 	return parts[2], nil
 }
 
-// ParseThreadMessageCDeltas parses keys formatted as idx:t:<thread_id>:ms:cdeltas
 func ParseThreadMessageCDeltas(key string) (threadID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "cdeltas" {
@@ -190,7 +167,6 @@ func ParseThreadMessageCDeltas(key string) (threadID string, err error) {
 	return parts[2], nil
 }
 
-// ParseThreadMessageUDeltas parses keys formatted as idx:t:<thread_id>:ms:udeltas
 func ParseThreadMessageUDeltas(key string) (threadID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "udeltas" {
@@ -199,7 +175,6 @@ func ParseThreadMessageUDeltas(key string) (threadID string, err error) {
 	return parts[2], nil
 }
 
-// ParseThreadMessageSkips parses keys formatted as idx:t:<thread_id>:ms:skips
 func ParseThreadMessageSkips(key string) (threadID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "skips" {
@@ -208,7 +183,6 @@ func ParseThreadMessageSkips(key string) (threadID string, err error) {
 	return parts[2], nil
 }
 
-// ParseThreadMessageLC parses keys formatted as idx:t:<thread_id>:ms:lc
 func ParseThreadMessageLC(key string) (*ThreadMessageLCIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "lc" {
@@ -217,7 +191,6 @@ func ParseThreadMessageLC(key string) (*ThreadMessageLCIndexParts, error) {
 	return &ThreadMessageLCIndexParts{ThreadID: parts[2]}, nil
 }
 
-// ParseThreadMessageLU parses keys formatted as idx:t:<thread_id>:ms:lu
 func ParseThreadMessageLU(key string) (*ThreadMessageLUIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "lu" {
@@ -226,7 +199,6 @@ func ParseThreadMessageLU(key string) (*ThreadMessageLUIndexParts, error) {
 	return &ThreadMessageLUIndexParts{ThreadID: parts[2]}, nil
 }
 
-// ParseThreadVersionStart parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:v:start
 func ParseThreadVersionStart(key string) (threadID, msgID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "start" {
@@ -235,7 +207,6 @@ func ParseThreadVersionStart(key string) (threadID, msgID string, err error) {
 	return parts[2], parts[4], nil
 }
 
-// ParseThreadVersionEnd parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:v:end
 func ParseThreadVersionEnd(key string) (threadID, msgID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "end" {
@@ -244,7 +215,6 @@ func ParseThreadVersionEnd(key string) (threadID, msgID string, err error) {
 	return parts[2], parts[4], nil
 }
 
-// ParseThreadVersionCDeltas parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:v:cdeltas
 func ParseThreadVersionCDeltas(key string) (threadID, msgID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "cdeltas" {
@@ -253,7 +223,6 @@ func ParseThreadVersionCDeltas(key string) (threadID, msgID string, err error) {
 	return parts[2], parts[4], nil
 }
 
-// ParseThreadVersionUDeltas parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:v:udeltas
 func ParseThreadVersionUDeltas(key string) (threadID, msgID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "udeltas" {
@@ -262,7 +231,6 @@ func ParseThreadVersionUDeltas(key string) (threadID, msgID string, err error) {
 	return parts[2], parts[4], nil
 }
 
-// ParseThreadVersionSkips parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:v:skips
 func ParseThreadVersionSkips(key string) (threadID, msgID string, err error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "skips" {
@@ -271,7 +239,6 @@ func ParseThreadVersionSkips(key string) (threadID, msgID string, err error) {
 	return parts[2], parts[4], nil
 }
 
-// ParseThreadVersionLC parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:vs:lc
 func ParseThreadVersionLC(key string) (*ThreadVersionLCIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "vs" || parts[6] != "lc" {
@@ -280,7 +247,6 @@ func ParseThreadVersionLC(key string) (*ThreadVersionLCIndexParts, error) {
 	return &ThreadVersionLCIndexParts{ThreadID: parts[2], MsgID: parts[4]}, nil
 }
 
-// ParseThreadVersionLU parses keys formatted as idx:t:<thread_id>:ms:<msg_id>:vs:lu
 func ParseThreadVersionLU(key string) (*ThreadVersionLUIndexParts, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "vs" || parts[6] != "lu" {
@@ -288,10 +254,6 @@ func ParseThreadVersionLU(key string) (*ThreadVersionLUIndexParts, error) {
 	}
 	return &ThreadVersionLUIndexParts{ThreadID: parts[2], MsgID: parts[4]}, nil
 }
-
-// -----------------------
-// Utility Parsers for TS/Seq in string
-// -----------------------
 
 func ParseKeyTimestamp(s string) (int64, error) {
 	return parsePaddedInt(s, TSPadWidth)
@@ -301,20 +263,17 @@ func ParseKeySequence(s string) (uint64, error) {
 	return parsePaddedUint(s, SeqPadWidth)
 }
 
-// ExtractMessageComponents extracts thread and message components from various key formats
 func ExtractMessageComponents(threadKey, messageKey string) (threadComp, messageComp string, err error) {
-	// Extract thread component
 	if parts, err := ParseThreadKey(threadKey); err == nil {
 		threadComp = parts.ThreadID
 	} else {
 		return "", "", fmt.Errorf("extract thread component: %w", err)
 	}
 
-	// Extract message component
 	if parts, err := ParseMessageProvisionalKey(messageKey); err == nil {
 		messageComp = parts.MsgID
 	} else if IsProvisionalMessageKey(messageKey) {
-		messageComp = messageKey // It's already a simple component
+		messageComp = messageKey
 	} else {
 		return "", "", fmt.Errorf("extract message component: %w", err)
 	}

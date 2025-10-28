@@ -13,21 +13,15 @@ import (
 	"progressdb/pkg/telemetry"
 )
 
-// RemoteClient implements KMSProvider over an HTTP-over-unix transport.
 type RemoteClient struct {
 	addr    string
 	httpc   *http.Client
 	baseURL string
 }
 
-// NewRemoteClient returns a client bound to addr (host:port or full URL).
 func NewRemoteClient(addr string) *RemoteClient {
-	// Determine transport based on addr format. Support:
-	// - plain host:port (e.g. "127.0.0.1:8080")
-	// - full URL (http://host:port)
 	var client *http.Client
 	base := ""
-	// Accept either a full URL (`http://host:port`) or a host:port string.
 	client = &http.Client{}
 	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
 		base = strings.TrimRight(addr, "/")
@@ -38,25 +32,9 @@ func NewRemoteClient(addr string) *RemoteClient {
 	return &RemoteClient{addr: addr, httpc: client, baseURL: base}
 }
 
-func (r *RemoteClient) Enabled() bool { return true }
-
-func (r *RemoteClient) Encrypt(plaintext, aad []byte) (ciphertext, iv []byte, keyVersion string, err error) {
-	return nil, nil, "", fmt.Errorf("remote client Encrypt: not implemented")
-}
-
-func (r *RemoteClient) Decrypt(ciphertext, iv, aad []byte) (plaintext []byte, err error) {
-	return nil, fmt.Errorf("remote client Decrypt: not implemented")
-}
-
-func (r *RemoteClient) CreateDEK() (string, []byte, string, string, error) {
-	return "", nil, "", "", fmt.Errorf("not implemented")
-}
-func (r *RemoteClient) WrapDEK(dek []byte) ([]byte, error) { return nil, fmt.Errorf("not implemented") }
-func (r *RemoteClient) UnwrapDEK(wrapped []byte) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
-}
 func (r *RemoteClient) Health() error { return r.HealthCheck() }
-func (r *RemoteClient) Close() error  { return nil }
+
+func (r *RemoteClient) Close() error { return nil }
 
 func (r *RemoteClient) HealthCheck() error {
 	paths := []string{"/healthz", "/health"}
@@ -80,7 +58,6 @@ func (r *RemoteClient) HealthCheck() error {
 }
 
 func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
-	// create a short-lived root telemetry so we get timings for remote KMS ops
 	tr := telemetry.Track("kms.remote.create_dek_for_thread")
 	defer tr.Finish()
 
@@ -134,9 +111,6 @@ func (r *RemoteClient) GetWrapped(keyID string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(out.Wrapped)
 }
 
-// EncryptWithDEK posts plaintext to the remote KMS and returns a single
-// ciphertext blob (nonce||ct) decoded from base64, plus an optional
-// keyVersion string.
 func (r *RemoteClient) EncryptWithDEK(keyID string, plaintext, aad []byte) ([]byte, string, error) {
 	tr := telemetry.Track("kms.remote.encrypt_with_dek")
 	defer tr.Finish()
@@ -171,9 +145,6 @@ func (r *RemoteClient) EncryptWithDEK(keyID string, plaintext, aad []byte) ([]by
 	return ct, out.KeyVersion, nil
 }
 
-// DecryptWithDEK requests decryption of a ciphertext blob from the remote
-// KMS. The ciphertext is supplied as raw bytes and will be base64-encoded
-// at the wire boundary.
 func (r *RemoteClient) DecryptWithDEK(keyID string, ciphertext, aad []byte) ([]byte, error) {
 	tr := telemetry.Track("kms.remote.decrypt_with_dek")
 	defer tr.Finish()

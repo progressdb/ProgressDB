@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"progressdb/pkg/store/keys"
 	"strconv"
 	"sync"
 	"time"
@@ -18,38 +19,28 @@ var (
 	ErrEmptyLog   = fmt.Errorf("empty log")
 )
 
-// Options for WAL Log behavior.
 type Options struct {
-	// NoSync disables fsync after writes (unsafe, less durable).
-	NoSync bool
-	// SegmentSize target segment size (default 20 MB; kept for compatibility).
-	SegmentSize int
-	// LogFormat format for log files (compatibility).
-	LogFormat int
-	// SegmentCacheSize max segments cached in memory (compatibility).
+	NoSync           bool
+	SegmentSize      int
+	LogFormat        int
 	SegmentCacheSize int
-	// NoCopy returns raw data slice in Read (compatibility).
-	NoCopy bool
-	// AllowEmpty permits truncating all entries (compatibility).
-	AllowEmpty bool
-	// DirPerms and FilePerms set directory/file permissions (compatibility).
-	DirPerms  int
-	FilePerms int
+	NoCopy           bool
+	AllowEmpty       bool
+	DirPerms         int
+	FilePerms        int
 }
 
-// DefaultOptions for Open().
 var DefaultOptions = &Options{
-	NoSync:           false,    // Fsync after every write
-	SegmentSize:      20971520, // 20 MB log segment files (kept for compatibility)
-	LogFormat:        0,        // Binary format (kept for compatibility)
-	SegmentCacheSize: 2,        // Number of cached in-memory segments (kept for compatibility)
-	NoCopy:           false,    // Make a new copy of data for every read call (kept for compatibility)
-	AllowEmpty:       false,    // Do not allow empty log. 1+ entries required (kept for compatibility)
-	DirPerms:         0750,     // Permissions for created directories (kept for compatibility)
-	FilePerms:        0640,     // Permissions for created data files (kept for compatibility)
+	NoSync:           false,
+	SegmentSize:      20971520,
+	LogFormat:        0,
+	SegmentCacheSize: 2,
+	NoCopy:           false,
+	AllowEmpty:       false,
+	DirPerms:         0750,
+	FilePerms:        0640,
 }
 
-// WALLog represents a write ahead log using Pebble
 type Log struct {
 	mu     sync.RWMutex
 	db     *pebble.DB
@@ -58,7 +49,6 @@ type Log struct {
 	closed bool
 }
 
-// Open a new write ahead log using Pebble
 func Open(path string, opts *Options) (*Log, error) {
 	if opts == nil {
 		opts = DefaultOptions
@@ -70,9 +60,8 @@ func Open(path string, opts *Options) (*Log, error) {
 		return nil, err
 	}
 
-	// Open Pebble DB
 	pebbleOpts := &pebble.Options{
-		DisableWAL: opts.NoSync, // Use NoSync to control WAL
+		DisableWAL: opts.NoSync,
 	}
 
 	db, err := pebble.Open(path, pebbleOpts)
@@ -93,12 +82,9 @@ func abs(path string) (string, error) {
 	if path == ":memory:" {
 		return "", fmt.Errorf("in-memory log not supported")
 	}
-	// For simplicity, just return the path as-is
-	// In a real implementation, you'd use filepath.Abs
 	return path, nil
 }
 
-// Close the log.
 func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -115,7 +101,6 @@ func (l *Log) Close() error {
 	return err
 }
 
-// Write an entry to log using provided index (for compatibility)
 func (l *Log) Write(index uint64, data []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -128,8 +113,6 @@ func (l *Log) Write(index uint64, data []byte) error {
 	return l.db.Set([]byte(key), data, l.writeOpts())
 }
 
-// WriteWithSequence writes data and returns the assigned sequence number.
-// Used when WAL is enabled to provide persistent sequence generation.
 func (l *Log) WriteWithSequence(data []byte) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -138,13 +121,11 @@ func (l *Log) WriteWithSequence(data []byte) (uint64, error) {
 		return 0, ErrClosed
 	}
 
-	// Get next sequence from metadata
 	nextSeq, err := l.getNextSequence()
 	if err != nil {
 		return 0, fmt.Errorf("get next sequence: %w", err)
 	}
 
-	// Write the operation data
 	key := fmt.Sprintf("%020d", nextSeq)
 	if err := l.db.Set([]byte(key), data, l.writeOpts()); err != nil {
 		return 0, fmt.Errorf("write operation: %w", err)
@@ -153,10 +134,8 @@ func (l *Log) WriteWithSequence(data []byte) (uint64, error) {
 	return nextSeq, nil
 }
 
-// getNextSequence gets and increments the next sequence number
 func (l *Log) getNextSequence() (uint64, error) {
-	// Read current sequence
-	data, closer, err := l.db.Get([]byte("meta:next_sequence"))
+	data, closer, err := l.db.Get([]byte(keys.WALMetaNextSequenceKey))
 	if closer != nil {
 		defer closer.Close()
 	}
@@ -168,20 +147,18 @@ func (l *Log) getNextSequence() (uint64, error) {
 		}
 	}
 
-	// Increment and persist
 	nextSeq++
 	batch := l.db.NewBatch()
 	defer batch.Close()
-	batch.Set([]byte("meta:next_sequence"), []byte(fmt.Sprintf("%d", nextSeq)), l.writeOpts())
+	batch.Set([]byte(keys.WALMetaNextSequenceKey), []byte(fmt.Sprintf("%d", nextSeq)), l.writeOpts())
 
 	if err := l.db.Apply(batch, l.writeOpts()); err != nil {
 		return 0, fmt.Errorf("persist sequence: %w", err)
 	}
 
-	return nextSeq - 1, nil // Return the sequence for this operation
+	return nextSeq - 1, nil
 }
 
-// writeOpts returns write options based on NoSync setting
 func (l *Log) writeOpts() *pebble.WriteOptions {
 	if l.opts.NoSync {
 		return &pebble.WriteOptions{Sync: false}
@@ -189,7 +166,6 @@ func (l *Log) writeOpts() *pebble.WriteOptions {
 	return &pebble.WriteOptions{Sync: true}
 }
 
-// Read an entry from log by index.
 func (l *Log) Read(index uint64) ([]byte, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -214,7 +190,6 @@ func (l *Log) Read(index uint64) ([]byte, error) {
 	return data, nil
 }
 
-// FirstIndex returns the index of the first entry in the log.
 func (l *Log) FirstIndex() (uint64, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -223,10 +198,9 @@ func (l *Log) FirstIndex() (uint64, error) {
 		return 0, ErrClosed
 	}
 
-	// Scan for the first entry
 	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("00000000000000000000"), // Minimum possible key
-		UpperBound: []byte("99999999999999999999"), // Maximum possible key
+		LowerBound: []byte("00000000000000000000"),
+		UpperBound: []byte("99999999999999999999"),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create iterator: %w", err)
@@ -235,17 +209,16 @@ func (l *Log) FirstIndex() (uint64, error) {
 
 	if iter.First() {
 		key := iter.Key()
-		if len(key) == 20 { // Ensure it's an operation key
+		if len(key) == 20 {
 			if seq, err := strconv.ParseUint(string(key), 10, 64); err == nil {
 				return seq, nil
 			}
 		}
 	}
 
-	return 0, nil // Empty log
+	return 0, nil
 }
 
-// LastIndex returns the index of the last entry in the log.
 func (l *Log) LastIndex() (uint64, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -254,10 +227,9 @@ func (l *Log) LastIndex() (uint64, error) {
 		return 0, ErrClosed
 	}
 
-	// Scan for the last entry efficiently by starting from the end
 	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("00000000000000000000"), // Minimum possible key
-		UpperBound: []byte("99999999999999999999"), // Maximum possible key
+		LowerBound: []byte("00000000000000000000"),
+		UpperBound: []byte("99999999999999999999"),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create iterator: %w", err)
@@ -265,14 +237,13 @@ func (l *Log) LastIndex() (uint64, error) {
 	defer iter.Close()
 
 	var lastSeq uint64
-	// Start from the last key and work backwards for efficiency
 	if iter.Last() {
 		for ; iter.Valid(); iter.Prev() {
 			key := iter.Key()
-			if len(key) == 20 { // Ensure it's an operation key
+			if len(key) == 20 {
 				if seq, err := strconv.ParseUint(string(key), 10, 64); err == nil {
 					lastSeq = seq
-					break // Found the highest sequence, no need to continue
+					break
 				}
 			}
 		}
@@ -281,7 +252,6 @@ func (l *Log) LastIndex() (uint64, error) {
 	return lastSeq, nil
 }
 
-// TruncateFront removes all entries before the provided index.
 func (l *Log) TruncateFront(index uint64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -307,7 +277,6 @@ func (l *Log) TruncateFront(index uint64) error {
 	return l.db.Apply(batch, l.writeOpts())
 }
 
-// Sync performs an fsync on the log.
 func (l *Log) Sync() error {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -316,12 +285,9 @@ func (l *Log) Sync() error {
 		return ErrClosed
 	}
 
-	// Pebble doesn't expose a direct Sync method, but we can force it
-	// by writing a marker key with sync enabled
 	return l.db.Set([]byte("sync:marker"), []byte(time.Now().Format(time.RFC3339Nano)), pebble.Sync)
 }
 
-// IsEmpty returns true if there are no entries in the log.
 func (l *Log) IsEmpty() (bool, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()

@@ -1,11 +1,9 @@
 package admin
 
 import (
-	"encoding/json"
 	"fmt"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/logger"
-	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 
@@ -29,24 +27,6 @@ func pathParam(ctx *fasthttp.RequestCtx, param string) string {
 		return fmt.Sprint(v)
 	}
 	return ""
-}
-
-func determineThreadIDs(ids []string, all bool) ([]string, error) {
-	if all {
-		vals, err := listAllThreads()
-		if err != nil {
-			return nil, err
-		}
-		threadsOut := make([]string, 0, len(vals))
-		for _, raw := range vals {
-			var th models.Thread
-			if err := json.Unmarshal([]byte(raw), &th); err == nil {
-				threadsOut = append(threadsOut, th.Key)
-			}
-		}
-		return threadsOut, nil
-	}
-	return ids, nil
 }
 
 func auditSummary(event string, threads int, keys int, out map[string]map[string]string) {

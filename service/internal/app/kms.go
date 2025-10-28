@@ -11,10 +11,8 @@ import (
 	"progressdb/pkg/kms"
 )
 
-// Registers and starts KMS if encryption is enabled.
 func (a *App) setupKMS(ctx context.Context) error {
 	kms_endpoint := os.Getenv("PROGRESSDB_KMS_ENDPOINT")
-	// dataDir is unused in embedded/external modes; kept for legacy configs.
 	useEnc := a.eff.Config.Encryption.Enabled
 	if ev := strings.TrimSpace(os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED")); ev != "" {
 		switch strings.ToLower(ev) {
@@ -30,7 +28,6 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return nil
 	}
 
-	// Select master key from file or hex config.
 	var mk string
 	switch {
 	case strings.TrimSpace(a.eff.Config.Encryption.KMS.MasterKeyFile) != "":
@@ -52,9 +49,6 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return fmt.Errorf("invalid master_key_hex: must be 64-hex (32 bytes)")
 	}
 
-	// Determine mode: embedded (default) or external.
-	// Embedded: local master key in process memory.
-	// External: connects to `progressdb-kms` at endpoint.
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_KMS_MODE")))
 	if mode == "" {
 		mode = "embedded"
@@ -69,7 +63,6 @@ func (a *App) setupKMS(ctx context.Context) error {
 		return nil
 	case "external":
 		if kms_endpoint == "" {
-			// Use localhost if not specified
 			kms_endpoint = "127.0.0.1:6820"
 		}
 		a.rc = kms.NewRemoteClient(kms_endpoint)
