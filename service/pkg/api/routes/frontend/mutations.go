@@ -11,7 +11,7 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/timeutil"
 )

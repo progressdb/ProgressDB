@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"progressdb/pkg/models"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
 )

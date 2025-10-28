@@ -6,12 +6,12 @@ import (
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 
-	"progressdb/pkg/telemetry"
+	"progressdb/pkg/state/telemetry"
 )
 
 func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {

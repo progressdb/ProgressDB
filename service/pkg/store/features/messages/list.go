@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/features/threads"
 
+	"progressdb/pkg/state/telemetry"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/telemetry"
 
 	"github.com/cockroachdb/pebble"
 )

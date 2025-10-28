@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
-	"progressdb/pkg/telemetry"
 )
 
 func GetUserThreads(userID string) ([]string, error) {

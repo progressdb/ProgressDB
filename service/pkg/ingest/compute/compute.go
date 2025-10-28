@@ -9,8 +9,8 @@ import (
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/features/threads"
 )

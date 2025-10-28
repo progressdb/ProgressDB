@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/telemetry"
 )
 
 type ThreadMessageIndexes struct {

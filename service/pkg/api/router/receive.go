@@ -3,7 +3,7 @@ package router
 import (
 	"strings"
 
-	"progressdb/pkg/telemetry"
+	"progressdb/pkg/state/telemetry"
 
 	"github.com/valyala/fasthttp"
 )

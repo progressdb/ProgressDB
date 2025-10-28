@@ -3,7 +3,7 @@ package apply
 import (
 	"sync"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/index"
 )
 

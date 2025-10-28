@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/encryption/kms"
-	"progressdb/pkg/telemetry"
 )
 
 var key []byte

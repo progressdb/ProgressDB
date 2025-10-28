@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"progressdb/pkg/telemetry"
+	"progressdb/pkg/state/telemetry"
 )
 
 type RemoteClient struct {

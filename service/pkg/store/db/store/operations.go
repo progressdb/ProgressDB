@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/timeutil"
 

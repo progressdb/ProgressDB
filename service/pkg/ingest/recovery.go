@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"

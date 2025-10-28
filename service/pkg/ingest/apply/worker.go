@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 )
 
 // ApplyWorker handles batching and applying types.BatchEntry to DB.

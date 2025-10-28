@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 
 	"github.com/adhocore/gronx"
 	"github.com/goccy/go-yaml"

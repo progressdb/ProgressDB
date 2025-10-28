@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"

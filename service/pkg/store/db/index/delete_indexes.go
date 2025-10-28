@@ -1,8 +1,8 @@
 package index
 
 import (
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/telemetry"
 )
 
 func MarkSoftDeleted(originalKey string) error {

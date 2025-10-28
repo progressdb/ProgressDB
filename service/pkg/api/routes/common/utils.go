@@ -6,9 +6,9 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/config"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/telemetry"
 
 	"github.com/valyala/fasthttp"
 )

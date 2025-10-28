@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/store"
 )
 

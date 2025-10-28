@@ -10,7 +10,6 @@ func maskedValue(v string) string {
 	if v == "" {
 		return ""
 	}
-	// keep first and last rune, mask the middle with fixed asterisks
 	l := utf8.RuneCountInString(v)
 	if l <= 2 {
 		return "<redacted>"
@@ -27,8 +26,6 @@ func redactHeaderValue(_ string, v string) string {
 	return maskedValue(v)
 }
 
-// SafeHeaders returns a compact string representation of headers suitable for
-// logging with sensitive values redacted.
 func SafeHeaders(r *http.Request) string {
 	parts := make([]string, 0, len(r.Header))
 	for k, v := range r.Header {
@@ -40,7 +37,6 @@ func SafeHeaders(r *http.Request) string {
 	return strings.Join(parts, "; ")
 }
 
-// LogRequest logs a concise, safe summary of an incoming request.
 func LogRequest(r *http.Request) {
 	if Log == nil {
 		return

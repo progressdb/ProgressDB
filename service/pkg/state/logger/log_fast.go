@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// SafeHeadersFast builds a redacted header string for fasthttp requests.
 func SafeHeadersFast(ctx *fasthttp.RequestCtx) string {
 	parts := make([]string, 0)
 	ctx.Request.Header.VisitAll(func(k, v []byte) {
@@ -16,7 +15,6 @@ func SafeHeadersFast(ctx *fasthttp.RequestCtx) string {
 	return strings.Join(parts, "; ")
 }
 
-// LogRequestFast logs a concise, safe summary of an incoming fasthttp request.
 func LogRequestFast(ctx *fasthttp.RequestCtx) {
 	if Log == nil {
 		return

@@ -10,7 +10,7 @@ import (
 
 	"progressdb/pkg/ingest/apply"
 	qpkg "progressdb/pkg/ingest/queue"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 )
 
 // FailedOp represents a failed compute operation for recovery

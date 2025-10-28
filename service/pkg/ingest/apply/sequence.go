@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 )

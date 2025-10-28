@@ -8,21 +8,21 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/valyala/fasthttp"
-
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/logger"
-	"progressdb/pkg/sensor"
+	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
 	kms "progressdb/pkg/store/encryption/kms"
-	"progressdb/pkg/telemetry"
+
+	"github.com/valyala/fasthttp"
 )
 
 // ShutdownApp performs graceful shutdown of all app components.
 // This consolidates shutdown logic from both app.go and shutdown.go.
-func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
+func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *state.Sensor) error {
 	log.Printf("shutdown: requested")
 
 	// stop accepting new requests

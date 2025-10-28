@@ -10,10 +10,9 @@ import (
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/sensor"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/state/telemetry"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
@@ -45,7 +44,7 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	_ = godotenv.Load(".env")
 
 	// validate config and fail fast if not valid
-	if err := validateConfig(eff); err != nil {
+	if err := config.validateConfig(eff); err != nil {
 		return nil, err
 	}
 

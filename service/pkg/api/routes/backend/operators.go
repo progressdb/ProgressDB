@@ -11,7 +11,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 )
 
 func Sign(ctx *fasthttp.RequestCtx) {

@@ -2,7 +2,7 @@ package kms
 
 import (
 	"errors"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"sync"
 )
 

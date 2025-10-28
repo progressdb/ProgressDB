@@ -7,8 +7,8 @@ import (
 
 	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/logger"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
 )
 
 // ComputeWorker handles transformation of QueueOp to types.BatchEntry.

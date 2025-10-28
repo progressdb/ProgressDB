@@ -10,8 +10,8 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/config"
-	"progressdb/pkg/logger"
-	"progressdb/pkg/telemetry"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/telemetry"
 )
 
 // caller role
