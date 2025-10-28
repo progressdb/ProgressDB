@@ -10,7 +10,7 @@ import (
 )
 
 // set defaults, fail fast on critical errors
-func validateConfig(eff EffectiveConfigResult) error {
+func ValidateConfig(eff EffectiveConfigResult) error {
 	// DB path must be present
 	if p := eff.DBPath; p == "" {
 		return fmt.Errorf("database path is empty: set --db flag, PROGRESSDB_DB_PATH env, or server.db_path in config")

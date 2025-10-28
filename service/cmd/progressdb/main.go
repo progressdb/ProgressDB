@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"progressdb/internal/app"
-	"progressdb/internal/app/progressor"
 	"progressdb/pkg/config"
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/shutdown"
+	"progressdb/pkg/store/migrations"
 	"strings"
 	"time"
 
@@ -94,7 +94,7 @@ func main() {
 	defer cancel()
 
 	// run version checks and migrations - before start app
-	if _, err := progressor.Run(ctx, version); err != nil {
+	if _, err := migrations.Run(ctx, version); err != nil {
 		shutdown.Abort("progressor run failed", err, eff.DBPath)
 	}
 
