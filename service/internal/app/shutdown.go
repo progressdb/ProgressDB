@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"progressdb/pkg/shutdown"
+	"progressdb/pkg/state/shutdown"
 )
 
 func (a *App) Shutdown(ctx context.Context) error {

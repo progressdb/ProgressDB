@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
 

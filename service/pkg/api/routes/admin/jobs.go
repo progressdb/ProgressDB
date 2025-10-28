@@ -11,10 +11,10 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/kms"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/store/encryption/kms"
 	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"

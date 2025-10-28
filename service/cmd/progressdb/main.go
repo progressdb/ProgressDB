@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"progressdb/internal/app"
 	"progressdb/pkg/config"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/progressor"
-	"progressdb/pkg/shutdown"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/shutdown"
 	"strings"
 	"time"
 

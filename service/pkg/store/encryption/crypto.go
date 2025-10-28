@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/telemetry"
 )
 

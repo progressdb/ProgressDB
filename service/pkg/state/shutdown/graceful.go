@@ -12,11 +12,11 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/sensor"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
+	kms "progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/telemetry"
 )
 

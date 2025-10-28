@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"progressdb/pkg/kms"
+	"progressdb/pkg/store/encryption/kms"
 )
 
 func (a *App) setupKMS(ctx context.Context) error {

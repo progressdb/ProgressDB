@@ -9,7 +9,7 @@ import (
 	"github.com/adhocore/gronx"
 
 	"progressdb/pkg/config"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state"
 	"progressdb/pkg/timeutil"
 )

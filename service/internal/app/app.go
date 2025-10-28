@@ -9,17 +9,17 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/sensor"
 	"progressdb/pkg/store/db/index"
 	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/telemetry"
+	"progressdb/pkg/state/telemetry"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
-	"progressdb/pkg/kms"
 	"progressdb/pkg/state"
 	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/store/encryption/kms"
 )
 
 // app groups server state and components.

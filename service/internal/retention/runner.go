@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"progressdb/pkg/config"
-	"progressdb/pkg/logger"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
 	thread_store "progressdb/pkg/store/features/threads"

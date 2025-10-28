@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/kms"
 	"progressdb/pkg/logger"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/store/keys"
 )
 
