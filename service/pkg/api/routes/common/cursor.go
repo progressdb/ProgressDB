@@ -19,6 +19,7 @@ type PaginationResponse struct {
 	HasMore    bool   `json:"has_more"`
 	NextCursor string `json:"next_cursor,omitempty"`
 	Count      int    `json:"count"`
+	Total      int    `json:"total,omitempty"`
 }
 
 type MessageCursor struct {
@@ -42,12 +43,13 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	return req
 }
 
-func NewPaginationResponse(limit int, hasMore bool, nextCursor string, count int) *PaginationResponse {
+func NewPaginationResponse(limit int, hasMore bool, nextCursor string, count int, total int) *PaginationResponse {
 	return &PaginationResponse{
 		Limit:      limit,
 		HasMore:    hasMore,
 		NextCursor: nextCursor,
 		Count:      count,
+		Total:      total,
 	}
 }
 

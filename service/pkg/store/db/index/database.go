@@ -181,7 +181,7 @@ func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.Paginati
 		nextCursor = string(iter.Key())
 	}
 
-	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out)), iter.Error()
+	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out), 0), iter.Error()
 }
 
 func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationRequest) ([]string, *pagination.PaginationResponse, error) {
@@ -266,5 +266,5 @@ func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationReques
 		nextCursor = string(iter.Key())
 	}
 
-	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out)), iter.Error()
+	return out, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(out), 0), iter.Error()
 }

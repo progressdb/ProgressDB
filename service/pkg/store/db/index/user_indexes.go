@@ -86,7 +86,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *paginati
 	}
 
 	if startIndex >= len(threads) {
-		return []string{}, pagination.NewPaginationResponse(limit, false, "", 0), nil
+		return []string{}, pagination.NewPaginationResponse(limit, false, "", 0, len(threads)), nil
 	}
 
 	pageThreads := threads[startIndex:endIndex]
@@ -103,7 +103,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *paginati
 		nextCursor = lastThread.Key
 	}
 
-	return threadKeysOnly, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(threadKeysOnly)), nil
+	return threadKeysOnly, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(threadKeysOnly), len(threads)), nil
 }
 
 func GetThreadParticipants(threadKey string) ([]string, error) {

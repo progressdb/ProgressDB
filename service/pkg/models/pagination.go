@@ -10,6 +10,7 @@ type PaginationResponse struct {
 	HasMore    bool   `json:"has_more"`
 	NextCursor string `json:"next_cursor,omitempty"`
 	Count      int    `json:"count"`
+	Total      int    `json:"total,omitempty"`
 }
 
 type MessageCursor struct {

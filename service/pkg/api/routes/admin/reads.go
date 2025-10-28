@@ -61,9 +61,13 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 func ListKeys(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	prefix := string(ctx.QueryArgs().Peek("prefix"))
+	store := string(ctx.QueryArgs().Peek("store"))
+	if store == "" {
+		store = "main"
+	}
 	paginationReq := pagination.ParsePaginationRequest(ctx)
 
-	result, err := listKeysByPrefixPaginated(prefix, paginationReq)
+	result, err := listKeysByPrefixPaginated(prefix, store, paginationReq)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -81,7 +85,14 @@ func GetKey(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
 		return
 	}
-	val, err := storedb.GetKey(key)
+	storeParam := string(ctx.QueryArgs().Peek("store"))
+	var val string
+	switch storeParam {
+	case "index":
+		val, err = index.GetKey(key)
+	default:
+		val, err = storedb.GetKey(key)
+	}
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusNotFound, err.Error())
 		return
@@ -150,15 +161,24 @@ func GetThreadMessage(ctx *fasthttp.RequestCtx) {
 }
 
 // helpers
-func listKeysByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardKeysResult, error) {
-	keys, pagination, err := storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
+func listKeysByPrefixPaginated(prefix string, store string, paginationReq *pagination.PaginationRequest) (*DashboardKeysResult, error) {
+	var keys []string
+	var paginationResp *pagination.PaginationResponse
+	var err error
+
+	if store == "index" {
+		keys, paginationResp, err = index.ListKeysWithPrefixPaginated(prefix, paginationReq)
+	} else {
+		keys, paginationResp, err = storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
 	return &DashboardKeysResult{
 		Keys:       keys,
-		Pagination: pagination,
+		Pagination: paginationResp,
 	}, nil
 }
 
@@ -210,7 +230,7 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.Paginat
 	if start >= len(allUsers) {
 		return &DashboardUsersResult{
 			Users:      []string{},
-			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0),
+			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0, len(allUsers)),
 		}, nil
 	}
 
@@ -222,7 +242,7 @@ func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.Paginat
 
 	return &DashboardUsersResult{
 		Users:      pagedUsers,
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers), len(allUsers)),
 	}, nil
 }
 
@@ -253,7 +273,7 @@ func listThreadsForUser(userID string, paginationReq *pagination.PaginationReque
 	if len(allThreadIDs) == 0 {
 		return &DashboardThreadsResult{
 			Threads:    []json.RawMessage{},
-			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0),
+			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0, 0),
 		}, nil
 	}
 
@@ -290,7 +310,7 @@ func listThreadsForUser(userID string, paginationReq *pagination.PaginationReque
 
 	return &DashboardThreadsResult{
 		Threads:    threads,
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads), len(allThreadIDs)),
 	}, nil
 }
 
@@ -306,7 +326,7 @@ func listMessagesForThread(threadID string, paginationReq *pagination.Pagination
 
 	return &DashboardMessagesResult{
 		Messages:   router.ToRawMessages(messages),
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages)),
+		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages), int(respCursor.TotalCount)),
 	}, nil
 }
 
