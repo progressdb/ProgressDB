@@ -3,7 +3,6 @@ package apply
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/encryption"
@@ -12,25 +11,13 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
-type MessageData struct {
-	Key  string
-	Data []byte
-	TS   int64
-	Seq  uint64
-}
-
 type DataManager struct {
-	mu          sync.RWMutex
-	threadMeta  map[string][]byte
-	messageData map[string]MessageData
-	versionKeys map[string][]byte // versionKey -> versionData
+	kv *KVManager
 }
 
-func NewDataManager() *DataManager {
+func NewDataManager(kv *KVManager) *DataManager {
 	return &DataManager{
-		threadMeta:  make(map[string][]byte),
-		messageData: make(map[string]MessageData),
-		versionKeys: make(map[string][]byte),
+		kv: kv,
 	}
 }
 
@@ -41,13 +28,11 @@ func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) error {
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
 	}
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
 	marshaled, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal thread meta: %w", err)
 	}
-	dm.threadMeta[threadID] = marshaled
+	dm.kv.SetStoreKV(keys.GenThreadKey(threadID), marshaled)
 	return nil
 }
 
@@ -58,8 +43,6 @@ func (dm *DataManager) SetMessageData(threadID, messageID string, data interface
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
 	}
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
 
 	marshaled, err := json.Marshal(data)
 	if err != nil {
@@ -75,35 +58,8 @@ func (dm *DataManager) SetMessageData(threadID, messageID string, data interface
 	}
 
 	messageKey := keys.GenMessageKey(threadID, messageID, seq)
-	dm.messageData[messageKey] = MessageData{
-		Key:  messageKey,
-		Data: marshaled,
-		TS:   ts,
-		Seq:  seq,
-	}
+	dm.kv.SetStoreKV(messageKey, marshaled)
 	return nil
-}
-
-func (dm *DataManager) GetThreadMeta() map[string][]byte {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-
-	result := make(map[string][]byte)
-	for k, v := range dm.threadMeta {
-		result[k] = append([]byte(nil), v...)
-	}
-	return result
-}
-
-func (dm *DataManager) GetMessageData() map[string]MessageData {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-
-	result := make(map[string]MessageData)
-	for k, v := range dm.messageData {
-		result[k] = v
-	}
-	return result
 }
 
 func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error {
@@ -113,8 +69,6 @@ func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error 
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
 	}
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
 	marshaled, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal version data: %w", err)
@@ -128,16 +82,12 @@ func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error 
 		}
 	}
 
-	dm.versionKeys[versionKey] = marshaled
+	dm.kv.SetIndexKV(versionKey, marshaled)
 	return nil
 }
 
 func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-
-	data, exists := dm.threadMeta[threadID]
-	if exists && data != nil {
+	if data, ok := dm.kv.GetStoreKV(keys.GenThreadKey(threadID)); ok && data != nil {
 		return append([]byte(nil), data...), nil
 	}
 
@@ -150,14 +100,10 @@ func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
 }
 
 func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-
 	// NOTE: no decryption, as .body is not used but replaced & stored.
 
-	msgData, exists := dm.messageData[messageKey]
-	if exists {
-		return append([]byte(nil), msgData.Data...), nil
+	if data, ok := dm.kv.GetStoreKV(messageKey); ok {
+		return append([]byte(nil), data...), nil
 	}
 
 	// Not in batch, fetch from DB
@@ -166,24 +112,4 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to get message from DB: %w", err)
 	}
 	return []byte(data), nil
-}
-
-func (dm *DataManager) GetVersionKeys() map[string][]byte {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-
-	result := make(map[string][]byte)
-	for k, v := range dm.versionKeys {
-		result[k] = append([]byte(nil), v...)
-	}
-	return result
-}
-
-func (dm *DataManager) Reset() {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
-
-	dm.threadMeta = make(map[string][]byte)
-	dm.messageData = make(map[string]MessageData)
-	dm.versionKeys = make(map[string][]byte)
 }

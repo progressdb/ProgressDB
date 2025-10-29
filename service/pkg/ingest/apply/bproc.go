@@ -130,25 +130,17 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// index
-	if err := index.MarkSoftDeleted(threadKey); err != nil {
-		return fmt.Errorf("failed to mark thread as deleted: %w", err)
-	}
+	batchProcessor.Index.UpdateSoftDeletedThreads("", threadKey, true)
 
 	if hasOwnership {
-		if err := index.UnmarkUserOwnsThread(author, threadKey); err != nil {
-			return fmt.Errorf("failed to remove thread ownership: %w", err)
-		}
+		batchProcessor.Index.UpdateUserOwnership(author, threadKey, false)
 	}
 
 	if hasParticipation {
-		if err := index.UnmarkThreadHasUser(threadKey, author); err != nil {
-			return fmt.Errorf("failed to remove thread participation: %w", err)
-		}
+		batchProcessor.Index.UpdateThreadParticipants(threadKey, author, false)
 	}
 
-	if err := index.DeleteThreadMessageIndexes(threadKey); err != nil {
-		return fmt.Errorf("failed to clean up thread indexes: %w", err)
-	}
+	batchProcessor.Index.DeleteThreadMessageIndexes(threadKey)
 
 	return nil
 }

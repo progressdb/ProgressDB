@@ -7,23 +7,24 @@ import (
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
 )
 
 type IndexManager struct {
+	kv               *KVManager
 	mu               sync.RWMutex
 	threadMessages   map[string]*index.ThreadMessageIndexes
-	indexData        map[string][]byte
 	messageSequencer *MessageSequencer
 }
 
-func NewIndexManager() *IndexManager {
+func NewIndexManager(kv *KVManager) *IndexManager {
 	im := &IndexManager{
+		kv:             kv,
 		threadMessages: make(map[string]*index.ThreadMessageIndexes),
-		indexData:      make(map[string][]byte),
 	}
-	im.messageSequencer = NewMessageSequencer(im)
+	im.messageSequencer = NewMessageSequencer(im, kv)
 	return im
 }
 
@@ -144,23 +145,9 @@ func (im *IndexManager) GetThreadMessages() map[string]*index.ThreadMessageIndex
 	return result
 }
 
-func (im *IndexManager) GetIndexData() map[string][]byte {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
-	result := make(map[string][]byte)
-	for k, v := range im.indexData {
-		result[k] = append([]byte(nil), v...)
-	}
-	return result
-}
-
 func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
 	for provKey, finalKey := range mappings {
-		im.messageSequencer.provisionalToFinalKeys[provKey] = finalKey
+		im.kv.SetStateKV(provKey, finalKey)
 		logger.Debug("prepopulated_cache", "provisional", provKey, "final", finalKey)
 	}
 
@@ -178,50 +165,38 @@ func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
 }
 
 func (im *IndexManager) UpdateUserOwnership(userID, threadID string, owns bool) {
+	key := keys.GenUserOwnsThreadKey(userID, threadID)
 	if owns {
-		if err := index.MarkUserOwnsThread(userID, threadID); err != nil {
-			logger.Error("mark_user_owns_thread_failed", "user_id", userID, "thread_id", threadID, "error", err)
-		}
+		im.kv.SetIndexKV(key, []byte("1"))
 	} else {
-		if err := index.UnmarkUserOwnsThread(userID, threadID); err != nil {
-			logger.Error("unmark_user_owns_thread_failed", "user_id", userID, "thread_id", threadID, "error", err)
-		}
+		im.kv.SetIndexKV(key, nil) // or delete, but since batch, set to nil?
 	}
 }
 
 func (im *IndexManager) UpdateThreadParticipants(threadID, userID string, participates bool) {
+	key := keys.GenThreadHasUserKey(threadID, userID)
 	if participates {
-		if err := index.MarkThreadHasUser(threadID, userID); err != nil {
-			logger.Error("mark_thread_has_user_failed", "thread_id", threadID, "user_id", userID, "error", err)
-		}
+		im.kv.SetIndexKV(key, []byte("1"))
 	} else {
-		if err := index.UnmarkThreadHasUser(threadID, userID); err != nil {
-			logger.Error("unmark_thread_has_user_failed", "thread_id", threadID, "user_id", userID, "error", err)
-		}
+		im.kv.SetIndexKV(key, nil)
 	}
 }
 
 func (im *IndexManager) UpdateSoftDeletedThreads(userID, threadID string, deleted bool) {
+	key := keys.GenSoftDeleteMarkerKey(threadID)
 	if deleted {
-		if err := index.MarkSoftDeleted(threadID); err != nil {
-			logger.Error("mark_thread_soft_deleted_failed", "thread_id", threadID, "error", err)
-		}
+		im.kv.SetIndexKV(key, []byte("1"))
 	} else {
-		if err := index.UnmarkSoftDeleted(threadID); err != nil {
-			logger.Error("unmark_thread_soft_deleted_failed", "thread_id", threadID, "error", err)
-		}
+		im.kv.SetIndexKV(key, nil)
 	}
 }
 
 func (im *IndexManager) UpdateSoftDeletedMessages(userID, messageID string, deleted bool) {
+	key := keys.GenSoftDeleteMarkerKey(messageID)
 	if deleted {
-		if err := index.MarkSoftDeleted(messageID); err != nil {
-			logger.Error("mark_message_soft_deleted_failed", "message_id", messageID, "error", err)
-		}
+		im.kv.SetIndexKV(key, []byte("1"))
 	} else {
-		if err := index.UnmarkSoftDeleted(messageID); err != nil {
-			logger.Error("unmark_message_soft_deleted_failed", "message_id", messageID, "error", err)
-		}
+		im.kv.SetIndexKV(key, nil)
 	}
 }
 
@@ -230,6 +205,4 @@ func (im *IndexManager) Reset() {
 	defer im.mu.Unlock()
 
 	im.threadMessages = make(map[string]*index.ThreadMessageIndexes)
-	im.indexData = make(map[string][]byte)
-	im.messageSequencer.Reset()
 }

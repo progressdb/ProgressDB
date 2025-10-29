@@ -10,27 +10,23 @@ import (
 )
 
 type MessageSequencer struct {
-	provisionalToFinalKeys map[string]string
-	indexManager           *IndexManager
+	kv           *KVManager
+	indexManager *IndexManager
 }
 
-func NewMessageSequencer(im *IndexManager) *MessageSequencer {
+func NewMessageSequencer(im *IndexManager, kv *KVManager) *MessageSequencer {
 	return &MessageSequencer{
-		provisionalToFinalKeys: make(map[string]string),
-		indexManager:           im,
+		kv:           kv,
+		indexManager: im,
 	}
 }
 
 func (m *MessageSequencer) MapProvisionalToFinalMessageKey(provisionalKey, finalKey string) {
-	m.provisionalToFinalKeys[provisionalKey] = finalKey
+	m.kv.SetStateKV(provisionalKey, finalKey)
 }
 
 func (m *MessageSequencer) IsProvisionalMessageKey(messageKey string) bool {
 	return keys.IsProvisionalMessageKey(messageKey)
-}
-
-func (m *MessageSequencer) Reset() {
-	m.provisionalToFinalKeys = make(map[string]string)
 }
 
 func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
@@ -48,7 +44,7 @@ func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string
 		return msgKey, nil
 	}
 
-	if finalKey, ok := m.provisionalToFinalKeys[msgKey]; ok {
+	if finalKey, ok := m.kv.GetStateKV(msgKey); ok {
 		return finalKey, nil
 	}
 
@@ -68,7 +64,7 @@ func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string
 
 	if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
 		existingFinalKey := string(iter.Key())
-		m.provisionalToFinalKeys[msgKey] = existingFinalKey
+		m.kv.SetStateKV(msgKey, existingFinalKey)
 		return existingFinalKey, nil
 	}
 

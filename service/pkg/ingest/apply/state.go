@@ -5,66 +5,27 @@ import (
 	"fmt"
 
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 )
 
 type BatchProcessor struct {
 	Index *IndexManager // Public field access
 	Data  *DataManager  // Public field access
+	KV    *KVManager    // Centralized KV cache
 }
 
 func NewBatchProcessor() *BatchProcessor {
+	kv := NewKVManager()
 	return &BatchProcessor{
-		Index: NewIndexManager(),
-		Data:  NewDataManager(),
+		Index: NewIndexManager(kv),
+		Data:  NewDataManager(kv),
+		KV:    kv,
 	}
 }
 
 func (bp *BatchProcessor) Flush() error {
-	// Get current states from managers
-	threadMeta := bp.Data.GetThreadMeta()
-	messageData := bp.Data.GetMessageData()
-	versionKeys := bp.Data.GetVersionKeys()
+	// Serialize thread messages to KV
 	threadMessages := bp.Index.GetThreadMessages()
-	indexData := bp.Index.GetIndexData()
-
-	// Create batches AFTER all reads are complete
-	mainBatch := storedb.Client.NewBatch()
-	indexBatch := index.IndexDB.NewBatch()
-
-	var errors []error
-
-	// Write thread meta to main DB
-	for threadID, data := range threadMeta {
-		threadKey := keys.GenThreadKey(threadID)
-		if data == nil {
-			if err := mainBatch.Delete([]byte(threadKey), storedb.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("delete thread meta %s: %w", threadID, err))
-			}
-		} else {
-			if err := mainBatch.Set([]byte(threadKey), data, storedb.WriteOpt(true)); err != nil {
-				errors = append(errors, fmt.Errorf("set thread meta %s: %w", threadID, err))
-			}
-		}
-	}
-
-	// Write message data to main DB
-	for key, msgData := range messageData {
-		if err := mainBatch.Set([]byte(key), msgData.Data, storedb.WriteOpt(true)); err != nil {
-			errors = append(errors, fmt.Errorf("set message data %s: %w", key, err))
-		}
-	}
-
-	// Write version keys to index DB
-	for versionKey, versionData := range versionKeys {
-		if err := indexBatch.Set([]byte(versionKey), versionData, index.WriteOpt(true)); err != nil {
-			errors = append(errors, fmt.Errorf("set version key %s: %w", versionKey, err))
-		}
-	}
-
-	// Write thread indexes to index DB
 	for threadID, threadIdx := range threadMessages {
 		if threadIdx == nil {
 			// Delete all index keys for this thread
@@ -87,9 +48,7 @@ func (bp *BatchProcessor) Flush() error {
 				case "last_updated_at":
 					key = keys.GenThreadMessageLU(threadID)
 				}
-				if err := indexBatch.Delete([]byte(key), index.WriteOpt(true)); err != nil {
-					errors = append(errors, fmt.Errorf("delete thread index %s %s: %w", suffix, threadID, err))
-				}
+				bp.KV.SetIndexKV(key, nil)
 			}
 		} else {
 			// Save each field to its respective key
@@ -123,51 +82,19 @@ func (bp *BatchProcessor) Flush() error {
 				}
 				data, err := json.Marshal(val)
 				if err != nil {
-					errors = append(errors, fmt.Errorf("marshal thread index %s %s: %w", suffix, threadID, err))
+					logger.Error("marshal thread index", "suffix", suffix, "threadID", threadID, "err", err)
 					continue
 				}
-				if err := indexBatch.Set([]byte(key), data, index.WriteOpt(true)); err != nil {
-					errors = append(errors, fmt.Errorf("set thread index %s %s: %w", suffix, threadID, err))
-				}
+				bp.KV.SetIndexKV(key, data)
 			}
 		}
 	}
 
-	// Write index data to index DB
-	for key, data := range indexData {
-		if err := indexBatch.Set([]byte(key), data, index.WriteOpt(true)); err != nil {
-			errors = append(errors, fmt.Errorf("set index data %s: %w", key, err))
-		}
+	// Flush all KV changes
+	if err := bp.KV.Flush(); err != nil {
+		logger.Error("kv_flush_error", "err", err)
+		return fmt.Errorf("kv flush: %w", err)
 	}
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			logger.Error("batch_flush_error", "err", err)
-		}
-		mainBatch.Close()
-		indexBatch.Close()
-		return fmt.Errorf("batch flush completed with %d errors", len(errors))
-	}
-
-	// Commit batches
-	if err := mainBatch.Commit(storedb.WriteOpt(true)); err != nil {
-		logger.Error("main_batch_commit_error", "err", err)
-		mainBatch.Close()
-		indexBatch.Close()
-		return fmt.Errorf("commit main batch: %w", err)
-	}
-	if err := indexBatch.Commit(index.WriteOpt(true)); err != nil {
-		logger.Error("index_batch_commit_error", "err", err)
-		mainBatch.Close()
-		indexBatch.Close()
-		return fmt.Errorf("commit index batch: %w", err)
-	}
-
-	storedb.ForceSync()
-	storedb.ForceIndexSync()
-	// Close batches after successful commit
-	mainBatch.Close()
-	indexBatch.Close()
 
 	// Reset after successful flush
 	bp.Reset()
@@ -178,6 +105,6 @@ func (bp *BatchProcessor) Flush() error {
 
 // Reset clears all accumulated changes after batch completion
 func (bp *BatchProcessor) Reset() {
-	bp.Data.Reset()
 	bp.Index.Reset()
+	bp.KV.Reset()
 }
