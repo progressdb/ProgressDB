@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 
 	"progressdb/pkg/models"
@@ -203,41 +202,50 @@ func (im *IndexManager) GetNextMessageSequence(threadKey string) (uint64, error)
 
 	idx, err := im.loadThreadIndex(threadKey)
 	if err != nil {
-		logger.Error("failed to load thread index", "error", err)
-		return 0, err
+		return 0, fmt.Errorf("load index failed: %w", err)
 	}
 
+	// The next available sequence is whatever End currently points to.
 	sequence := idx.End
-	idx.End++
 
-	// persist the next state of the index
+	// Reserve the next slot for future messages.
+	idx.End = sequence + 1
+
+	// Persist the updated index state.
 	if err := im.saveThreadIndex(threadKey, idx); err != nil {
-		logger.Error("failed to save thread index", "error", err)
-		return 0, err
+		return 0, fmt.Errorf("save index failed: %w", err)
 	}
 
 	return sequence, nil
 }
+
 func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error) {
-	parts := strings.Split(messageKey, ":m:")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid provisional message key format: %s", messageKey)
+	parts, err := keys.ParseMessageKey(messageKey)
+	if err != nil {
+		parts, err = keys.ParseMessageProvisionalKey(messageKey)
+		if err != nil {
+			return "", fmt.Errorf("invalid provisional message key format: %w", err)
+		}
 	}
-	threadPart := parts[0]
-	msgID := parts[1]
+	threadPart := keys.GenThreadKey(parts.ThreadID)
 
 	threadParts, err := keys.ParseThreadKey(threadPart)
 	if err != nil {
-		return "", err
+		provParts, provErr := keys.ParseMessageProvisionalKey(threadPart)
+		if provErr != nil {
+			return "", err // return the original error as it's more likely
+		}
+		threadParts = &keys.ThreadMetaParts{ThreadID: provParts.ThreadID}
 	}
 	threadKey := threadParts.ThreadID
 
+	// increased the sequence
 	sequence, err := m.GetNextMessageSequence(threadKey)
 	if err != nil {
 		return "", err
 	}
 
-	finalKey := keys.GenMessageKey(threadKey, msgID, sequence)
+	finalKey := keys.GenMessageKey(threadKey, parts.MsgID, sequence)
 
 	// set state
 	m.kv.SetStateKV(messageKey, finalKey)

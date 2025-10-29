@@ -36,12 +36,18 @@ func (dm *DataManager) SetThreadData(threadKey string, data interface{}) error {
 	return nil
 }
 
-func (dm *DataManager) SetMessageData(threadKey, messageID string, data interface{}, ts int64, seq uint64) error {
-	if threadKey == "" || messageID == "" {
-		return fmt.Errorf("threadKey and messageID cannot be empty")
+func (dm *DataManager) SetMessageData(messageKey string, data interface{}, ts int64) error {
+	if messageKey == "" {
+		return fmt.Errorf("messageKey cannot be empty")
 	}
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
+	}
+
+	// Parse the message key to extract components
+	parts, err := keys.ParseMessageKey(messageKey)
+	if err != nil {
+		return fmt.Errorf("parse message key: %w", err)
 	}
 
 	marshaled, err := json.Marshal(data)
@@ -51,13 +57,12 @@ func (dm *DataManager) SetMessageData(threadKey, messageID string, data interfac
 
 	// Encrypt if it's a message (not for partials or other types)
 	if _, ok := data.(*models.Message); ok {
-		marshaled, err = encryption.EncryptMessageData(threadKey, marshaled)
+		marshaled, err = encryption.EncryptMessageData(parts.ThreadID, marshaled)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt message data: %w", err)
 		}
 	}
 
-	messageKey := keys.GenMessageKey(threadKey, messageID, seq)
 	dm.kv.SetStoreKV(messageKey, marshaled)
 	return nil
 }
