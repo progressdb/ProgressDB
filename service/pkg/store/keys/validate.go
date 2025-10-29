@@ -217,12 +217,16 @@ func ValidateKey(key string) error {
 }
 
 // IsProvisionalMessageKey checks if a message key is in provisional format
-// Returns true if it's a simple message key (not a full structured key)
+// Returns true if it's a simple message key or a structured provisional key (not a full sequenced key)
 func IsProvisionalMessageKey(messageKey string) bool {
-	// If it contains "t:" or ":m:" it's likely a full structured key, not a provisional key
-	if strings.Contains(messageKey, "t:") || strings.Contains(messageKey, ":m:") {
-		return false
+	count := strings.Count(messageKey, ":")
+	// Structured provisional key: e.g., "t:threadID:m:msgID" (3 colons)
+	if count == 3 && strings.Contains(messageKey, "t:") && strings.Contains(messageKey, ":m:") {
+		return true
 	}
-	// If it's a valid simple key format, it's provisional
-	return ValidateKey(messageKey) == nil
+	// Simple key: e.g., "msgID" (0 colons)
+	if count == 0 && ValidateKey(messageKey) == nil {
+		return true
+	}
+	return false
 }
