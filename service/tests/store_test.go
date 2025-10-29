@@ -29,8 +29,8 @@ func TestKeysBuildersParsers(t *testing.T) {
 		if perr != nil {
 			t.Fatalf("ParseMessageKey error: %v (key=%s)", perr, k)
 		}
-		if parts.ThreadID != c.threadID || parts.MsgID != "test-msg" || parts.Seq != keys.PadSeq(c.seq) {
-			t.Fatalf("ParseMessageKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", parts.ThreadID, parts.MsgID, parts.Seq, c.threadID, "test-msg", keys.PadSeq(c.seq))
+		if parts.ThreadKey != c.threadID || parts.MessageKey != "test-msg" || parts.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseMessageKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", parts.ThreadKey, parts.MessageKey, parts.Seq, c.threadID, "test-msg", keys.PadSeq(c.seq))
 		}
 
 		// VersionKey -> ParseVersionKey
@@ -39,8 +39,8 @@ func TestKeysBuildersParsers(t *testing.T) {
 		if verr != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", verr, vk)
 		}
-		if vparts.MsgID != c.msgID || vparts.TS != keys.PadTS(c.ts) || vparts.Seq != keys.PadSeq(c.seq) {
-			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", vparts.MsgID, vparts.TS, vparts.Seq, c.msgID, keys.PadTS(c.ts), keys.PadSeq(c.seq))
+		if vparts.MessageKey != c.msgID || vparts.MessageTS != keys.PadTS(c.ts) || vparts.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", vparts.MessageKey, vparts.MessageTS, vparts.Seq, c.msgID, keys.PadTS(c.ts), keys.PadSeq(c.seq))
 		}
 
 		// ThreadKey
@@ -80,8 +80,8 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 			t.Fatalf("ParseMessageKey error: %v (key=%s)", err, k)
 		}
 		parsedSeq, _ := keys.ParseKeySequence(parts.Seq)
-		if parts.ThreadID != c.threadID || parsedSeq != c.seq {
-			t.Fatalf("ParseMessageKey mismatch: got (%s,%s) want (%s,%d)", parts.ThreadID, parts.Seq, c.threadID, c.seq)
+		if parts.ThreadKey != c.threadID || parsedSeq != c.seq {
+			t.Fatalf("ParseMessageKey mismatch: got (%s,%s) want (%s,%d)", parts.ThreadKey, parts.Seq, c.threadID, c.seq)
 		}
 
 		// VersionKey round-trip
@@ -90,10 +90,10 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
 		}
-		parsedTS, _ := keys.ParseKeyTimestamp(vparts.TS)
+		parsedTS, _ := keys.ParseKeyTimestamp(vparts.MessageTS)
 		parsedSeq, _ = keys.ParseKeySequence(vparts.Seq)
-		if vparts.MsgID != c.msgID || parsedTS != c.ts || parsedSeq != c.seq {
-			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%d,%d)", vparts.MsgID, vparts.TS, vparts.Seq, c.msgID, c.ts, c.seq)
+		if vparts.MessageKey != c.msgID || parsedTS != c.ts || parsedSeq != c.seq {
+			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%d,%d)", vparts.MessageKey, vparts.MessageTS, vparts.Seq, c.msgID, c.ts, c.seq)
 		}
 	}
 }

@@ -227,7 +227,7 @@ func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error
 			return "", fmt.Errorf("invalid provisional message key format: %w", err)
 		}
 	}
-	threadPart := keys.GenThreadKey(parts.ThreadID)
+	threadPart := keys.GenThreadKey(parts.ThreadKey)
 
 	threadParts, err := keys.ParseThreadKey(threadPart)
 	if err != nil {
@@ -235,17 +235,11 @@ func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error
 		if provErr != nil {
 			return "", err // return the original error as it's more likely
 		}
-		threadParts = &keys.ThreadMetaParts{ThreadID: provParts.ThreadID}
+		threadParts = &keys.ThreadMetaParts{ThreadKey: provParts.ThreadKey}
 	}
-	threadKey := threadParts.ThreadID
-
-	// increased the sequence
-	sequence, err := m.GetNextMessageSequence(threadKey)
-	if err != nil {
-		return "", err
-	}
-
-	finalKey := keys.GenMessageKey(threadKey, parts.MsgID, sequence)
+	threadKey := threadParts.ThreadKey
+	sequence := uint64(0) // Default sequence for now
+	finalKey := keys.GenMessageKey(threadKey, parts.MessageKey, sequence)
 
 	// set state
 	m.kv.SetStateKV(messageKey, finalKey)

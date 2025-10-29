@@ -1,8 +1,9 @@
 package logger
 
 import (
-	"github.com/valyala/fasthttp"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 )
 
 func SafeHeadersFast(ctx *fasthttp.RequestCtx) string {
@@ -19,5 +20,5 @@ func LogRequestFast(ctx *fasthttp.RequestCtx) {
 	if Log == nil {
 		return
 	}
-	Info("incoming_request", "method", string(ctx.Method()), "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String(), "headers", SafeHeadersFast(ctx))
+	Info("incoming_request", "method", string(ctx.Method()), "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
 }

@@ -2,11 +2,11 @@ package admin
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
@@ -16,6 +16,8 @@ import (
 	"progressdb/pkg/store/features/messages"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
+
+	"progressdb/pkg/state/logger"
 )
 
 func Health(ctx *fasthttp.RequestCtx) {
@@ -129,15 +131,16 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 }
 
 func ListThreadMessages(ctx *fasthttp.RequestCtx) {
-	threadID, ok := extractParamOrFail(ctx, "threadId", "missing threadId")
+	threadKey, ok := extractParamOrFail(ctx, "threadKey", "missing threadKey")
 	if !ok {
 		return
 	}
 
 	paginationReq := pagination.ParsePaginationRequest(ctx)
 
-	result, err := listMessagesForThread(threadID, paginationReq)
+	result, err := listMessagesForThread(threadKey, paginationReq)
 	if err != nil {
+		logger.Error("ListThreadMessages: %v", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
@@ -182,151 +185,185 @@ func listKeysByPrefixPaginated(prefix string, store string, paginationReq *pagin
 	}, nil
 }
 
-func listUsersByPrefixPaginated(prefix string, paginationReq *pagination.PaginationRequest) (*DashboardUsersResult, error) {
-	// get all relationship keys by paginating through them
-	var allRelKeys []string
-	cursor := ""
-	for {
-		relKeys, resp, err := index.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
-		if err != nil {
-			return nil, err
-		}
-		allRelKeys = append(allRelKeys, relKeys...)
-		if !resp.HasMore {
-			break
-		}
-		cursor = resp.NextCursor
+// Util function for paginating a slice of items
+type paginationUtilResult struct {
+	Items    []string
+	Response *pagination.PaginationResponse
+}
+
+func newPaginationResponseUtil(limit int, items []string, total int) paginationUtilResult {
+	hasMore := false
+	nextCursor := ""
+	page := items
+	if len(items) > limit {
+		hasMore = true
+		page = items[:limit]
+		nextCursor = page[len(page)-1]
 	}
+	return paginationUtilResult{
+		Items: page,
+		Response: pagination.NewPaginationResponse(
+			limit,
+			hasMore,
+			nextCursor,
+			len(page),
+			total,
+		),
+	}
+}
+
+func listUsersByPrefixPaginated(prefix string, _ *pagination.PaginationRequest) (*DashboardUsersResult, error) {
+	// Open a raw Pebble iterator over the index database, using prefix and its next lexicographical key for bounds
+	lowerBound := []byte(prefix)
+	upperBound := nextPrefix(lowerBound)
+
+	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
 
 	userSet := make(map[string]struct{})
-	for _, key := range allRelKeys {
-		parts := strings.Split(key, ":")
+
+	for valid := iter.First(); valid; valid = iter.Next() {
+		keyStr := string(iter.Key())
+		parts := strings.Split(keyStr, ":")
 		if len(parts) >= 4 && parts[0] == "rel" && parts[1] == "u" && parts[3] == "t" {
 			userSet[parts[2]] = struct{}{}
 		}
 	}
 
+	// Convert userSet keys to sorted slice for output
 	allUsers := make([]string, 0, len(userSet))
 	for user := range userSet {
 		allUsers = append(allUsers, user)
 	}
 	sort.Strings(allUsers)
 
-	start := 0
-	if paginationReq.Cursor != "" {
-		for i, userID := range allUsers {
-			if userID == paginationReq.Cursor {
-				start = i + 1
-				break
-			}
-		}
-	}
-
-	end := start + paginationReq.Limit
-	if end > len(allUsers) {
-		end = len(allUsers)
-	}
-
-	if start >= len(allUsers) {
-		return &DashboardUsersResult{
-			Users:      []string{},
-			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0, len(allUsers)),
-		}, nil
-	}
-
-	pagedUsers := allUsers[start:end]
-	nextCursor := ""
-	if end < len(allUsers) {
-		nextCursor = pagedUsers[len(pagedUsers)-1]
-	}
-
 	return &DashboardUsersResult{
-		Users:      pagedUsers,
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, end < len(allUsers), nextCursor, len(pagedUsers), len(allUsers)),
+		Users:      allUsers,
+		Pagination: nil,
 	}, nil
 }
 
-func listThreadsForUser(userID string, paginationReq *pagination.PaginationRequest) (*DashboardThreadsResult, error) {
-	// get all relationship keys by paginating through them
-	var allRelKeys []string
-	cursor := ""
-	for {
-		relKeys, resp, err := index.ListKeysWithPrefixPaginated(keys.GenUserThreadRelPrefix(userID), &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
-		if err != nil {
-			return nil, fmt.Errorf("list user threads: %w", err)
-		}
-		allRelKeys = append(allRelKeys, relKeys...)
-		if !resp.HasMore {
-			break
-		}
-		cursor = resp.NextCursor
-	}
-
-	allThreadIDs := make([]string, 0, len(allRelKeys))
-	for _, key := range allRelKeys {
-		parts := strings.Split(key, ":")
-		if len(parts) >= 4 && parts[0] == "rel" && parts[1] == "u" && parts[2] == userID && parts[3] == "t" {
-			allThreadIDs = append(allThreadIDs, parts[4])
+// Helper for upper bound: gets next lexicographical key after prefix (copied from apply.go context)
+func nextPrefix(prefix []byte) []byte {
+	out := make([]byte, len(prefix))
+	copy(out, prefix)
+	for i := len(out) - 1; i >= 0; i-- {
+		if out[i] < 0xFF {
+			out[i]++
+			return out[:i+1]
 		}
 	}
-
-	if len(allThreadIDs) == 0 {
-		return &DashboardThreadsResult{
-			Threads:    []json.RawMessage{},
-			Pagination: pagination.NewPaginationResponse(paginationReq.Limit, false, "", 0, 0),
-		}, nil
-	}
-
-	start := 0
-	if paginationReq.Cursor != "" {
-		for i, tid := range allThreadIDs {
-			if tid == paginationReq.Cursor {
-				start = i + 1
-				break
-			}
-		}
-	}
-
-	end := start + paginationReq.Limit
-	if end > len(allThreadIDs) {
-		end = len(allThreadIDs)
-	}
-
-	pageThreads := allThreadIDs[start:end]
-	hasMore := end < len(allThreadIDs)
-	nextCursor := ""
-	if hasMore && len(pageThreads) > 0 {
-		nextCursor = pageThreads[len(pageThreads)-1]
-	}
-
-	threads := make([]json.RawMessage, 0, len(pageThreads))
-	for _, threadID := range pageThreads {
-		data, err := storedb.GetKey(keys.GenThreadKey(threadID))
-		if err != nil {
-			continue
-		}
-		threads = append(threads, json.RawMessage(data))
-	}
-
-	return &DashboardThreadsResult{
-		Threads:    threads,
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, hasMore, nextCursor, len(threads), len(allThreadIDs)),
-	}, nil
+	return nil // no upper bound if all 0xFF
 }
 
-func listMessagesForThread(threadID string, paginationReq *pagination.PaginationRequest) (*DashboardMessagesResult, error) {
-	reqCursor := models.ReadRequestCursorInfo{
-		Cursor: paginationReq.Cursor,
-		Limit:  paginationReq.Limit,
-	}
-	messages, respCursor, err := messages.ListMessages(threadID, reqCursor)
-	if err != nil {
+func listThreadsForUser(userID string, _ *pagination.PaginationRequest) (*DashboardThreadsResult, error) {
+	// Validate userID using @validate.go
+	if err := keys.ValidateUserID(userID); err != nil {
 		return nil, err
 	}
 
+	prefix := keys.GenUserThreadRelPrefix(userID)
+	lowerBound := []byte(prefix)
+	upperBound := nextPrefix(lowerBound)
+
+	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	var threadKeys []string
+	count := 0
+	const maxThreads = 100
+
+	for valid := iter.First(); valid && count < maxThreads; valid = iter.Next() {
+		keyStr := string(iter.Key())
+
+		// Validate the relationship key
+		if err := keys.ValidateUserOwnsThreadKey(keyStr); err != nil {
+			continue
+		}
+
+		// Extract threadID from the validated key
+		parsedKey, err := keys.ParseUserOwnsThread(keyStr)
+		if err != nil {
+			// log the error
+			logger.Error("failed to parse user owns thread key %q: %v", keyStr, err)
+			continue
+		}
+
+		// Validate threadKey
+		if err := keys.ValidateThreadKey(parsedKey.ThreadKey); err != nil {
+			// log the error
+			logger.Error("invalid thread key in user thread relation %q: %v", parsedKey.ThreadKey, err)
+			continue
+		}
+
+		threadKeys = append(threadKeys, parsedKey.ThreadKey)
+		count++
+	}
+
+	return &DashboardThreadsResult{
+		Threads:    threadKeys,
+		Pagination: nil,
+	}, nil
+}
+
+func listMessagesForThread(threadKey string, paginationReq *pagination.PaginationRequest) (*DashboardMessagesResult, error) {
+	logger.Info("listMessagesForThread: listing messages for thread", threadKey)
+
+	// Validate thread key
+	if err := keys.ValidateThreadKey(threadKey); err != nil {
+		logger.Error("listMessagesForThread: invalid thread key", threadKey, err)
+		return nil, err
+	}
+
+	// Generate prefix for messages of this thread
+	prefix := keys.GenAllThreadMessagesPrefix(threadKey)
+	lowerBound := []byte(prefix)
+	upperBound := nextPrefix(lowerBound)
+
+	logger.Debug("listMessagesForThread: using range lowerBound=", string(lowerBound), "upperBound=", string(upperBound))
+
+	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		logger.Error("listMessagesForThread: failed to create iterator:", err)
+		return nil, err
+	}
+	defer iter.Close()
+
+	var msgKeys []string
+	count := 0
+	limit := 100 // default
+
+	for valid := iter.First(); valid && count < limit; valid = iter.Next() {
+		messagekey := string(iter.Key())
+		// Only include direct message keys for the thread
+		if err := keys.ValidateMessageKey(messagekey); err != nil {
+			logger.Debug("listMessagesForThread: skipping invalid message key", messagekey, err)
+			continue
+		}
+		logger.Debug("listMessagesForThread: messagekey", messagekey)
+		msgKeys = append(msgKeys, messagekey)
+		count++
+	}
+	logger.Info("listMessagesForThread: found", count, "messages for thread", threadKey)
+
 	return &DashboardMessagesResult{
-		Messages:   router.ToRawMessages(messages),
-		Pagination: pagination.NewPaginationResponse(paginationReq.Limit, respCursor.HasMore, respCursor.Cursor, len(messages), int(respCursor.TotalCount)),
+		Messages:   msgKeys,
+		Pagination: pagination.NewPaginationResponse(limit, count == limit, "", count, count), // Cursor-based pagination can be improved if needed
 	}, nil
 }
 

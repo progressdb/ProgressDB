@@ -53,7 +53,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		if err != nil {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("invalid cursor: %w", err)
 		}
-		if mc.ThreadID != threadID {
+		if mc.ThreadKey != threadID {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("cursor thread mismatch")
 		}
 		startKey = []byte(keys.GenThreadMessagesGEPrefix(threadID, mc.Sequence+1))
@@ -137,12 +137,12 @@ func encodeMessageCursor(threadID string, timestamp int64, sequence uint64) (str
 }
 
 func decodeMessageCursor(cursor string) (struct {
-	ThreadID  string `json:"thread_id"`
+	ThreadKey string `json:"thread_id"`
 	Timestamp int64  `json:"timestamp"`
 	Sequence  uint64 `json:"sequence"`
 }, error) {
 	var result struct {
-		ThreadID  string `json:"thread_id"`
+		ThreadKey string `json:"thread_id"`
 		Timestamp int64  `json:"timestamp"`
 		Sequence  uint64 `json:"sequence"`
 	}

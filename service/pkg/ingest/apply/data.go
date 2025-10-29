@@ -57,7 +57,7 @@ func (dm *DataManager) SetMessageData(messageKey string, data interface{}, ts in
 
 	// Encrypt if it's a message (not for partials or other types)
 	if _, ok := data.(*models.Message); ok {
-		marshaled, err = encryption.EncryptMessageData(parts.ThreadID, marshaled)
+		marshaled, err = encryption.EncryptMessageData(parts.ThreadKey, marshaled)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt message data: %w", err)
 		}

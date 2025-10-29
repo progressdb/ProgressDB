@@ -126,7 +126,7 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/admin/users", adminRoutes.ListUsers)
 	r.GET("/admin/users/{userId}/threads", adminRoutes.ListUserThreads)
 	r.GET("/admin/users/{userId}/threads/{threadKey}/messages", adminRoutes.ListThreadMessages)
-	r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{id}", adminRoutes.GetThreadMessage)
+	// r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{id}", adminRoutes.GetThreadMessage)
 
 	// admin enc routes
 	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.EncryptionRotateThreadDEK)

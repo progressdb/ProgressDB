@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"encoding/json"
 	"progressdb/pkg/store/pagination"
 )
 
@@ -16,12 +15,12 @@ type DashboardUsersResult struct {
 }
 
 type DashboardThreadsResult struct {
-	Threads    []json.RawMessage              `json:"threads"`
+	Threads    []string                       `json:"threads"`
 	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardMessagesResult struct {
-	Messages   []json.RawMessage              `json:"messages"`
+	Messages   []string                       `json:"messages"`
 	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 

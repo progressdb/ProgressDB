@@ -14,6 +14,8 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 	limiters := &limiterPool{cfg: cfg}
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return func(ctx *fasthttp.RequestCtx) {
+			logger.LogRequestFast(ctx)
+
 			// cors headers and handle options shortcut
 			origin := string(ctx.Request.Header.Peek("Origin"))
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {

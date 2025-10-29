@@ -101,7 +101,7 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 		var threadIDs []string
 		for _, k := range keyList {
 			if parts, err := keys.ParseThreadKey(k); err == nil {
-				threadIDs = append(threadIDs, parts.ThreadID)
+				threadIDs = append(threadIDs, parts.ThreadKey)
 			}
 		}
 		return threadIDs, nil
@@ -124,7 +124,7 @@ func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 		return
 	}
-	threadID := parts.ThreadID
+	threadID := parts.ThreadKey
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
@@ -169,7 +169,7 @@ func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 				return
 			}
-			threadIDs = append(threadIDs, parts.ThreadID)
+			threadIDs = append(threadIDs, parts.ThreadKey)
 		}
 	}
 
@@ -247,7 +247,7 @@ func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 				return
 			}
-			threadIDs = append(threadIDs, parts.ThreadID)
+			threadIDs = append(threadIDs, parts.ThreadKey)
 		}
 	}
 
