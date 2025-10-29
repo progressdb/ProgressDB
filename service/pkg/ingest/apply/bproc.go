@@ -9,7 +9,6 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
-	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 )
 
@@ -64,14 +63,14 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	thread.Key = threadKey
 
 	// store
-	if err := batchProcessor.Data.SetThreadMeta(threadKey, thread); err != nil {
+	if err := batchProcessor.Data.SetThreadData(threadKey, thread); err != nil {
 		return fmt.Errorf("set thread meta: %w", err)
 	}
 
 	// index
 	// thread <> message indexes are inited already
-	batchProcessor.Index.UpdateUserOwnership(thread.Author, threadKey, true)
-	batchProcessor.Index.UpdateThreadParticipants(threadKey, thread.Author, true)
+	batchProcessor.Index.SetUserOwnership(author, threadKey, 1)      // user, thread, 1
+	batchProcessor.Index.SetThreadParticipants(author, threadKey, 1) // user, thread, 1
 	return nil
 }
 
@@ -94,12 +93,12 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// check access
-	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := batchProcessor.Index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
-	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
+	hasParticipation, err := batchProcessor.Index.DoesThreadHaveUser(threadKey, author)
 	if err != nil {
 		return fmt.Errorf("failed to check thread participation: %w", err)
 	}
@@ -125,22 +124,12 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	thread.UpdatedTS = entry.TS
 
 	// store
-	if err := batchProcessor.Data.SetThreadMeta(threadKey, &thread); err != nil {
+	if err := batchProcessor.Data.SetThreadData(threadKey, &thread); err != nil {
 		return fmt.Errorf("set thread meta: %w", err)
 	}
 
 	// index
-	batchProcessor.Index.UpdateSoftDeletedThreads("", threadKey, true)
-
-	if hasOwnership {
-		batchProcessor.Index.UpdateUserOwnership(author, threadKey, false)
-	}
-
-	if hasParticipation {
-		batchProcessor.Index.UpdateThreadParticipants(threadKey, author, false)
-	}
-
-	batchProcessor.Index.DeleteThreadMessageIndexes(threadKey)
+	batchProcessor.Index.SetSoftDeletedThreads(author, threadKey, 1)
 
 	return nil
 }
@@ -170,7 +159,7 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// check access
-	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := batchProcessor.Index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
@@ -203,7 +192,7 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// store
-	if err := batchProcessor.Data.SetThreadMeta(threadKey, &thread); err != nil {
+	if err := batchProcessor.Data.SetThreadData(threadKey, &thread); err != nil {
 		return fmt.Errorf("set thread meta: %w", err)
 	}
 
@@ -236,12 +225,12 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// check access
-	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := batchProcessor.Index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
-	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
+	hasParticipation, err := batchProcessor.Index.DoesThreadHaveUser(threadKey, author)
 	if err != nil {
 		return fmt.Errorf("failed to check thread participation: %w", err)
 	}
@@ -268,7 +257,7 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	msg.Key = keys.GenMessageKey(threadKey, resolvedID, threadSequence)
 
 	// index
-	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, "")
+	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg)
 
 	// store
 	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedID, msg, entry.TS, threadSequence); err != nil {
@@ -289,7 +278,6 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	if threadKey == "" {
 		return fmt.Errorf("thread key required for message update")
 	}
-
 	messageKey := ExtractMKey(entry.QueueOp)
 
 	// validate
@@ -304,12 +292,12 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// check access
-	hasOwnership, err := index.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := batchProcessor.Index.DoesUserOwnThread(author, threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to check thread ownership: %w", err)
 	}
 
-	hasParticipation, err := index.DoesThreadHaveUser(threadKey, author)
+	hasParticipation, err := batchProcessor.Index.DoesThreadHaveUser(threadKey, author)
 	if err != nil {
 		return fmt.Errorf("failed to check thread participation: %w", err)
 	}
@@ -358,12 +346,7 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// indexes
-	threadComp, messageComp, err := keys.ExtractMessageComponents(threadKey, resolvedMessageKey)
-	if err != nil {
-		return fmt.Errorf("extract message components: %w", err)
-	}
-	msgKey := keys.GenMessageKey(threadComp, messageComp, threadSequence)
-	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg.TS, entry.TS, false, msgKey)
+	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, &msg)
 
 	return nil
 }
@@ -425,7 +408,7 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// update indexes
-	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadKey, existingMessage.TS, entry.TS, true, finalMessageKey)
-	batchProcessor.Index.UpdateSoftDeletedMessages(existingMessage.Author, finalMessageKey, true)
+	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadKey, &existingMessage)
+	batchProcessor.Index.SetSoftDeletedMessages(author, finalMessageKey, 1) // user, message, 1
 	return nil
 }

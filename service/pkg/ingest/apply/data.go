@@ -21,9 +21,9 @@ func NewDataManager(kv *KVManager) *DataManager {
 	}
 }
 
-func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) error {
-	if threadID == "" {
-		return fmt.Errorf("threadID cannot be empty")
+func (dm *DataManager) SetThreadData(threadKey string, data interface{}) error {
+	if threadKey == "" {
+		return fmt.Errorf("threadKey cannot be empty")
 	}
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
@@ -32,13 +32,13 @@ func (dm *DataManager) SetThreadMeta(threadID string, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal thread meta: %w", err)
 	}
-	dm.kv.SetStoreKV(keys.GenThreadKey(threadID), marshaled)
+	dm.kv.SetStoreKV(keys.GenThreadKey(threadKey), marshaled)
 	return nil
 }
 
-func (dm *DataManager) SetMessageData(threadID, messageID string, data interface{}, ts int64, seq uint64) error {
-	if threadID == "" || messageID == "" {
-		return fmt.Errorf("threadID and messageID cannot be empty")
+func (dm *DataManager) SetMessageData(threadKey, messageID string, data interface{}, ts int64, seq uint64) error {
+	if threadKey == "" || messageID == "" {
+		return fmt.Errorf("threadKey and messageID cannot be empty")
 	}
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
@@ -51,13 +51,13 @@ func (dm *DataManager) SetMessageData(threadID, messageID string, data interface
 
 	// Encrypt if it's a message (not for partials or other types)
 	if _, ok := data.(*models.Message); ok {
-		marshaled, err = encryption.EncryptMessageData(threadID, marshaled)
+		marshaled, err = encryption.EncryptMessageData(threadKey, marshaled)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt message data: %w", err)
 		}
 	}
 
-	messageKey := keys.GenMessageKey(threadID, messageID, seq)
+	messageKey := keys.GenMessageKey(threadKey, messageID, seq)
 	dm.kv.SetStoreKV(messageKey, marshaled)
 	return nil
 }
@@ -86,13 +86,13 @@ func (dm *DataManager) SetVersionKey(versionKey string, data interface{}) error 
 	return nil
 }
 
-func (dm *DataManager) GetThreadMetaCopy(threadID string) ([]byte, error) {
-	if data, ok := dm.kv.GetStoreKV(keys.GenThreadKey(threadID)); ok && data != nil {
+func (dm *DataManager) GetThreadMetaCopy(threadKey string) ([]byte, error) {
+	if data, ok := dm.kv.GetStoreKV(keys.GenThreadKey(threadKey)); ok && data != nil {
 		return append([]byte(nil), data...), nil
 	}
 
 	// Not in batch or deleted, fetch from DB
-	dataStr, err := threads.GetThread(threadID)
+	dataStr, err := threads.GetThread(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get thread from DB: %w", err)
 	}

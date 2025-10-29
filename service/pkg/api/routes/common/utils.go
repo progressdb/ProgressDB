@@ -19,13 +19,12 @@ func ExtractPayloadOrFail(ctx *fasthttp.RequestCtx) ([]byte, bool) {
 	bodyLen := int64(len(body))
 
 	// Log the body length
-	logger.Info("ExtractPayloadOrFail.body_length", bodyLen)
-
 	if bodyLen == 0 {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "empty request payload")
 		return nil, false
 	}
 	if bodyLen > maxPayloadSize {
+		logger.Info("ExtractPayloadOrFail.body_length", bodyLen)
 		router.WriteJSONError(ctx, fasthttp.StatusRequestEntityTooLarge, fmt.Sprintf("request payload exceeds %d bytes limit", maxPayloadSize))
 		return nil, false
 	}

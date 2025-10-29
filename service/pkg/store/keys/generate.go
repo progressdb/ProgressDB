@@ -4,160 +4,154 @@ import (
 	"fmt"
 )
 
-// GenThreadPrvKey returns a provisional thread key: t:<threadID>
-func GenThreadPrvKey(threadID string) string {
-	return fmt.Sprintf(ThreadPrvKey, threadID)
+// general
+func GenThreadPrvKey(threadTS string) string {
+	return fmt.Sprintf(ThreadPrvKey, threadTS)
 }
 
-// GenThreadPrvKey returns a provisional thread key: t:<threadID>
-func GenMessagePrvKey(threadID string, messageID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenMessagePrvKey(threadTS string, messageID string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(MessagePrvKey, threadID, messageID)
+	return fmt.Sprintf(MessagePrvKey, threadTS, messageID)
 }
 
-// GenMessageKey returns a message key: t:<threadID>:m:<msgID>:<seq>
-func GenMessageKey(threadID, msgID string, seq uint64) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenMessageKey(threadTS, messageTS string, seq uint64) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	// Extract message ID component from msgID parameter
-	if parts, err := ParseMessageKey(msgID); err == nil {
-		msgID = parts.MsgID
-	} else if parts, err := ParseMessageProvisionalKey(msgID); err == nil {
-		msgID = parts.MsgID
+	if parts, err := ParseMessageKey(messageTS); err == nil {
+		messageTS = parts.MsgID
+	} else if parts, err := ParseMessageProvisionalKey(messageTS); err == nil {
+		messageTS = parts.MsgID
 	}
-	return fmt.Sprintf(MessageKey, threadID, msgID, PadSeq(seq))
+	return fmt.Sprintf(MessageKey, threadTS, messageTS, PadSeq(seq))
 }
 
-// GenVersionKey returns a version key: v:<msgID>:<ts>:<seq>
-func GenVersionKey(msgID string, ts int64, seq uint64) string {
-	return fmt.Sprintf(VersionKey, msgID, PadTS(ts), PadSeq(seq))
+func GenVersionKey(messageTS string, ts int64, seq uint64) string {
+	return fmt.Sprintf(VersionKey, messageTS, PadTS(ts), PadSeq(seq))
 }
 
-// GenThreadKey returns a thread meta key: t:<threadID>:meta
-func GenThreadKey(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadKey(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadKey, threadID)
+	return fmt.Sprintf(ThreadKey, threadTS)
 }
 
-// Thread → message indexes
-func GenThreadMessageStart(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+// threading
+func GenThreadMessageStart(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageStart, threadID)
+	return fmt.Sprintf(ThreadMessageStart, threadTS)
 }
-func GenThreadMessageEnd(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageEnd(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageEnd, threadID)
+	return fmt.Sprintf(ThreadMessageEnd, threadTS)
 }
-func GenThreadMessageCDeltas(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageCDeltas(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageCDeltas, threadID)
+	return fmt.Sprintf(ThreadMessageCDeltas, threadTS)
 }
-func GenThreadMessageUDeltas(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageUDeltas(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageUDeltas, threadID)
+	return fmt.Sprintf(ThreadMessageUDeltas, threadTS)
 }
-func GenThreadMessageSkips(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageSkips(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageSkips, threadID)
+	return fmt.Sprintf(ThreadMessageSkips, threadTS)
 }
-func GenThreadMessageLC(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageLC(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageLC, threadID)
+	return fmt.Sprintf(ThreadMessageLC, threadTS)
 }
-func GenThreadMessageLU(threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadMessageLU(threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(ThreadMessageLU, threadID)
-}
-
-// Thread → message version indexes
-func GenThreadVersionStart(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionStart, threadID, msgID)
-}
-func GenThreadVersionEnd(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionEnd, threadID, msgID)
-}
-func GenThreadVersionCDeltas(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionCDeltas, threadID, msgID)
-}
-func GenThreadVersionUDeltas(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionUDeltas, threadID, msgID)
-}
-func GenThreadVersionSkips(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionSkips, threadID, msgID)
-}
-func GenThreadVersionLC(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionLC, threadID, msgID)
-}
-func GenThreadVersionLU(threadID, msgID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
-	}
-	return fmt.Sprintf(ThreadVersionLU, threadID, msgID)
+	return fmt.Sprintf(ThreadMessageLU, threadTS)
 }
 
-// Soft delete markers
+// versioning
+func GenThreadVersionStart(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionStart, threadTS, messageTS)
+}
+func GenThreadVersionEnd(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionEnd, threadTS, messageTS)
+}
+func GenThreadVersionCDeltas(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionCDeltas, threadTS, messageTS)
+}
+func GenThreadVersionUDeltas(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionUDeltas, threadTS, messageTS)
+}
+func GenThreadVersionSkips(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionSkips, threadTS, messageTS)
+}
+func GenThreadVersionLC(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionLC, threadTS, messageTS)
+}
+func GenThreadVersionLU(threadTS, messageTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
+	}
+	return fmt.Sprintf(ThreadVersionLU, threadTS, messageTS)
+}
+
+// deletes
 func GenSoftDeleteMarkerKey(originalKey string) string {
 	return fmt.Sprintf(SoftDeleteMarker, originalKey)
 }
 
-// Relationship markers
-func GenUserOwnsThreadKey(userID, threadID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+// relationships
+func GenUserOwnsThreadKey(userID, threadTS string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(RelUserOwnsThread, userID, threadID)
+	return fmt.Sprintf(RelUserOwnsThread, userID, threadTS)
 }
 
-func GenThreadHasUserKey(threadID, userID string) string {
-	if parts, err := ParseThreadKey(threadID); err == nil {
-		threadID = parts.ThreadID
+func GenThreadHasUserKey(threadTS, userID string) string {
+	if parts, err := ParseThreadKey(threadTS); err == nil {
+		threadTS = parts.ThreadID
 	}
-	return fmt.Sprintf(RelThreadHasUser, threadID, userID)
+	return fmt.Sprintf(RelThreadHasUser, threadTS, userID)
 }
 
-// PadTS returns timestamp padded for key (20 width, lexicographic sort)
+// helpers
 func PadTS(ts int64) string {
 	return fmt.Sprintf("%0*d", TSPadWidth, ts)
 }
 
-// PadSeq returns sequence padded for key (6 width, lexicographic sort)
 func PadSeq(seq uint64) string {
 	return fmt.Sprintf("%0*d", SeqPadWidth, seq)
 }

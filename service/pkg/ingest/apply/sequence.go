@@ -25,10 +25,6 @@ func (m *MessageSequencer) MapProvisionalToFinalMessageKey(provisionalKey, final
 	m.kv.SetStateKV(provisionalKey, finalKey)
 }
 
-func (m *MessageSequencer) IsProvisionalMessageKey(messageKey string) bool {
-	return keys.IsProvisionalMessageKey(messageKey)
-}
-
 func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
 	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
 		return "", fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
@@ -44,6 +40,7 @@ func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string
 		return msgKey, nil
 	}
 
+	// try and get final mapping
 	if finalKey, ok := m.kv.GetStateKV(msgKey); ok {
 		return finalKey, nil
 	}

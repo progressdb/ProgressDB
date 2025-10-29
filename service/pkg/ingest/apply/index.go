@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"progressdb/pkg/models"
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/index"
@@ -25,6 +26,7 @@ func NewIndexManager(kv *KVManager) *IndexManager {
 	}
 }
 
+// loads
 func (im *IndexManager) loadThreadIndex(threadKey string) (*index.ThreadMessageIndexes, error) {
 	idx := &index.ThreadMessageIndexes{}
 
@@ -111,7 +113,8 @@ func (im *IndexManager) saveThreadIndex(threadKey string, idx *index.ThreadMessa
 	return nil
 }
 
-func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
+// helpers
+func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *models.Message) {
 	if threadKey == "" {
 		logger.Error("update_thread_indexes_failed", "error", "threadKey cannot be empty")
 		return
@@ -123,6 +126,12 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, 
 		return
 	}
 
+	msgKey := message.Key
+	createdAt := message.TS
+	updatedAt := message.TS
+	isDelete := message.Deleted
+
+	// deletes mean not new
 	if isDelete {
 		idx.Skips = append(idx.Skips, msgKey)
 	} else {
@@ -134,7 +143,7 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, 
 		if idx.LastCreatedAt == 0 || createdAt < idx.LastCreatedAt {
 			idx.LastCreatedAt = createdAt
 		}
-		if updatedAt > idx.LastUpdatedAt {
+		if idx.LastUpdatedAt == 0 || updatedAt > idx.LastUpdatedAt {
 			idx.LastUpdatedAt = updatedAt
 		}
 	}
@@ -191,13 +200,6 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) err
 	return nil
 }
 
-func (im *IndexManager) GetThreadMessages() map[string]*index.ThreadMessageIndexes {
-	// Since indexes are stored in kv, but to collect all, we would need to iterate kv, but kv is private.
-	// For now, return empty, as this method may not be used.
-	result := make(map[string]*index.ThreadMessageIndexes)
-	return result
-}
-
 func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) {
 	for provKey, finalKey := range mappings {
 		im.kv.SetStateKV(provKey, finalKey)
@@ -211,53 +213,43 @@ func (im *IndexManager) ResolveMessageKey(provisionalKey, fallbackKey string) (s
 	return im.messageSequencer.ResolveMessageKey(provisionalKey, fallbackKey)
 }
 
-func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
-	// To delete, set to nil
-	im.kv.SetIndexKV(keys.GenThreadMessageStart(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageEnd(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageCDeltas(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageUDeltas(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageSkips(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageLC(threadID), nil)
-	im.kv.SetIndexKV(keys.GenThreadMessageLU(threadID), nil)
+// relations
+func (im *IndexManager) SetUserOwnership(userID, threadKey string, value int) {
+	key := keys.GenUserOwnsThreadKey(userID, threadKey)
+	im.kv.SetIndexKV(key, []byte(strconv.Itoa(value)))
 }
 
-func (im *IndexManager) UpdateUserOwnership(userID, threadID string, owns bool) {
-	key := keys.GenUserOwnsThreadKey(userID, threadID)
-	if owns {
-		im.kv.SetIndexKV(key, []byte("1"))
-	} else {
-		im.kv.SetIndexKV(key, nil) // or delete, but since batch, set to nil?
+func (im *IndexManager) SetThreadParticipants(userID, threadKey string, value int) {
+	key := keys.GenThreadHasUserKey(threadKey, userID)
+	im.kv.SetIndexKV(key, []byte(strconv.Itoa(value)))
+}
+
+// deletes
+func (im *IndexManager) SetSoftDeletedThreads(userID, threadKey string, value int) {
+	key := keys.GenSoftDeleteMarkerKey(threadKey)
+	im.kv.SetIndexKV(key, []byte(strconv.Itoa(value)))
+}
+
+func (im *IndexManager) SetSoftDeletedMessages(userID, messageKey string, value int) {
+	key := keys.GenSoftDeleteMarkerKey(messageKey)
+	im.kv.SetIndexKV(key, []byte(strconv.Itoa(value)))
+}
+
+// Checks
+func (im *IndexManager) DoesUserOwnThread(userID, threadKey string) (bool, error) {
+	key := keys.GenUserOwnsThreadKey(userID, threadKey)
+	if data, ok := im.kv.GetIndexKV(key); ok {
+		return string(data) == "1", nil
 	}
+	// Not in batch, query DB
+	return index.DoesUserOwnThread(userID, threadKey)
 }
 
-func (im *IndexManager) UpdateThreadParticipants(threadID, userID string, participates bool) {
-	key := keys.GenThreadHasUserKey(threadID, userID)
-	if participates {
-		im.kv.SetIndexKV(key, []byte("1"))
-	} else {
-		im.kv.SetIndexKV(key, nil)
+func (im *IndexManager) DoesThreadHaveUser(threadKey, userID string) (bool, error) {
+	key := keys.GenThreadHasUserKey(threadKey, userID)
+	if data, ok := im.kv.GetIndexKV(key); ok {
+		return string(data) == "1", nil
 	}
-}
-
-func (im *IndexManager) UpdateSoftDeletedThreads(userID, threadID string, deleted bool) {
-	key := keys.GenSoftDeleteMarkerKey(threadID)
-	if deleted {
-		im.kv.SetIndexKV(key, []byte("1"))
-	} else {
-		im.kv.SetIndexKV(key, nil)
-	}
-}
-
-func (im *IndexManager) UpdateSoftDeletedMessages(userID, messageID string, deleted bool) {
-	key := keys.GenSoftDeleteMarkerKey(messageID)
-	if deleted {
-		im.kv.SetIndexKV(key, []byte("1"))
-	} else {
-		im.kv.SetIndexKV(key, nil)
-	}
-}
-
-func (im *IndexManager) Reset() {
-	// KV is reset in KVManager
+	// Not in batch, query DB
+	return index.DoesThreadHaveUser(threadKey, userID)
 }
