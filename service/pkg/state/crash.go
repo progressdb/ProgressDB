@@ -95,15 +95,17 @@ func (fw *FailedOpWriter) Close() error {
 	return nil
 }
 
-// Crash writes a crash dump to the crash folder with diagnostics.
-func Crash(reason string, err error) (string, error) {
+// Crash writes a crash dump to the crash folder with diagnostics and terminates the process.
+func Crash(reason string, err error) {
 	crashDir := PathsVar.Crash
 	if crashDir == "" {
-		return "", fmt.Errorf("crash path not initialized")
+		logger.Error("crash_path_not_initialized", "reason", reason, "error", err)
+		os.Exit(1)
 	}
 
 	if e := os.MkdirAll(crashDir, 0o700); e != nil {
-		return "", fmt.Errorf("failed to create crash dir: %w", e)
+		logger.Error("failed_to_create_crash_dir", "error", e, "reason", reason)
+		os.Exit(1)
 	}
 
 	ts := time.Now().UnixNano()
@@ -112,7 +114,8 @@ func Crash(reason string, err error) (string, error) {
 
 	f, ferr := os.Create(dumpPath)
 	if ferr != nil {
-		return "", fmt.Errorf("failed to create crash dump file: %w", ferr)
+		logger.Error("failed_to_create_crash_dump", "error", ferr, "reason", reason)
+		os.Exit(1)
 	}
 	defer f.Close()
 
@@ -130,6 +133,6 @@ func Crash(reason string, err error) (string, error) {
 	n := runtime.Stack(buf, true)
 	f.Write(buf[:n])
 
-	logger.Error("crash_dump_written", "path", dumpPath, "reason", reason, "error", err)
-	return dumpPath, nil
+	logger.Error("crash_dump_written_exiting", "path", dumpPath, "reason", reason, "error", err)
+	os.Exit(1)
 }

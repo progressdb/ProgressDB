@@ -1,14 +1,19 @@
 package apply
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
+	"strings"
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
+
+	"github.com/cockroachdb/pebble"
 )
 
 func groupOperationsByThreadKey(entries []types.BatchEntry) map[string][]types.BatchEntry {
@@ -22,15 +27,23 @@ func groupOperationsByThreadKey(entries []types.BatchEntry) map[string][]types.B
 
 func getOperationPriority(handler queue.HandlerID) int {
 	switch handler {
-	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate:
+	case queue.HandlerThreadCreate:
 		return 1
-	case queue.HandlerMessageCreate, queue.HandlerMessageUpdate:
+	case queue.HandlerThreadUpdate:
 		return 2
-	case queue.HandlerThreadDelete, queue.HandlerMessageDelete:
+	case queue.HandlerThreadDelete:
 		return 3
-	default:
-		return 2
+	case queue.HandlerMessageCreate:
+		return 4
+	case queue.HandlerMessageUpdate:
+		return 5
+	case queue.HandlerMessageDelete:
+		return 6
 	}
+
+	// This should never happen.
+	state.Crash("get_operation_priority_failed", fmt.Errorf("getOperationPriority: unsupported handler type: %v", handler))
+	return 0
 }
 
 func extractTS(entry types.BatchEntry) int64 {
@@ -62,7 +75,8 @@ func extractTS(entry types.BatchEntry) int64 {
 	// this is not going to happen
 	// but if if by magic it occurs
 	// - crash the system (to prevent any blind ops)
-	panic("extractTS: unsupported operation or handler")
+	state.Crash("index_state_init_failed", fmt.Errorf("extractTS: unsupported operation or handler"))
+	return 0
 }
 
 func extractAuthor(entry types.BatchEntry) string {
@@ -90,7 +104,8 @@ func extractAuthor(entry types.BatchEntry) string {
 	// this is not going to happen
 	// but if if by magic it occurs
 	// - crash the system (to prevent any blind ops)
-	panic("extractAuthor: unsupported operation or handler")
+	state.Crash("index_state_init_failed", fmt.Errorf("extractAuthor: unsupported operation or handler"))
+	return ""
 }
 
 func ExtractTKey(qop *queue.QueueOp) string {
@@ -124,7 +139,8 @@ func ExtractTKey(qop *queue.QueueOp) string {
 	// this is not going to happen
 	// but if if by magic it occurs
 	// - crash the system (to prevent any blind ops)
-	panic("ExtractTKey: unsupported operation or handler")
+	state.Crash("index_state_init_failed", fmt.Errorf("ExtractTKey: unsupported operation or handler"))
+	return ""
 }
 
 func ExtractMKey(qop *queue.QueueOp) string {
@@ -148,7 +164,8 @@ func ExtractMKey(qop *queue.QueueOp) string {
 	// this is not going to happen
 	// but if if by magic it occurs
 	// - crash the system (to prevent any blind ops)
-	panic("ExtractMKey: unsupported operation or handler")
+	state.Crash("index_state_init_failed", fmt.Errorf("ExtractMKey: unsupported operation or handler"))
+	return ""
 }
 
 func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
@@ -181,15 +198,14 @@ func extractUniqueThreadKeys(threadGroups map[string][]types.BatchEntry) []strin
 }
 
 func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
-	provKeyMap := make(map[string]bool)
+	provKeyMap := make(map[string]bool) // dedup set
 	for _, entry := range entries {
-		if entry.Payload != nil {
-			if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" && keys.IsProvisionalMessageKey(msg.Key) {
-				provKeyMap[msg.Key] = true
-			}
+		// only *models.Message with provisional key
+		if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" && keys.IsProvisionalMessageKey(msg.Key) {
+			provKeyMap[msg.Key] = true
 		}
 	}
-	provKeys := make([]string, 0, len(provKeyMap))
+	provKeys := make([]string, 0, len(provKeyMap)) // result list
 	for provKey := range provKeyMap {
 		provKeys = append(provKeys, provKey)
 	}
@@ -201,24 +217,49 @@ func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	if storedb.Client == nil {
 		return mappings, nil
 	}
-	iter, err := storedb.Client.NewIter(nil)
-	if err != nil {
-		return mappings, err
-	}
-	defer iter.Close()
+	// Group provKeys by thread for efficient bounded iteration
+	threadToProvKeys := make(map[string][]string)
 	for _, provKey := range provKeys {
-		prefix := provKey + ":"
-		iter.SeekGE([]byte(prefix))
-		if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
-			finalKey := string(iter.Key())
-			mappings[provKey] = finalKey
+		parts := strings.Split(provKey, ":")
+		if len(parts) >= 4 && parts[0] == "t" && parts[2] == "m" {
+			thread := parts[1]
+			threadToProvKeys[thread] = append(threadToProvKeys[thread], provKey)
 		}
+	}
+	// Iterate per thread with bounds
+	for thread, keys := range threadToProvKeys {
+		prefix := []byte("t:" + thread + ":m:")
+		upper := nextPrefix(prefix)
+		iter, err := storedb.Client.NewIter(&pebble.IterOptions{
+			LowerBound: prefix,
+			UpperBound: upper,
+		})
+		if err != nil {
+			return mappings, err
+		}
+		for _, provKey := range keys {
+			seekKey := []byte(provKey + ":")
+			iter.SeekGE(seekKey)
+			if iter.Valid() && bytes.HasPrefix(iter.Key(), seekKey) {
+				mappings[provKey] = string(iter.Key())
+			}
+		}
+		iter.Close()
 	}
 	return mappings, nil
 }
 
-func prepopulateProvisionalCache(batchProcessor *BatchProcessor, mappings map[string]string) {
-	batchProcessor.Index.PrepopulateProvisionalCache(mappings)
+// nextPrefix computes the next lexicographic key after a given prefix
+func nextPrefix(prefix []byte) []byte {
+	out := make([]byte, len(prefix))
+	copy(out, prefix)
+	for i := len(out) - 1; i >= 0; i-- {
+		if out[i] < 0xFF {
+			out[i]++
+			return out[:i+1]
+		}
+	}
+	return nil // no upper bound if all 0xFF
 }
 
 func ApplyBatchToDB(entries []types.BatchEntry) error {
@@ -240,13 +281,18 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		_ = batchProcessor.Index.InitializeThreadSequencesFromDB(threadKeys)
 	}
 
-	//
+	// prov - references to async keys
+	// loadup any final key mappings
 	provKeys := collectProvisionalMessageKeys(entries)
 	if len(provKeys) > 0 {
 		mappings, _ := bulkLookupProvisionalKeys(provKeys)
-		prepopulateProvisionalCache(batchProcessor, mappings)
+		// cache
+		batchProcessor.Index.PrepopulateProvisionalCache(mappings)
 	}
+
+	// process each thread & its ops
 	for _, threadEntries := range threadGroups {
+		// ops sorted by create, update, delete
 		sortedOps := sortOperationsByType(threadEntries)
 		for _, op := range sortedOps {
 			_ = BProcOperation(op, batchProcessor)

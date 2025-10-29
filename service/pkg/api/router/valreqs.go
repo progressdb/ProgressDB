@@ -51,6 +51,9 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if v.Key == "" {
 				errors = append(errors, "key: cannot be empty")
 			}
+			if v.TS == 0 {
+				errors = append(errors, "ts: cannot be zero")
+			}
 		}
 	case *models.MessageDeletePartial:
 		if v == nil {

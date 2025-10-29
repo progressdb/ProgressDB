@@ -16,6 +16,7 @@ type MessageUpdatePartial struct {
 
 type ThreadDeletePartial struct {
 	Key string `json:"key"`
+	TS  int64  `json:"ts"`
 }
 
 type MessageDeletePartial struct {

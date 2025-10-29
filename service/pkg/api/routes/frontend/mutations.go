@@ -180,6 +180,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 
 	var del models.ThreadDeletePartial
 	del.Key = threadKey
+	del.TS = reqtime
 
 	// sync
 	if err := router.ValidateAllFieldsNonEmpty(&del); err != nil {

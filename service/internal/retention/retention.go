@@ -16,6 +16,10 @@ import (
 
 var storedEff *config.EffectiveConfigResult
 
+// TODO: Dont delete anything deleted in the last 4 hours.
+
+
+
 // store the effective config for test or admin use
 func SetEffectiveConfig(eff config.EffectiveConfigResult) {
 	storedEff = &eff

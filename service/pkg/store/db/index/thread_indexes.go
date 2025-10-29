@@ -19,7 +19,7 @@ type ThreadMessageIndexes struct {
 	LastUpdatedAt int64    `json:"last_updated_at"`
 }
 
-func InitThreadMessageIndexes(threadID string) error {
+func InitThreadMessageIndexes(threadKey string) error {
 	tr := telemetry.Track("index.init_thread_message_indexes")
 	defer tr.Finish()
 
@@ -33,46 +33,10 @@ func InitThreadMessageIndexes(threadID string) error {
 		LastUpdatedAt: 0,
 	}
 
-	return saveIndexes(threadID, indexes)
+	return saveIndexes(threadKey, indexes)
 }
 
-func UpdateOnMessageSave(threadID string, createdAt, updatedAt int64) error {
-	tr := telemetry.Track("index.update_on_message_save")
-	defer tr.Finish()
-
-	indexes, err := loadIndexes(threadID)
-	if err != nil {
-		return err
-	}
-
-	indexes.End++
-
-	createdDelta := createdAt - indexes.LastCreatedAt
-	updatedDelta := updatedAt - indexes.LastUpdatedAt
-	indexes.Cdeltas = append(indexes.Cdeltas, createdDelta)
-	indexes.Udeltas = append(indexes.Udeltas, updatedDelta)
-
-	indexes.LastCreatedAt = createdAt
-	indexes.LastUpdatedAt = updatedAt
-
-	return saveIndexes(threadID, indexes)
-}
-
-func UpdateOnMessageDelete(threadID, msgKey string) error {
-	tr := telemetry.Track("index.update_on_message_delete")
-	defer tr.Finish()
-
-	indexes, err := loadIndexes(threadID)
-	if err != nil {
-		return err
-	}
-
-	indexes.Skips = append(indexes.Skips, msgKey)
-
-	return saveIndexes(threadID, indexes)
-}
-
-func DeleteThreadMessageIndexes(threadID string) error {
+func DeleteThreadMessageIndexes(threadKey string) error {
 	tr := telemetry.Track("index.delete_thread_message_indexes")
 	defer tr.Finish()
 
@@ -81,15 +45,15 @@ func DeleteThreadMessageIndexes(threadID string) error {
 		var key string
 		switch suffix {
 		case "start":
-			key = keys.GenThreadMessageStart(threadID)
+			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
-			key = keys.GenThreadMessageEnd(threadID)
+			key = keys.GenThreadMessageEnd(threadKey)
 		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadID)
+			key = keys.GenThreadMessageCDeltas(threadKey)
 		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadID)
+			key = keys.GenThreadMessageUDeltas(threadKey)
 		case "skips":
-			key = keys.GenThreadMessageSkips(threadID)
+			key = keys.GenThreadMessageSkips(threadKey)
 		}
 		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_thread_message_index_failed", "key", key, "error", err)
@@ -99,34 +63,30 @@ func DeleteThreadMessageIndexes(threadID string) error {
 	return nil
 }
 
-func GetIndexValue(threadID, suffix string) (string, error) {
+func GetThreadIndexValue(threadKey, suffix string) (string, error) {
 	var key string
 	switch suffix {
 	case "start":
-		key = keys.GenThreadMessageStart(threadID)
+		key = keys.GenThreadMessageStart(threadKey)
 	case "end":
-		key = keys.GenThreadMessageEnd(threadID)
+		key = keys.GenThreadMessageEnd(threadKey)
 	case "cdeltas":
-		key = keys.GenThreadMessageCDeltas(threadID)
+		key = keys.GenThreadMessageCDeltas(threadKey)
 	case "udeltas":
-		key = keys.GenThreadMessageUDeltas(threadID)
+		key = keys.GenThreadMessageUDeltas(threadKey)
 	case "skips":
-		key = keys.GenThreadMessageSkips(threadID)
+		key = keys.GenThreadMessageSkips(threadKey)
 	case "last_created_at":
-		key = keys.GenThreadMessageLC(threadID)
+		key = keys.GenThreadMessageLC(threadKey)
 	case "last_updated_at":
-		key = keys.GenThreadMessageLU(threadID)
+		key = keys.GenThreadMessageLU(threadKey)
 	default:
 		return "", fmt.Errorf("unknown index suffix: %s", suffix)
 	}
 	return GetKey(key)
 }
 
-func GetThreadMessageIndexes(threadID string) (ThreadMessageIndexes, error) {
-	return loadIndexes(threadID)
-}
-
-func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
+func GetThreadMessageIndexes(threadKey string) (ThreadMessageIndexes, error) {
 	var indexes ThreadMessageIndexes
 
 	fields := map[string]interface{}{
@@ -143,19 +103,19 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 		var key string
 		switch suffix {
 		case "start":
-			key = keys.GenThreadMessageStart(threadID)
+			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
-			key = keys.GenThreadMessageEnd(threadID)
+			key = keys.GenThreadMessageEnd(threadKey)
 		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadID)
+			key = keys.GenThreadMessageCDeltas(threadKey)
 		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadID)
+			key = keys.GenThreadMessageUDeltas(threadKey)
 		case "skips":
-			key = keys.GenThreadMessageSkips(threadID)
+			key = keys.GenThreadMessageSkips(threadKey)
 		case "last_created_at":
-			key = keys.GenThreadMessageLC(threadID)
+			key = keys.GenThreadMessageLC(threadKey)
 		case "last_updated_at":
-			key = keys.GenThreadMessageLU(threadID)
+			key = keys.GenThreadMessageLU(threadKey)
 		default:
 			return indexes, fmt.Errorf("unknown index suffix: %s", suffix)
 		}
@@ -174,7 +134,7 @@ func loadIndexes(threadID string) (ThreadMessageIndexes, error) {
 	return indexes, nil
 }
 
-func saveIndexes(threadID string, indexes ThreadMessageIndexes) error {
+func saveIndexes(threadKey string, indexes ThreadMessageIndexes) error {
 	fields := map[string]interface{}{
 		"start":           indexes.Start,
 		"end":             indexes.End,
@@ -189,19 +149,19 @@ func saveIndexes(threadID string, indexes ThreadMessageIndexes) error {
 		var key string
 		switch suffix {
 		case "start":
-			key = keys.GenThreadMessageStart(threadID)
+			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
-			key = keys.GenThreadMessageEnd(threadID)
+			key = keys.GenThreadMessageEnd(threadKey)
 		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadID)
+			key = keys.GenThreadMessageCDeltas(threadKey)
 		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadID)
+			key = keys.GenThreadMessageUDeltas(threadKey)
 		case "skips":
-			key = keys.GenThreadMessageSkips(threadID)
+			key = keys.GenThreadMessageSkips(threadKey)
 		case "last_created_at":
-			key = keys.GenThreadMessageLC(threadID)
+			key = keys.GenThreadMessageLC(threadKey)
 		case "last_updated_at":
-			key = keys.GenThreadMessageLU(threadID)
+			key = keys.GenThreadMessageLU(threadKey)
 		default:
 			return fmt.Errorf("unknown index suffix: %s", suffix)
 		}
