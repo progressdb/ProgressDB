@@ -98,8 +98,9 @@ func (im *IndexManager) GetNextThreadSequence(threadKey string) uint64 {
 		im.threadMessages[threadKey] = idx
 	}
 
+	sequence := idx.End
 	idx.End++
-	return idx.End
+	return sequence
 }
 
 func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) error {

@@ -167,6 +167,8 @@ func (bp *BatchProcessor) Flush() error {
 		return fmt.Errorf("commit index batch: %w", err)
 	}
 
+	storedb.ForceSync()
+	storedb.ForceIndexSync()
 	// Close batches after successful commit
 	mainBatch.Close()
 	indexBatch.Close()

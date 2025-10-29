@@ -76,11 +76,7 @@ func Init(dbPath string) error {
 	initOnce.Do(func() {
 		path := strings.TrimSpace(dbPath)
 		if path == "" {
-			if root := ArtifactRoot(); root != "" {
-				path = filepath.Join(root, "db")
-			} else {
-				path = "./.database"
-			}
+			path = "./database"
 		}
 		path = filepath.Clean(path)
 		PathsVar = PathsFor(path)
