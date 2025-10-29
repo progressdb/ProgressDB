@@ -240,7 +240,7 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// resolve message key
-	resolvedID, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
+	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
 	if err != nil {
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
@@ -253,14 +253,17 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// extract sequence
-	messageSeq := extractSequenceFromKey(resolvedID)
-	msg.Key = keys.GenMessageKey(threadKey, resolvedID, messageSeq)
+	messageSeq, err := extractMessageSequence(finalMessageKey)
+	if err != nil {
+		return fmt.Errorf("invalid resolved message key: %s: %w", finalMessageKey, err)
+	}
+	msg.Key = keys.GenMessageKey(threadKey, finalMessageKey, messageSeq)
 
 	// index
 	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg)
 
 	// store
-	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedID, msg, entry.TS, messageSeq); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, finalMessageKey, msg, entry.TS, messageSeq); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
 	return nil
@@ -307,13 +310,19 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// resolve message key
-	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey)
+	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey)
 	if err != nil {
 		return fmt.Errorf("resolve message key %s: %w", messageKey, err)
 	}
 
+	// extract sequence before use
+	messageSeq, err := extractMessageSequence(finalMessageKey)
+	if err != nil {
+		return fmt.Errorf("invalid resolved message key: %s: %w", finalMessageKey, err)
+	}
+
 	// fetch existing
-	dbMessageKey := keys.GenMessageKey(threadKey, resolvedMessageKey, extractSequenceFromKey(resolvedMessageKey))
+	dbMessageKey := keys.GenMessageKey(threadKey, finalMessageKey, messageSeq)
 	existingData, err := batchProcessor.Data.GetMessageDataCopy(dbMessageKey)
 	if err != nil {
 		return fmt.Errorf("failed to get message for update: %w", err)
@@ -333,14 +342,11 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		msg.TS = update.TS
 	}
 
-	// extract sequence
-	messageSeq := extractSequenceFromKey(resolvedMessageKey)
-
 	// store
-	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedMessageKey, &msg, entry.TS, messageSeq); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, finalMessageKey, &msg, entry.TS, messageSeq); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	versionKey := keys.GenVersionKey(resolvedMessageKey, entry.TS, messageSeq)
+	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, messageSeq)
 	if err := batchProcessor.Data.SetVersionKey(versionKey, &msg); err != nil {
 		return fmt.Errorf("set version key: %w", err)
 	}
@@ -377,8 +383,14 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 
+	// extract sequence before use
+	messageSeq, err := extractMessageSequence(finalMessageKey)
+	if err != nil {
+		return fmt.Errorf("invalid resolved message key: %s: %w", finalMessageKey, err)
+	}
+
 	// fetch existing
-	messageKey := keys.GenMessageKey(finalThreadKey, finalMessageKey, extractSequenceFromKey(finalMessageKey))
+	messageKey := keys.GenMessageKey(finalThreadKey, finalMessageKey, messageSeq)
 	messageData, err := batchProcessor.Data.GetMessageDataCopy(messageKey)
 	if err != nil {
 		return fmt.Errorf("message not found for delete: %s", finalMessageKey)
@@ -393,9 +405,6 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// mark deleted
 	existingMessage.Deleted = true
 	existingMessage.TS = entry.TS
-
-	// extract sequence
-	messageSeq := extractSequenceFromKey(finalMessageKey)
 
 	// store
 	if err := batchProcessor.Data.SetMessageData(finalThreadKey, finalMessageKey, existingMessage, entry.TS, messageSeq); err != nil {

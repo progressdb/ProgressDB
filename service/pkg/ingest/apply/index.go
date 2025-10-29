@@ -21,9 +21,11 @@ type IndexManager struct {
 }
 
 func NewIndexManager(kv *KVManager) *IndexManager {
-	return &IndexManager{
+	im := &IndexManager{
 		kv: kv,
 	}
+	im.messageSequencer = NewMessageSequencer(im, kv)
+	return im
 }
 
 // loads
@@ -154,25 +156,6 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *mo
 	}
 }
 
-func (im *IndexManager) GetNextMessageSequence(threadKey string) (uint64, error) {
-	idx, err := im.loadThreadIndex(threadKey)
-	if err != nil {
-		logger.Error("failed to load thread index", "error", err)
-		return 0, err
-	}
-
-	sequence := idx.End
-	idx.End++
-
-	// persist next
-	if err := im.saveThreadIndex(threadKey, idx); err != nil {
-		logger.Error("failed to save thread index", "error", err)
-		return 0, err
-	}
-
-	return sequence, nil
-}
-
 func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) error {
 	for _, threadKey := range threadKeys {
 		// Check if already in batch
@@ -211,8 +194,73 @@ func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) 
 	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
 }
 
-func (im *IndexManager) ResolveMessageKey(messageKey string) (string, error) {
-	return im.messageSequencer.ResolveMessageKey(messageKey)
+func (im *IndexManager) GetNextMessageSequence(threadKey string) (uint64, error) {
+	idx, err := im.loadThreadIndex(threadKey)
+	if err != nil {
+		logger.Error("failed to load thread index", "error", err)
+		return 0, err
+	}
+
+	sequence := idx.End
+	idx.End++
+
+	// persist the next state of the index
+	if err := im.saveThreadIndex(threadKey, idx); err != nil {
+		logger.Error("failed to save thread index", "error", err)
+		return 0, err
+	}
+
+	return sequence, nil
+}
+func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error) {
+	parts, err := keys.ParseThreadKey(messageKey)
+	if err != nil {
+		return "", err
+	}
+	threadKey := parts.ThreadID
+
+	sequence, err := m.GetNextMessageSequence(threadKey)
+	if err != nil {
+		return "", err
+	}
+
+	messageKeyParts, err := keys.ParseMessageKey(messageKey)
+	if err != nil {
+		return "", err
+	}
+
+	finalKey := keys.GenMessageKey(threadKey, messageKeyParts.MsgID, sequence)
+
+	// set state
+	m.kv.SetStateKV(messageKey, finalKey)
+
+	return finalKey, nil
+}
+
+func (im *IndexManager) ResolveMessageKey(msgKey string) (string, error) {
+	// Check if msgKey is empty
+	if msgKey == "" {
+		return "", fmt.Errorf("msgKey cannot be empty")
+	}
+
+	// Already a final (non-provisional) key? Just return it.
+	if !keys.IsProvisionalMessageKey(msgKey) {
+		return msgKey, nil
+	}
+
+	// Check for an in-batch mapping for this provisional key
+	if finalKey, ok := im.kv.GetStateKV(msgKey); ok {
+		return finalKey, nil
+	}
+
+	// Try to resolve from DBs
+	if finalKey, found := im.messageSequencer.resolveMessageFinalKeyFromDB(msgKey); found {
+		im.kv.SetStateKV(msgKey, finalKey) // cache for batch
+		return finalKey, nil
+	}
+
+	// Otherwise, generate a new sequenced final key
+	return im.generateNewSequencedKey(msgKey)
 }
 
 // relations
