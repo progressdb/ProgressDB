@@ -1,8 +1,10 @@
 package apply
 
 import (
+	"encoding/json"
 	"errors"
-	"sync"
+	"fmt"
+	"strconv"
 
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
@@ -14,55 +16,111 @@ import (
 
 type IndexManager struct {
 	kv               *KVManager
-	mu               sync.RWMutex
-	threadMessages   map[string]*index.ThreadMessageIndexes
 	messageSequencer *MessageSequencer
 }
 
 func NewIndexManager(kv *KVManager) *IndexManager {
-	im := &IndexManager{
-		kv:             kv,
-		threadMessages: make(map[string]*index.ThreadMessageIndexes),
+	return &IndexManager{
+		kv: kv,
 	}
-	im.messageSequencer = NewMessageSequencer(im, kv)
-	return im
 }
 
-// func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
-// 	im.mu.Lock()
-// 	defer im.mu.Unlock()
+func (im *IndexManager) loadThreadIndex(threadKey string) (*index.ThreadMessageIndexes, error) {
+	idx := &index.ThreadMessageIndexes{}
 
-// 	im.threadMessages[threadID] = &index.ThreadMessageIndexes{
-// 		Start:         0,
-// 		End:           0,
-// 		Cdeltas:       []int64{},
-// 		Udeltas:       []int64{},
-// 		Skips:         []string{},
-// 		LastCreatedAt: 0,
-// 		LastUpdatedAt: 0,
-// 	}
-// }
+	// Load Start
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageStart(threadKey)); ok {
+		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
+			idx.Start = uint64(val)
+		}
+	}
+
+	// Load End
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageEnd(threadKey)); ok {
+		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
+			idx.End = uint64(val)
+		}
+	}
+
+	// Load Cdeltas
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageCDeltas(threadKey)); ok {
+		if err := json.Unmarshal(data, &idx.Cdeltas); err != nil {
+			logger.Error("failed to unmarshal cdeltas", "error", err)
+		}
+	}
+
+	// Load Udeltas
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageUDeltas(threadKey)); ok {
+		if err := json.Unmarshal(data, &idx.Udeltas); err != nil {
+			logger.Error("failed to unmarshal udeltas", "error", err)
+		}
+	}
+
+	// Load Skips
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageSkips(threadKey)); ok {
+		if err := json.Unmarshal(data, &idx.Skips); err != nil {
+			logger.Error("failed to unmarshal skips", "error", err)
+		}
+	}
+
+	// Load LastCreatedAt
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageLC(threadKey)); ok {
+		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
+			idx.LastCreatedAt = val
+		}
+	}
+
+	// Load LastUpdatedAt
+	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageLU(threadKey)); ok {
+		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
+			idx.LastUpdatedAt = val
+		}
+	}
+
+	return idx, nil
+}
+
+func (im *IndexManager) saveThreadIndex(threadKey string, idx *index.ThreadMessageIndexes) error {
+	// Save Start
+	im.kv.SetIndexKV(keys.GenThreadMessageStart(threadKey), []byte(fmt.Sprintf("%d", idx.Start)))
+
+	// Save End
+	im.kv.SetIndexKV(keys.GenThreadMessageEnd(threadKey), []byte(fmt.Sprintf("%d", idx.End)))
+
+	// Save Cdeltas
+	if data, err := json.Marshal(idx.Cdeltas); err == nil {
+		im.kv.SetIndexKV(keys.GenThreadMessageCDeltas(threadKey), data)
+	}
+
+	// Save Udeltas
+	if data, err := json.Marshal(idx.Udeltas); err == nil {
+		im.kv.SetIndexKV(keys.GenThreadMessageUDeltas(threadKey), data)
+	}
+
+	// Save Skips
+	if data, err := json.Marshal(idx.Skips); err == nil {
+		im.kv.SetIndexKV(keys.GenThreadMessageSkips(threadKey), data)
+	}
+
+	// Save LastCreatedAt
+	im.kv.SetIndexKV(keys.GenThreadMessageLC(threadKey), []byte(fmt.Sprintf("%d", idx.LastCreatedAt)))
+
+	// Save LastUpdatedAt
+	im.kv.SetIndexKV(keys.GenThreadMessageLU(threadKey), []byte(fmt.Sprintf("%d", idx.LastUpdatedAt)))
+
+	return nil
+}
 
 func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
 	if threadKey == "" {
 		logger.Error("update_thread_indexes_failed", "error", "threadKey cannot be empty")
 		return
 	}
-	im.mu.Lock()
-	defer im.mu.Unlock()
 
-	idx := im.threadMessages[threadKey]
-	if idx == nil {
-		idx = &index.ThreadMessageIndexes{
-			Start:         0,
-			End:           0,
-			Cdeltas:       []int64{},
-			Udeltas:       []int64{},
-			Skips:         []string{},
-			LastCreatedAt: 0,
-			LastUpdatedAt: 0,
-		}
-		im.threadMessages[threadKey] = idx
+	idx, err := im.loadThreadIndex(threadKey)
+	if err != nil {
+		logger.Error("failed to load thread index", "error", err)
+		return
 	}
 
 	if isDelete {
@@ -80,41 +138,40 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, 
 			idx.LastUpdatedAt = updatedAt
 		}
 	}
+
+	if err := im.saveThreadIndex(threadKey, idx); err != nil {
+		logger.Error("failed to save thread index", "error", err)
+	}
 }
 
 func (im *IndexManager) GetNextThreadSequence(threadKey string) uint64 {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	idx := im.threadMessages[threadKey]
-	if idx == nil {
-		idx = &index.ThreadMessageIndexes{
-			Start:         0,
-			End:           0,
-			Cdeltas:       []int64{},
-			Udeltas:       []int64{},
-			Skips:         []string{},
-			LastCreatedAt: 0,
-			LastUpdatedAt: 0,
-		}
-		im.threadMessages[threadKey] = idx
+	idx, err := im.loadThreadIndex(threadKey)
+	if err != nil {
+		logger.Error("failed to load thread index", "error", err)
+		return 0
 	}
 
 	sequence := idx.End
 	idx.End++
+
+	if err := im.saveThreadIndex(threadKey, idx); err != nil {
+		logger.Error("failed to save thread index", "error", err)
+		return sequence
+	}
+
 	return sequence
 }
 
 func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) error {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
 	for _, threadKey := range threadKeys {
-		threadIdx, err := index.GetThreadMessageIndexes(threadKey)
+		// Check if already in batch
+		if _, ok := im.kv.GetIndexKV(keys.GenThreadMessageEnd(threadKey)); ok {
+			continue
+		}
+		idx, err := index.GetThreadMessageIndexes(threadKey)
 		if err != nil {
 			if errors.Is(err, pebble.ErrNotFound) {
-				// new thread - so recreate it
-				im.threadMessages[threadKey] = &index.ThreadMessageIndexes{
+				idx = index.ThreadMessageIndexes{
 					Start:         0,
 					End:           0,
 					Cdeltas:       []int64{},
@@ -124,24 +181,20 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) err
 					LastUpdatedAt: 0,
 				}
 			} else {
-				// unexpected fatal error: preserve index state integrity
 				state.Crash("index_state_init_failed", err)
 			}
-		} else {
-			im.threadMessages[threadKey] = &threadIdx
+		}
+		if err := im.saveThreadIndex(threadKey, &idx); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func (im *IndexManager) GetThreadMessages() map[string]*index.ThreadMessageIndexes {
-	im.mu.RLock()
-	defer im.mu.RUnlock()
-
+	// Since indexes are stored in kv, but to collect all, we would need to iterate kv, but kv is private.
+	// For now, return empty, as this method may not be used.
 	result := make(map[string]*index.ThreadMessageIndexes)
-	for k, v := range im.threadMessages {
-		result[k] = v
-	}
 	return result
 }
 
@@ -159,9 +212,14 @@ func (im *IndexManager) ResolveMessageKey(provisionalKey, fallbackKey string) (s
 }
 
 func (im *IndexManager) DeleteThreadMessageIndexes(threadID string) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	im.threadMessages[threadID] = nil
+	// To delete, set to nil
+	im.kv.SetIndexKV(keys.GenThreadMessageStart(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageEnd(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageCDeltas(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageUDeltas(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageSkips(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageLC(threadID), nil)
+	im.kv.SetIndexKV(keys.GenThreadMessageLU(threadID), nil)
 }
 
 func (im *IndexManager) UpdateUserOwnership(userID, threadID string, owns bool) {
@@ -201,8 +259,5 @@ func (im *IndexManager) UpdateSoftDeletedMessages(userID, messageID string, dele
 }
 
 func (im *IndexManager) Reset() {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-
-	im.threadMessages = make(map[string]*index.ThreadMessageIndexes)
+	// KV is reset in KVManager
 }

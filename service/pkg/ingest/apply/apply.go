@@ -16,6 +16,31 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
+type BatchProcessor struct {
+	KV        *KVManager
+	Index     *IndexManager
+	Data      *DataManager
+	Sequencer *MessageSequencer
+}
+
+func NewBatchProcessor() *BatchProcessor {
+	kv := NewKVManager()
+	index := NewIndexManager(kv)
+	data := NewDataManager(kv)
+	sequencer := NewMessageSequencer(index, kv)
+	index.messageSequencer = sequencer // set the sequencer
+	return &BatchProcessor{
+		KV:        kv,
+		Index:     index,
+		Data:      data,
+		Sequencer: sequencer,
+	}
+}
+
+func (bp *BatchProcessor) Flush() error {
+	return bp.KV.Flush()
+}
+
 func groupOperationsByThreadKey(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	threadGroups := make(map[string][]types.BatchEntry)
 	for _, entry := range entries {
