@@ -36,7 +36,7 @@ func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyC
 
 	computeBuf := make(chan types.BatchEntry, cc.BufferCapacity)
 
-	failedOpsPath := state.FailedOpsPath(dbPath)
+	failedOpsPath := state.CrashPath(dbPath)
 	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount, failedOpsPath)
 	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeout.Duration())
 

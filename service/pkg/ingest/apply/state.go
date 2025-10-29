@@ -10,13 +10,11 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
-// BatchProcessor coordinates index and data managers for batch processing
 type BatchProcessor struct {
 	Index *IndexManager // Public field access
 	Data  *DataManager  // Public field access
 }
 
-// NewBatchProcessor creates a new batch processor with initialized managers
 func NewBatchProcessor() *BatchProcessor {
 	return &BatchProcessor{
 		Index: NewIndexManager(),
@@ -24,7 +22,6 @@ func NewBatchProcessor() *BatchProcessor {
 	}
 }
 
-// Flush writes all accumulated changes to databases
 func (bp *BatchProcessor) Flush() error {
 	// Get current states from managers
 	threadMeta := bp.Data.GetThreadMeta()
@@ -32,7 +29,6 @@ func (bp *BatchProcessor) Flush() error {
 	versionKeys := bp.Data.GetVersionKeys()
 	threadMessages := bp.Index.GetThreadMessages()
 	indexData := bp.Index.GetIndexData()
-	// Note: Ownership and participants now use immediate key-based markers, so no need to track userOwnership/threadParticipants
 
 	// Create batches AFTER all reads are complete
 	mainBatch := storedb.Client.NewBatch()

@@ -7,19 +7,14 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
-	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
-
-	"progressdb/pkg/state/telemetry"
 )
 
-func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
+func groupOperationsByThreadKey(entries []types.BatchEntry) map[string][]types.BatchEntry {
 	threadGroups := make(map[string][]types.BatchEntry)
 	for _, entry := range entries {
-		threadKey := ExtractTKey(entry.QueueOp) // primary thread identifier
-
-		// Group entry under its threadKey (may still be "")
+		threadKey := ExtractTKey(entry.QueueOp)
 		threadGroups[threadKey] = append(threadGroups[threadKey], entry)
 	}
 	return threadGroups
@@ -28,11 +23,11 @@ func groupByThread(entries []types.BatchEntry) map[string][]types.BatchEntry {
 func getOperationPriority(handler queue.HandlerID) int {
 	switch handler {
 	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate:
-		return 1 // Thread operations first
+		return 1
 	case queue.HandlerMessageCreate, queue.HandlerMessageUpdate:
-		return 2 // Message operations second
+		return 2
 	case queue.HandlerThreadDelete, queue.HandlerMessageDelete:
-		return 3 // Delete operations last
+		return 3
 	default:
 		return 2
 	}
@@ -49,7 +44,6 @@ func extractTS(entry types.BatchEntry) int64 {
 			return update.UpdatedTS
 		}
 	case queue.HandlerThreadDelete:
-		// For delete, TS is not in payload, but since no sorting issue, return 0
 		return 0
 	case queue.HandlerMessageCreate:
 		if m, ok := entry.Payload.(*models.Message); ok {
@@ -63,9 +57,12 @@ func extractTS(entry types.BatchEntry) int64 {
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
 			return del.TS
 		}
-
 	}
-	return 0
+
+	// this is not going to happen
+	// but if if by magic it occurs
+	// - crash the system (to prevent any blind ops)
+	panic("extractTS: unsupported operation or handler")
 }
 
 func extractAuthor(entry types.BatchEntry) string {
@@ -88,9 +85,12 @@ func extractAuthor(entry types.BatchEntry) string {
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
 			return del.Author
 		}
-
 	}
-	return ""
+
+	// this is not going to happen
+	// but if if by magic it occurs
+	// - crash the system (to prevent any blind ops)
+	panic("extractAuthor: unsupported operation or handler")
 }
 
 func ExtractTKey(qop *queue.QueueOp) string {
@@ -120,7 +120,11 @@ func ExtractTKey(qop *queue.QueueOp) string {
 			return del.Thread
 		}
 	}
-	return ""
+
+	// this is not going to happen
+	// but if if by magic it occurs
+	// - crash the system (to prevent any blind ops)
+	panic("ExtractTKey: unsupported operation or handler")
 }
 
 func ExtractMKey(qop *queue.QueueOp) string {
@@ -140,7 +144,11 @@ func ExtractMKey(qop *queue.QueueOp) string {
 			return del.Key
 		}
 	}
-	return ""
+
+	// this is not going to happen
+	// but if if by magic it occurs
+	// - crash the system (to prevent any blind ops)
+	panic("ExtractMKey: unsupported operation or handler")
 }
 
 func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
@@ -157,7 +165,8 @@ func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
 	return sorted
 }
 
-func collectThreadKeysFromGroups(threadGroups map[string][]types.BatchEntry) []string {
+func extractUniqueThreadKeys(threadGroups map[string][]types.BatchEntry) []string {
+	// unique existence
 	threadMap := make(map[string]bool)
 	for threadKey := range threadGroups {
 		if threadKey != "" {
@@ -171,19 +180,15 @@ func collectThreadKeysFromGroups(threadGroups map[string][]types.BatchEntry) []s
 	return threadKeys
 }
 
-// extracts all provisional message keys from batch entries
 func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	provKeyMap := make(map[string]bool)
-
 	for _, entry := range entries {
-		// Check message ID in payload
 		if entry.Payload != nil {
 			if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" && keys.IsProvisionalMessageKey(msg.Key) {
 				provKeyMap[msg.Key] = true
 			}
 		}
 	}
-
 	provKeys := make([]string, 0, len(provKeyMap))
 	for provKey := range provKeyMap {
 		provKeys = append(provKeys, provKey)
@@ -191,111 +196,65 @@ func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	return provKeys
 }
 
-// looks up multiple provisional keys in database and returns existing mappings
 func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	mappings := make(map[string]string)
-
 	if storedb.Client == nil {
-		logger.Debug("store_not_ready_for_bulk_lookup")
 		return mappings, nil
 	}
-
 	iter, err := storedb.Client.NewIter(nil)
 	if err != nil {
-		logger.Error("bulk_lookup_iterator_failed", "error", err)
 		return mappings, err
 	}
 	defer iter.Close()
-
 	for _, provKey := range provKeys {
-		// Create prefix for provisional key + ":" to find the sequenced key
 		prefix := provKey + ":"
-
-		// Seek to the prefix
 		iter.SeekGE([]byte(prefix))
-
 		if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
-			// Found the actual sequenced key
 			finalKey := string(iter.Key())
 			mappings[provKey] = finalKey
-			logger.Debug("bulk_lookup_found_mapping", "provisional", provKey, "final", finalKey)
-		} else {
-			logger.Debug("bulk_lookup_not_found", "provisional", provKey)
 		}
 	}
-
 	return mappings, nil
 }
 
-// loads existing provisional->final mappings into MessageSequencer cache
 func prepopulateProvisionalCache(batchProcessor *BatchProcessor, mappings map[string]string) {
 	batchProcessor.Index.PrepopulateProvisionalCache(mappings)
 }
 
 func ApplyBatchToDB(entries []types.BatchEntry) error {
-	tr := telemetry.Track("ingest.apply_batch")
-	defer tr.Finish()
 	if len(entries) == 0 {
 		return nil
 	}
-	logger.Debug("batch_apply_start", "entries", len(entries))
-	tr.Mark("group_operations")
+
+	// has the store and index clients
 	batchProcessor := NewBatchProcessor()
 
-	// put reqs into thread groups
-	// each request by its thread_key parent
-	threadGroups := groupByThread(entries)
-	logger.Debug("batch_grouped", "threads", len(threadGroups))
-	for threadKey, threadEntries := range threadGroups {
-		logger.Debug("thread_group", "thread_key", threadKey, "operations", len(threadEntries))
-		for _, entry := range threadEntries {
-			logger.Debug("thread_group_op", "thread_key", threadKey, "handler", entry.Handler, "tkey", ExtractTKey(entry.QueueOp), "mkey", ExtractMKey(entry.QueueOp))
-		}
-	}
+	// for us to preload or preinit threads
+	threadGroups := groupOperationsByThreadKey(entries)
 
-	// initialize thread sequences from database
-	// load up the sequencing info per threads (or init anew)
-	threadKeys := collectThreadKeysFromGroups(threadGroups)
+	// get thread keys unique list
+	threadKeys := extractUniqueThreadKeys(threadGroups)
+
+	// setup the thread states
 	if len(threadKeys) > 0 {
-		tr.Mark("init_thread_sequences")
-		if err := batchProcessor.Index.InitializeThreadSequencesFromDB(threadKeys); err != nil {
-			logger.Error("init_thread_sequences_failed", "err", err)
-		}
+		_ = batchProcessor.Index.InitializeThreadSequencesFromDB(threadKeys)
 	}
 
-	// pre-load provisional key mappings from database
 	//
 	provKeys := collectProvisionalMessageKeys(entries)
 	if len(provKeys) > 0 {
-		tr.Mark("preload_provisional_keys")
-		mappings, err := bulkLookupProvisionalKeys(provKeys)
-		if err != nil {
-			logger.Error("preload_provisional_keys_failed", "err", err)
-		} else {
-			prepopulateProvisionalCache(batchProcessor, mappings)
-			logger.Debug("preload_provisional_keys_complete", "total_keys", len(provKeys), "found_mappings", len(mappings))
-		}
+		mappings, _ := bulkLookupProvisionalKeys(provKeys)
+		prepopulateProvisionalCache(batchProcessor, mappings)
 	}
-	tr.Mark("process_thread_groups")
-
-	for threadKey, threadEntries := range threadGroups {
+	for _, threadEntries := range threadGroups {
 		sortedOps := sortOperationsByType(threadEntries)
-		logger.Debug("batch_processing_thread", "thread", threadKey, "ops", len(sortedOps))
 		for _, op := range sortedOps {
-			if err := BProcOperation(op, batchProcessor); err != nil {
-				logger.Error("process_operation_failed", "err", err, "handler", op.Handler, "thread", ExtractTKey(op.QueueOp), "msg", ExtractMKey(op.QueueOp))
-				continue
-			}
+			_ = BProcOperation(op, batchProcessor)
 		}
 	}
-	tr.Mark("flush_batch")
-	logger.Debug("batch_flush_start")
 	if err := batchProcessor.Flush(); err != nil {
-		logger.Error("batch_flush_failed", "err", err)
 		return fmt.Errorf("batch flush failed: %w", err)
 	}
-	logger.Info("batch_applied", "entries", len(entries))
-	tr.Mark("record_write")
 	storedb.RecordWrite(len(entries))
 	return nil
 }

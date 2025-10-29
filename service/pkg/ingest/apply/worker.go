@@ -9,7 +9,6 @@ import (
 	"progressdb/pkg/state/logger"
 )
 
-// ApplyWorker handles batching and applying types.BatchEntry to DB.
 type ApplyWorker struct {
 	input   <-chan types.BatchEntry
 	stop    <-chan struct{}
@@ -19,7 +18,6 @@ type ApplyWorker struct {
 	timeout time.Duration
 }
 
-// NewApplyWorker creates a new apply worker.
 func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, timeout time.Duration) *ApplyWorker {
 	return &ApplyWorker{
 		input:   input,
@@ -30,7 +28,6 @@ func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, ti
 	}
 }
 
-// Start begins the apply workers.
 func (aw *ApplyWorker) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	aw.stop = stop
 	for i := 0; i < aw.workers; i++ {
@@ -70,6 +67,7 @@ func (aw *ApplyWorker) flush() {
 	if len(aw.buffer) == 0 {
 		return
 	}
+	
 	// Sort buffer by TS ascending to ensure chronological order
 	sort.Slice(aw.buffer, func(i, j int) bool {
 		return aw.buffer[i].TS < aw.buffer[j].TS

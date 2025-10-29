@@ -2,7 +2,6 @@ package state
 
 import "path/filepath"
 
-// Paths holds canonical locations for runtime artifacts under a DB path.
 type Paths struct {
 	DB        string
 	Store     string
@@ -14,24 +13,28 @@ type Paths struct {
 	Tmp       string
 	Tel       string
 	Index     string
-	FailedOps string // failed compute operations for recovery
+	Crash     string // failed compute operations for recovery
 }
 
-// PathsFor returns the canonical Paths for the provided DB path.
 func PathsFor(dbPath string) Paths {
 	statePath := filepath.Join(dbPath, "state")
 	return Paths{
-		DB:        dbPath,
-		Store:     filepath.Join(dbPath, "store"),
-		Wal:       filepath.Join(dbPath, "wal"),
+		// base
+		DB: dbPath,
+
+		// mains
+		Store: filepath.Join(dbPath, "store"),
+		Index: filepath.Join(dbPath, "index"),
+		Wal:   filepath.Join(dbPath, "wal"),
+
+		// state
 		State:     statePath,
 		Audit:     filepath.Join(statePath, "audit"),
 		Retention: filepath.Join(statePath, "retention"),
 		KMS:       filepath.Join(statePath, "kms"),
 		Tmp:       filepath.Join(statePath, "tmp"),
 		Tel:       filepath.Join(statePath, "telemetry"),
-		Index:     filepath.Join(dbPath, "index"),
-		FailedOps: filepath.Join(dbPath, "failed_ops", "computation"),
+		Crash:     filepath.Join(statePath, "crash"),
 	}
 }
 
@@ -45,4 +48,4 @@ func KMSPath(dbPath string) string       { return PathsFor(dbPath).KMS }
 func TmpPath(dbPath string) string       { return PathsFor(dbPath).Tmp }
 func TelPath(dbPath string) string       { return PathsFor(dbPath).Tel }
 func IndexPath(dbPath string) string     { return PathsFor(dbPath).Index }
-func FailedOpsPath(dbPath string) string { return PathsFor(dbPath).FailedOps }
+func CrashPath(dbPath string) string     { return PathsFor(dbPath).Crash }

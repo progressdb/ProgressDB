@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"progressdb/pkg/state/logger"
+	"progressdb/pkg/config"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
 	"runtime"
 	"time"
 
@@ -21,14 +22,17 @@ type exitRequest struct {
 	Meta      map[string]string `json:"meta,omitempty"`
 }
 
-// Controlled abord handling from other parts of the code
 func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
-	// default abort delay (seconds). Keep at 10s so crash dumps and logs
-	// have time to flush before exit.
+
+	if dbPath == "" {
+		dbPath = config.ParseConfigFlags().DB
+	}
+
 	delay := 10
 	if len(delaySeconds) > 0 && delaySeconds[0] >= 0 {
 		delay = delaySeconds[0]
 	}
+
 	logger.Error("startup_fatal", "msg", contextMsg, "error", err)
 	dumpPath, reqPath, derr := AbortWithDiagnostics(dbPath, contextMsg, err)
 	if derr != nil {
@@ -46,12 +50,7 @@ func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
 	os.Exit(2)
 }
 
-// AbortWithDiagnostics writes a crash dump and a shutdown request file
 func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, error) {
-	// crash dir (large human-readable dumps) and abort dir (machine-readable
-	// exit/abort requests). When a crash happens we write both: a crash dump
-	// into crashDir and an abort request into abortDir that references the
-	// crash path.
 	crashDir := "./crash"
 	abortDir := "./abort"
 	if dbPath != "" {
@@ -72,12 +71,10 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 	dumpName := fmt.Sprintf("crash-%d.log", ts)
 	dumpPath := filepath.Join(crashDir, dumpName)
 
-	// build dump
 	f, ferr := os.CreateTemp(crashDir, ".crash-*.tmp")
 	if ferr != nil {
 		return "", "", fmt.Errorf("failed to create temp crash file: %w", ferr)
 	}
-	// ensure temp removed if we fail
 	tmpName := f.Name()
 	defer func() { _ = os.Remove(tmpName) }()
 
@@ -100,7 +97,6 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 	}
 	_ = os.Chmod(dumpPath, 0o600)
 
-	// create abort request referencing the crash dump
 	req := exitRequest{
 		Time:      timeutil.Now().Format(time.RFC3339),
 		Reason:    reason,
@@ -134,9 +130,7 @@ func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, err
 	return dumpPath, reqPath, nil
 }
 
-// RequestExitFile writes a simple exit request (no dump) and returns its path.
 func RequestExitFile(dbPath, reason string) (string, error) {
-	// write an operator-requested abort file (no crash dump)
 	abortDir := "./abort"
 	if dbPath != "" {
 		abortDir = filepath.Join(dbPath, "state", "abort")
