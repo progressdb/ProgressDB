@@ -23,18 +23,25 @@ func TestKeysBuildersParsers(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		// MessageKey -> ParseMessageKey
+		// MessageKey -> ParseKey (unified parser)
 		k := keys.GenMessageKey(c.threadID, "test-msg", c.seq)
-		parts, perr := keys.ParseMessageKey(k)
+		parsed, perr := keys.ParseKey(k)
 		if perr != nil {
-			t.Fatalf("ParseMessageKey error: %v (key=%s)", perr, k)
+			t.Fatalf("ParseKey error: %v (key=%s)", perr, k)
 		}
-		if parts.ThreadKey != c.threadID || parts.MessageKey != "test-msg" || parts.Seq != keys.PadSeq(c.seq) {
-			t.Fatalf("ParseMessageKey mismatch: got (%s,%s,%s) want (%s,%s,%s)", parts.ThreadKey, parts.MessageKey, parts.Seq, c.threadID, "test-msg", keys.PadSeq(c.seq))
+		if parsed.Type != keys.KeyTypeMessage || parsed.ThreadTS != c.threadID || parsed.MessageTS != "test-msg" || parsed.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseKey mismatch: got (%s,%s,%s,%s) want (%s,%s,%s,%s)", parsed.Type, parsed.ThreadTS, parsed.MessageTS, parsed.Seq, keys.KeyTypeMessage, c.threadID, "test-msg", keys.PadSeq(c.seq))
 		}
 
-		// VersionKey -> ParseVersionKey
+		// VersionKey -> ParseKey (unified parser)
 		vk := keys.GenVersionKey(c.msgID, c.ts, c.seq)
+		vparsed, verr := keys.ParseKey(vk)
+		if verr != nil {
+			t.Fatalf("ParseKey error: %v (key=%s)", verr, vk)
+		}
+		if vparsed.Type != keys.KeyTypeVersion || vparsed.MessageTS != c.msgID || vparsed.Seq != keys.PadSeq(c.seq) {
+			t.Fatalf("ParseKey mismatch: got (%s,%s,%s) want (%s,%d,%d)", vparsed.Type, vparsed.MessageTS, vparsed.Seq, keys.KeyTypeVersion, c.msgID, c.seq)
+		}
 		vparts, verr := keys.ParseVersionKey(vk)
 		if verr != nil {
 			t.Fatalf("ParseVersionKey error: %v (key=%s)", verr, vk)
@@ -75,25 +82,25 @@ func TestKeysRoundTrip_StoreHelpers(t *testing.T) {
 	for _, c := range cases {
 		// MessageKey round-trip
 		k := keys.GenMessageKey(c.threadID, "test-msg", c.seq)
-		parts, err := keys.ParseMessageKey(k)
+		parsed, err := keys.ParseKey(k)
 		if err != nil {
-			t.Fatalf("ParseMessageKey error: %v (key=%s)", err, k)
+			t.Fatalf("ParseKey error: %v (key=%s)", err, k)
 		}
-		parsedSeq, _ := keys.ParseKeySequence(parts.Seq)
-		if parts.ThreadKey != c.threadID || parsedSeq != c.seq {
-			t.Fatalf("ParseMessageKey mismatch: got (%s,%s) want (%s,%d)", parts.ThreadKey, parts.Seq, c.threadID, c.seq)
+		parsedSeq, _ := keys.ParseKeySequence(parsed.Seq)
+		if parsed.Type != keys.KeyTypeMessage || parsed.ThreadTS != c.threadID || parsedSeq != c.seq {
+			t.Fatalf("ParseKey mismatch: got (%s,%s,%s) want (%s,%s,%d)", parsed.Type, parsed.ThreadTS, parsed.Seq, keys.KeyTypeMessage, c.threadID, c.seq)
 		}
 
 		// VersionKey round-trip
 		vk := keys.GenVersionKey(c.msgID, c.ts, c.seq)
-		vparts, err := keys.ParseVersionKey(vk)
+		vparsed, err := keys.ParseKey(vk)
 		if err != nil {
-			t.Fatalf("ParseVersionKey error: %v (key=%s)", err, vk)
+			t.Fatalf("ParseKey error: %v (key=%s)", err, vk)
 		}
-		parsedTS, _ := keys.ParseKeyTimestamp(vparts.MessageTS)
-		parsedSeq, _ = keys.ParseKeySequence(vparts.Seq)
-		if vparts.MessageKey != c.msgID || parsedTS != c.ts || parsedSeq != c.seq {
-			t.Fatalf("ParseVersionKey mismatch: got (%s,%s,%s) want (%s,%d,%d)", vparts.MessageKey, vparts.MessageTS, vparts.Seq, c.msgID, c.ts, c.seq)
+		parsedTS, _ := keys.ParseKeyTimestamp(vparsed.MessageTS)
+		parsedSeq, _ := keys.ParseKeySequence(vparsed.Seq)
+		if vparsed.Type != keys.KeyTypeVersion || vparsed.MessageTS != c.msgID || parsedTS != c.ts || parsedSeq != c.seq {
+			t.Fatalf("ParseKey mismatch: got (%s,%s,%s,%s,%d,%d) want (%s,%s,%d,%d)", vparsed.Type, vparsed.MessageTS, parsedTS, parsedSeq, keys.KeyTypeVersion, c.msgID, c.ts, c.seq)
 		}
 	}
 }

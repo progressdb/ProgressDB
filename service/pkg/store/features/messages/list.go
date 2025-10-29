@@ -75,8 +75,11 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 			break
 		}
 
-		parsed, err := keys.ParseMessageKey(string(key))
+		parsed, err := keys.ParseKey(string(key))
 		if err != nil {
+			continue
+		}
+		if parsed.Type != keys.KeyTypeMessage {
 			continue
 		}
 		seq, _ := keys.ParseKeySequence(parsed.Seq)

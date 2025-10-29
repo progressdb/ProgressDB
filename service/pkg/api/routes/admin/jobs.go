@@ -100,8 +100,8 @@ func determineThreadIDs(ids []string, all bool) ([]string, error) {
 		}
 		var threadIDs []string
 		for _, k := range keyList {
-			if parts, err := keys.ParseThreadKey(k); err == nil {
-				threadIDs = append(threadIDs, parts.ThreadKey)
+			if parsed, err := keys.ParseKey(k); err == nil && parsed.Type == keys.KeyTypeThread {
+				threadIDs = append(threadIDs, parsed.ThreadKey)
 			}
 		}
 		return threadIDs, nil
@@ -119,12 +119,16 @@ func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing key")
 		return
 	}
-	parts, err := keys.ParseThreadKey(req.Key)
+	parsed, err := keys.ParseKey(req.Key)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 		return
 	}
-	threadID := parts.ThreadKey
+	if parsed.Type != keys.KeyTypeThread {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
+		return
+	}
+	threadID := parsed.ThreadKey
 	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
@@ -164,12 +168,16 @@ func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	if !req.All {
 		threadIDs = make([]string, 0, len(req.Keys))
 		for _, k := range req.Keys {
-			parts, err := keys.ParseThreadKey(k)
+			parsed, err := keys.ParseKey(k)
 			if err != nil {
 				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 				return
 			}
-			threadIDs = append(threadIDs, parts.ThreadKey)
+			if parsed.Type != keys.KeyTypeThread {
+				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
+				return
+			}
+			threadIDs = append(threadIDs, parsed.ThreadKey)
 		}
 	}
 
@@ -242,12 +250,16 @@ func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	if !req.All {
 		threadIDs = make([]string, 0, len(req.Keys))
 		for _, k := range req.Keys {
-			parts, err := keys.ParseThreadKey(k)
+			parsed, err := keys.ParseKey(k)
 			if err != nil {
 				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
 				return
 			}
-			threadIDs = append(threadIDs, parts.ThreadKey)
+			if parsed.Type != keys.KeyTypeThread {
+				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
+				return
+			}
+			threadIDs = append(threadIDs, parsed.ThreadKey)
 		}
 	}
 

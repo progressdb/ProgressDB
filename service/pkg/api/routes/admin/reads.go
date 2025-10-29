@@ -2,9 +2,9 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sort"
-	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
@@ -56,8 +56,8 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	_ = router.WriteJSON(ctx, struct {
-		Threads []json.RawMessage `json:"threads"`
-	}{Threads: router.ToRawMessages(vals)})
+		Threads []string `json:"threads"`
+	}{Threads: vals})
 }
 
 func ListKeys(ctx *fasthttp.RequestCtx) {
@@ -230,9 +230,16 @@ func listUsersByPrefixPaginated(prefix string, _ *pagination.PaginationRequest) 
 
 	for valid := iter.First(); valid; valid = iter.Next() {
 		keyStr := string(iter.Key())
-		parts := strings.Split(keyStr, ":")
-		if len(parts) >= 4 && parts[0] == "rel" && parts[1] == "u" && parts[3] == "t" {
-			userSet[parts[2]] = struct{}{}
+
+		// Use unified parser
+		parsed, err := keys.ParseKey(keyStr)
+		if err != nil {
+			continue // Skip invalid keys
+		}
+
+		// Only collect user IDs from user-thread relationships
+		if parsed.Type == keys.KeyTypeUserOwnsThread && parsed.UserID != "" {
+			userSet[parsed.UserID] = struct{}{}
 		}
 	}
 
@@ -288,27 +295,19 @@ func listThreadsForUser(userID string, _ *pagination.PaginationRequest) (*Dashbo
 	for valid := iter.First(); valid && count < maxThreads; valid = iter.Next() {
 		keyStr := string(iter.Key())
 
-		// Validate the relationship key
-		if err := keys.ValidateUserOwnsThreadKey(keyStr); err != nil {
-			continue
-		}
-
-		// Extract threadID from the validated key
-		parsedKey, err := keys.ParseUserOwnsThread(keyStr)
+		// Use unified parser
+		parsed, err := keys.ParseKey(keyStr)
 		if err != nil {
-			// log the error
-			logger.Error("failed to parse user owns thread key %q: %v", keyStr, err)
+			logger.Debug("skipping invalid key %q: %v", keyStr, err)
 			continue
 		}
 
-		// Validate threadKey
-		if err := keys.ValidateThreadKey(parsedKey.ThreadKey); err != nil {
-			// log the error
-			logger.Error("invalid thread key in user thread relation %q: %v", parsedKey.ThreadKey, err)
+		// Only process user-thread relationships for this user
+		if parsed.Type != keys.KeyTypeUserOwnsThread || parsed.UserID != userID {
 			continue
 		}
 
-		threadKeys = append(threadKeys, parsedKey.ThreadKey)
+		threadKeys = append(threadKeys, parsed.ThreadKey)
 		count++
 	}
 
@@ -321,14 +320,19 @@ func listThreadsForUser(userID string, _ *pagination.PaginationRequest) (*Dashbo
 func listMessagesForThread(threadKey string, paginationReq *pagination.PaginationRequest) (*DashboardMessagesResult, error) {
 	logger.Info("listMessagesForThread: listing messages for thread", threadKey)
 
-	// Validate thread key
-	if err := keys.ValidateThreadKey(threadKey); err != nil {
+	// Parse and validate thread key using unified parser
+	parsedThread, err := keys.ParseKey(threadKey)
+	if err != nil {
 		logger.Error("listMessagesForThread: invalid thread key", threadKey, err)
 		return nil, err
 	}
+	if parsedThread.Type != keys.KeyTypeThread {
+		logger.Error("listMessagesForThread: not a thread key", threadKey)
+		return nil, fmt.Errorf("expected thread key, got %s", parsedThread.Type)
+	}
 
-	// Generate prefix for messages of this thread
-	prefix := keys.GenAllThreadMessagesPrefix(threadKey)
+	// Generate prefix for messages of this thread using just the thread timestamp
+	prefix := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadTS)
 	lowerBound := []byte(prefix)
 	upperBound := nextPrefix(lowerBound)
 
@@ -350,12 +354,21 @@ func listMessagesForThread(threadKey string, paginationReq *pagination.Paginatio
 
 	for valid := iter.First(); valid && count < limit; valid = iter.Next() {
 		messagekey := string(iter.Key())
-		// Only include direct message keys for the thread
-		if err := keys.ValidateMessageKey(messagekey); err != nil {
+
+		// Use unified parser to validate and extract message info
+		parsedMsg, err := keys.ParseKey(messagekey)
+		if err != nil {
 			logger.Debug("listMessagesForThread: skipping invalid message key", messagekey, err)
 			continue
 		}
-		logger.Debug("listMessagesForThread: messagekey", messagekey)
+
+		// Only include message keys (not provisional) for this thread
+		if parsedMsg.Type != keys.KeyTypeMessage || parsedMsg.ThreadKey != parsedThread.ThreadKey {
+			logger.Debug("listMessagesForThread: skipping non-matching message", messagekey)
+			continue
+		}
+
+		logger.Debug("listMessagesForThread: found message", messagekey)
 		msgKeys = append(msgKeys, messagekey)
 		count++
 	}
@@ -384,7 +397,12 @@ func listAllThreads() ([]string, error) {
 
 	var threadKeys []string
 	for _, key := range allKeys {
-		if strings.Count(key, ":") == 1 && strings.HasPrefix(key, "t:") {
+		// Use unified parser to identify thread keys
+		parsed, err := keys.ParseKey(key)
+		if err != nil {
+			continue
+		}
+		if parsed.Type == keys.KeyTypeThread {
 			threadKeys = append(threadKeys, key)
 		}
 	}

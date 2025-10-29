@@ -45,9 +45,12 @@ func (dm *DataManager) SetMessageData(messageKey string, data interface{}, ts in
 	}
 
 	// Parse the message key to extract components
-	parts, err := keys.ParseMessageKey(messageKey)
+	parsed, err := keys.ParseKey(messageKey)
 	if err != nil {
 		return fmt.Errorf("parse message key: %w", err)
+	}
+	if parsed.Type != keys.KeyTypeMessage {
+		return fmt.Errorf("expected message key, got %s", parsed.Type)
 	}
 
 	marshaled, err := json.Marshal(data)
@@ -57,7 +60,7 @@ func (dm *DataManager) SetMessageData(messageKey string, data interface{}, ts in
 
 	// Encrypt if it's a message (not for partials or other types)
 	if _, ok := data.(*models.Message); ok {
-		marshaled, err = encryption.EncryptMessageData(parts.ThreadKey, marshaled)
+		marshaled, err = encryption.EncryptMessageData(parsed.ThreadKey, marshaled)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt message data: %w", err)
 		}

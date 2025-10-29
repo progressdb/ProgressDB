@@ -2,8 +2,6 @@ package apply
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
@@ -45,20 +43,4 @@ func (m *MessageSequencer) resolveMessageFinalKeyFromDB(msgKey string) (string, 
 		return string(iter.Key()), true
 	}
 	return "", false
-}
-
-func extractMessageSequence(key string) (uint64, error) {
-	parts, err := keys.ParseMessageKey(key)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse message key: %w", err)
-	}
-	seqStr := strings.TrimLeft(parts.Seq, "0")
-	if seqStr == "" {
-		return 0, fmt.Errorf("sequence part not found in key")
-	}
-	seq, err := strconv.ParseUint(seqStr, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid sequence number: %w", err)
-	}
-	return seq, nil
 }

@@ -220,26 +220,24 @@ func (im *IndexManager) GetNextMessageSequence(threadKey string) (uint64, error)
 }
 
 func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error) {
-	parts, err := keys.ParseMessageKey(messageKey)
+	parsed, err := keys.ParseKey(messageKey)
 	if err != nil {
-		parts, err = keys.ParseMessageProvisionalKey(messageKey)
-		if err != nil {
-			return "", fmt.Errorf("invalid provisional message key format: %w", err)
-		}
+		return "", fmt.Errorf("invalid message key format: %w", err)
 	}
-	threadPart := keys.GenThreadKey(parts.ThreadKey)
 
-	threadParts, err := keys.ParseThreadKey(threadPart)
-	if err != nil {
-		provParts, provErr := keys.ParseMessageProvisionalKey(threadPart)
-		if provErr != nil {
-			return "", err // return the original error as it's more likely
-		}
-		threadParts = &keys.ThreadMetaParts{ThreadKey: provParts.ThreadKey}
+	if parsed.Type != keys.KeyTypeMessage && parsed.Type != keys.KeyTypeMessageProvisional {
+		return "", fmt.Errorf("expected message key, got %s", parsed.Type)
 	}
-	threadKey := threadParts.ThreadKey
-	sequence := uint64(0) // Default sequence for now
-	finalKey := keys.GenMessageKey(threadKey, parts.MessageKey, sequence)
+
+	threadKey := keys.GenThreadKey(parsed.ThreadTS)
+
+	// Get the next available sequence number for this thread
+	sequence, err := m.GetNextMessageSequence(threadKey)
+	if err != nil {
+		return "", fmt.Errorf("get next message sequence: %w", err)
+	}
+
+	finalKey := keys.GenMessageKey(threadKey, parsed.MessageTS, sequence)
 
 	// set state
 	m.kv.SetStateKV(messageKey, finalKey)

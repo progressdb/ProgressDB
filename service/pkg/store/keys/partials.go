@@ -21,6 +21,12 @@ const (
 	// Just user relationships
 	UserThreadsRelPrefix = "rel:u:"
 
+	// User -> thread relationship prefix for all threads for a user (formerly in function GenUserThreadRelPrefix)
+	UserThreadRelPrefix = "rel:u:%s:t:"
+
+	// Thread -> user relationship prefix for all users for a thread (formerly in function GenThreadUserRelPrefix)
+	ThreadUserRelPrefix = "rel:t:%s:u:"
+
 	// Backup before encryption
 	BackupEncryptPrefix = "backup:encrypt:"
 
@@ -57,17 +63,20 @@ func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
 }
 
 func GenUserThreadRelPrefix(userID string) string {
-	return fmt.Sprintf("rel:u:%s:t:", userID)
+	return fmt.Sprintf(UserThreadRelPrefix, userID)
 }
 
 func GenThreadUserRelPrefix(threadID string) string {
-	return fmt.Sprintf("rel:t:%s:u:", threadID)
+	return fmt.Sprintf(ThreadUserRelPrefix, threadID)
 }
 
 func ParseVersionKeySequence(key string) (uint64, error) {
-	parts, err := ParseVersionKey(key)
+	parsed, err := ParseKey(key)
 	if err != nil {
 		return 0, err
 	}
-	return ParseKeySequence(parts.Seq)
+	if parsed.Type != KeyTypeVersion {
+		return 0, fmt.Errorf("expected version key, got %s", parsed.Type)
+	}
+	return ParseKeySequence(parsed.Seq)
 }

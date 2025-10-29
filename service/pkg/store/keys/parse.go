@@ -283,14 +283,14 @@ func ParseKeySequence(s string) (uint64, error) {
 }
 
 func ExtractMessageComponents(threadKey, messageKey string) (threadComp, messageComp string, err error) {
-	if parts, err := ParseThreadKey(threadKey); err == nil {
-		threadComp = parts.ThreadKey
+	if parsed, err := ParseKey(threadKey); err == nil && parsed.Type == KeyTypeThread {
+		threadComp = parsed.ThreadTS
 	} else {
 		return "", "", fmt.Errorf("extract thread component: %w", err)
 	}
 
-	if parts, err := ParseMessageProvisionalKey(messageKey); err == nil {
-		messageComp = parts.MessageKey
+	if parsed, err := ParseKey(messageKey); err == nil && (parsed.Type == KeyTypeMessageProvisional || parsed.Type == KeyTypeMessage) {
+		messageComp = parsed.MessageTS
 	} else if IsProvisionalMessageKey(messageKey) {
 		messageComp = messageKey
 	} else {
@@ -298,4 +298,235 @@ func ExtractMessageComponents(threadKey, messageKey string) (threadComp, message
 	}
 
 	return threadComp, messageComp, nil
+}
+
+// KeyType represents the type of key
+type KeyType string
+
+const (
+	KeyTypeThread               KeyType = "thread"
+	KeyTypeMessage              KeyType = "message"
+	KeyTypeMessageProvisional   KeyType = "message_provisional"
+	KeyTypeVersion              KeyType = "version"
+	KeyTypeUserOwnsThread       KeyType = "user_owns_thread"
+	KeyTypeThreadMessageStart   KeyType = "thread_message_start"
+	KeyTypeThreadMessageEnd     KeyType = "thread_message_end"
+	KeyTypeThreadMessageLC      KeyType = "thread_message_lc"
+	KeyTypeThreadMessageLU      KeyType = "thread_message_lu"
+	KeyTypeThreadVersionStart   KeyType = "thread_version_start"
+	KeyTypeThreadVersionEnd     KeyType = "thread_version_end"
+	KeyTypeThreadVersionLC      KeyType = "thread_version_lc"
+	KeyTypeThreadVersionLU      KeyType = "thread_version_lu"
+	KeyTypeDeletedThreadsIndex  KeyType = "deleted_threads_index"
+	KeyTypeDeletedMessagesIndex KeyType = "deleted_messages_index"
+)
+
+// KeyParts represents the parsed parts of any key
+type KeyParts struct {
+	Type           KeyType
+	ThreadKey      string // Full: "t:1761739879505665000"
+	ThreadTS       string // Just: "1761739879505665000"
+	MessageKey     string // Full: "t:1761739879505665000:m:msg123:001"
+	MessageTS      string // Just: "msg123"
+	MessageProvKey string // Provisional: "t:1761739879505665000:m:msg123"
+	Seq            string // "001"
+	UserID         string // For relationship keys
+	IndexType      string // "start", "end", "lc", "lu", etc.
+}
+
+// ParseKey is the unified key parser that can handle all key formats
+func ParseKey(key string) (*KeyParts, error) {
+	if key == "" {
+		return nil, fmt.Errorf("empty key")
+	}
+
+	parts := strings.Split(key, ":")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid key format: %s", key)
+	}
+
+	// Route to appropriate parser based on prefix
+	switch parts[0] {
+	case "t":
+		return parseThreadBasedKey(key, parts)
+	case "v":
+		return parseVersionKey(key, parts)
+	case "rel":
+		return parseRelationKey(key, parts)
+	case "idx":
+		return parseIndexKey(key, parts)
+	default:
+		return nil, fmt.Errorf("unknown key prefix: %s", parts[0])
+	}
+}
+
+// parseThreadBasedKey handles keys starting with "t:"
+func parseThreadBasedKey(key string, parts []string) (*KeyParts, error) {
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid thread key format: %s", key)
+	}
+
+	threadTS := parts[1]
+	fullThreadKey := "t:" + threadTS
+
+	// t:{threadTS} - thread metadata
+	if len(parts) == 2 {
+		return &KeyParts{
+			Type:      KeyTypeThread,
+			ThreadKey: fullThreadKey,
+			ThreadTS:  threadTS,
+		}, nil
+	}
+
+	// t:{threadTS}:m:{messageTS}[:{seq}] - message keys
+	if len(parts) >= 4 && parts[2] == "m" {
+		messageTS := parts[3]
+		seq := ""
+		if len(parts) >= 5 {
+			seq = parts[4]
+		}
+
+		keyType := KeyTypeMessageProvisional
+		if seq != "" {
+			keyType = KeyTypeMessage
+		}
+
+		if seq != "" {
+			// Full message key
+			fullMessageKey := fmt.Sprintf("t:%s:m:%s:%s", threadTS, messageTS, seq)
+			return &KeyParts{
+				Type:       keyType,
+				ThreadKey:  fullThreadKey,
+				ThreadTS:   threadTS,
+				MessageKey: fullMessageKey,
+				MessageTS:  messageTS,
+				Seq:        seq,
+			}, nil
+		} else {
+			// Provisional message key
+			fullProvKey := fmt.Sprintf("t:%s:m:%s", threadTS, messageTS)
+			return &KeyParts{
+				Type:           keyType,
+				ThreadKey:      fullThreadKey,
+				ThreadTS:       threadTS,
+				MessageProvKey: fullProvKey,
+				MessageTS:      messageTS,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("invalid thread-based key format: %s", key)
+}
+
+// parseVersionKey handles keys starting with "v:"
+func parseVersionKey(key string, parts []string) (*KeyParts, error) {
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid version key format: %s", key)
+	}
+
+	return &KeyParts{
+		Type:      KeyTypeVersion,
+		MessageTS: parts[1],
+		Seq:       parts[3],
+	}, nil
+}
+
+// parseRelationKey handles keys starting with "rel:"
+func parseRelationKey(key string, parts []string) (*KeyParts, error) {
+	// rel:u:{userID}:t:{threadTS}
+	if len(parts) == 5 && parts[1] == "u" && parts[3] == "t" {
+		threadTS := parts[4]
+		fullThreadKey := "t:" + threadTS
+		return &KeyParts{
+			Type:      KeyTypeUserOwnsThread,
+			UserID:    parts[2],
+			ThreadKey: fullThreadKey,
+			ThreadTS:  threadTS,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("invalid relation key format: %s", key)
+}
+
+// parseIndexKey handles keys starting with "idx:"
+func parseIndexKey(key string, parts []string) (*KeyParts, error) {
+	if len(parts) < 5 {
+		return nil, fmt.Errorf("invalid index key format: %s", key)
+	}
+
+	// idx:t:{threadTS}:ms:{type}
+	if parts[1] == "t" && parts[3] == "ms" {
+		threadTS := parts[2]
+		fullThreadKey := "t:" + threadTS
+		indexType := parts[4]
+
+		var keyType KeyType
+		switch indexType {
+		case "start":
+			keyType = KeyTypeThreadMessageStart
+		case "end":
+			keyType = KeyTypeThreadMessageEnd
+		case "lc":
+			keyType = KeyTypeThreadMessageLC
+		case "lu":
+			keyType = KeyTypeThreadMessageLU
+		default:
+			return nil, fmt.Errorf("unknown thread message index type: %s", indexType)
+		}
+
+		return &KeyParts{
+			Type:      keyType,
+			ThreadKey: fullThreadKey,
+			ThreadTS:  threadTS,
+			IndexType: indexType,
+		}, nil
+	}
+
+	// idx:t:{threadTS}:ms:{messageTS}:v:{type}
+	if len(parts) >= 7 && parts[1] == "t" && parts[3] == "ms" && parts[5] == "v" {
+		threadTS := parts[2]
+		messageTS := parts[4]
+		fullThreadKey := "t:" + threadTS
+		indexType := parts[6]
+
+		var keyType KeyType
+		switch indexType {
+		case "start":
+			keyType = KeyTypeThreadVersionStart
+		case "end":
+			keyType = KeyTypeThreadVersionEnd
+		case "lc":
+			keyType = KeyTypeThreadVersionLC
+		case "lu":
+			keyType = KeyTypeThreadVersionLU
+		default:
+			return nil, fmt.Errorf("unknown thread version index type: %s", indexType)
+		}
+
+		return &KeyParts{
+			Type:      keyType,
+			ThreadKey: fullThreadKey,
+			ThreadTS:  threadTS,
+			MessageTS: messageTS,
+			IndexType: indexType,
+		}, nil
+	}
+
+	// idx:t:deleted:u:{userID}:list
+	if len(parts) == 6 && parts[1] == "t" && parts[2] == "deleted" && parts[3] == "u" && parts[5] == "list" {
+		return &KeyParts{
+			Type:   KeyTypeDeletedThreadsIndex,
+			UserID: parts[4],
+		}, nil
+	}
+
+	// idx:m:deleted:u:{userID}:list
+	if len(parts) == 6 && parts[1] == "m" && parts[2] == "deleted" && parts[3] == "u" && parts[5] == "list" {
+		return &KeyParts{
+			Type:   KeyTypeDeletedMessagesIndex,
+			UserID: parts[4],
+		}, nil
+	}
+
+	return nil, fmt.Errorf("invalid index key format: %s", key)
 }
