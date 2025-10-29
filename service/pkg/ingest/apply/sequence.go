@@ -21,10 +21,6 @@ func NewMessageSequencer(im *IndexManager, kv *KVManager) *MessageSequencer {
 	}
 }
 
-func (m *MessageSequencer) MapProvisionalToFinalMessageKey(provisionalKey, finalKey string) {
-	m.kv.SetStateKV(provisionalKey, finalKey)
-}
-
 func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
 	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
 		return "", fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
@@ -32,79 +28,81 @@ func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
 	return threadKey, nil
 }
 
-func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string) (string, error) {
+func (m *MessageSequencer) ResolveMessageKey(msgKey string) (string, error) {
+	// Check if msgKey is empty
 	if msgKey == "" {
 		return "", fmt.Errorf("msgKey cannot be empty")
 	}
+
+	// Already a final (non-provisional) key? Just return it.
 	if !keys.IsProvisionalMessageKey(msgKey) {
 		return msgKey, nil
 	}
 
-	// try and get final mapping
+	// Check for an in-batch mapping for this provisional key
 	if finalKey, ok := m.kv.GetStateKV(msgKey); ok {
 		return finalKey, nil
 	}
 
-	if storedb.Client == nil {
-		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
+	// Try to resolve from DBs
+	if finalKey, found := m.resolveMessageKeyFromDB(msgKey); found {
+		m.kv.SetStateKV(msgKey, finalKey) // cache for batch
+		return finalKey, nil
 	}
 
+	// Otherwise, generate a new sequenced final key
+	return m.generateNewSequencedKey(msgKey)
+}
+
+func (m *MessageSequencer) resolveMessageKeyFromDB(msgKey string) (string, bool) {
+	if storedb.Client == nil {
+		return "", false
+	}
 	prefix := msgKey + ":"
 
 	iter, err := storedb.Client.NewIter(nil)
 	if err != nil {
-		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
+		return "", false
 	}
 	defer iter.Close()
 
 	iter.SeekGE([]byte(prefix))
-
 	if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
-		existingFinalKey := string(iter.Key())
-		m.kv.SetStateKV(msgKey, existingFinalKey)
-		return existingFinalKey, nil
+		return string(iter.Key()), true
 	}
-
-	return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
+	return "", false
 }
 
-func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew string) (string, error) {
-	threadKey, err := m.extractThreadKeyFromKey(provisionalKey)
+func (m *MessageSequencer) generateNewSequencedKey(messageKey string) (string, error) {
+	threadKey, err := m.extractThreadTs(messageKey)
 	if err != nil {
-		m.MapProvisionalToFinalMessageKey(provisionalKey, finalKeyIfNew)
-		return finalKeyIfNew, nil
+		return "", err
 	}
 
-	sequence := m.indexManager.GetNextThreadSequence(threadKey)
-
-	messageKey := m.extractMessageKeyFromKey(finalKeyIfNew)
-	if messageKey == "" {
-		messageKey = m.extractMessageKeyFromKey(provisionalKey)
+	sequence, err := m.indexManager.GetNextMessageSequence(threadKey)
+	if err != nil {
+		return "", err
 	}
 
-	finalKey := keys.GenMessageKey(threadKey, messageKey, sequence)
-	m.MapProvisionalToFinalMessageKey(provisionalKey, finalKey)
+	parts, err := keys.ParseMessageKey(messageKey)
+	if err != nil {
+		return "", err
+	}
+
+	finalKey := keys.GenMessageKey(threadKey, parts.MsgID, sequence)
+
+	// set state
+	m.kv.SetStateKV(messageKey, finalKey)
 
 	return finalKey, nil
 }
 
-func (m *MessageSequencer) extractThreadKeyFromKey(key string) (string, error) {
+func (m *MessageSequencer) extractThreadTs(key string) (string, error) {
 	if parts, err := keys.ParseThreadKey(key); err == nil {
 		return parts.ThreadID, nil
 	}
 
-	if parts, err := keys.ParseMessageKey(key); err == nil {
-		return parts.ThreadID, nil
-	}
-
 	return "", fmt.Errorf("unable to extract thread key from key: %s", key)
-}
-
-func (m *MessageSequencer) extractMessageKeyFromKey(key string) string {
-	if parts, err := keys.ParseMessageKey(key); err == nil {
-		return parts.MsgID
-	}
-	return ""
 }
 
 func extractSequenceFromKey(key string) uint64 {

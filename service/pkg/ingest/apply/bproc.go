@@ -240,7 +240,7 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// resolve message key
-	resolvedID, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
+	resolvedID, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
 	if err != nil {
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
@@ -253,14 +253,14 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// extract sequence
-	threadSequence := extractSequenceFromKey(resolvedID)
-	msg.Key = keys.GenMessageKey(threadKey, resolvedID, threadSequence)
+	messageSeq := extractSequenceFromKey(resolvedID)
+	msg.Key = keys.GenMessageKey(threadKey, resolvedID, messageSeq)
 
 	// index
 	batchProcessor.Index.UpdateThreadMessageIndexes(threadKey, msg)
 
 	// store
-	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedID, msg, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedID, msg, entry.TS, messageSeq); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
 	return nil
@@ -307,7 +307,7 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// resolve message key
-	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey, messageKey)
+	resolvedMessageKey, err := batchProcessor.Index.ResolveMessageKey(messageKey)
 	if err != nil {
 		return fmt.Errorf("resolve message key %s: %w", messageKey, err)
 	}
@@ -334,13 +334,13 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// extract sequence
-	threadSequence := extractSequenceFromKey(resolvedMessageKey)
+	messageSeq := extractSequenceFromKey(resolvedMessageKey)
 
 	// store
-	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedMessageKey, &msg, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(threadKey, resolvedMessageKey, &msg, entry.TS, messageSeq); err != nil {
 		return fmt.Errorf("set message data: %w", err)
 	}
-	versionKey := keys.GenVersionKey(resolvedMessageKey, entry.TS, threadSequence)
+	versionKey := keys.GenVersionKey(resolvedMessageKey, entry.TS, messageSeq)
 	if err := batchProcessor.Data.SetVersionKey(versionKey, &msg); err != nil {
 		return fmt.Errorf("set version key: %w", err)
 	}
@@ -372,7 +372,7 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	}
 
 	// resolve message key
-	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key, msg.Key)
+	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
 	if err != nil {
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
@@ -395,14 +395,14 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	existingMessage.TS = entry.TS
 
 	// extract sequence
-	threadSequence := extractSequenceFromKey(finalMessageKey)
+	messageSeq := extractSequenceFromKey(finalMessageKey)
 
 	// store
-	if err := batchProcessor.Data.SetMessageData(finalThreadKey, finalMessageKey, existingMessage, entry.TS, threadSequence); err != nil {
+	if err := batchProcessor.Data.SetMessageData(finalThreadKey, finalMessageKey, existingMessage, entry.TS, messageSeq); err != nil {
 		return fmt.Errorf("set deleted message data: %w", err)
 	}
 
-	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, threadSequence)
+	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, messageSeq)
 	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
 		return fmt.Errorf("set version key: %w", err)
 	}

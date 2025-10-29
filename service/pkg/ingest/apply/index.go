@@ -146,6 +146,7 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *mo
 		if idx.LastUpdatedAt == 0 || updatedAt > idx.LastUpdatedAt {
 			idx.LastUpdatedAt = updatedAt
 		}
+		// .End is manually updated later
 	}
 
 	if err := im.saveThreadIndex(threadKey, idx); err != nil {
@@ -153,22 +154,23 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *mo
 	}
 }
 
-func (im *IndexManager) GetNextThreadSequence(threadKey string) uint64 {
+func (im *IndexManager) GetNextMessageSequence(threadKey string) (uint64, error) {
 	idx, err := im.loadThreadIndex(threadKey)
 	if err != nil {
 		logger.Error("failed to load thread index", "error", err)
-		return 0
+		return 0, err
 	}
 
 	sequence := idx.End
 	idx.End++
 
+	// persist next
 	if err := im.saveThreadIndex(threadKey, idx); err != nil {
 		logger.Error("failed to save thread index", "error", err)
-		return sequence
+		return 0, err
 	}
 
-	return sequence
+	return sequence, nil
 }
 
 func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) error {
@@ -209,8 +211,8 @@ func (im *IndexManager) PrepopulateProvisionalCache(mappings map[string]string) 
 	logger.Debug("provisional_cache_prepopulated", "mappings_count", len(mappings))
 }
 
-func (im *IndexManager) ResolveMessageKey(provisionalKey, fallbackKey string) (string, error) {
-	return im.messageSequencer.ResolveMessageKey(provisionalKey, fallbackKey)
+func (im *IndexManager) ResolveMessageKey(messageKey string) (string, error) {
+	return im.messageSequencer.ResolveMessageKey(messageKey)
 }
 
 // relations
