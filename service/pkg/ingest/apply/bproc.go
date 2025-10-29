@@ -8,6 +8,7 @@ import (
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
+	"progressdb/pkg/state"
 	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/keys"
 )
@@ -26,10 +27,14 @@ func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) erro
 		return BProcMessageUpdate(entry, batchProcessor)
 	case queue.HandlerMessageDelete:
 		return BProcMessageDelete(entry, batchProcessor)
-
-	default:
-		return fmt.Errorf("unknown handler: %s", entry.Handler)
 	}
+
+	// this is not going to happen
+	// but if by magic it occurs
+	// - crash the system (to prevent any blind ops)
+	err := fmt.Errorf("BProcOperation: unsupported operation or handler")
+	state.Crash("bproc_operation_unsupported_handler", err)
+	return err
 }
 
 // Threads
@@ -64,7 +69,7 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// index
-	batchProcessor.Index.InitThreadMessageIndexes(threadKey)
+	// thread <> message indexes are inited already
 	batchProcessor.Index.UpdateUserOwnership(thread.Author, threadKey, true)
 	batchProcessor.Index.UpdateThreadParticipants(threadKey, thread.Author, true)
 	return nil

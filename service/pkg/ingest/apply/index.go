@@ -27,20 +27,20 @@ func NewIndexManager() *IndexManager {
 	return im
 }
 
-func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
+// func (im *IndexManager) InitThreadMessageIndexes(threadID string) {
+// 	im.mu.Lock()
+// 	defer im.mu.Unlock()
 
-	im.threadMessages[threadID] = &index.ThreadMessageIndexes{
-		Start:         0,
-		End:           0,
-		Cdeltas:       []int64{},
-		Udeltas:       []int64{},
-		Skips:         []string{},
-		LastCreatedAt: 0,
-		LastUpdatedAt: 0,
-	}
-}
+// 	im.threadMessages[threadID] = &index.ThreadMessageIndexes{
+// 		Start:         0,
+// 		End:           0,
+// 		Cdeltas:       []int64{},
+// 		Udeltas:       []int64{},
+// 		Skips:         []string{},
+// 		LastCreatedAt: 0,
+// 		LastUpdatedAt: 0,
+// 	}
+// }
 
 func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, createdAt, updatedAt int64, isDelete bool, msgKey string) {
 	if threadKey == "" {

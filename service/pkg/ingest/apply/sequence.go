@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/store"
 	"progressdb/pkg/store/keys"
 )
@@ -24,7 +23,6 @@ func NewMessageSequencer(im *IndexManager) *MessageSequencer {
 
 func (m *MessageSequencer) MapProvisionalToFinalMessageKey(provisionalKey, finalKey string) {
 	m.provisionalToFinalKeys[provisionalKey] = finalKey
-	logger.Debug("mapped_provisional_message", "provisional", provisionalKey, "final", finalKey)
 }
 
 func (m *MessageSequencer) IsProvisionalMessageKey(messageKey string) bool {
@@ -42,26 +40,19 @@ func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
 	return threadKey, nil
 }
 
-func (m *MessageSequencer) MapProvisionalToFinalID(provisionalID, finalID string) {
-	logger.Debug("mapped_provisional_thread", "provisional", provisionalID, "final", finalID)
-}
-
 func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string) (string, error) {
 	if msgKey == "" {
 		return "", fmt.Errorf("msgKey cannot be empty")
 	}
 	if !keys.IsProvisionalMessageKey(msgKey) {
-		logger.Debug("resolve_final_key", "msg_key", msgKey)
 		return msgKey, nil
 	}
 
 	if finalKey, ok := m.provisionalToFinalKeys[msgKey]; ok {
-		logger.Debug("resolve_cache_hit", "provisional", msgKey, "final", finalKey)
 		return finalKey, nil
 	}
 
 	if storedb.Client == nil {
-		logger.Debug("resolve_store_not_ready", "provisional", msgKey, "generating_new")
 		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 	}
 
@@ -69,7 +60,6 @@ func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string
 
 	iter, err := storedb.Client.NewIter(nil)
 	if err != nil {
-		logger.Error("resolve_iterator_failed", "error", err, "provisional", msgKey, "generating_new")
 		return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 	}
 	defer iter.Close()
@@ -78,19 +68,16 @@ func (m *MessageSequencer) ResolveMessageKey(msgKey string, finalKeyIfNew string
 
 	if iter.Valid() && len(iter.Key()) > len(prefix) && string(iter.Key()[:len(prefix)]) == prefix {
 		existingFinalKey := string(iter.Key())
-		logger.Debug("resolve_db_found", "provisional", msgKey, "existing_final", existingFinalKey)
 		m.provisionalToFinalKeys[msgKey] = existingFinalKey
 		return existingFinalKey, nil
 	}
 
-	logger.Debug("resolve_db_not_found", "provisional", msgKey, "generating_new")
 	return m.generateNewSequencedKey(msgKey, finalKeyIfNew)
 }
 
 func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew string) (string, error) {
 	threadKey, err := m.extractThreadKeyFromKey(provisionalKey)
 	if err != nil {
-		logger.Error("extract_thread_id_failed", "error", err, "provisional", provisionalKey)
 		m.MapProvisionalToFinalMessageKey(provisionalKey, finalKeyIfNew)
 		return finalKeyIfNew, nil
 	}
@@ -105,7 +92,6 @@ func (m *MessageSequencer) generateNewSequencedKey(provisionalKey, finalKeyIfNew
 	finalKey := keys.GenMessageKey(threadKey, messageKey, sequence)
 	m.MapProvisionalToFinalMessageKey(provisionalKey, finalKey)
 
-	logger.Debug("generated_sequenced_key", "provisional", provisionalKey, "final", finalKey, "sequence", sequence)
 	return finalKey, nil
 }
 
