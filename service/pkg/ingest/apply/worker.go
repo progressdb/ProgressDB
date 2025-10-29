@@ -10,21 +10,34 @@ import (
 )
 
 type ApplyWorker struct {
-	input   <-chan types.BatchEntry
-	stop    <-chan struct{}
-	workers int
-	buffer  []types.BatchEntry
-	maxSize int
-	timeout time.Duration
+	input        <-chan types.BatchEntry
+	stop         <-chan struct{}
+	workers      int
+	buffer       []types.BatchEntry
+	maxSize      int
+	timeout      time.Duration
+	applyWorkers int // number of parallel apply workers for thread processing
 }
 
 func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, timeout time.Duration) *ApplyWorker {
 	return &ApplyWorker{
-		input:   input,
-		workers: workers,
-		buffer:  make([]types.BatchEntry, 0, maxBatchSize),
-		maxSize: maxBatchSize,
-		timeout: timeout,
+		input:        input,
+		workers:      workers,
+		buffer:       make([]types.BatchEntry, 0, maxBatchSize),
+		maxSize:      maxBatchSize,
+		timeout:      timeout,
+		applyWorkers: 10, // default number of parallel apply workers
+	}
+}
+
+func NewApplyWorkerWithParallel(input <-chan types.BatchEntry, workers, maxBatchSize int, timeout time.Duration, applyWorkers int) *ApplyWorker {
+	return &ApplyWorker{
+		input:        input,
+		workers:      workers,
+		buffer:       make([]types.BatchEntry, 0, maxBatchSize),
+		maxSize:      maxBatchSize,
+		timeout:      timeout,
+		applyWorkers: applyWorkers,
 	}
 }
 
@@ -67,13 +80,22 @@ func (aw *ApplyWorker) flush() {
 	if len(aw.buffer) == 0 {
 		return
 	}
-	
+
 	// Sort buffer by TS ascending to ensure chronological order
 	sort.Slice(aw.buffer, func(i, j int) bool {
 		return aw.buffer[i].TS < aw.buffer[j].TS
 	})
-	if err := ApplyBatchToDB(aw.buffer); err != nil {
-		logger.Error("apply_batch_failed", "err", err, "batch_size", len(aw.buffer))
+
+	// Use parallel processing if we have multiple threads
+	var err error
+	if aw.applyWorkers > 1 {
+		err = ApplyBatchToDBParallel(aw.buffer, aw.applyWorkers)
+	} else {
+		err = ApplyBatchToDB(aw.buffer)
+	}
+
+	if err != nil {
+		logger.Error("apply_batch_failed", "err", err, "batch_size", len(aw.buffer), "parallel_workers", aw.applyWorkers)
 	}
 	aw.buffer = aw.buffer[:0] // reset
 }

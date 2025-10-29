@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
@@ -15,6 +16,11 @@ import (
 
 	"github.com/cockroachdb/pebble"
 )
+
+type ThreadGroup struct {
+	ThreadKey string
+	Entries   []types.BatchEntry
+}
 
 type BatchProcessor struct {
 	KV        *KVManager
@@ -285,6 +291,125 @@ func nextPrefix(prefix []byte) []byte {
 		}
 	}
 	return nil // no upper bound if all 0xFF
+}
+
+func processThreadGroup(threadGroup ThreadGroup, batchProcessor *BatchProcessor) error {
+	// ops sorted by create, update, delete
+	sortedOps := sortOperationsByType(threadGroup.Entries)
+	for _, op := range sortedOps {
+		if err := BProcOperation(op, batchProcessor); err != nil {
+			return fmt.Errorf("process operation failed for thread %s: %w", threadGroup.ThreadKey, err)
+		}
+	}
+	return nil
+}
+
+func ApplyBatchToDBParallel(entries []types.BatchEntry, numWorkers int) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// Group operations by thread
+	threadGroups := groupOperationsByThreadKey(entries)
+	if len(threadGroups) == 0 {
+		return nil
+	}
+
+	// Create thread group structs
+	threadGroupList := make([]ThreadGroup, 0, len(threadGroups))
+	for threadKey, threadEntries := range threadGroups {
+		threadGroupList = append(threadGroupList, ThreadGroup{
+			ThreadKey: threadKey,
+			Entries:   threadEntries,
+		})
+	}
+
+	// Get unique thread keys for initialization
+	_ = extractUniqueThreadKeys(threadGroups) // threadKeys extracted but not needed in parallel version
+
+	// Preload provisional key mappings (shared across all workers)
+	provKeys := collectProvisionalMessageKeys(entries)
+	var sharedProvMappings map[string]string
+	if len(provKeys) > 0 {
+		mappings, _ := bulkLookupProvisionalKeys(provKeys)
+		sharedProvMappings = mappings
+	}
+
+	// Create channel for distributing work
+	threadChannel := make(chan ThreadGroup, len(threadGroupList))
+	var wg sync.WaitGroup
+	errors := make(chan error, len(threadGroupList))
+	var workersDone sync.WaitGroup
+
+	// Determine number of workers (at least 1, at most numWorkers or number of threads)
+	if numWorkers <= 0 {
+		numWorkers = 1
+	}
+	if numWorkers > len(threadGroupList) {
+		numWorkers = len(threadGroupList)
+	}
+
+	// Start worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		workersDone.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			defer workersDone.Done()
+
+			// Each worker gets its own isolated BatchProcessor
+			batchProcessor := NewBatchProcessor()
+
+			// Initialize thread sequences for this worker's threads
+			// We'll initialize on-demand per thread to avoid race conditions
+
+			// Prepopulate provisional cache with shared mappings
+			if len(sharedProvMappings) > 0 {
+				batchProcessor.Index.PrepopulateProvisionalCache(sharedProvMappings)
+			}
+
+			for threadGroup := range threadChannel {
+				// Initialize thread state if not already done
+				if threadGroup.ThreadKey != "" {
+					_ = batchProcessor.Index.InitializeThreadSequencesFromDB([]string{threadGroup.ThreadKey})
+				}
+
+				// Process the thread group
+				if err := processThreadGroup(threadGroup, batchProcessor); err != nil {
+					errors <- err
+					return
+				}
+			}
+
+			// Flush this worker's batch
+			if err := batchProcessor.Flush(); err != nil {
+				errors <- fmt.Errorf("worker %d flush failed: %w", workerID, err)
+				return
+			}
+		}(i)
+	}
+
+	// Distribute thread groups to workers
+	go func() {
+		for _, threadGroup := range threadGroupList {
+			threadChannel <- threadGroup
+		}
+		close(threadChannel)
+	}()
+
+	// Wait for all workers to complete
+	wg.Wait()
+	close(errors)
+
+	// Check for any errors
+	for err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+
+	storedb.RecordWrite(len(entries))
+	return nil
 }
 
 func ApplyBatchToDB(entries []types.BatchEntry) error {
