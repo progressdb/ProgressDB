@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"progressdb/pkg/config"
 	"progressdb/pkg/timeutil"
 
 	"golang.org/x/sys/unix"
@@ -41,6 +42,20 @@ func NewSensor(config MonitorConfig) *Sensor {
 		config: config,
 		stopCh: make(chan struct{}),
 	}
+}
+
+// new sensor from config
+func NewSensorFromConfig() *Sensor {
+	cfg := config.GetConfig()
+	monitorConfig := cfg.Sensor.Monitor
+	return NewSensor(MonitorConfig{
+		PollInterval:   monitorConfig.PollInterval.Duration(),
+		DiskHighPct:    monitorConfig.DiskHighPct,
+		DiskLowPct:     monitorConfig.DiskLowPct,
+		MemHighPct:     monitorConfig.MemHighPct,
+		CPUHighPct:     monitorConfig.CPUHighPct,
+		RecoveryWindow: monitorConfig.RecoveryWindow.Duration(),
+	})
 }
 
 // start sensor

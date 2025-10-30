@@ -24,7 +24,10 @@ func NewIngestQueue(capacity int) *IngestQueue {
 }
 
 // InitGlobalIngestQueue creates and sets the global ingest queue with optional WAL.
-func InitGlobalIngestQueue(ic config.IntakeConfig, dbPath string) error {
+func InitGlobalIngestQueue(dbPath string) error {
+	cfg := config.GetConfig()
+	ic := cfg.Ingest.Intake
+
 	queue := NewIngestQueue(ic.QueueCapacity)
 	queue.drainPollInterval = ic.ShutdownPollInterval.Duration()
 

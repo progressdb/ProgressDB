@@ -22,7 +22,11 @@ type Ingestor struct {
 }
 
 // NewIngestor creates a new Ingestor with compute and apply workers.
-func NewIngestor(q *queue.IngestQueue, cc config.ComputeConfig, ac config.ApplyConfig, dbPath string) *Ingestor {
+func NewIngestor(q *queue.IngestQueue, dbPath string) *Ingestor {
+	cfg := config.GetConfig()
+	cc := cfg.Ingest.Compute
+	ac := cfg.Ingest.Apply
+
 	if cc.WorkerCount <= 0 {
 		cc.WorkerCount = 1
 	}

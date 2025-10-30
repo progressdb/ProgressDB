@@ -15,17 +15,17 @@ var Client *pebble.DB
 var StoreDBPath string
 var walDisabled bool
 
-func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
+func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 	if Client != nil {
 		return nil
 	}
 	var err error
 	opts := &pebble.Options{
-		DisableWAL: disablePebbleWAL,
+		DisableWAL: storageWalEnabled,
 	}
 	walDisabled = opts.DisableWAL
 
-	if walDisabled && !appWALEnabled {
+	if walDisabled && !intakeWALEnabled {
 		logger.Warn("durability_disabled", "durability", "no WAL enabled")
 	}
 

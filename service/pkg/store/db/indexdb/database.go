@@ -16,14 +16,14 @@ var StorePath string
 var WALDisabled bool
 var PendingWrites uint64
 
-func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
+func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 	var err error
 	opts := &pebble.Options{
-		DisableWAL: disablePebbleWAL,
+		DisableWAL: storageWalEnabled,
 	}
 	WALDisabled = opts.DisableWAL
 
-	if WALDisabled && !appWALEnabled {
+	if WALDisabled && !intakeWALEnabled {
 		logger.Warn("durability_disabled", "durability", "no WAL enabled for index DB")
 	}
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"progressdb/pkg/config"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
@@ -239,14 +240,19 @@ func (r *Recovery) cleanupTempKeys(tempKeys []string) error {
 
 var globalRecovery *Recovery
 
-func InitGlobalRecovery(q *queue.IngestQueue, mainDB, indexDB *pebble.DB, enabled, walEnabled, tempIdxEnabled bool) {
-	globalRecovery = NewRecovery(q, mainDB, indexDB, enabled, walEnabled, tempIdxEnabled)
-}
+func InitGlobalRecovery(q *queue.IngestQueue, mainDB, indexDB *pebble.DB) {
+	cfg := config.GetConfig()
+	recoveryConfig := cfg.Ingest.Intake.Recovery
+	intakeWALEnabled := cfg.Ingest.Intake.WAL.Enabled
 
-func SetRecoveryQueue(q *queue.IngestQueue) {
-	if globalRecovery != nil {
-		globalRecovery.queue = q
-	}
+	globalRecovery = NewRecovery(
+		q,
+		mainDB,
+		indexDB,
+		recoveryConfig.Enabled,
+		recoveryConfig.WALEnabled && intakeWALEnabled,
+		recoveryConfig.TempIdxEnabled,
+	)
 }
 
 func RunGlobalRecovery() *RecoveryStats {

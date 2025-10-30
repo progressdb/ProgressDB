@@ -6,13 +6,18 @@ import (
 
 	"github.com/valyala/fasthttp"
 
-	"progressdb/internal/app/managers"
-	"progressdb/internal/retention"
-	"progressdb/pkg/config"
-	"progressdb/pkg/state"
+	"progressdb/pkg/ingest"
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/sensor"
 	"progressdb/pkg/state/telemetry"
+	indexdb "progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
+
+	"progressdb/internal/retention"
+	"progressdb/pkg/config"
+	"progressdb/pkg/state"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/encryption/kms"
 )
 
@@ -116,17 +121,6 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)
 
-	// initialize recovery system (will run after queue is created)
-	recoveryConfig := cfg.Ingest.Intake.Recovery
-	ingest.InitGlobalRecovery(
-		nil, // queue will be set after queue initialization
-		storedb.Client,
-		indexdb.Client,
-		recoveryConfig.Enabled,
-		recoveryConfig.WALEnabled && intakeWALEnabled,
-		recoveryConfig.TempIdxEnabled,
-	)
-
 	// start retention scheduler if enabled
 	if cancel, err := retention.Start(ctx); err != nil {
 		return err
@@ -135,12 +129,12 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// init intake queue
-	if err := queue.InitGlobalIngestQueue(cfg.Ingest.Intake, cfg.Server.DBPath); err != nil {
+	if err := queue.InitGlobalIngestQueue(cfg.Server.DBPath); err != nil {
 		return fmt.Errorf("failed to init queue: %w", err)
 	}
 
-	// set queue for recovery system
-	ingest.SetRecoveryQueue(queue.GlobalIngestQueue)
+	// initialize recovery system with queue
+	ingest.InitGlobalRecovery(queue.GlobalIngestQueue, storedb.Client, indexdb.Client)
 
 	// run crash recovery before starting ingestor
 	recoveryStats := ingest.RunGlobalRecovery()
@@ -150,22 +144,14 @@ func (a *App) Run(ctx context.Context) error {
 			"temp_index_errors", recoveryStats.TempIndexErrors)
 	}
 
-	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, cfg.Ingest.Compute, cfg.Ingest.Apply, cfg.Server.DBPath)
+	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, cfg.Server.DBPath)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 
 	// start hardware sensor
-	mon := sensor.MonitorConfig{
-		PollInterval:   cfg.Sensor.Monitor.PollInterval.Duration(),
-		DiskHighPct:    cfg.Sensor.Monitor.DiskHighPct,
-		DiskLowPct:     cfg.Sensor.Monitor.DiskLowPct,
-		MemHighPct:     cfg.Sensor.Monitor.MemHighPct,
-		CPUHighPct:     cfg.Sensor.Monitor.CPUHighPct,
-		RecoveryWindow: cfg.Sensor.Monitor.RecoveryWindow.Duration(),
-	}
-	sensorObj := sensor.NewSensor(mon)
-	sensorObj.Start()
-	a.hwSensor = sensorObj
+	sensor := sensor.NewSensorFromConfig()
+	sensor.Start()
+	a.hwSensor = sensor
 
 	errCh := a.startHTTP(ctx)
 
