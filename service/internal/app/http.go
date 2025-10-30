@@ -5,7 +5,7 @@ import (
 	"time"
 
 	router "progressdb/pkg/api/router"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 
 	"github.com/valyala/fasthttp"
 

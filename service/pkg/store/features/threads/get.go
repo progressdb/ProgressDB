@@ -3,7 +3,7 @@ package threads
 import (
 	"fmt"
 
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 )
 

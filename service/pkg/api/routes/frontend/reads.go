@@ -9,7 +9,7 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/routes/common"
-	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
 	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/pagination"
@@ -25,7 +25,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")
-	threadIDs, paginationResp, err := index.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
+	threadIDs, paginationResp, err := indexdb.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -96,7 +96,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_thread_indexes")
-	threadIndexes, err := index.GetThreadMessageIndexes(threadKey)
+	threadIndexes, err := indexdb.GetThreadMessageIndexes(threadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return

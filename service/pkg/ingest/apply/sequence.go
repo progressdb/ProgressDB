@@ -1,7 +1,7 @@
 package apply
 
 import (
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 )
 
 type MessageSequencer struct {

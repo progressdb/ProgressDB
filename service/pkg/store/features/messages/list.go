@@ -8,12 +8,12 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/index"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/features/threads"
 
 	"progressdb/pkg/state/telemetry"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
@@ -43,7 +43,7 @@ func ListMessages(threadKey string, reqCursor models.ReadRequestCursorInfo) ([]s
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
 
-	threadIndexes, err := index.GetThreadMessageIndexes(threadKey)
+	threadIndexes, err := indexdb.GetThreadMessageIndexes(threadKey)
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
 	}

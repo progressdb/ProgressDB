@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"progressdb/pkg/state/logger"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 )
 
 // StartTestServerProcess starts a test server with default config and test keys.

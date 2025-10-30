@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"progressdb/pkg/models"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"

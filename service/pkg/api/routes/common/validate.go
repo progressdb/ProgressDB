@@ -7,7 +7,7 @@ import (
 	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
 	thread_store "progressdb/pkg/store/features/threads"
 
@@ -23,7 +23,7 @@ type ValidationResult struct {
 // ValidateReadThread validates read access to a thread
 func ValidateReadThread(threadKey, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
 	if author != "" {
-		isDeleted, err := index.IsSoftDeleted(threadKey)
+		isDeleted, err := indexdb.IsSoftDeleted(threadKey)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -79,7 +79,7 @@ func ValidateReadThread(threadKey, author string, requireOwnership bool) (*model
 
 func ValidateReadMessage(messageKey, author string, requireOwnership bool) (*models.Message, *auth.AuthorResolutionError) {
 	if author != "" {
-		isDeleted, err := index.IsSoftDeleted(messageKey)
+		isDeleted, err := indexdb.IsSoftDeleted(messageKey)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",

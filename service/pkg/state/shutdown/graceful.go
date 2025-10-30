@@ -13,8 +13,8 @@ import (
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/sensor"
 	"progressdb/pkg/state/telemetry"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
 	kms "progressdb/pkg/store/encryption/kms"
 
 	"github.com/valyala/fasthttp"
@@ -64,7 +64,7 @@ func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteCl
 
 	// close index
 	log.Printf("shutdown: closing index")
-	if err := index.Close(); err != nil {
+	if err := indexdb.Close(); err != nil {
 		log.Printf("shutdown: index close error: %v", err)
 	}
 

@@ -11,8 +11,8 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/models"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 
@@ -61,7 +61,7 @@ func Stats(ctx *fasthttp.RequestCtx) {
 			}
 			var th models.Thread
 			if err := json.Unmarshal([]byte(val), &th); err == nil {
-				indexes, err := index.GetThreadMessageIndexes(th.Key)
+				indexes, err := indexdb.GetThreadMessageIndexes(th.Key)
 				if err == nil {
 					msgCount += int64(indexes.End)
 				}
@@ -131,7 +131,7 @@ func ListKeys(ctx *fasthttp.RequestCtx) {
 	var err error
 
 	if store == "index" {
-		keys, paginationResp, err = index.ListKeysWithPrefixPaginated(prefix, paginationReq)
+		keys, paginationResp, err = indexdb.ListKeysWithPrefixPaginated(prefix, paginationReq)
 	} else {
 		keys, paginationResp, err = storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
 	}
@@ -162,7 +162,7 @@ func GetKey(ctx *fasthttp.RequestCtx) {
 	var val string
 	switch storeParam {
 	case "index":
-		val, err = index.GetKey(key)
+		val, err = indexdb.GetKey(key)
 	default:
 		val, err = storedb.GetKey(key)
 	}
@@ -179,7 +179,7 @@ func ListUsers(ctx *fasthttp.RequestCtx) {
 	lowerBound := []byte(keys.UserThreadsRelPrefix)
 	upperBound := nextPrefix(lowerBound)
 
-	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{
+	iter, err := indexdb.Client.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -241,7 +241,7 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 	lowerBound := []byte(prefix)
 	upperBound := nextPrefix(lowerBound)
 
-	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{
+	iter, err := indexdb.Client.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

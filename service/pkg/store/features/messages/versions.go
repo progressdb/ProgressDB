@@ -7,7 +7,7 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/telemetry"
-	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
 
@@ -15,14 +15,14 @@ import (
 )
 
 func ListMessageVersions(messageKey string) ([]string, error) {
-	if index.IndexDB == nil {
+	if indexdb.Client == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
 	prefix, err := keys.GenAllMessageVersionsPrefix(messageKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate versions prefix: %w", err)
 	}
-	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{})
+	iter, err := indexdb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
 	}

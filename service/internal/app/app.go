@@ -12,8 +12,8 @@ import (
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/sensor"
 	"progressdb/pkg/state/telemetry"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	indexdb "progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
@@ -47,22 +47,6 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	// validate config and fail fast if not valid
 	if err := config.ValidateConfig(eff); err != nil {
 		return nil, err
-	}
-
-	// open store (caller ensures directories exist)
-	if state.PathsVar.Store == "" {
-		return nil, fmt.Errorf("state paths not initialized")
-	}
-	disable := true // always disable Pebble WAL since we have app-level WAL
-	appWALenabled := eff.Config.Ingest.Intake.WAL.Enabled
-	if err := storedb.Open(state.PathsVar.Store, disable, appWALenabled); err != nil {
-		return nil, fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
-	}
-	logger.Info("database_opened", "path", state.PathsVar.Store)
-
-	// warn if WAL is disabled
-	if !appWALenabled {
-		logger.Warn("wal_disabled_data_risk", "message", "WAL is disabled - potential data loss during crash")
 	}
 
 	// telemetry setup
@@ -107,24 +91,34 @@ func (a *App) Run(ctx context.Context) error {
 	disablePebbleWAL := true // always disable Pebble WAL
 	appWALEnabled := a.eff.Config.Ingest.Intake.WAL.Enabled
 	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
+
+	if state.PathsVar.Store == "" {
+		return fmt.Errorf("state paths not initialized")
+	}
+
+	// open storedb
 	if err := storedb.Open(state.PathsVar.Store, disablePebbleWAL, appWALEnabled); err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
-	// open index database
-	logger.Info("opening_index", "path", state.PathsVar.Index, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
-	if err := index.Open(state.PathsVar.Index, disablePebbleWAL, appWALEnabled); err != nil {
-		return fmt.Errorf("failed to open index: %w", err)
+	// open indexdb
+	if err := indexdb.Open(state.PathsVar.Index, disablePebbleWAL, appWALEnabled); err != nil {
+		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
-	logger.Info("index_opened", "path", state.PathsVar.Index)
+	logger.Info("database_opened", "path", state.PathsVar.Index)
+
+	// warn if WAL is disabled
+	if !appWALEnabled {
+		logger.Warn("wal_disabled_data_risk", "message", "WAL is disabled - potential data loss during crash")
+	}
 
 	// initialize recovery system (will run after queue is created)
 	recoveryConfig := a.eff.Config.Ingest.Intake.Recovery
 	ingest.InitGlobalRecovery(
 		nil, // queue will be set after queue initialization
 		storedb.Client,
-		index.IndexDB,
+		indexdb.Client,
 		recoveryConfig.Enabled,
 		recoveryConfig.WALEnabled && appWALEnabled,
 		recoveryConfig.TempIdxEnabled,

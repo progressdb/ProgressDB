@@ -12,7 +12,7 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/models"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/encryption/kms"
 	thread_store "progressdb/pkg/store/features/threads"

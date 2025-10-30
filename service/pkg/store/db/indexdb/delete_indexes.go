@@ -1,4 +1,4 @@
-package index
+package indexdb
 
 import (
 	"progressdb/pkg/state/telemetry"
@@ -6,7 +6,7 @@ import (
 )
 
 func MarkSoftDeleted(originalKey string) error {
-	tr := telemetry.Track("index.mark_soft_deleted")
+	tr := telemetry.Track("indexdb.mark_soft_deleted")
 	defer tr.Finish()
 
 	deleteKey := keys.GenSoftDeleteMarkerKey(originalKey)
@@ -14,7 +14,7 @@ func MarkSoftDeleted(originalKey string) error {
 }
 
 func UnmarkSoftDeleted(originalKey string) error {
-	tr := telemetry.Track("index.unmark_soft_deleted")
+	tr := telemetry.Track("indexdb.unmark_soft_deleted")
 	defer tr.Finish()
 
 	deleteKey := keys.GenSoftDeleteMarkerKey(originalKey)
@@ -34,7 +34,7 @@ func IsSoftDeleted(originalKey string) (bool, error) {
 }
 
 func MarkUserOwnsThread(userID, threadKey string) error {
-	tr := telemetry.Track("index.mark_user_owns_thread")
+	tr := telemetry.Track("indexdb.mark_user_owns_thread")
 	defer tr.Finish()
 
 	key := keys.GenUserOwnsThreadKey(userID, threadKey)
@@ -42,7 +42,7 @@ func MarkUserOwnsThread(userID, threadKey string) error {
 }
 
 func UnmarkUserOwnsThread(userID, threadKey string) error {
-	tr := telemetry.Track("index.unmark_user_owns_thread")
+	tr := telemetry.Track("indexdb.unmark_user_owns_thread")
 	defer tr.Finish()
 
 	key := keys.GenUserOwnsThreadKey(userID, threadKey)
@@ -62,7 +62,7 @@ func DoesUserOwnThread(userID, threadKey string) (bool, error) {
 }
 
 func MarkThreadHasUser(threadKey, userID string) error {
-	tr := telemetry.Track("index.mark_thread_has_user")
+	tr := telemetry.Track("indexdb.mark_thread_has_user")
 	defer tr.Finish()
 
 	key := keys.GenThreadHasUserKey(threadKey, userID)
@@ -70,7 +70,7 @@ func MarkThreadHasUser(threadKey, userID string) error {
 }
 
 func UnmarkThreadHasUser(threadKey, userID string) error {
-	tr := telemetry.Track("index.unmark_thread_has_user")
+	tr := telemetry.Track("indexdb.unmark_thread_has_user")
 	defer tr.Finish()
 
 	key := keys.GenThreadHasUserKey(threadKey, userID)

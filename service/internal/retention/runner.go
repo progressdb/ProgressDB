@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"

@@ -8,8 +8,8 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 
@@ -119,11 +119,11 @@ func PurgeThreadPermanently(threadKey string) error {
 		deleteVersionBatch(versionKeys)
 	}
 
-	if err := index.DeleteThreadMessageIndexes(threadKey); err != nil {
+	if err := indexdb.DeleteThreadMessageIndexes(threadKey); err != nil {
 		logger.Error("delete_thread_message_indexes_failed", "thread", threadKey, "error", err)
 	}
 
-	if err := index.UnmarkSoftDeleted(threadKey); err != nil {
+	if err := indexdb.UnmarkSoftDeleted(threadKey); err != nil {
 		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadKey, "error", err)
 	}
 
@@ -140,7 +140,7 @@ func cleanupThreadRelationships(threadKey string) error {
 	var ownershipKeys []string
 	cursor := ""
 	for {
-		keys, resp, err := index.ListKeysWithPrefixPaginated(ownershipPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		keys, resp, err := indexdb.ListKeysWithPrefixPaginated(ownershipPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
 		if err != nil {
 			return fmt.Errorf("list ownership keys: %w", err)
 		}
@@ -153,7 +153,7 @@ func cleanupThreadRelationships(threadKey string) error {
 
 	for _, key := range ownershipKeys {
 		if strings.Contains(key, fmt.Sprintf(":t:%s", threadKey)) {
-			if err := index.DeleteKey(key); err != nil {
+			if err := indexdb.DeleteKey(key); err != nil {
 				logger.Error("delete_ownership_relationship_failed", "key", key, "error", err)
 			}
 		}
@@ -166,7 +166,7 @@ func cleanupThreadRelationships(threadKey string) error {
 	var participationKeys []string
 	cursor = ""
 	for {
-		keys, resp, err := index.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		keys, resp, err := indexdb.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
 		if err != nil {
 			return fmt.Errorf("list participation keys: %w", err)
 		}
@@ -178,7 +178,7 @@ func cleanupThreadRelationships(threadKey string) error {
 	}
 
 	for _, key := range participationKeys {
-		if err := index.DeleteKey(key); err != nil {
+		if err := indexdb.DeleteKey(key); err != nil {
 			logger.Error("delete_participation_relationship_failed", "key", key, "error", err)
 		}
 	}

@@ -1,4 +1,4 @@
-package index
+package indexdb
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 )
 
 func UpdateVersionIndexes(threadKey, messageTS string, ts int64, seq uint64, createdAt, updatedAt int64) error {
-	tr := telemetry.Track("index.update_version_indexes")
+	tr := telemetry.Track("indexdb.update_version_indexes")
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}
@@ -118,7 +118,7 @@ func UpdateVersionIndexes(threadKey, messageTS string, ts int64, seq uint64, cre
 }
 
 func DeleteVersionIndexes(threadKey, messageTS string) error {
-	tr := telemetry.Track("index.delete_version_indexes")
+	tr := telemetry.Track("indexdb.delete_version_indexes")
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips", "last_created_at", "last_updated_at"}

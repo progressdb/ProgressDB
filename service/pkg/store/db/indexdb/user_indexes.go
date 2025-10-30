@@ -1,4 +1,4 @@
-package index
+package indexdb
 
 import (
 	"encoding/json"
@@ -36,7 +36,7 @@ type ThreadWithTimestamp struct {
 }
 
 func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *pagination.PaginationResponse, error) {
-	tr := telemetry.Track("index.get_user_threads_cursor")
+	tr := telemetry.Track("indexdb.get_user_threads_cursor")
 	defer tr.Finish()
 
 	threadKeys, err := GetUserThreads(userID)

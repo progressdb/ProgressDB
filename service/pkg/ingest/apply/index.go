@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/index"
+	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
@@ -31,8 +31,8 @@ func NewIndexManager(kv *KVManager) *IndexManager {
 }
 
 // loads
-func (im *IndexManager) loadThreadIndex(threadKey string) (*index.ThreadMessageIndexes, error) {
-	idx := &index.ThreadMessageIndexes{}
+func (im *IndexManager) loadThreadIndex(threadKey string) (*indexdb.ThreadMessageIndexes, error) {
+	idx := &indexdb.ThreadMessageIndexes{}
 
 	// Load Start
 	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageStart(threadKey)); ok {
@@ -86,7 +86,7 @@ func (im *IndexManager) loadThreadIndex(threadKey string) (*index.ThreadMessageI
 	return idx, nil
 }
 
-func (im *IndexManager) saveThreadIndex(threadKey string, idx *index.ThreadMessageIndexes) error {
+func (im *IndexManager) saveThreadIndex(threadKey string, idx *indexdb.ThreadMessageIndexes) error {
 	// Save Start
 	im.kv.SetIndexKV(keys.GenThreadMessageStart(threadKey), []byte(fmt.Sprintf("%d", idx.Start)))
 
@@ -164,10 +164,10 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) err
 		if _, ok := im.kv.GetIndexKV(keys.GenThreadMessageEnd(threadKey)); ok {
 			continue
 		}
-		idx, err := index.GetThreadMessageIndexes(threadKey)
+		idx, err := indexdb.GetThreadMessageIndexes(threadKey)
 		if err != nil {
 			if errors.Is(err, pebble.ErrNotFound) {
-				idx = index.ThreadMessageIndexes{
+				idx = indexdb.ThreadMessageIndexes{
 					Start:         0,
 					End:           0,
 					Cdeltas:       []int64{},
@@ -308,7 +308,7 @@ func (im *IndexManager) DoesUserOwnThread(userID, threadKey string) (bool, error
 		return string(data) == "1", nil
 	}
 	// Not in batch, query DB
-	return index.DoesUserOwnThread(userID, threadKey)
+	return indexdb.DoesUserOwnThread(userID, threadKey)
 }
 
 func (im *IndexManager) DoesThreadHaveUser(threadKey, userID string) (bool, error) {
@@ -317,5 +317,5 @@ func (im *IndexManager) DoesThreadHaveUser(threadKey, userID string) (bool, erro
 		return string(data) == "1", nil
 	}
 	// Not in batch, query DB
-	return index.DoesThreadHaveUser(threadKey, userID)
+	return indexdb.DoesThreadHaveUser(threadKey, userID)
 }

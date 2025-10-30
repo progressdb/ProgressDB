@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"progressdb/pkg/api/router"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/valyala/fasthttp"

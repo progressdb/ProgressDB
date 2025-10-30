@@ -7,7 +7,7 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption/kms"
 	"progressdb/pkg/store/keys"
 )

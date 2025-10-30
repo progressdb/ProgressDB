@@ -7,8 +7,8 @@ import (
 
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
@@ -18,14 +18,14 @@ func PurgeMessagePermanently(messageKey string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	if index.IndexDB == nil {
+	if indexdb.Client == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
 	vprefix, err := keys.GenAllMessageVersionsPrefix(messageKey)
 	if err != nil {
 		return fmt.Errorf("failed to generate versions prefix: %w", err)
 	}
-	vi, err := index.IndexDB.NewIter(&pebble.IterOptions{})
+	vi, err := indexdb.Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
@@ -61,13 +61,13 @@ func PurgeMessagePermanently(messageKey string) error {
 		if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
 			logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
 		}
-		if err := index.UnmarkSoftDeleted(messageKey); err != nil {
+		if err := indexdb.UnmarkSoftDeleted(messageKey); err != nil {
 			logger.Error("unmark_soft_deleted_purge_failed", "msg", messageKey, "error", err)
 		}
 	}
 
 	for _, k := range versionKeys {
-		if err := index.IndexDB.Delete(k, index.WriteOpt(true)); err != nil {
+		if err := indexdb.Client.Delete(k, indexdb.WriteOpt(true)); err != nil {
 			logger.Error("purge_version_delete_failed", "key", string(k), "error", err)
 		}
 	}

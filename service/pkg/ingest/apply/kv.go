@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"progressdb/pkg/store/db/index"
-	storedb "progressdb/pkg/store/db/store"
+	indexdb "progressdb/pkg/store/db/indexdb"
+	storedb "progressdb/pkg/store/db/storedb"
 )
 
 type KVManager struct {
@@ -94,7 +94,7 @@ func (kvm *KVManager) Flush() error {
 
 	// Flush index KV
 	if len(kvm.indexKV) > 0 {
-		indexBatch := index.IndexDB.NewBatch()
+		indexBatch := indexdb.Client.NewBatch()
 		defer indexBatch.Close()
 
 		for key, value := range kvm.indexKV {
@@ -104,7 +104,7 @@ func (kvm *KVManager) Flush() error {
 			}
 		}
 
-		if err := indexBatch.Commit(index.WriteOpt(true)); err != nil {
+		if err := indexBatch.Commit(indexdb.WriteOpt(true)); err != nil {
 			return err
 		}
 	}

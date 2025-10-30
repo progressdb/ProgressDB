@@ -11,7 +11,7 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
-	storedb "progressdb/pkg/store/db/store"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"

@@ -1,4 +1,4 @@
-package index
+package indexdb
 
 import (
 	"bytes"
@@ -11,44 +11,44 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-var IndexDB *pebble.DB
-var IndexDBPath string
-var IndexWALDisabled bool
-var IndexPendingWrites uint64
+var Client *pebble.DB
+var StorePath string
+var WALDisabled bool
+var PendingWrites uint64
 
 func Open(path string, disablePebbleWAL bool, appWALEnabled bool) error {
 	var err error
 	opts := &pebble.Options{
 		DisableWAL: disablePebbleWAL,
 	}
-	IndexWALDisabled = opts.DisableWAL
+	WALDisabled = opts.DisableWAL
 
-	if IndexWALDisabled && !appWALEnabled {
+	if WALDisabled && !appWALEnabled {
 		logger.Warn("durability_disabled", "durability", "no WAL enabled for index DB")
 	}
 
-	IndexDB, err = pebble.Open(path, opts)
+	Client, err = pebble.Open(path, opts)
 	if err != nil {
 		logger.Error("pebble_open_failed", "path", path, "error", err)
 		return err
 	}
-	IndexDBPath = path
+	StorePath = path
 	return nil
 }
 
 func Close() error {
-	if IndexDB == nil {
+	if Client == nil {
 		return nil
 	}
-	if err := IndexDB.Close(); err != nil {
+	if err := Client.Close(); err != nil {
 		return err
 	}
-	IndexDB = nil
+	Client = nil
 	return nil
 }
 
 func Ready() bool {
-	return IndexDB != nil
+	return Client != nil
 }
 
 func IsNotFound(err error) bool {
@@ -56,10 +56,10 @@ func IsNotFound(err error) bool {
 }
 
 func GetKey(key string) (string, error) {
-	if IndexDB == nil {
+	if Client == nil {
 		return "", fmt.Errorf("pebble not opened; call Open first")
 	}
-	v, closer, err := IndexDB.Get([]byte(key))
+	v, closer, err := Client.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			logger.Debug("get_key_missing", "key", key)
@@ -76,10 +76,10 @@ func GetKey(key string) (string, error) {
 }
 
 func SaveKey(key string, value []byte) error {
-	if IndexDB == nil {
+	if Client == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	if err := IndexDB.Set([]byte(key), value, WriteOpt(true)); err != nil {
+	if err := Client.Set([]byte(key), value, WriteOpt(true)); err != nil {
 		logger.Error("save_key_failed", "key", key, "error", err)
 		return err
 	}
@@ -88,24 +88,24 @@ func SaveKey(key string, value []byte) error {
 }
 
 func DBIter() (*pebble.Iterator, error) {
-	if IndexDB == nil {
+	if Client == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
-	return IndexDB.NewIter(&pebble.IterOptions{})
+	return Client.NewIter(&pebble.IterOptions{})
 }
 
 func DBSet(key, value []byte) error {
-	if IndexDB == nil {
+	if Client == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	return IndexDB.Set(key, value, WriteOpt(true))
+	return Client.Set(key, value, WriteOpt(true))
 }
 
 func DeleteKey(key string) error {
-	if IndexDB == nil {
+	if Client == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	if err := IndexDB.Delete([]byte(key), WriteOpt(true)); err != nil {
+	if err := Client.Delete([]byte(key), WriteOpt(true)); err != nil {
 		logger.Error("delete_key_failed", "key", key, "error", err)
 		return err
 	}
@@ -114,14 +114,14 @@ func DeleteKey(key string) error {
 }
 
 func WriteOpt(requestSync bool) *pebble.WriteOptions {
-	if requestSync && !IndexWALDisabled {
+	if requestSync && !WALDisabled {
 		return pebble.Sync
 	}
 	return pebble.NoSync
 }
 
 func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.PaginationResponse, error) {
-	if IndexDB == nil {
+	if Client == nil {
 		return nil, nil, fmt.Errorf("pebble not opened; call Open first")
 	}
 
@@ -132,7 +132,7 @@ func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.Paginati
 		limit = 100
 	}
 
-	iter, err := IndexDB.NewIter(&pebble.IterOptions{})
+	iter, err := Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -185,7 +185,7 @@ func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.Paginati
 }
 
 func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationRequest) ([]string, *pagination.PaginationResponse, error) {
-	if IndexDB == nil {
+	if Client == nil {
 		return nil, nil, fmt.Errorf("pebble not opened; call db.Open first")
 	}
 
@@ -212,7 +212,7 @@ func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationReques
 		pfx = nil
 	}
 
-	iter, err := IndexDB.NewIter(&pebble.IterOptions{})
+	iter, err := Client.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

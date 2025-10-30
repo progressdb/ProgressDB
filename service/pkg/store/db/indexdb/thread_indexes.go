@@ -1,4 +1,4 @@
-package index
+package indexdb
 
 import (
 	"encoding/json"
@@ -20,7 +20,7 @@ type ThreadMessageIndexes struct {
 }
 
 func InitThreadMessageIndexes(threadKey string) error {
-	tr := telemetry.Track("index.init_thread_message_indexes")
+	tr := telemetry.Track("indexdb.init_thread_message_indexes")
 	defer tr.Finish()
 
 	indexes := ThreadMessageIndexes{
@@ -37,7 +37,7 @@ func InitThreadMessageIndexes(threadKey string) error {
 }
 
 func DeleteThreadMessageIndexes(threadKey string) error {
-	tr := telemetry.Track("index.delete_thread_message_indexes")
+	tr := telemetry.Track("indexdb.delete_thread_message_indexes")
 	defer tr.Finish()
 
 	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips"}

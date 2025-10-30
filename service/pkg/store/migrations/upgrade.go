@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"progressdb/pkg/state/logger"
-	storedb "progressdb/pkg/store/db/store"
+	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/timeutil"
 )
