@@ -23,7 +23,6 @@ import (
 
 type App struct {
 	retentionCancel context.CancelFunc
-	eff             config.EffectiveConfigResult
 	version         string
 	commit          string
 	buildDate       string
@@ -39,19 +38,19 @@ type App struct {
 
 // new sets up resources that don't need a running context (db, validation, runtime keys, etc).
 // does not start kms or http server. call run to start those and block for lifecycle.
-func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*App, error) {
-	// validate config and fail fast if not valid
-	if err := config.ValidateConfig(eff); err != nil {
-		return nil, err
+func New(version, commit, buildDate string) (*App, error) {
+	cfg := config.GetConfig()
+	if cfg == nil {
+		return nil, fmt.Errorf("config not set - call config.SetConfig() first")
 	}
 
 	// telemetry setup
 	telemetry.InitWithStrategy(
 		state.PathsVar.Tel,
-		int(eff.Config.Telemetry.BufferSize.Int64()),
-		eff.Config.Telemetry.QueueCapacity,
-		eff.Config.Telemetry.FlushInterval.Duration(),
-		eff.Config.Telemetry.FileMaxSize.Int64(),
+		int(cfg.Telemetry.BufferSize.Int64()),
+		cfg.Telemetry.QueueCapacity,
+		cfg.Telemetry.FlushInterval.Duration(),
+		cfg.Telemetry.FileMaxSize.Int64(),
 		telemetry.RotationStrategyPurge,
 	)
 
@@ -59,20 +58,20 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	runtimeCfg := &config.RuntimeConfig{
 		BackendKeys:    map[string]struct{}{},
 		SigningKeys:    map[string]struct{}{},
-		MaxPayloadSize: eff.Config.Server.MaxPayloadSize.Int64(),
+		MaxPayloadSize: cfg.Server.MaxPayloadSize.Int64(),
 	}
-	for _, k := range eff.Config.Server.APIKeys.Backend {
+	for _, k := range cfg.Server.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}
 	config.SetRuntime(runtimeCfg)
 
 	// set up encryption field policy
-	if err := initFieldPolicy(eff); err != nil {
+	if err := initFieldPolicy(); err != nil {
 		return nil, fmt.Errorf("invalid encryption fields: %w", err)
 	}
 
-	a := &App{eff: eff, version: version, commit: commit, buildDate: buildDate}
+	a := &App{version: version, commit: commit, buildDate: buildDate}
 	return a, nil
 }
 
@@ -84,7 +83,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	// open database
 	disablePebbleWAL := true // always disable Pebble WAL
-	appWALEnabled := a.eff.Config.Ingest.Intake.WAL.Enabled
+	cfg := config.GetConfig()
+	appWALEnabled := cfg.Ingest.Intake.WAL.Enabled
 	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
 
 	if state.PathsVar.Store == "" {
@@ -109,7 +109,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// initialize recovery system (will run after queue is created)
-	recoveryConfig := a.eff.Config.Ingest.Intake.Recovery
+	recoveryConfig := cfg.Ingest.Intake.Recovery
 	ingest.InitGlobalRecovery(
 		nil, // queue will be set after queue initialization
 		storedb.Client,
@@ -120,15 +120,14 @@ func (a *App) Run(ctx context.Context) error {
 	)
 
 	// start retention scheduler if enabled
-	retention.SetEffectiveConfig(a.eff)
-	if cancel, err := retention.Start(ctx, a.eff); err != nil {
+	if cancel, err := retention.Start(ctx); err != nil {
 		return err
 	} else {
 		a.retentionCancel = cancel
 	}
 
 	// init intake queue
-	if err := queue.InitGlobalIngestQueue(a.eff.Config.Ingest.Intake, a.eff.DBPath); err != nil {
+	if err := queue.InitGlobalIngestQueue(cfg.Ingest.Intake, cfg.Server.DBPath); err != nil {
 		return fmt.Errorf("failed to init queue: %w", err)
 	}
 
@@ -143,18 +142,18 @@ func (a *App) Run(ctx context.Context) error {
 			"temp_index_errors", recoveryStats.TempIndexErrors)
 	}
 
-	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, a.eff.Config.Ingest.Compute, a.eff.Config.Ingest.Apply, a.eff.DBPath)
+	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, cfg.Ingest.Compute, cfg.Ingest.Apply, cfg.Server.DBPath)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
 
 	// start hardware sensor
 	mon := sensor.MonitorConfig{
-		PollInterval:   a.eff.Config.Sensor.Monitor.PollInterval.Duration(),
-		DiskHighPct:    a.eff.Config.Sensor.Monitor.DiskHighPct,
-		DiskLowPct:     a.eff.Config.Sensor.Monitor.DiskLowPct,
-		MemHighPct:     a.eff.Config.Sensor.Monitor.MemHighPct,
-		CPUHighPct:     a.eff.Config.Sensor.Monitor.CPUHighPct,
-		RecoveryWindow: a.eff.Config.Sensor.Monitor.RecoveryWindow.Duration(),
+		PollInterval:   cfg.Sensor.Monitor.PollInterval.Duration(),
+		DiskHighPct:    cfg.Sensor.Monitor.DiskHighPct,
+		DiskLowPct:     cfg.Sensor.Monitor.DiskLowPct,
+		MemHighPct:     cfg.Sensor.Monitor.MemHighPct,
+		CPUHighPct:     cfg.Sensor.Monitor.CPUHighPct,
+		RecoveryWindow: cfg.Sensor.Monitor.RecoveryWindow.Duration(),
 	}
 	sensorObj := sensor.NewSensor(mon)
 	sensorObj.Start()
@@ -171,8 +170,9 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 // sets into state
-func initFieldPolicy(eff config.EffectiveConfigResult) error {
-	fieldPaths := eff.Config.Encryption.Fields
+func initFieldPolicy() error {
+	cfg := config.GetConfig()
+	fieldPaths := cfg.Encryption.Fields
 	if len(fieldPaths) == 0 {
 		return nil
 	}

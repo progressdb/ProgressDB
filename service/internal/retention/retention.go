@@ -9,37 +9,33 @@ import (
 	"github.com/adhocore/gronx"
 
 	"progressdb/pkg/config"
-	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/timeutil"
 )
 
-var storedEff *config.EffectiveConfigResult
-
 // TODO: Dont delete anything deleted in the last 4 hours.
-
-
 
 // store the effective config for test or admin use
 func SetEffectiveConfig(eff config.EffectiveConfigResult) {
-	storedEff = &eff
 }
 
-// run retention immediately using the stored config; error if not registered
+// run retention immediately using the global config; error if not set
 func RunImmediate() error {
-	if storedEff == nil {
-		return fmt.Errorf("no effective config registered for retention run")
+	if config.GetConfig() == nil {
+		return fmt.Errorf("no config set for retention run")
 	}
 	if state.PathsVar.Retention == "" {
 		return fmt.Errorf("state paths not initialized")
 	}
 	retentionPath := state.PathsVar.Retention
-	return runOnce(context.Background(), *storedEff, retentionPath)
+	return runOnce(context.Background(), retentionPath)
 }
 
 // enable scheduled execution if configured; returns cancel function
-func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.CancelFunc, error) {
-	ret := eff.Config.Retention
+func Start(ctx context.Context) (context.CancelFunc, error) {
+	cfg := config.GetConfig()
+	ret := cfg.Retention
 
 	// not enabled, return a no-op cancel
 	if !ret.Enabled {
@@ -62,14 +58,14 @@ func Start(ctx context.Context, eff config.EffectiveConfigResult) (context.Cance
 	ctx2, cancel := context.WithCancel(ctx)
 
 	// run the scheduler goroutine
-	go runScheduler(ctx2, eff, retentionPath, cronExpr)
+	go runScheduler(ctx2, retentionPath, cronExpr)
 
 	logger.Info("retention_scheduler_started", "path", retentionPath)
 	return cancel, nil
 }
 
 // schedules and triggers based on the cron expression
-func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPath string, cronExpr string) {
+func runScheduler(ctx context.Context, auditPath string, cronExpr string) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -97,7 +93,7 @@ func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPa
 		if wait <= 0 {
 			// time is due, run immediately
 			go func() {
-				if err := runOnce(ctx, eff, auditPath); err != nil {
+				if err := runOnce(ctx, auditPath); err != nil {
 					logger.Error("retention_run_error", "error", err)
 				}
 			}()
@@ -115,7 +111,7 @@ func runScheduler(ctx context.Context, eff config.EffectiveConfigResult, auditPa
 		select {
 		case <-time.After(wait):
 			go func() {
-				if err := runOnce(ctx, eff, auditPath); err != nil {
+				if err := runOnce(ctx, auditPath); err != nil {
 					logger.Error("retention_run_error", "error", err)
 				}
 			}()

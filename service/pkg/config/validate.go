@@ -11,14 +11,18 @@ import (
 
 // set defaults, fail fast on critical errors
 func ValidateConfig(eff EffectiveConfigResult) error {
+	cfg := GetConfig()
+	if cfg == nil {
+		return fmt.Errorf("config not set - call SetConfig() first")
+	}
 	// DB path must be present
 	if p := eff.DBPath; p == "" {
 		return fmt.Errorf("database path is empty: set --db flag, PROGRESSDB_DB_PATH env, or server.db_path in config")
 	}
 
 	// TLS cert/key presence check if one is set
-	cert := eff.Config.Server.TLS.CertFile
-	key := eff.Config.Server.TLS.KeyFile
+	cert := cfg.Server.TLS.CertFile
+	key := cfg.Server.TLS.KeyFile
 	if (cert != "" && key == "") || (cert == "" && key != "") {
 		return fmt.Errorf("incomplete TLS configuration: both server.tls.cert_file and server.tls.key_file must be set")
 	}
@@ -32,7 +36,7 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 	}
 
 	// If encryption is enabled (either in config or via env), ensure a master key is provided
-	useEnc := eff.Config.Encryption.Enabled
+	useEnc := cfg.Encryption.Enabled
 	if ev := os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"); ev != "" {
 		switch ev := ev; ev {
 		case "1", "true", "yes", "True", "TRUE":
@@ -42,8 +46,8 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 		}
 	}
 	if useEnc {
-		mkFile := eff.Config.Encryption.KMS.MasterKeyFile
-		mkHex := eff.Config.Encryption.KMS.MasterKeyHex
+		mkFile := cfg.Encryption.KMS.MasterKeyFile
+		mkHex := cfg.Encryption.KMS.MasterKeyHex
 		if mkFile == "" && mkHex == "" {
 			return fmt.Errorf("encryption enabled but no master key provided: set security.kms.master_key_file or security.kms.master_key_hex")
 		}
@@ -55,7 +59,7 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 	}
 
 	// Retention validation: if retention configured, validate durations and cron-ish syntax.
-	ret := eff.Config.Retention
+	ret := cfg.Retention
 	// if retention isn't explicitly configured, nothing to validate
 	if ret != (RetentionConfig{}) {
 		// set sensible defaults if empty

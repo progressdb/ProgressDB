@@ -66,6 +66,9 @@ func main() {
 		shutdown.Abort("invalid configuration", err, eff.DBPath)
 	}
 
+	// set global config for use throughout the application
+	config.SetConfig(eff.Config)
+
 	// Reinitialize logger with config-driven level (overrides env default)
 	logger.InitWithLevel(eff.Config.Logging.Level)
 
@@ -96,7 +99,7 @@ func main() {
 	}
 
 	// initialize app
-	app, err := app.New(eff, version, commit, buildDate)
+	app, err := app.New(version, commit, buildDate)
 	if err != nil {
 		shutdown.Abort("failed to initialize app", err, eff.DBPath)
 	}

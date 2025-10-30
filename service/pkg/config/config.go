@@ -12,12 +12,25 @@ import (
 var (
 	runtimeMu  sync.RWMutex
 	runtimeCfg *RuntimeConfig
+	fullConfig *Config
 )
 
 func SetRuntime(rc *RuntimeConfig) {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
 	runtimeCfg = rc
+}
+
+func SetConfig(full *Config) {
+	runtimeMu.Lock()
+	defer runtimeMu.Unlock()
+	fullConfig = full
+}
+
+func GetConfig() *Config {
+	runtimeMu.RLock()
+	defer runtimeMu.RUnlock()
+	return fullConfig
 }
 
 func GetBackendKeys() map[string]struct{} {

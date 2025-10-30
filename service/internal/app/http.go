@@ -18,14 +18,8 @@ import (
 // printBanner prints the startup banner and build info.
 func (a *App) printBanner() {
 	var srcs []string
-	switch a.eff.Source {
-	case "flags":
-		srcs = append(srcs, "flags")
-	case "env":
-		srcs = append(srcs, "env")
-	case "config":
-		srcs = append(srcs, "config")
-	}
+	// Note: config source tracking removed since we no longer pass EffectiveConfigResult
+	srcs = append(srcs, "config")
 	verStr := a.version
 	if a.commit != "none" {
 		verStr += " (" + a.commit + ")"
@@ -33,8 +27,9 @@ func (a *App) printBanner() {
 	if a.buildDate != "unknown" {
 		verStr += " @ " + a.buildDate
 	}
-	// Use the effective config to print richer startup info (encryption, source)
-	banner.PrintWithEff(a.eff, verStr)
+	// Use the global config to print richer startup info
+	cfg := config.GetConfig()
+	banner.Print(cfg.Addr(), cfg.Server.DBPath, "config", verStr)
 }
 
 // readyzHandler handles the /readyz endpoint (fasthttp).
@@ -71,36 +66,29 @@ func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 
 // startHTTP builds and starts the fasthttp server, returning a channel that delivers errors.
 func (a *App) startHTTP(_ context.Context) <-chan error {
+	cfg := config.GetConfig()
 	// build security config for auth middleware
 	secCfg := auth.SecConfig{
-		AllowedOrigins: append([]string{}, a.eff.Config.Server.CORS.AllowedOrigins...),
-		RPS:            a.eff.Config.Server.RateLimit.RPS,
-		Burst:          a.eff.Config.Server.RateLimit.Burst,
-		IPWhitelist:    append([]string{}, a.eff.Config.Server.IPWhitelist...),
+		AllowedOrigins: append([]string{}, cfg.Server.CORS.AllowedOrigins...),
+		RPS:            cfg.Server.RateLimit.RPS,
+		Burst:          cfg.Server.RateLimit.Burst,
+		IPWhitelist:    append([]string{}, cfg.Server.IPWhitelist...),
 		BackendKeys:    map[string]struct{}{},
 		FrontendKeys:   map[string]struct{}{},
 		AdminKeys:      map[string]struct{}{},
 	}
 	// fill backend keys
-	for _, k := range a.eff.Config.Server.APIKeys.Backend {
+	for _, k := range cfg.Server.APIKeys.Backend {
 		secCfg.BackendKeys[k] = struct{}{}
 	}
 	// fill frontend keys
-	for _, k := range a.eff.Config.Server.APIKeys.Frontend {
+	for _, k := range cfg.Server.APIKeys.Frontend {
 		secCfg.FrontendKeys[k] = struct{}{}
 	}
 	// fill admin keys
-	for _, k := range a.eff.Config.Server.APIKeys.Admin {
+	for _, k := range cfg.Server.APIKeys.Admin {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
-
-	// set runtime config for global use
-	runtimeCfg := &config.RuntimeConfig{BackendKeys: map[string]struct{}{}, SigningKeys: map[string]struct{}{}}
-	for _, k := range a.eff.Config.Server.APIKeys.Backend {
-		runtimeCfg.BackendKeys[k] = struct{}{}
-		runtimeCfg.SigningKeys[k] = struct{}{}
-	}
-	config.SetRuntime(runtimeCfg)
 
 	// build fasthttp router and register API routes
 	r := router.New()
@@ -147,7 +135,8 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	go func() {
 		// fasthttp has no direct TLS helper like ListenAndServeTLS here; for
 		// simplicity run plain TCP. TLS can be handled by a proxy in production.
-		errCh <- a.srvFast.ListenAndServe(a.eff.Addr)
+		cfg := config.GetConfig()
+		errCh <- a.srvFast.ListenAndServe(cfg.Addr())
 	}()
 	return errCh
 }

@@ -23,8 +23,9 @@ func genRetentionID(prefix string) string {
 }
 
 // runOnce executes a single retention run: acquire lease, scan threads, purge eligible items, write audit.
-func runOnce(ctx context.Context, eff config.EffectiveConfigResult, auditPath string) error {
-	ret := eff.Config.Retention
+func runOnce(ctx context.Context, auditPath string) error {
+	cfg := config.GetConfig()
+	ret := cfg.Retention
 	owner := genRetentionID("lease")
 	lock := NewFileLease(auditPath)
 	acq, err := lock.Acquire(owner, ret.LockTTL.Duration())
