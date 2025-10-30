@@ -1,13 +1,21 @@
-package queue
+package wally
 
 import (
 	"fmt"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/store/keys"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble"
+)
+
+// Pebble log entry key bounds and markers (inline prefix definitions)
+const (
+	pebbleLogKeyLowerBound = "00000000000000000000"
+	pebbleLogKeyUpperBound = "99999999999999999999"
+	pebbleSyncMarkerKey    = "sync:marker"
 )
 
 var (
@@ -199,8 +207,8 @@ func (l *Log) FirstIndex() (uint64, error) {
 	}
 
 	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("00000000000000000000"),
-		UpperBound: []byte("99999999999999999999"),
+		LowerBound: []byte(pebbleLogKeyLowerBound),
+		UpperBound: []byte(pebbleLogKeyUpperBound),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create iterator: %w", err)
@@ -228,8 +236,8 @@ func (l *Log) LastIndex() (uint64, error) {
 	}
 
 	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("00000000000000000000"),
-		UpperBound: []byte("99999999999999999999"),
+		LowerBound: []byte(pebbleLogKeyLowerBound),
+		UpperBound: []byte(pebbleLogKeyUpperBound),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create iterator: %w", err)
@@ -262,7 +270,7 @@ func (l *Log) TruncateFront(index uint64) error {
 
 	batch := l.db.NewBatch()
 	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("00000000000000000000"),
+		LowerBound: []byte(pebbleLogKeyLowerBound),
 		UpperBound: []byte(fmt.Sprintf("%020d", index-1)),
 	})
 	if err != nil {
@@ -285,7 +293,7 @@ func (l *Log) Sync() error {
 		return ErrClosed
 	}
 
-	return l.db.Set([]byte("sync:marker"), []byte(time.Now().Format(time.RFC3339Nano)), pebble.Sync)
+	return l.db.Set([]byte(pebbleSyncMarkerKey), []byte(time.Now().Format(time.RFC3339Nano)), pebble.Sync)
 }
 
 func (l *Log) IsEmpty() (bool, error) {
@@ -308,3 +316,6 @@ func (l *Log) IsEmpty() (bool, error) {
 
 	return first == 0 && last == 0, nil
 }
+
+// Ensure Log implements types.WAL interface
+var _ types.WAL = (*Log)(nil)

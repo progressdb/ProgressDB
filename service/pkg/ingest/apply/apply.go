@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
@@ -56,48 +55,48 @@ func groupOperationsByThreadKey(entries []types.BatchEntry) map[string][]types.B
 	return threadGroups
 }
 
-func getOperationPriority(handler queue.HandlerID) int {
+func getOperationPriority(handler types.HandlerID) int {
 	switch handler {
-	case queue.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		return 1
-	case queue.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		return 2
-	case queue.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		return 3
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		return 4
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		return 5
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		return 6
+	default:
+		// This should never happen.
+		state.Crash("get_operation_priority_failed", fmt.Errorf("getOperationPriority: unsupported handler type: %v", handler))
+		return 10
 	}
-
-	// This should never happen.
-	state.Crash("get_operation_priority_failed", fmt.Errorf("getOperationPriority: unsupported handler type: %v", handler))
-	return 0
 }
 
 func extractTS(entry types.BatchEntry) int64 {
 	switch entry.Handler {
-	case queue.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		if th, ok := entry.Payload.(*models.Thread); ok {
 			return th.CreatedTS
 		}
-	case queue.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		if update, ok := entry.Payload.(*models.ThreadUpdatePartial); ok && update.UpdatedTS != 0 {
 			return update.UpdatedTS
 		}
-	case queue.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		return 0
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		if m, ok := entry.Payload.(*models.Message); ok {
 			return m.TS
 		}
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.TS != 0 {
 			return update.TS
 		}
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
 			return del.TS
 		}
@@ -112,21 +111,21 @@ func extractTS(entry types.BatchEntry) int64 {
 
 func extractAuthor(entry types.BatchEntry) string {
 	switch entry.Handler {
-	case queue.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		if th, ok := entry.Payload.(*models.Thread); ok {
 			return th.Author
 		}
-	case queue.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		return entry.QueueOp.Extras.UserID
-	case queue.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		return entry.QueueOp.Extras.UserID
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		if m, ok := entry.Payload.(*models.Message); ok {
 			return m.Author
 		}
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		return entry.QueueOp.Extras.UserID
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
 			return del.Author
 		}
@@ -139,29 +138,29 @@ func extractAuthor(entry types.BatchEntry) string {
 	return ""
 }
 
-func ExtractTKey(qop *queue.QueueOp) string {
+func ExtractTKey(qop *types.QueueOp) string {
 	switch qop.Handler {
-	case queue.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		if th, ok := qop.Payload.(*models.Thread); ok {
 			return th.Key
 		}
-	case queue.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		if update, ok := qop.Payload.(*models.ThreadUpdatePartial); ok && update.Key != "" {
 			return update.Key
 		}
-	case queue.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		if del, ok := qop.Payload.(*models.ThreadDeletePartial); ok && del.Key != "" {
 			return del.Key
 		}
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		if msg, ok := qop.Payload.(*models.Message); ok {
 			return msg.Thread
 		}
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		if update, ok := qop.Payload.(*models.MessageUpdatePartial); ok && update.Thread != "" {
 			return update.Thread
 		}
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		if del, ok := qop.Payload.(*models.MessageDeletePartial); ok && del.Thread != "" {
 			return del.Thread
 		}
@@ -174,19 +173,19 @@ func ExtractTKey(qop *queue.QueueOp) string {
 	return ""
 }
 
-func ExtractMKey(qop *queue.QueueOp) string {
+func ExtractMKey(qop *types.QueueOp) string {
 	switch qop.Handler {
-	case queue.HandlerThreadCreate, queue.HandlerThreadUpdate, queue.HandlerThreadDelete:
+	case types.HandlerThreadCreate, types.HandlerThreadUpdate, types.HandlerThreadDelete:
 		return ""
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		if m, ok := qop.Payload.(*models.Message); ok {
 			return m.Key
 		}
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		if update, ok := qop.Payload.(*models.MessageUpdatePartial); ok && update.Key != "" {
 			return update.Key
 		}
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		if del, ok := qop.Payload.(*models.MessageDeletePartial); ok {
 			return del.Key
 		}

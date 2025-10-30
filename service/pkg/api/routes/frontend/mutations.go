@@ -11,6 +11,7 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/routes/common"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/timeutil"
@@ -71,11 +72,11 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerThreadCreate,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerThreadCreate,
 		Payload: &th,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,
@@ -137,11 +138,11 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerThreadUpdate,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerThreadUpdate,
 		Payload: &update,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,
@@ -188,11 +189,11 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerThreadDelete,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerThreadDelete,
 		Payload: &del,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,
@@ -255,11 +256,11 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerMessageCreate,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerMessageCreate,
 		Payload: &m,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,
@@ -331,11 +332,11 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerMessageUpdate,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerMessageUpdate,
 		Payload: &update,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,
@@ -398,11 +399,11 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := queue.GlobalIngestQueue.Enqueue(&queue.QueueOp{
-		Handler: queue.HandlerMessageDelete,
+	if err := queue.GlobalIngestQueue.Enqueue(&types.QueueOp{
+		Handler: types.HandlerMessageDelete,
 		Payload: &del,
 		TS:      reqtime,
-		Extras: queue.RequestMetadata{
+		Extras: types.RequestMetadata{
 			Role:   metadata.Role,
 			UserID: metadata.UserID,
 			ReqID:  metadata.ReqID,

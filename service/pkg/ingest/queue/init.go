@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"progressdb/pkg/config"
+	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/ingest/wally"
 )
 
 // GlobalIngestQueue is the global ingest queue instance.
@@ -17,7 +19,7 @@ func NewIngestQueue(capacity int) *IngestQueue {
 		panic("queue.NewIngestQueue: capacity must be > 0; ensure config.ValidateConfig() applied defaults")
 	}
 	return &IngestQueue{
-		ch:                make(chan *QueueItem, capacity),
+		ch:                make(chan *types.QueueItem, capacity),
 		capacity:          capacity,
 		drainPollInterval: 250 * time.Microsecond, // default
 	}
@@ -34,10 +36,10 @@ func InitGlobalIngestQueue(dbPath string) error {
 	if ic.WAL.Enabled {
 		// Enable WAL for durability
 		walDir := filepath.Join(dbPath, "wal")
-		opts := &Options{
+		opts := &wally.Options{
 			SegmentSize: int(ic.WAL.SegmentSize.Int64()),
 		}
-		wal, err := Open(walDir, opts)
+		wal, err := wally.Open(walDir, opts)
 		if err != nil {
 			return fmt.Errorf("failed to create WAL: %w", err)
 		}
@@ -60,9 +62,6 @@ func (q *IngestQueue) EnableWAL() {
 }
 
 // WAL returns the WAL log, if any.
-func (q *IngestQueue) WAL() *Log {
-	if q.wal == nil {
-		return nil
-	}
-	return q.wal.(*Log)
+func (q *IngestQueue) WAL() types.WAL {
+	return q.wal
 }

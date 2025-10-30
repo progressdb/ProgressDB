@@ -9,14 +9,14 @@ import (
 	"sync"
 	"time"
 
-	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/state/logger"
 )
 
 type FailedOp struct {
 	Timestamp time.Time         `json:"timestamp"`
 	Key       string            `json:"key"`
-	Op        *qpkg.QueueOp     `json:"op"`
+	Op        *types.QueueOp    `json:"op"`
 	Error     string            `json:"error"`
 	Retries   int               `json:"retries"`
 	Metadata  map[string]string `json:"metadata"`
@@ -35,7 +35,7 @@ func NewFailedOpWriter(basePath string) *FailedOpWriter {
 	}
 }
 
-func (fw *FailedOpWriter) WriteFailedOp(op *qpkg.QueueOp, err error) error {
+func (fw *FailedOpWriter) WriteFailedOp(op *types.QueueOp, err error) error {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 

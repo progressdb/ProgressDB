@@ -6,21 +6,22 @@ import (
 	"testing"
 	"time"
 
-	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 )
 
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
-	q := qpkg.NewIngestQueue(2)
+	q := queue.NewIngestQueue(2)
 
-	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
+	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "m1", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m2", nil, 0); err != nil {
+	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "m2", nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// next should fail with ErrQueueFull
-	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m3", nil, 0); err == nil {
+	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "m3", nil, 0); err == nil {
 		t.Fatalf("expected ErrQueueFull, got nil")
 	}
 	if q.Dropped() == 0 {
@@ -29,10 +30,10 @@ func TestQueueTryEnqueueAndDrop(t *testing.T) {
 }
 
 func TestQueueEnqueueBlockingAndOut(t *testing.T) {
-	q := qpkg.NewIngestQueue(2)
+	q := queue.NewIngestQueue(2)
 
 	// start consumer
-	recv := make(chan *qpkg.QueueItem, 4)
+	recv := make(chan *types.QueueItem, 4)
 	go func() {
 		for it := range q.Out() {
 			recv <- it
@@ -40,10 +41,10 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	}()
 
 	// enqueue two items
-	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "m1", []byte("a"), 0); err != nil {
+	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "m1", []byte("a"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
-	if err := q.EnqueueBytes(qpkg.HandlerMessageUpdate, "t1", "m2", []byte("b"), 0); err != nil {
+	if err := q.EnqueueBytes(types.HandlerMessageUpdate, "t1", "m2", []byte("b"), 0); err != nil {
 		t.Fatalf("enqueue failed: %v", err)
 	}
 
@@ -64,10 +65,10 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 }
 
 func TestCloseAndDrain(t *testing.T) {
-	q := qpkg.NewIngestQueue(4)
+	q := queue.NewIngestQueue(4)
 	// enqueue some items
-	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
-	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
+	_ = q.EnqueueBytes(types.HandlerMessageCreate, "t1", "a", []byte("x"), 0)
+	_ = q.EnqueueBytes(types.HandlerMessageCreate, "t1", "b", []byte("y"), 0)
 
 	q.Close()
 
@@ -77,7 +78,7 @@ func TestCloseAndDrain(t *testing.T) {
 }
 
 func TestQueueOutEnsuresDone(t *testing.T) {
-	q := qpkg.NewIngestQueue(4)
+	q := queue.NewIngestQueue(4)
 	processed := make(chan string, 4)
 
 	go func() {
@@ -89,8 +90,8 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 		}
 	}()
 
-	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
-	_ = q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
+	_ = q.EnqueueBytes(types.HandlerMessageCreate, "t1", "x", []byte("p"), 0)
+	_ = q.EnqueueBytes(types.HandlerMessageCreate, "t1", "y", []byte("q"), 0)
 
 	// allow consumer to process
 	select {
@@ -106,7 +107,7 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 }
 
 func TestQueueCloseWaitsForDrain(t *testing.T) {
-	q := qpkg.NewIngestQueue(8)
+	q := queue.NewIngestQueue(8)
 	var processed int32
 
 	go func() {
@@ -119,7 +120,7 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("m%d", i)
-		if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("p"), 0); err != nil {
+		if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", id, []byte("p"), 0); err != nil {
 			t.Fatalf("enqueue failed: %v", err)
 		}
 	}
@@ -145,13 +146,13 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", "late", nil, 0); err != qpkg.ErrQueueClosed {
+	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "late", nil, 0); err != queue.ErrQueueClosed {
 		t.Fatalf("expected ErrQueueClosed, got %v", err)
 	}
 }
 
 func TestQueueOutBatches(t *testing.T) {
-	q := qpkg.NewIngestQueue(16)
+	q := queue.NewIngestQueue(16)
 	batchCh := make(chan []string, 4)
 
 	go func() {
@@ -173,7 +174,7 @@ func TestQueueOutBatches(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("b%d", i)
-		if err := q.EnqueueBytes(qpkg.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
+		if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
 			t.Fatalf("enqueue failed: %v", err)
 		}
 	}

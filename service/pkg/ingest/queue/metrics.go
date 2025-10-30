@@ -2,10 +2,12 @@ package queue
 
 import (
 	"sync/atomic"
+
+	"progressdb/pkg/ingest/types"
 )
 
-func (q *IngestQueue) EnqueueBytes(handler HandlerID, tid string, mid string, payload []byte, ts int64) error {
-	return q.Enqueue(&QueueOp{Handler: handler, Payload: payload, TS: ts})
+func (q *IngestQueue) EnqueueBytes(handler types.HandlerID, tid string, mid string, payload []byte, ts int64) error {
+	return q.Enqueue(&types.QueueOp{Handler: handler, Payload: payload, TS: ts})
 }
 func (q *IngestQueue) Len() int        { return len(q.ch) }
 func (q *IngestQueue) Cap() int        { return q.capacity }

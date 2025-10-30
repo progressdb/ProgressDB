@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	qpkg "progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
@@ -13,7 +13,7 @@ import (
 
 // ComputeWorker handles transformation of QueueOp to types.BatchEntry.
 type ComputeWorker struct {
-	queue          *qpkg.IngestQueue
+	queue          *queue.IngestQueue
 	output         chan<- types.BatchEntry
 	stop           <-chan struct{}
 	workers        int
@@ -21,7 +21,7 @@ type ComputeWorker struct {
 }
 
 // NewComputeWorker creates a new compute worker.
-func NewComputeWorker(queue *qpkg.IngestQueue, output chan<- types.BatchEntry, workers int, failedOpsPath string) *ComputeWorker {
+func NewComputeWorker(queue *queue.IngestQueue, output chan<- types.BatchEntry, workers int, failedOpsPath string) *ComputeWorker {
 	return &ComputeWorker{
 		queue:          queue,
 		output:         output,
@@ -77,19 +77,19 @@ func (cw *ComputeWorker) run() {
 	}
 }
 
-func (cw *ComputeWorker) compute(op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func (cw *ComputeWorker) compute(op *types.QueueOp) ([]types.BatchEntry, error) {
 	switch op.Handler {
-	case qpkg.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		return ComputeMessageCreate(context.Background(), op)
-	case qpkg.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		return ComputeMessageUpdate(context.Background(), op)
-	case qpkg.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		return ComputeMessageDelete(context.Background(), op)
-	case qpkg.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		return ComputeThreadCreate(context.Background(), op)
-	case qpkg.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		return ComputeThreadUpdate(context.Background(), op)
-	case qpkg.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		return ComputeThreadDelete(context.Background(), op)
 	default:
 		return nil, fmt.Errorf("unknown handler: %s", op.Handler)

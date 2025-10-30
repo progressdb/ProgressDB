@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	qpkg "progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
@@ -16,7 +15,7 @@ import (
 )
 
 // thread meta op methods
-func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadCreate(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for thread create")
 	}
@@ -44,7 +43,7 @@ func ComputeThreadCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
-func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadUpdate(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	// parse
 	update, ok := op.Payload.(*models.ThreadUpdatePartial)
 	if !ok {
@@ -76,7 +75,7 @@ func ComputeThreadUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
-func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeThreadDelete(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	// parse
 	del, ok := op.Payload.(*models.ThreadDeletePartial)
 	if !ok {
@@ -105,7 +104,7 @@ func ComputeThreadDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEn
 }
 
 // message op methods
-func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageCreate(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for message create")
 	}
@@ -125,7 +124,7 @@ func ComputeMessageCreate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
-func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageUpdate(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	if op.Payload == nil {
 		return nil, fmt.Errorf("empty payload for message update")
 	}
@@ -145,7 +144,7 @@ func ComputeMessageUpdate(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchE
 	be := types.BatchEntry{QueueOp: op, Enq: op.EnqSeq}
 	return []types.BatchEntry{be}, nil
 }
-func ComputeMessageDelete(ctx context.Context, op *qpkg.QueueOp) ([]types.BatchEntry, error) {
+func ComputeMessageDelete(ctx context.Context, op *types.QueueOp) ([]types.BatchEntry, error) {
 	// parse
 	del, ok := op.Payload.(*models.MessageDeletePartial)
 	if !ok {

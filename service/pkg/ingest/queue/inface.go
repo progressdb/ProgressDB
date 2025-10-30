@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"sync/atomic"
+
+	"progressdb/pkg/ingest/types"
 )
 
 // TODO: queue full - drop strategy
@@ -21,12 +23,12 @@ var (
 )
 
 // enqueue operation (non-blocking)
-func (q *IngestQueue) Enqueue(op *QueueOp) error {
+func (q *IngestQueue) Enqueue(op *types.QueueOp) error {
 	return q.enqueue(op)
 }
 
 // internal enqueue function
-func (q *IngestQueue) enqueue(op *QueueOp) error {
+func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 	// Acquire enqueue lock to atomically check closed state and increment WaitGroup
 	q.enqMu.Lock()
 	if atomic.LoadInt32(&q.closed) == 1 {
@@ -42,15 +44,15 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 		return ErrQueueClosed
 	}
 
-	newOp := &QueueOp{
+	newOp := &types.QueueOp{
 		Handler: op.Handler,
 		Payload: op.Payload,
 		TS:      op.TS,
 	}
-	if op.Extras != (RequestMetadata{}) {
+	if op.Extras != (types.RequestMetadata{}) {
 		newOp.Extras = op.Extras
 	}
-	var it *QueueItem
+	var it *types.QueueItem
 	if q.wal != nil && q.walBacked {
 		// WAL manages sequence - get persistent sequence from WAL
 		data, err := json.Marshal(newOp)
@@ -62,11 +64,11 @@ func (q *IngestQueue) enqueue(op *QueueOp) error {
 			return err
 		}
 		newOp.WalSeq = walSeq
-		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
+		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	} else {
 		// In-memory sequence (current behavior)
 		newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
-		it = &QueueItem{Op: newOp, Sb: nil, Q: q}
+		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	}
 
 	select {
@@ -97,12 +99,12 @@ func (q *IngestQueue) Close() error {
 }
 
 // get output channel
-func (q *IngestQueue) Out() <-chan *QueueItem {
+func (q *IngestQueue) Out() <-chan *types.QueueItem {
 	return q.ch
 }
 
 // global enqueue
-func Enqueue(op *QueueOp) error {
+func Enqueue(op *types.QueueOp) error {
 	if GlobalIngestQueue != nil {
 		return GlobalIngestQueue.Enqueue(op)
 	}

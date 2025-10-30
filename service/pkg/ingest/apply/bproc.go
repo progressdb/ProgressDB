@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
@@ -14,17 +13,17 @@ import (
 
 func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
 	switch entry.Handler {
-	case queue.HandlerThreadCreate:
+	case types.HandlerThreadCreate:
 		return BProcThreadCreate(entry, batchProcessor)
-	case queue.HandlerThreadUpdate:
+	case types.HandlerThreadUpdate:
 		return BProcThreadUpdate(entry, batchProcessor)
-	case queue.HandlerThreadDelete:
+	case types.HandlerThreadDelete:
 		return BProcThreadDelete(entry, batchProcessor)
-	case queue.HandlerMessageCreate:
+	case types.HandlerMessageCreate:
 		return BProcMessageCreate(entry, batchProcessor)
-	case queue.HandlerMessageUpdate:
+	case types.HandlerMessageUpdate:
 		return BProcMessageUpdate(entry, batchProcessor)
-	case queue.HandlerMessageDelete:
+	case types.HandlerMessageDelete:
 		return BProcMessageDelete(entry, batchProcessor)
 	}
 

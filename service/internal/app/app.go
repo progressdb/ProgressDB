@@ -8,6 +8,7 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/wally"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/sensor"
 	"progressdb/pkg/state/telemetry"
@@ -133,17 +134,13 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to init queue: %w", err)
 	}
 
-	// initialize recovery system with queue
-	ingest.InitGlobalRecovery(queue.GlobalIngestQueue, storedb.Client, indexdb.Client)
+	// initialize WAL replay system with queue
+	wally.InitWALReplay(queue.GlobalIngestQueue)
 
-	// run crash recovery before starting ingestor
-	recoveryStats := ingest.RunGlobalRecovery()
-	if recoveryStats.WALErrors > 0 || recoveryStats.TempIndexErrors > 0 {
-		logger.Warn("recovery_completed_with_errors",
-			"wal_errors", recoveryStats.WALErrors,
-			"temp_index_errors", recoveryStats.TempIndexErrors)
-	}
+	// run crash replay before starting ingestor
+	wally.ReplayWAL()
 
+	// start queue & others
 	ingestor := ingest.NewIngestor(queue.GlobalIngestQueue, cfg.Server.DBPath)
 	ingestor.Start()
 	a.ingestIngestor = ingestor
