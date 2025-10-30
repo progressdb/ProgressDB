@@ -76,29 +76,30 @@ func New(version, commit, buildDate string) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	// establish kms setup
 	if err := a.setupKMS(ctx); err != nil {
 		return err
 	}
 	a.printBanner()
 
 	// open database
-	disablePebbleWAL := true // always disable Pebble WAL
 	cfg := config.GetConfig()
+	storageWalEnabled := cfg.Storage.WAL
 	appWALEnabled := cfg.Ingest.Intake.WAL.Enabled
-	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", disablePebbleWAL, "app_wal_enabled", appWALEnabled)
+	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", storageWalEnabled, "app_wal_enabled", appWALEnabled)
 
-	if state.PathsVar.Store == "" {
+	if state.PathsVar.Store == "" || state.PathsVar.Index == "" {
 		return fmt.Errorf("state paths not initialized")
 	}
 
 	// open storedb
-	if err := storedb.Open(state.PathsVar.Store, disablePebbleWAL, appWALEnabled); err != nil {
+	if err := storedb.Open(state.PathsVar.Store, storageWalEnabled, appWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
 	// open indexdb
-	if err := indexdb.Open(state.PathsVar.Index, disablePebbleWAL, appWALEnabled); err != nil {
+	if err := indexdb.Open(state.PathsVar.Index, storageWalEnabled, appWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)

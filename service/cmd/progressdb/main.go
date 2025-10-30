@@ -12,7 +12,6 @@ import (
 	"progressdb/pkg/state/shutdown"
 	"progressdb/pkg/store/migrations"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -54,11 +53,6 @@ func main() {
 	eff, err := config.LoadEffectiveConfig(flags, fileCfg, fileExists, envCfg, envRes)
 	if err != nil {
 		shutdown.Abort("failed to build effective config", err, flags.DB)
-	}
-	if strings.TrimSpace(eff.DBPath) == "" {
-		if root := state.ArtifactRoot(); root != "" {
-			eff.DBPath = filepath.Join(root, "database")
-		}
 	}
 
 	// validate config

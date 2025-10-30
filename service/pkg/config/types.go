@@ -20,6 +20,7 @@ type RuntimeConfig struct {
 // Config is the main configuration struct.
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
+	Storage    StorageConfig    `yaml:"storage"`
 	Logging    LoggingConfig    `yaml:"logging"`
 	Retention  RetentionConfig  `yaml:"retention"`
 	Ingest     IngestConfig     `yaml:"ingest"`
@@ -39,6 +40,11 @@ type ServerConfig struct {
 	RateLimit      RateConfig   `yaml:"rate_limit"`
 	IPWhitelist    []string     `yaml:"ip_whitelist"`
 	APIKeys        APIKeyConfig `yaml:"api_keys"`
+}
+
+// StorageConfig holds database-specific settings.
+type StorageConfig struct {
+	WAL bool `yaml:"wal,default=false"`
 }
 
 // TLSConfig holds TLS certificate configuration.

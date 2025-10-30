@@ -20,6 +20,9 @@ server:
     frontend: ["pk_example"]
     admin: ["admin_example"]
 
+storage:
+  wal: false
+
 logging:
   level: "debug"
 
