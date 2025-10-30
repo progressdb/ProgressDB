@@ -6,18 +6,13 @@ import (
 
 	"github.com/valyala/fasthttp"
 
-	"progressdb/pkg/ingest"
-	"progressdb/pkg/ingest/queue"
-	"progressdb/pkg/state/logger"
-	"progressdb/pkg/state/sensor"
-	"progressdb/pkg/state/telemetry"
-	indexdb "progressdb/pkg/store/db/indexdb"
-	storedb "progressdb/pkg/store/db/storedb"
-
+	"progressdb/internal/app/managers"
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
 	"progressdb/pkg/state"
-	"progressdb/pkg/store/encryption"
+	"progressdb/pkg/state/logger"
+	"progressdb/pkg/state/sensor"
+	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/encryption/kms"
 )
 
@@ -96,8 +91,17 @@ func (a *App) Run(ctx context.Context) error {
 		"intake_wal_enabled", intakeWALEnabled,
 	)
 
+	// paths check
 	if state.PathsVar.Store == "" || state.PathsVar.Index == "" {
 		return fmt.Errorf("state paths not initialized")
+	}
+
+	// durability check
+	if !intakeWALEnabled && !storageWalEnabled {
+		logger.Warn(
+			"no_durability_layers_enabled",
+			"No durability layers enabled (intake & storage) - data loss is possible",
+		)
 	}
 
 	// open storedb
@@ -111,11 +115,6 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)
-
-	// warn if WAL is disabled
-	if !intakeWALEnabled {
-		logger.Warn("wal_disabled_data_risk", "message", "WAL is disabled - potential data loss during crash")
-	}
 
 	// initialize recovery system (will run after queue is created)
 	recoveryConfig := cfg.Ingest.Intake.Recovery
