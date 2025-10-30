@@ -12,7 +12,10 @@ import (
 )
 
 func GetUserThreads(userID string) ([]string, error) {
-	prefix := keys.GenUserThreadRelPrefix(userID)
+	prefix, err := keys.GenUserThreadRelPrefix(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate user thread prefix: %w", err)
+	}
 	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list user ownership keys: %w", err)
@@ -107,7 +110,10 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *paginati
 }
 
 func GetThreadParticipants(threadKey string) ([]string, error) {
-	prefix := keys.GenThreadUserRelPrefix(threadKey)
+	prefix, err := keys.GenThreadUserRelPrefix(threadKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate thread user prefix: %w", err)
+	}
 	keys, _, err := ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 	if err != nil {
 		return nil, fmt.Errorf("list thread participant keys: %w", err)

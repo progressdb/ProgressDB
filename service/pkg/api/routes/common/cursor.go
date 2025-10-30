@@ -23,7 +23,7 @@ type PaginationResponse struct {
 }
 
 type MessageCursor struct {
-	ThreadID  string `json:"thread_id"`
+	ThreadKey string `json:"thread_key"`
 	Timestamp int64  `json:"timestamp"`
 	Sequence  uint64 `json:"sequence"`
 }
@@ -53,9 +53,9 @@ func NewPaginationResponse(limit int, hasMore bool, nextCursor string, count int
 	}
 }
 
-func EncodeMessageCursor(threadID string, timestamp int64, sequence uint64) (string, error) {
+func EncodeMessageCursor(threadKey string, timestamp int64, sequence uint64) (string, error) {
 	cursor := MessageCursor{
-		ThreadID:  threadID,
+		ThreadKey: threadKey,
 		Timestamp: timestamp,
 		Sequence:  sequence,
 	}

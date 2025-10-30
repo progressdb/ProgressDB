@@ -19,7 +19,7 @@ func TestE2E_ProvisionThenRotateThenRead(t *testing.T) {
 	msg := map[string]interface{}{"author": user, "body": map[string]string{"text": "before-rotate"}, "thread": tid}
 	_ = utils.CreateMessageAndWait(t, sp.Addr, user, tid, msg, 5*time.Second)
 	var rout map[string]string
-	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_id": tid}, &rout)
+	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_key": tid}, &rout)
 	if status != 200 {
 		t.Fatalf("rotate failed: %d", status)
 	}

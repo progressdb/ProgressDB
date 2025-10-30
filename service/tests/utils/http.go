@@ -110,19 +110,19 @@ func CreateThreadAsBackend(t *testing.T, baseURL, author, title string) (int, ma
 	return status, out
 }
 
-func CreateMessageAsBackend(t *testing.T, baseURL, author, threadID string, body interface{}) (int, map[string]interface{}) {
+func CreateMessageAsBackend(t *testing.T, baseURL, author, threadKey string, body interface{}) (int, map[string]interface{}) {
 	t.Helper()
 	if body == nil {
 		body = map[string]interface{}{"author": author, "body": map[string]string{"text": "hello"}}
 	}
 	var out map[string]interface{}
-	status := BackendPostJSON(t, baseURL, "/v1/threads/"+threadID+"/messages", body, author, &out)
+	status := BackendPostJSON(t, baseURL, "/v1/threads/"+threadKey+"/messages", body, author, &out)
 	return status, out
 }
 
-func ListThreadMessagesAsBackend(t *testing.T, baseURL, threadID, author string, out interface{}) int {
+func ListThreadMessagesAsBackend(t *testing.T, baseURL, threadKey, author string, out interface{}) int {
 	t.Helper()
-	return BackendGetJSON(t, baseURL, "/v1/threads/"+threadID+"/messages", author, out)
+	return BackendGetJSON(t, baseURL, "/v1/threads/"+threadKey+"/messages", author, out)
 }
 
 func AdminListKeysPaginated(t *testing.T, baseURL, prefix string, limit int, cursor string) (int, struct {
@@ -151,10 +151,10 @@ func AdminListKeysPaginated(t *testing.T, baseURL, prefix string, limit int, cur
 	return status, out
 }
 
-func AdminRotateThreadDEK(t *testing.T, baseURL, threadID string) (int, map[string]string) {
+func AdminRotateThreadDEK(t *testing.T, baseURL, threadKey string) (int, map[string]string) {
 	t.Helper()
 	var out map[string]string
-	status := AdminPostJSON(t, baseURL, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_id": threadID}, &out)
+	status := AdminPostJSON(t, baseURL, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_key": threadKey}, &out)
 	return status, out
 }
 

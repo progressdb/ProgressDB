@@ -19,7 +19,14 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]string, models.ReadResponseCursorInfo, error) {
+// Move the cursor struct type up for reuse and clarity.
+type messageCursor struct {
+	ThreadKey string `json:"thread_key"`
+	Timestamp int64  `json:"timestamp"`
+	Sequence  uint64 `json:"sequence"`
+}
+
+func ListMessages(threadKey string, reqCursor models.ReadRequestCursorInfo) ([]string, models.ReadResponseCursorInfo, error) {
 	tr := telemetry.Track("storedb.list_messages_cursor")
 	defer tr.Finish()
 
@@ -27,7 +34,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 
-	threadStr, err := threads.GetThread(threadID)
+	threadStr, err := threads.GetThread(threadKey)
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
@@ -36,7 +43,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
 
-	threadIndexes, err := index.GetThreadMessageIndexes(threadID)
+	threadIndexes, err := index.GetThreadMessageIndexes(threadKey)
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
@@ -53,12 +60,20 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		if err != nil {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("invalid cursor: %w", err)
 		}
-		if mc.ThreadKey != threadID {
+		if mc.ThreadKey != threadKey {
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("cursor thread mismatch")
 		}
-		startKey = []byte(keys.GenThreadMessagesGEPrefix(threadID, mc.Sequence+1))
+		prefix, err := keys.GenThreadMessagesGEPrefix(threadKey, mc.Sequence+1)
+		if err != nil {
+			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("failed to generate prefix: %w", err)
+		}
+		startKey = []byte(prefix)
 	} else {
-		startKey = []byte(keys.GenAllThreadMessagesPrefix(threadID))
+		prefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+		if err != nil {
+			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("failed to generate prefix: %w", err)
+		}
+		startKey = []byte(prefix)
 	}
 
 	var out []string
@@ -70,7 +85,10 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
 		key := iter.Key()
 
-		threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
+		threadPrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+		if err != nil {
+			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("failed to generate thread prefix: %w", err)
+		}
 		if !bytes.HasPrefix(key, []byte(threadPrefix)) {
 			break
 		}
@@ -87,7 +105,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 		v := append([]byte(nil), iter.Value()...)
 		v, err = encryption.DecryptMessageData(thread.KMS, v)
 		if err != nil {
-			logger.Error("decrypt_message_failed", "threadID", threadID, "error", err)
+			logger.Error("decrypt_message_failed", "threadKey", threadKey, "error", err)
 			return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("failed to decrypt message: %w", err)
 		}
 
@@ -110,7 +128,7 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 
 	var nextCursor string
 	if len(out) > 0 && hasMore {
-		nextCursor, err = encodeMessageCursor(threadID, lastTimestamp, lastSequence)
+		nextCursor, err = encodeMessageCursor(threadKey, lastTimestamp, lastSequence)
 		if err != nil {
 			return nil, models.ReadResponseCursorInfo{}, err
 		}
@@ -126,11 +144,11 @@ func ListMessages(threadID string, reqCursor models.ReadRequestCursorInfo) ([]st
 	return out, respCursor, iter.Error()
 }
 
-func encodeMessageCursor(threadID string, timestamp int64, sequence uint64) (string, error) {
-	cursor := map[string]interface{}{
-		"thread_id": threadID,
-		"timestamp": timestamp,
-		"sequence":  sequence,
+func encodeMessageCursor(threadKey string, timestamp int64, sequence uint64) (string, error) {
+	cursor := messageCursor{
+		ThreadKey: threadKey,
+		Timestamp: timestamp,
+		Sequence:  sequence,
 	}
 	data, err := json.Marshal(cursor)
 	if err != nil {
@@ -139,16 +157,8 @@ func encodeMessageCursor(threadID string, timestamp int64, sequence uint64) (str
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-func decodeMessageCursor(cursor string) (struct {
-	ThreadKey string `json:"thread_id"`
-	Timestamp int64  `json:"timestamp"`
-	Sequence  uint64 `json:"sequence"`
-}, error) {
-	var result struct {
-		ThreadKey string `json:"thread_id"`
-		Timestamp int64  `json:"timestamp"`
-		Sequence  uint64 `json:"sequence"`
-	}
+func decodeMessageCursor(cursor string) (messageCursor, error) {
+	var result messageCursor
 
 	data, err := base64.StdEncoding.DecodeString(cursor)
 	if err != nil {

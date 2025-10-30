@@ -30,7 +30,10 @@ func RotateThreadDEK(threadKey string, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	threadPrefix := keys.GenAllThreadMessagesPrefix(threadKey)
+	threadPrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate thread prefix: %w", err)
+	}
 	lowerBound := []byte(threadPrefix)
 	upperBound := calculateUpperBound(threadPrefix)
 

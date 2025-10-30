@@ -33,8 +33,8 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 
 	tr.Mark("fetch_threads")
 	out := make([]models.Thread, 0, len(threadIDs))
-	for _, threadID := range threadIDs {
-		threadStr, err := thread_store.GetThread(threadID)
+	for _, threadKey := range threadIDs {
+		threadStr, err := thread_store.GetThread(threadKey)
 		if err != nil {
 			continue
 		}
@@ -59,13 +59,13 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	id, valid := common.ValidatePathParam(ctx, "id")
+	threadKey, valid := common.ValidatePathParam(ctx, "threadKey")
 	if !valid {
 		return
 	}
 
 	tr.Mark("validate_thread")
-	thread, validationErr := common.ValidateReadThread(id, author, true)
+	thread, validationErr := common.ValidateReadThread(threadKey, author, true)
 	if validationErr != nil {
 		common.WriteValidationError(ctx, validationErr)
 		return
@@ -85,18 +85,18 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("validate_thread")
-	threadID, valid := common.ValidatePathParam(ctx, "threadID")
+	threadKey, valid := common.ValidatePathParam(ctx, "threadKey")
 	if !valid {
 		return
 	}
-	_, validationErr := common.ValidateReadThread(threadID, author, false)
+	_, validationErr := common.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
 		common.WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("get_thread_indexes")
-	threadIndexes, err := index.GetThreadMessageIndexes(threadID)
+	threadIndexes, err := index.GetThreadMessageIndexes(threadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -107,7 +107,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		Cursor: qp.Cursor,
 		Limit:  qp.Limit,
 	}
-	rawMsgs, respCursor, err := message_store.ListMessages(threadID, reqCursor)
+	rawMsgs, respCursor, err := message_store.ListMessages(threadKey, reqCursor)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -125,7 +125,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	tr.Mark("encode_response")
 	paginationResp := pagination.NewPaginationResponse(qp.Limit, respCursor.HasMore, respCursor.Cursor, len(msgs), int(respCursor.TotalCount))
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadID, Messages: msgs, Metadata: threadIndexes, Pagination: paginationResp})
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: msgs, Metadata: threadIndexes, Pagination: paginationResp})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
@@ -135,29 +135,29 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
-	messageID, valid := common.ValidatePathParam(ctx, "id")
+	messageKey, valid := common.ValidatePathParam(ctx, "id")
 	if !valid {
 		return
 	}
 
-	threadID := common.PathParam(ctx, "threadID")
+	threadKey := common.PathParam(ctx, "threadKey")
 
 	tr.Mark("validate_thread")
-	_, validationErr := common.ValidateReadThread(threadID, author, false)
+	_, validationErr := common.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
 		common.WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_message")
-	message, validationErr := common.ValidateReadMessage(messageID, author, true)
+	message, validationErr := common.ValidateReadMessage(messageKey, author, true)
 	if validationErr != nil {
 		common.WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_thread_parent")
-	if relErr := common.ValidateMessageThreadRelationship(message, threadID); relErr != nil {
+	if relErr := common.ValidateMessageThreadRelationship(message, threadKey); relErr != nil {
 		common.WriteValidationError(ctx, relErr)
 		return
 	}

@@ -62,7 +62,7 @@ func auditLog(event string, fields map[string]interface{}) {
 	logger.Info(event, attrs...)
 }
 
-func saveThread(threadID string, data string) error {
-	key := keys.GenThreadKey(threadID)
+func saveThread(threadKey string, data string) error {
+	key := keys.GenThreadKey(threadKey)
 	return storedb.SaveKey(key, []byte(data))
 }

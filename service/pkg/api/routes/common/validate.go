@@ -21,9 +21,9 @@ type ValidationResult struct {
 }
 
 // ValidateReadThread validates read access to a thread
-func ValidateReadThread(threadID, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
+func ValidateReadThread(threadKey, author string, requireOwnership bool) (*models.Thread, *auth.AuthorResolutionError) {
 	if author != "" {
-		isDeleted, err := index.IsSoftDeleted(threadID)
+		isDeleted, err := index.IsSoftDeleted(threadKey)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -40,7 +40,7 @@ func ValidateReadThread(threadID, author string, requireOwnership bool) (*models
 		}
 	}
 
-	stored, err := thread_store.GetThread(threadID)
+	stored, err := thread_store.GetThread(threadKey)
 	if err != nil {
 		return nil, &auth.AuthorResolutionError{
 			Type:    "thread_not_found",
@@ -77,9 +77,9 @@ func ValidateReadThread(threadID, author string, requireOwnership bool) (*models
 	return &thread, nil
 }
 
-func ValidateReadMessage(messageID, author string, requireOwnership bool) (*models.Message, *auth.AuthorResolutionError) {
+func ValidateReadMessage(messageKey, author string, requireOwnership bool) (*models.Message, *auth.AuthorResolutionError) {
 	if author != "" {
-		isDeleted, err := index.IsSoftDeleted(messageID)
+		isDeleted, err := index.IsSoftDeleted(messageKey)
 		if err != nil {
 			return nil, &auth.AuthorResolutionError{
 				Type:    "index_error",
@@ -96,7 +96,7 @@ func ValidateReadMessage(messageID, author string, requireOwnership bool) (*mode
 		}
 	}
 
-	stored, err := message_store.GetLatestMessage(messageID)
+	stored, err := message_store.GetLatestMessage(messageKey)
 	if err != nil {
 		return nil, &auth.AuthorResolutionError{
 			Type:    "message_not_found",
@@ -141,8 +141,8 @@ func ValidateAuthor(ctx *fasthttp.RequestCtx, bodyAuthor string) (string, *auth.
 	return author, nil
 }
 
-func ValidateMessageThreadRelationship(message *models.Message, threadID string) *auth.AuthorResolutionError {
-	if threadID != "" && message.Thread != threadID {
+func ValidateMessageThreadRelationship(message *models.Message, threadKey string) *auth.AuthorResolutionError {
+	if threadKey != "" && message.Thread != threadKey {
 		return &auth.AuthorResolutionError{
 			Type:    "not_found",
 			Message: "message not found in thread",

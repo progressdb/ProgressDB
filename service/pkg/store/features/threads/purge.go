@@ -16,13 +16,13 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func PurgeThreadPermanently(threadID string) error {
+func PurgeThreadPermanently(threadKey string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 
-	if threadID == "" {
-		return fmt.Errorf("threadID cannot be empty")
+	if threadKey == "" {
+		return fmt.Errorf("threadKey cannot be empty")
 	}
 
 	const deleteBatchSize = 1000
@@ -50,15 +50,18 @@ func PurgeThreadPermanently(threadID string) error {
 		}
 	}
 
-	threadKey := keys.GenThreadKey(threadID)
+	threadKey = keys.GenThreadKey(threadKey)
 	if err := storedb.Client.Delete([]byte(threadKey), storedb.WriteOpt(true)); err != nil {
-		logger.Error("delete_thread_meta_failed", "thread", threadID, "error", err)
+		logger.Error("delete_thread_meta_failed", "thread", threadKey, "error", err)
 		return fmt.Errorf("failed to delete thread metadata: %w", err)
 	} else {
 		deletedKeys++
 	}
 
-	threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
+	threadPrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate thread prefix: %w", err)
+	}
 
 	lowerBound := []byte(threadPrefix)
 	upperBound := calculateUpperBound(threadPrefix)
@@ -80,7 +83,11 @@ func PurgeThreadPermanently(threadID string) error {
 			value := append([]byte(nil), iter.Value()...)
 			var m models.Message
 			if err := json.Unmarshal(value, &m); err == nil && m.Key != "" {
-				versionPrefix := keys.GenAllMessageVersionsPrefix(m.Key)
+				versionPrefix, err := keys.GenAllMessageVersionsPrefix(m.Key)
+				if err != nil {
+					logger.Error("failed_to_generate_version_prefix", "error", err)
+					continue
+				}
 				vIter, err := storedb.Client.NewIter(&pebble.IterOptions{
 					LowerBound: []byte(versionPrefix),
 					UpperBound: calculateUpperBound(versionPrefix),
@@ -112,23 +119,23 @@ func PurgeThreadPermanently(threadID string) error {
 		deleteVersionBatch(versionKeys)
 	}
 
-	if err := index.DeleteThreadMessageIndexes(threadID); err != nil {
-		logger.Error("delete_thread_message_indexes_failed", "thread", threadID, "error", err)
+	if err := index.DeleteThreadMessageIndexes(threadKey); err != nil {
+		logger.Error("delete_thread_message_indexes_failed", "thread", threadKey, "error", err)
 	}
 
-	if err := index.UnmarkSoftDeleted(threadID); err != nil {
-		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadID, "error", err)
+	if err := index.UnmarkSoftDeleted(threadKey); err != nil {
+		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadKey, "error", err)
 	}
 
-	if err := cleanupThreadRelationships(threadID); err != nil {
-		logger.Error("cleanup_thread_relationships_failed", "thread", threadID, "error", err)
+	if err := cleanupThreadRelationships(threadKey); err != nil {
+		logger.Error("cleanup_thread_relationships_failed", "thread", threadKey, "error", err)
 	}
 
-	logger.Info("purge_thread_completed", "thread", threadID, "deleted_keys", deletedKeys)
+	logger.Info("purge_thread_completed", "thread", threadKey, "deleted_keys", deletedKeys)
 	return nil
 }
 
-func cleanupThreadRelationships(threadID string) error {
+func cleanupThreadRelationships(threadKey string) error {
 	ownershipPrefix := keys.UserThreadsRelPrefix
 	var ownershipKeys []string
 	cursor := ""
@@ -145,14 +152,17 @@ func cleanupThreadRelationships(threadID string) error {
 	}
 
 	for _, key := range ownershipKeys {
-		if strings.Contains(key, fmt.Sprintf(":t:%s", threadID)) {
+		if strings.Contains(key, fmt.Sprintf(":t:%s", threadKey)) {
 			if err := index.DeleteKey(key); err != nil {
 				logger.Error("delete_ownership_relationship_failed", "key", key, "error", err)
 			}
 		}
 	}
 
-	participationPrefix := keys.GenThreadUserRelPrefix(threadID)
+	participationPrefix, err := keys.GenThreadUserRelPrefix(threadKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate participation prefix: %w", err)
+	}
 	var participationKeys []string
 	cursor = ""
 	for {

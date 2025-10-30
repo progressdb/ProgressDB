@@ -18,7 +18,10 @@ func ListMessageVersions(messageKey string) ([]string, error) {
 	if index.IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
-	prefix := keys.GenAllMessageVersionsPrefix(messageKey)
+	prefix, err := keys.GenAllMessageVersionsPrefix(messageKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate versions prefix: %w", err)
+	}
 	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err

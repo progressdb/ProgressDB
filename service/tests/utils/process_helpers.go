@@ -304,13 +304,13 @@ func CreateThreadAPI(t *testing.T, baseURL, user, title string) (string, map[str
 }
 
 // CreateMessageAPI posts a message into a thread and returns the created message id.
-func CreateMessageAPI(t *testing.T, baseURL, user, threadID string, body map[string]interface{}) string {
+func CreateMessageAPI(t *testing.T, baseURL, user, threadKey string, body map[string]interface{}) string {
 	t.Helper()
 	if body == nil {
 		body = map[string]interface{}{"author": user, "body": map[string]string{"text": "hello"}}
 	}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest(http.MethodPost, baseURL+"/v1/threads/"+threadID+"/messages", bytes.NewReader(b))
+	req, _ := http.NewRequest(http.MethodPost, baseURL+"/v1/threads/"+threadKey+"/messages", bytes.NewReader(b))
 	req.Header.Set("X-User-ID", user)
 	req.Header.Set("X-User-Signature", SignHMAC(SigningSecret, user))
 	req.Header.Set("Authorization", "Bearer "+FrontendAPIKey)
@@ -384,12 +384,12 @@ func ListThreadsAPI(t *testing.T, baseURL, user string) (int, map[string]interfa
 }
 
 // CreateMessageAndWait creates a message and waits until it's visible.
-func CreateMessageAndWait(t *testing.T, baseURL, user, threadID string, body map[string]interface{}, timeout time.Duration) string {
+func CreateMessageAndWait(t *testing.T, baseURL, user, threadKey string, body map[string]interface{}, timeout time.Duration) string {
 	t.Helper()
-	mid := CreateMessageAPI(t, baseURL, user, threadID, body)
+	mid := CreateMessageAPI(t, baseURL, user, threadKey, body)
 	// wait until GET message returns 200
 	deadline := time.Now().Add(timeout)
-	path := "/v1/threads/" + threadID + "/messages/" + mid
+	path := "/v1/threads/" + threadKey + "/messages/" + mid
 	for time.Now().Before(deadline) {
 		status := DoSignedJSON(t, baseURL, "GET", path, nil, user, FrontendAPIKey, nil)
 		if status == 200 {

@@ -106,11 +106,11 @@ func (rm *RequestMetadata) ToQueueExtras() QueueExtras {
 }
 
 // NewEnqueueRequest creates a standardized enqueue request
-func NewEnqueueRequest(ctx *fasthttp.RequestCtx, author, threadID, messageID string, payload []byte) *EnqueueRequest {
+func NewEnqueueRequest(ctx *fasthttp.RequestCtx, author, threadKey, messageKey string, payload []byte) *EnqueueRequest {
 	metadata := NewRequestMetadata(ctx, author)
 	return &EnqueueRequest{
-		Thread:  threadID,
-		ID:      messageID,
+		Thread:  threadKey,
+		ID:      messageKey,
 		Payload: payload,
 		TS:      0, // Will be set by caller
 		Extras:  metadata.ToQueueExtras(),

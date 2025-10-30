@@ -197,7 +197,7 @@ logging:
 	defer func() { _ = sp.Stop(t) }()
 
 	// call an admin endpoint that will create server events (rotate DEK on a non-existing thread will still log)
-	areq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rotate-thread-dek", bytes.NewReader([]byte(`{"thread_id":"nonexistent"}`)))
+	areq, _ := http.NewRequest("POST", sp.Addr+"/admin/encryption/rotate-thread-dek", bytes.NewReader([]byte(`{"thread_key":"nonexistent"}`)))
 	areq.Header.Set("Authorization", "Bearer "+utils.AdminAPIKey)
 	// admin API key is sufficient for /admin routes
 	ares, err := http.DefaultClient.Do(areq)

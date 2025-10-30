@@ -14,21 +14,24 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func PurgeMessagePermanently(messageID string) error {
+func PurgeMessagePermanently(messageKey string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	if index.IndexDB == nil {
 		return fmt.Errorf("pebble not opened; call Open first")
 	}
-	vprefix := keys.GenAllMessageVersionsPrefix(messageID)
+	vprefix, err := keys.GenAllMessageVersionsPrefix(messageKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate versions prefix: %w", err)
+	}
 	vi, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
 	defer vi.Close()
 
-	var threadID string
+	var threadKey string
 	var seq int64
 	var versionKeys [][]byte
 	found := false
@@ -37,26 +40,29 @@ func PurgeMessagePermanently(messageID string) error {
 			break
 		}
 		if !found {
-			if s, err := keys.ParseVersionKeySequence(string(vi.Key())); err == nil {
-				seq = int64(s)
+			parsed, err := keys.ParseKey(string(vi.Key()))
+			if err == nil && parsed.Type == keys.KeyTypeVersion {
+				if s, err := keys.ParseKeySequence(parsed.Seq); err == nil {
+					seq = int64(s)
+				}
 			}
 			v := append([]byte(nil), vi.Value()...)
 			var msg models.Message
 			if err := json.Unmarshal(v, &msg); err == nil {
-				threadID = msg.Thread
+				threadKey = msg.Thread
 				found = true
 			}
 		}
 		versionKeys = append(versionKeys, append([]byte(nil), vi.Key()...))
 	}
 
-	if found && threadID != "" {
-		msgKey := keys.GenMessageKey(threadID, "", uint64(seq))
+	if found && threadKey != "" {
+		msgKey := keys.GenMessageKey(threadKey, "", uint64(seq))
 		if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
 			logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
 		}
-		if err := index.UnmarkSoftDeleted(messageID); err != nil {
-			logger.Error("unmark_soft_deleted_purge_failed", "msg", messageID, "error", err)
+		if err := index.UnmarkSoftDeleted(messageKey); err != nil {
+			logger.Error("unmark_soft_deleted_purge_failed", "msg", messageKey, "error", err)
 		}
 	}
 
@@ -66,6 +72,6 @@ func PurgeMessagePermanently(messageID string) error {
 		}
 	}
 
-	logger.Info("purge_message_completed", "msg", messageID, "deleted_keys", len(versionKeys))
+	logger.Info("purge_message_completed", "msg", messageKey, "deleted_keys", len(versionKeys))
 	return nil
 }

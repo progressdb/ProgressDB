@@ -31,7 +31,8 @@ func Stats(ctx *fasthttp.RequestCtx) {
 	var allKeys []string
 	cursor := ""
 	for {
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		prefix := keys.GenThreadMetadataPrefix()
+		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
 		if err != nil {
 			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 			return
@@ -81,7 +82,8 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 	var allKeys []string
 	cursor := ""
 	for {
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(keys.GenThreadMetadataPrefix(), &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		prefix := keys.GenThreadMetadataPrefix()
+		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
 		if err != nil {
 			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 			return
@@ -231,7 +233,11 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Use direct database iteration with prefix bounds
-	prefix := keys.GenUserThreadRelPrefix(userID)
+	prefix, err := keys.GenUserThreadRelPrefix(userID)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
 	lowerBound := []byte(prefix)
 	upperBound := nextPrefix(lowerBound)
 
@@ -295,7 +301,12 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Generate prefix for messages of this thread using the thread timestamp
-	prefix := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadTS)
+	prefix, err := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadTS)
+	if err != nil {
+		logger.Error("ListThreadMessages: failed to generate prefix:", err)
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
 	lowerBound := []byte(prefix)
 	upperBound := nextPrefix(lowerBound)
 

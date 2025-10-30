@@ -30,23 +30,23 @@ func rewrapDEKWorker(id string, newKEKHex string, sem chan struct{}, resCh chan 
 	resCh <- DashboardRewrapJobResult{Key: id, NewKEK: newKek, Success: true}
 }
 
-func encryptThreadWorker(threadID string, sem chan struct{}, resCh chan DashboardEncryptJobResult) {
+func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan DashboardEncryptJobResult) {
 	defer func() { <-sem }()
-	stored, err := thread_store.GetThread(threadID)
+	stored, err := thread_store.GetThread(threadKey)
 	if err != nil {
-		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: "thread not found", Success: false}
+		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "thread not found", Success: false}
 		return
 	}
 	var th models.Thread
 	if err := json.Unmarshal([]byte(stored), &th); err != nil {
-		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: "invalid thread metadata", Success: false}
+		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "invalid thread metadata", Success: false}
 		return
 	}
 
 	if th.KMS == nil || th.KMS.KeyID == "" {
-		newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
+		newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
 		if err != nil {
-			resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: "create DEK failed: " + err.Error(), Success: false}
+			resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "create DEK failed: " + err.Error(), Success: false}
 			return
 		}
 		th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
@@ -55,11 +55,15 @@ func encryptThreadWorker(threadID string, sem chan struct{}, resCh chan Dashboar
 		}
 	}
 
-	prefix := keys.GenAllThreadMessagesPrefix(threadID)
+	prefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "failed to generate prefix: " + err.Error(), Success: false}
+		return
+	}
 
 	iter, err := storedb.Iter()
 	if err != nil {
-		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: err.Error(), Success: false}
+		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 		return
 	}
 	defer iter.Close()
@@ -74,37 +78,37 @@ func encryptThreadWorker(threadID string, sem chan struct{}, resCh chan Dashboar
 		if encryption.LikelyJSON(v) {
 			ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
 			if err != nil {
-				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: err.Error(), Success: false}
+				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
 			}
 			backupKey := append([]byte(keys.BackupEncryptPrefix), k...)
 			if err := storedb.SaveKey(string(backupKey), v); err != nil {
-				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: err.Error(), Success: false}
+				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
 			}
 			if err := storedb.Set(k, ct); err != nil {
-				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), Error: err.Error(), Success: false}
+				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
 			}
 		}
 	}
-	resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadID), DEKKey: th.KMS.KeyID, Success: true}
+	resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), DEKKey: th.KMS.KeyID, Success: true}
 }
 
-func determineThreadIDs(ids []string, all bool) ([]string, error) {
+func determineThreadKeys(ids []string, all bool) ([]string, error) {
 	if all {
 		prefix := keys.GenThreadMetadataPrefix()
 		keyList, _, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
 		if err != nil {
 			return nil, err
 		}
-		var threadIDs []string
+		var threadKeys []string
 		for _, k := range keyList {
 			if parsed, err := keys.ParseKey(k); err == nil && parsed.Type == keys.KeyTypeThread {
-				threadIDs = append(threadIDs, parsed.ThreadKey)
+				threadKeys = append(threadKeys, parsed.ThreadKey)
 			}
 		}
-		return threadIDs, nil
+		return threadKeys, nil
 	}
 	return ids, nil
 }
@@ -128,17 +132,18 @@ func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
 		return
 	}
-	threadID := parsed.ThreadKey
-	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
+
+	threadKey := parsed.ThreadKey
+	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := encryption.RotateThreadDEK(threadID, newKeyID); err != nil {
+	if err := encryption.RotateThreadDEK(threadKey, newKeyID); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	if s, err := thread_store.GetThread(threadID); err == nil {
+	if s, err := thread_store.GetThread(threadKey); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
@@ -181,7 +186,7 @@ func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	threadIDs, err := determineThreadIDs(threadIDs, req.All)
+	threadIDs, err := determineThreadKeys(threadIDs, req.All)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -192,8 +197,8 @@ func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 	}
 
 	keyIDs := make(map[string]struct{})
-	for _, tid := range threadIDs {
-		if s, err := thread_store.GetThread(tid); err == nil {
+	for _, tkey := range threadIDs {
+		if s, err := thread_store.GetThread(tkey); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
 				if th.KMS != nil && th.KMS.KeyID != "" {
@@ -263,7 +268,7 @@ func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	threadIDs, err := determineThreadIDs(threadIDs, req.All)
+	threadIDs, err := determineThreadKeys(threadIDs, req.All)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -276,9 +281,9 @@ func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {
 	sem := make(chan struct{}, req.Parallelism)
 	resCh := make(chan DashboardEncryptJobResult, len(threadIDs))
 
-	for _, tid := range threadIDs {
+	for _, tkey := range threadIDs {
 		sem <- struct{}{}
-		go encryptThreadWorker(tid, sem, resCh)
+		go encryptThreadWorker(tkey, sem, resCh)
 	}
 
 	for i := 0; i < cap(sem); i++ {

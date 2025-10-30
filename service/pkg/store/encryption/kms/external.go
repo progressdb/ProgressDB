@@ -62,7 +62,7 @@ func (r *RemoteClient) CreateDEKForThread(threadKey string) (string, []byte, str
 	tr := telemetry.Track("kms.remote.create_dek_for_thread")
 	defer tr.Finish()
 
-	req := map[string]string{"thread_id": threadKey}
+	req := map[string]string{"thread_key": threadKey}
 	b, _ := json.Marshal(req)
 	url := r.baseURL + "/create_dek_for_thread"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))

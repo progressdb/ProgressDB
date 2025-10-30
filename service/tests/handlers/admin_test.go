@@ -180,7 +180,7 @@ logging:
 	user := "rot_user"
 	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "r1", 5*time.Second)
 	var rout map[string]string
-	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_id": tid}, &rout)
+	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_key": tid}, &rout)
 	if status != 200 {
 		t.Fatalf("expected 200 got %d", status)
 	}
@@ -210,7 +210,7 @@ logging:
 	user := "rw_user"
 	tid, _ := utils.CreateThreadAndWait(t, sp.Addr, user, "rw1", 5*time.Second)
 	var out map[string]string
-	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_id": tid}, &out)
+	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_key": tid}, &out)
 	if status != 200 {
 		t.Fatalf("expected 200 got %d", status)
 	}
@@ -243,7 +243,7 @@ logging:
 
 	// call rotate-thread-dek (serves as encrypt-existing substitute)
 	var out map[string]string
-	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_id": tid}, &out)
+	status := utils.AdminPostJSON(t, sp.Addr, "/admin/encryption/rotate-thread-dek", map[string]string{"thread_key": tid}, &out)
 	if status != 200 {
 		t.Fatalf("rotate (as encrypt-existing substitute) failed status=%d", status)
 	}
