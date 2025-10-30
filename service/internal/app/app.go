@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/ingest"
@@ -22,7 +21,6 @@ import (
 	"progressdb/pkg/store/encryption/kms"
 )
 
-// app groups server state and components.
 type App struct {
 	retentionCancel context.CancelFunc
 	eff             config.EffectiveConfigResult
@@ -42,8 +40,6 @@ type App struct {
 // new sets up resources that don't need a running context (db, validation, runtime keys, etc).
 // does not start kms or http server. call run to start those and block for lifecycle.
 func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*App, error) {
-	_ = godotenv.Load(".env")
-
 	// validate config and fail fast if not valid
 	if err := config.ValidateConfig(eff); err != nil {
 		return nil, err
@@ -80,7 +76,6 @@ func New(eff config.EffectiveConfigResult, version, commit, buildDate string) (*
 	return a, nil
 }
 
-// run starts kms (if enabled), http server, and blocks until context cancellation or fatal error.
 func (a *App) Run(ctx context.Context) error {
 	if err := a.setupKMS(ctx); err != nil {
 		return err
@@ -175,7 +170,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 }
 
-// initFieldPolicy installs the encryption field policy from the effective config
+// sets into state
 func initFieldPolicy(eff config.EffectiveConfigResult) error {
 	fieldPaths := eff.Config.Encryption.Fields
 	if len(fieldPaths) == 0 {

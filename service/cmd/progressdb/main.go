@@ -11,6 +11,7 @@ import (
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/shutdown"
 	"progressdb/pkg/store/migrations"
+	"runtime"
 	"strings"
 	"time"
 
@@ -52,7 +53,6 @@ func main() {
 	// load effective config
 	eff, err := config.LoadEffectiveConfig(flags, fileCfg, fileExists, envCfg, envRes)
 	if err != nil {
-		// try to use flags.DB as fallback db path for crash dump
 		shutdown.Abort("failed to build effective config", err, flags.DB)
 	}
 	if strings.TrimSpace(eff.DBPath) == "" {
@@ -61,13 +61,25 @@ func main() {
 		}
 	}
 
-	// validate the effective config
-	if err := eff.Config.ValidateConfig(); err != nil {
+	// validate config
+	if err := config.ValidateConfig(eff); err != nil {
 		shutdown.Abort("invalid configuration", err, eff.DBPath)
 	}
 
 	// Reinitialize logger with config-driven level (overrides env default)
 	logger.InitWithLevel(eff.Config.Logging.Level)
+
+	// set to maximum cpu's available
+	numCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(numCPU)
+	logger.Info("system_logical_cores", "logical_cores", numCPU)
+
+	// done
+	cc := &eff.Config.Ingest.Compute
+	if cc.WorkerCount > numCPU {
+		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
+		cc.WorkerCount = numCPU
+	}
 
 	// init database folders and ensure the filesystem layout.
 	if err := state.Init(eff.DBPath); err != nil {

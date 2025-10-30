@@ -3,10 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
-
-	"progressdb/pkg/state/logger"
 
 	"github.com/adhocore/gronx"
 	"github.com/goccy/go-yaml"
@@ -85,15 +82,7 @@ func LoadConfigFile(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func (c *Config) ValidateConfig() error {
-	numCPU := runtime.NumCPU()
-	runtime.GOMAXPROCS(numCPU)
-	logger.Info("system_logical_cores", "logical_cores", numCPU)
-	cc := &c.Ingest.Compute
-	if cc.WorkerCount > numCPU {
-		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
-		cc.WorkerCount = numCPU
-	}
+func (c *Config) ValidateConfigCron() error {
 	if !gronx.IsValid(c.Retention.Cron) {
 		return fmt.Errorf("invalid retention cron expression: %s", c.Retention.Cron)
 	}

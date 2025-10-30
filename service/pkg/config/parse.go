@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/joho/godotenv"
 )
 
 // holds parsed command-line flag values and which were set
@@ -68,6 +69,8 @@ func ParseConfigFile(flags Flags) (*Config, bool, error) {
 
 // loads environment variables into a new Config and returns it with EnvResult; caller config is unchanged
 func ParseConfigEnvs() (*Config, EnvResult) {
+	_ = godotenv.Load(".env")
+
 	// gather all relevant env variables
 	envs := map[string]string{
 		"SERVER_ADDR":         os.Getenv("PROGRESSDB_SERVER_ADDR"),
