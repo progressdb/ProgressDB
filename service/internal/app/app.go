@@ -84,27 +84,36 @@ func (a *App) Run(ctx context.Context) error {
 	// open database
 	cfg := config.GetConfig()
 	storageWalEnabled := cfg.Storage.WAL
-	appWALEnabled := cfg.Ingest.Intake.WAL.Enabled
-	logger.Info("opening_database", "path", state.PathsVar.Store, "disable_pebble_wal", storageWalEnabled, "app_wal_enabled", appWALEnabled)
+	intakeWALEnabled := cfg.Ingest.Intake.WAL.Enabled
+	logger.Info(
+		"opening_database",
+		"store_path", state.PathsVar.Store,
+		"index_path", state.PathsVar.Index,
+	)
+	logger.Info(
+		"wal_settings",
+		"storage_wal_enabled", storageWalEnabled,
+		"intake_wal_enabled", intakeWALEnabled,
+	)
 
 	if state.PathsVar.Store == "" || state.PathsVar.Index == "" {
 		return fmt.Errorf("state paths not initialized")
 	}
 
 	// open storedb
-	if err := storedb.Open(state.PathsVar.Store, storageWalEnabled, appWALEnabled); err != nil {
+	if err := storedb.Open(state.PathsVar.Store, storageWalEnabled, intakeWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
 	// open indexdb
-	if err := indexdb.Open(state.PathsVar.Index, storageWalEnabled, appWALEnabled); err != nil {
+	if err := indexdb.Open(state.PathsVar.Index, storageWalEnabled, intakeWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)
 
 	// warn if WAL is disabled
-	if !appWALEnabled {
+	if !intakeWALEnabled {
 		logger.Warn("wal_disabled_data_risk", "message", "WAL is disabled - potential data loss during crash")
 	}
 
@@ -115,7 +124,7 @@ func (a *App) Run(ctx context.Context) error {
 		storedb.Client,
 		indexdb.Client,
 		recoveryConfig.Enabled,
-		recoveryConfig.WALEnabled && appWALEnabled,
+		recoveryConfig.WALEnabled && intakeWALEnabled,
 		recoveryConfig.TempIdxEnabled,
 	)
 
