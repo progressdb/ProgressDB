@@ -33,13 +33,15 @@ func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteCl
 		}
 	}
 
-	// close kms client
+	// close kms client and unregister provider
 	if rc != nil {
 		log.Printf("shutdown: closing KMS client")
 		if err := rc.Close(); err != nil {
 			log.Printf("shutdown: kms client close error: %v", err)
 		}
 	}
+	log.Printf("shutdown: unregistering KMS provider")
+	kms.UnregisterKMSProvider()
 
 	// cancel retention scheduler if running
 	if retentionCancel != nil {

@@ -27,7 +27,6 @@ type App struct {
 	commit          string
 	buildDate       string
 	rc              *kms.RemoteClient // kms
-	cancel          context.CancelFunc
 
 	srvFast *fasthttp.Server
 	state   string

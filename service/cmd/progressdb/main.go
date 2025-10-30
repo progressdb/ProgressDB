@@ -71,11 +71,12 @@ func main() {
 	runtime.GOMAXPROCS(numCPU)
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
 
-	// done
+	// lower worker count to 2 x cpu logical cores
 	cc := &eff.Config.Ingest.Compute
-	if cc.WorkerCount > numCPU {
-		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", numCPU)
-		cc.WorkerCount = numCPU
+	maxAllowedWorkers := numCPU * 2
+	if cc.WorkerCount > maxAllowedWorkers {
+		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", maxAllowedWorkers)
+		cc.WorkerCount = maxAllowedWorkers
 	}
 
 	// init database folders and ensure the filesystem layout.
