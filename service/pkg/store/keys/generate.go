@@ -9,11 +9,11 @@ func GenThreadPrvKey(threadTS string) string {
 	return fmt.Sprintf(ThreadPrvKey, threadTS)
 }
 
-func GenMessagePrvKey(threadTS string, messageID string) string {
+func GenMessagePrvKey(threadTS string, messageKey string) string {
 	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
 		threadTS = parsed.ThreadTS
 	}
-	return fmt.Sprintf(MessagePrvKey, threadTS, messageID)
+	return fmt.Sprintf(MessagePrvKey, threadTS, messageKey)
 }
 
 func GenMessageKey(threadTS, messageTS string, seq uint64) string {

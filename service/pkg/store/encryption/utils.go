@@ -27,12 +27,12 @@ func likelyJSON(b []byte) bool {
 func LikelyJSON(b []byte) bool { return likelyJSON(b) }
 
 // EncryptMessageData encrypts message data if encryption is enabled, fetching KMS meta automatically.
-func EncryptMessageData(threadID string, data []byte) ([]byte, error) {
+func EncryptMessageData(threadKey string, data []byte) ([]byte, error) {
 	if !EncryptionEnabled() {
 		return data, nil
 	}
 
-	kmsMeta, err := GetThreadKMS(threadID)
+	kmsMeta, err := GetThreadKMS(threadKey)
 	if err != nil {
 		return nil, err
 	}
@@ -84,18 +84,18 @@ func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 }
 
 // ProvisionThreadKMS provisions a DEK for the thread if encryption is enabled and KMS provider is available.
-func ProvisionThreadKMS(threadID string) (*models.KMSMeta, error) {
+func ProvisionThreadKMS(threadKey string) (*models.KMSMeta, error) {
 	if !EncryptionEnabled() {
 		return nil, nil
 	}
 
 	if !kms.IsProviderEnabled() {
-		logger.Info("encryption_enabled_but_no_kms_provider", "thread", threadID)
+		logger.Info("encryption_enabled_but_no_kms_provider", "thread", threadKey)
 		return nil, nil
 	}
 
-	logger.Info("provisioning_thread_kms", "thread", threadID)
-	keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadID)
+	logger.Info("provisioning_thread_kms", "thread", threadKey)
+	keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("kms provision failed: %w", err)
 	}
@@ -109,17 +109,17 @@ func ProvisionThreadKMS(threadID string) (*models.KMSMeta, error) {
 }
 
 // GetThreadKMS retrieves only the KMS metadata for a thread without loading the full thread data.
-func GetThreadKMS(threadID string) (*models.KMSMeta, error) {
+func GetThreadKMS(threadKey string) (*models.KMSMeta, error) {
 	if !EncryptionEnabled() {
 		return nil, nil
 	}
 
-	threadKey := keys.GenThreadKey(threadID)
+	threadKey = keys.GenThreadKey(threadKey)
 
 	threadData, closer, err := storedb.Client.Get([]byte(threadKey))
 	if err != nil {
 		if storedb.IsNotFound(err) {
-			return nil, fmt.Errorf("thread not found: %s", threadID)
+			return nil, fmt.Errorf("thread not found: %s", threadKey)
 		}
 		return nil, fmt.Errorf("failed to get thread: %w", err)
 	}

@@ -33,24 +33,24 @@ func IsSoftDeleted(originalKey string) (bool, error) {
 	return true, nil
 }
 
-func MarkUserOwnsThread(userID, threadID string) error {
+func MarkUserOwnsThread(userID, threadKey string) error {
 	tr := telemetry.Track("index.mark_user_owns_thread")
 	defer tr.Finish()
 
-	key := keys.GenUserOwnsThreadKey(userID, threadID)
+	key := keys.GenUserOwnsThreadKey(userID, threadKey)
 	return SaveKey(key, []byte("1"))
 }
 
-func UnmarkUserOwnsThread(userID, threadID string) error {
+func UnmarkUserOwnsThread(userID, threadKey string) error {
 	tr := telemetry.Track("index.unmark_user_owns_thread")
 	defer tr.Finish()
 
-	key := keys.GenUserOwnsThreadKey(userID, threadID)
+	key := keys.GenUserOwnsThreadKey(userID, threadKey)
 	return DeleteKey(key)
 }
 
-func DoesUserOwnThread(userID, threadID string) (bool, error) {
-	key := keys.GenUserOwnsThreadKey(userID, threadID)
+func DoesUserOwnThread(userID, threadKey string) (bool, error) {
+	key := keys.GenUserOwnsThreadKey(userID, threadKey)
 	_, err := GetKey(key)
 	if err != nil {
 		if IsNotFound(err) {
@@ -61,24 +61,24 @@ func DoesUserOwnThread(userID, threadID string) (bool, error) {
 	return true, nil
 }
 
-func MarkThreadHasUser(threadID, userID string) error {
+func MarkThreadHasUser(threadKey, userID string) error {
 	tr := telemetry.Track("index.mark_thread_has_user")
 	defer tr.Finish()
 
-	key := keys.GenThreadHasUserKey(threadID, userID)
+	key := keys.GenThreadHasUserKey(threadKey, userID)
 	return SaveKey(key, []byte("1"))
 }
 
-func UnmarkThreadHasUser(threadID, userID string) error {
+func UnmarkThreadHasUser(threadKey, userID string) error {
 	tr := telemetry.Track("index.unmark_thread_has_user")
 	defer tr.Finish()
 
-	key := keys.GenThreadHasUserKey(threadID, userID)
+	key := keys.GenThreadHasUserKey(threadKey, userID)
 	return DeleteKey(key)
 }
 
-func DoesThreadHaveUser(threadID, userID string) (bool, error) {
-	key := keys.GenThreadHasUserKey(threadID, userID)
+func DoesThreadHaveUser(threadKey, userID string) (bool, error) {
+	key := keys.GenThreadHasUserKey(threadKey, userID)
 	_, err := GetKey(key)
 	if err != nil {
 		if IsNotFound(err) {

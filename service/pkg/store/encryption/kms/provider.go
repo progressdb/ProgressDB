@@ -33,7 +33,7 @@ func IsProviderEnabled() bool {
 	return p.Enabled()
 }
 
-func CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
+func CreateDEKForThread(threadKey string) (string, []byte, string, string, error) {
 	providerMu.RLock()
 	p := provider
 	providerMu.RUnlock()
@@ -44,7 +44,7 @@ func CreateDEKForThread(threadID string) (string, []byte, string, string, error)
 		CreateDEKForThread(string) (string, []byte, string, string, error)
 	}
 	if tc, ok := p.(threadCreator); ok {
-		return tc.CreateDEKForThread(threadID)
+		return tc.CreateDEKForThread(threadKey)
 	}
 	return "", nil, "", "", errors.New("provider does not support CreateDEKForThread")
 }

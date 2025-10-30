@@ -14,12 +14,12 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func RotateThreadDEK(threadID string, newKeyID string) error {
+func RotateThreadDEK(threadKey string, newKeyID string) error {
 	if storedb.Client == nil {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	oldKeyID := ""
-	if s, err := threads.GetThread(threadID); err == nil {
+	if s, err := threads.GetThread(threadKey); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS != nil {
@@ -30,7 +30,7 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 	if oldKeyID == newKeyID {
 		return nil
 	}
-	threadPrefix := keys.GenAllThreadMessagesPrefix(threadID)
+	threadPrefix := keys.GenAllThreadMessagesPrefix(threadKey)
 	lowerBound := []byte(threadPrefix)
 	upperBound := calculateUpperBound(threadPrefix)
 
@@ -98,7 +98,7 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
-	if s, terr := threads.GetThread(threadID); terr == nil {
+	if s, terr := threads.GetThread(threadKey); terr == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS == nil {
@@ -106,8 +106,8 @@ func RotateThreadDEK(threadID string, newKeyID string) error {
 			}
 			th.KMS.KeyID = newKeyID
 			if nb, merr := json.Marshal(th); merr == nil {
-				threadKey := keys.GenThreadKey(threadID)
-				if err := storedb.Client.Set([]byte(threadKey), nb, storedb.WriteOpt(true)); err != nil {
+				threadKeyStr := keys.GenThreadKey(threadKey)
+				if err := storedb.Client.Set([]byte(threadKeyStr), nb, storedb.WriteOpt(true)); err != nil {
 					return fmt.Errorf("save thread key mapping failed: %w", err)
 				}
 			}

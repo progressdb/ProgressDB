@@ -1,10 +1,7 @@
 package apply
 
 import (
-	"fmt"
-
 	storedb "progressdb/pkg/store/db/store"
-	"progressdb/pkg/store/keys"
 )
 
 type MessageSequencer struct {
@@ -17,13 +14,6 @@ func NewMessageSequencer(im *IndexManager, kv *KVManager) *MessageSequencer {
 		kv:           kv,
 		indexManager: im,
 	}
-}
-
-func (m *MessageSequencer) GetFinalThreadKey(threadKey string) (string, error) {
-	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
-		return "", fmt.Errorf("invalid thread key format: %s - expected t:<threadID>", threadKey)
-	}
-	return threadKey, nil
 }
 
 func (m *MessageSequencer) resolveMessageFinalKeyFromDB(msgKey string) (string, bool) {

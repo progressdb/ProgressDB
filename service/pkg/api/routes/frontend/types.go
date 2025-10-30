@@ -41,7 +41,7 @@ type MessageResponse struct {
 }
 
 type MessageCursor struct {
-	ThreadID  string `json:"thread_id"`
+	ThreadKey string `json:"thread_key"`
 	Timestamp int64  `json:"timestamp"`
 	Sequence  uint64 `json:"sequence"`
 }
@@ -49,7 +49,7 @@ type MessageCursor struct {
 type ThreadCursor struct {
 	UserID    string `json:"user_id"`
 	Timestamp int64  `json:"timestamp"`
-	ThreadID  string `json:"thread_id"`
+	ThreadKey string `json:"thread_key"`
 }
 
 type ReadRequestCursorInfo struct {

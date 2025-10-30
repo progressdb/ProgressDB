@@ -9,7 +9,7 @@ import (
 	"progressdb/pkg/store/keys"
 )
 
-func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdAt, updatedAt int64) error {
+func UpdateVersionIndexes(threadKey, messageTS string, ts int64, seq uint64, createdAt, updatedAt int64) error {
 	tr := telemetry.Track("index.update_version_indexes")
 	defer tr.Finish()
 
@@ -20,19 +20,19 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		var key string
 		switch s {
 		case "start":
-			key = keys.GenThreadVersionStart(threadID, msgID)
+			key = keys.GenThreadVersionStart(threadKey, messageTS)
 		case "end":
-			key = keys.GenThreadVersionEnd(threadID, msgID)
+			key = keys.GenThreadVersionEnd(threadKey, messageTS)
 		case "cdeltas":
-			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+			key = keys.GenThreadVersionCDeltas(threadKey, messageTS)
 		case "udeltas":
-			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+			key = keys.GenThreadVersionUDeltas(threadKey, messageTS)
 		case "skips":
-			key = keys.GenThreadVersionSkips(threadID, msgID)
+			key = keys.GenThreadVersionSkips(threadKey, messageTS)
 		case "last_created_at":
-			key = keys.GenThreadVersionLC(threadID, msgID)
+			key = keys.GenThreadVersionLC(threadKey, messageTS)
 		case "last_updated_at":
-			key = keys.GenThreadVersionLU(threadID, msgID)
+			key = keys.GenThreadVersionLU(threadKey, messageTS)
 		}
 		val, err := GetKey(key)
 		if err != nil {
@@ -75,19 +75,19 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 		var key string
 		switch s {
 		case "start":
-			key = keys.GenThreadVersionStart(threadID, msgID)
+			key = keys.GenThreadVersionStart(threadKey, messageTS)
 		case "end":
-			key = keys.GenThreadVersionEnd(threadID, msgID)
+			key = keys.GenThreadVersionEnd(threadKey, messageTS)
 		case "cdeltas":
-			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+			key = keys.GenThreadVersionCDeltas(threadKey, messageTS)
 		case "udeltas":
-			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+			key = keys.GenThreadVersionUDeltas(threadKey, messageTS)
 		case "skips":
-			key = keys.GenThreadVersionSkips(threadID, msgID)
+			key = keys.GenThreadVersionSkips(threadKey, messageTS)
 		case "last_created_at":
-			key = keys.GenThreadVersionLC(threadID, msgID)
+			key = keys.GenThreadVersionLC(threadKey, messageTS)
 		case "last_updated_at":
-			key = keys.GenThreadVersionLU(threadID, msgID)
+			key = keys.GenThreadVersionLU(threadKey, messageTS)
 		}
 		var val interface{}
 		switch s {
@@ -117,7 +117,7 @@ func UpdateVersionIndexes(threadID, msgID string, ts int64, seq uint64, createdA
 	return nil
 }
 
-func DeleteVersionIndexes(threadID, msgID string) error {
+func DeleteVersionIndexes(threadKey, messageTS string) error {
 	tr := telemetry.Track("index.delete_version_indexes")
 	defer tr.Finish()
 
@@ -127,19 +127,19 @@ func DeleteVersionIndexes(threadID, msgID string) error {
 		var key string
 		switch s {
 		case "start":
-			key = keys.GenThreadVersionStart(threadID, msgID)
+			key = keys.GenThreadVersionStart(threadKey, messageTS)
 		case "end":
-			key = keys.GenThreadVersionEnd(threadID, msgID)
+			key = keys.GenThreadVersionEnd(threadKey, messageTS)
 		case "cdeltas":
-			key = keys.GenThreadVersionCDeltas(threadID, msgID)
+			key = keys.GenThreadVersionCDeltas(threadKey, messageTS)
 		case "udeltas":
-			key = keys.GenThreadVersionUDeltas(threadID, msgID)
+			key = keys.GenThreadVersionUDeltas(threadKey, messageTS)
 		case "skips":
-			key = keys.GenThreadVersionSkips(threadID, msgID)
+			key = keys.GenThreadVersionSkips(threadKey, messageTS)
 		case "last_created_at":
-			key = keys.GenThreadVersionLC(threadID, msgID)
+			key = keys.GenThreadVersionLC(threadKey, messageTS)
 		case "last_updated_at":
-			key = keys.GenThreadVersionLU(threadID, msgID)
+			key = keys.GenThreadVersionLU(threadKey, messageTS)
 		}
 		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_version_index_failed", "key", key, "error", err)

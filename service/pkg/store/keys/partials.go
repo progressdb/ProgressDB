@@ -4,79 +4,268 @@ import (
 	"fmt"
 )
 
-// Partial key format constants for prefix searches (incomplete keys)
 const (
-	// Version prefix for finding all versions of a message (missing ts:seq)
+	// Used to generate a prefix for all versions of a specific message.
 	VersionPrefix = "v:%s:"
 
-	// Thread message prefix for finding all messages in a thread (missing msgID:seq)
+	// Used to generate a prefix for all messages in a specific thread.
 	ThreadMessagePrefix = "t:%s:m:"
 
-	// Thread metadata prefix for finding all thread metadata keys
+	// Used as a simple prefix for thread metadata (e.g., for scanning all threads).
 	ThreadMetadataPrefix = "t:"
 
-	// Thread message GE prefix for SeekGE operations (missing msgID, has seq)
+	// Used for generating a lower-bound prefix for messages in a thread with a greater-than-or-equal sequence (t:{thread}:m:{seq}).
 	ThreadMessageGEPrefix = "t:%s:m:%s"
 
-	// Just user relationships
+	// Used for scanning all relationships between users and threads.
 	UserThreadsRelPrefix = "rel:u:"
 
-	// User -> thread relationship prefix for all threads for a user (formerly in function GenUserThreadRelPrefix)
+	// Used as a prefix for looking up which threads a user owns (rel:u:{userID}:t:).
 	UserThreadRelPrefix = "rel:u:%s:t:"
 
-	// Thread -> user relationship prefix for all users for a thread (formerly in function GenThreadUserRelPrefix)
+	// Used as a prefix for looking up users in a thread (rel:t:{thread}:u:).
 	ThreadUserRelPrefix = "rel:t:%s:u:"
 
-	// Backup before encryption
+	// Prefix used when storing keys related to backup encryption.
 	BackupEncryptPrefix = "backup:encrypt:"
 
-	// WALMetaNextSequenceKey is the key for storing next sequence in WAL metadata
+	// Key for storing the next sequence value for the Write-Ahead Log metadata.
 	WALMetaNextSequenceKey = "meta:next_sequence"
 
-	// TempIndexKeyFormat is the format for temporary index keys during recovery
+	// Used for temporary index keys in migrations or tests (temp_idx:{table}:{id}).
 	TempIndexKeyFormat = "temp_idx:%s:%s"
 
-	// RecoveryIndexKeyFormat is the format for final index keys during recovery
+	// Generic format for specifying recovery index keys (idx:{type}:{id}).
 	RecoveryIndexKeyFormat = "idx:%s:%s"
 
-	// TempIndexPrefix is the prefix for temporary index keys
+	// Used for scanning all temporary index keys.
 	TempIndexPrefix = "temp_idx:"
 
-	// TempIndexUpperBound is the upper bound for temporary index key scans
+	// Upper bound (exclusive limit) for iterating temporary index keys; normally "temp_idx;" due to ASCII ordering.
 	TempIndexUpperBound = "temp_idx;"
 )
 
-func GenAllMessageVersionsPrefix(msgID string) string {
-	return fmt.Sprintf(VersionPrefix, msgID)
+func GenAllMessageVersionsPrefix(messageKey string) (string, error) {
+	result := ValidateKey(messageKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid message key: %w", result.Error)
+	}
+	if result.Type != KeyTypeMessage && result.Type != KeyTypeMessageProvisional {
+		return "", fmt.Errorf("expected message key, got %s", result.Type)
+	}
+	return fmt.Sprintf(VersionPrefix, messageKey), nil
 }
 
-func GenAllThreadMessagesPrefix(threadID string) string {
-	return fmt.Sprintf(ThreadMessagePrefix, threadID)
+func GenAllThreadMessagesPrefix(threadKey string) (string, error) {
+	result := ValidateKey(threadKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	}
+	if result.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	}
+	return fmt.Sprintf(ThreadMessagePrefix, threadKey), nil
 }
 
 func GenThreadMetadataPrefix() string {
 	return ThreadMetadataPrefix
 }
 
-func GenThreadMessagesGEPrefix(threadID string, seq uint64) string {
-	return fmt.Sprintf(ThreadMessageGEPrefix, threadID, PadSeq(seq))
+func GenThreadMessagesGEPrefix(threadKey string, seq uint64) (string, error) {
+	result := ValidateKey(threadKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	}
+	if result.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	}
+	return fmt.Sprintf(ThreadMessageGEPrefix, threadKey, PadSeq(seq)), nil
 }
 
-func GenUserThreadRelPrefix(userID string) string {
-	return fmt.Sprintf(UserThreadRelPrefix, userID)
+func GenUserThreadRelPrefix(userID string) (string, error) {
+	if err := ValidateUserID(userID); err != nil {
+		return "", fmt.Errorf("invalid user ID: %w", err)
+	}
+	return fmt.Sprintf(UserThreadRelPrefix, userID), nil
 }
 
-func GenThreadUserRelPrefix(threadID string) string {
-	return fmt.Sprintf(ThreadUserRelPrefix, threadID)
+func GenThreadUserRelPrefix(threadKey string) (string, error) {
+	result := ValidateKey(threadKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	}
+	if result.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	}
+	return fmt.Sprintf(ThreadUserRelPrefix, threadKey), nil
 }
 
-func ParseVersionKeySequence(key string) (uint64, error) {
-	parsed, err := ParseKey(key)
+// Legacy functions which panic on error (backward-compatibility)
+
+func GenAllMessageVersionsPrefixLegacy(messageKey string) string {
+	prefix, err := GenAllMessageVersionsPrefix(messageKey)
 	if err != nil {
-		return 0, err
+		panic(fmt.Sprintf("GenAllMessageVersionsPrefix: %v", err))
 	}
-	if parsed.Type != KeyTypeVersion {
-		return 0, fmt.Errorf("expected version key, got %s", parsed.Type)
+	return prefix
+}
+
+func GenAllThreadMessagesPrefixLegacy(threadKey string) string {
+	prefix, err := GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		panic(fmt.Sprintf("GenAllThreadMessagesPrefix: %v", err))
 	}
-	return ParseKeySequence(parsed.Seq)
+	return prefix
+}
+
+func GenThreadMessagesGEPrefixLegacy(threadKey string, seq uint64) string {
+	prefix, err := GenThreadMessagesGEPrefix(threadKey, seq)
+	if err != nil {
+		panic(fmt.Sprintf("GenThreadMessagesGEPrefix: %v", err))
+	}
+	return prefix
+}
+
+func GenUserThreadRelPrefixLegacy(userID string) string {
+	prefix, err := GenUserThreadRelPrefix(userID)
+	if err != nil {
+		panic(fmt.Sprintf("GenUserThreadRelPrefix: %v", err))
+	}
+	return prefix
+}
+
+func GenThreadUserRelPrefixLegacy(threadKey string) string {
+	prefix, err := GenThreadUserRelPrefix(threadKey)
+	if err != nil {
+		panic(fmt.Sprintf("GenThreadUserRelPrefix: %v", err))
+	}
+	return prefix
+}
+
+// Key validation and parsing helpers
+
+func ExtractThreadKeyFromMessage(messageKey string) (string, error) {
+	result := ValidateKey(messageKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid message key: %w", result.Error)
+	}
+	if result.Type != KeyTypeMessage && result.Type != KeyTypeMessageProvisional {
+		return "", fmt.Errorf("expected message key, got %s", result.Type)
+	}
+	if result.Parsed == nil {
+		return "", fmt.Errorf("failed to parse message key")
+	}
+	return result.Parsed.ThreadTS, nil
+}
+
+func ExtractMessageKeyFromVersion(versionKey string) (string, error) {
+	result := ValidateKey(versionKey)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid version key: %w", result.Error)
+	}
+	if result.Type != KeyTypeVersion {
+		return "", fmt.Errorf("expected version key, got %s", result.Type)
+	}
+	if result.Parsed == nil {
+		return "", fmt.Errorf("failed to parse version key")
+	}
+	threadTS := result.Parsed.ThreadTS
+	messageTS := result.Parsed.MessageTS
+	return fmt.Sprintf("t:%s:m:%s", threadTS, messageTS), nil
+}
+
+func IsThreadKey(key string) bool {
+	result := ValidateKey(key)
+	return result.Valid && result.Type == KeyTypeThread
+}
+
+func IsMessageKey(key string) bool {
+	result := ValidateKey(key)
+	return result.Valid && (result.Type == KeyTypeMessage || result.Type == KeyTypeMessageProvisional)
+}
+
+func IsVersionKey(key string) bool {
+	result := ValidateKey(key)
+	return result.Valid && result.Type == KeyTypeVersion
+}
+
+func IsRelationKey(key string) bool {
+	result := ValidateKey(key)
+	return result.Valid && (result.Type == KeyTypeUserOwnsThread || result.Type == KeyTypeThreadHasUser)
+}
+
+func IsIndexKey(key string) bool {
+	result := ValidateKey(key)
+	return result.Valid && (result.Type == KeyTypeThreadMessageStart ||
+		result.Type == KeyTypeThreadMessageEnd ||
+		result.Type == KeyTypeThreadMessageLC ||
+		result.Type == KeyTypeThreadMessageLU ||
+		result.Type == KeyTypeThreadMessageCDeltas ||
+		result.Type == KeyTypeThreadMessageUDeltas ||
+		result.Type == KeyTypeThreadMessageSkips ||
+		result.Type == KeyTypeThreadVersionStart ||
+		result.Type == KeyTypeThreadVersionEnd ||
+		result.Type == KeyTypeThreadVersionLC ||
+		result.Type == KeyTypeThreadVersionLU ||
+		result.Type == KeyTypeThreadVersionCDeltas ||
+		result.Type == KeyTypeThreadVersionUDeltas ||
+		result.Type == KeyTypeThreadVersionSkips ||
+		result.Type == KeyTypeDeletedThreadsIndex ||
+		result.Type == KeyTypeDeletedMessagesIndex)
+}
+
+func GetKeyType(key string) KeyType {
+	result := ValidateKey(key)
+	if !result.Valid {
+		return ""
+	}
+	return result.Type
+}
+
+func NormalizeKey(key string) (string, error) {
+	result := ValidateKey(key)
+	if !result.Valid {
+		return "", fmt.Errorf("invalid key: %w", result.Error)
+	}
+	if result.Type == "simple" {
+		return key, nil
+	}
+	switch result.Type {
+	case KeyTypeThread:
+		if result.Parsed != nil {
+			return fmt.Sprintf("t:%s", result.Parsed.ThreadTS), nil
+		}
+	case KeyTypeMessage:
+		if result.Parsed != nil {
+			return fmt.Sprintf("t:%s:m:%s:%s",
+				result.Parsed.ThreadTS,
+				result.Parsed.MessageTS,
+				result.Parsed.Seq), nil
+		}
+	case KeyTypeMessageProvisional:
+		if result.Parsed != nil {
+			return fmt.Sprintf("t:%s:m:%s",
+				result.Parsed.ThreadTS,
+				result.Parsed.MessageTS), nil
+		}
+	case KeyTypeVersion:
+		if result.Parsed != nil {
+			return fmt.Sprintf("v:%s:m:%s",
+				result.Parsed.ThreadTS,
+				result.Parsed.MessageTS), nil
+		}
+	case KeyTypeUserOwnsThread:
+		if result.Parsed != nil {
+			return fmt.Sprintf("rel:u:%s:t:%s",
+				result.Parsed.UserID,
+				result.Parsed.ThreadTS), nil
+		}
+	case KeyTypeThreadHasUser:
+		if result.Parsed != nil {
+			return fmt.Sprintf("rel:t:%s:u:%s",
+				result.Parsed.ThreadTS,
+				result.Parsed.UserID), nil
+		}
+	}
+	return key, nil
 }

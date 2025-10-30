@@ -8,11 +8,11 @@ import (
 )
 
 // gets thread metadata JSON for id
-func GetThread(threadID string) (string, error) {
+func GetThread(threadKey string) (string, error) {
 	if storedb.Client == nil {
 		return "", fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	tk := keys.GenThreadKey(threadID)
+	tk := keys.GenThreadKey(threadKey)
 
 	v, closer, err := storedb.Client.Get([]byte(tk))
 	if err != nil {
@@ -24,11 +24,11 @@ func GetThread(threadID string) (string, error) {
 	return string(v), nil
 }
 
-func CheckThreadExists(threadID string) (bool, error) {
+func CheckThreadExists(threadKey string) (bool, error) {
 	if storedb.Client == nil {
 		return false, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	tk := keys.GenThreadKey(threadID)
+	tk := keys.GenThreadKey(threadKey)
 
 	_, closer, err := storedb.Client.Get([]byte(tk))
 	if closer != nil {

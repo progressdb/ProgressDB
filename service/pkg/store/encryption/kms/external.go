@@ -58,11 +58,11 @@ func (r *RemoteClient) HealthCheck() error {
 	return fmt.Errorf("health probe failed: %v", lastErr)
 }
 
-func (r *RemoteClient) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
+func (r *RemoteClient) CreateDEKForThread(threadKey string) (string, []byte, string, string, error) {
 	tr := telemetry.Track("kms.remote.create_dek_for_thread")
 	defer tr.Finish()
 
-	req := map[string]string{"thread_id": threadID}
+	req := map[string]string{"thread_id": threadKey}
 	b, _ := json.Marshal(req)
 	url := r.baseURL + "/create_dek_for_thread"
 	reqq, _ := http.NewRequest("POST", url, bytes.NewReader(b))

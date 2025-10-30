@@ -33,13 +33,16 @@ type DeletedMessagesIndexParts struct {
 type ThreadMessageLUIndexParts struct {
 	ThreadKey string
 }
+
 type ThreadMessageLCIndexParts struct {
 	ThreadKey string
 }
+
 type ThreadVersionLUIndexParts struct {
 	ThreadKey  string
 	MessageKey string
 }
+
 type ThreadVersionLCIndexParts struct {
 	ThreadKey  string
 	MessageKey string
@@ -48,6 +51,56 @@ type ThreadVersionLCIndexParts struct {
 type UserOwnsThreadParts struct {
 	UserID    string
 	ThreadKey string
+}
+
+type ThreadHasUserParts struct {
+	ThreadKey string
+	UserID    string
+}
+
+type ThreadMessageStartParts struct {
+	ThreadKey string
+}
+
+type ThreadMessageEndParts struct {
+	ThreadKey string
+}
+
+type ThreadMessageCDeltasParts struct {
+	ThreadKey string
+}
+
+type ThreadMessageUDeltasParts struct {
+	ThreadKey string
+}
+
+type ThreadMessageSkipsParts struct {
+	ThreadKey string
+}
+
+type ThreadVersionStartParts struct {
+	ThreadKey  string
+	MessageKey string
+}
+
+type ThreadVersionEndParts struct {
+	ThreadKey  string
+	MessageKey string
+}
+
+type ThreadVersionCDeltasParts struct {
+	ThreadKey  string
+	MessageKey string
+}
+
+type ThreadVersionUDeltasParts struct {
+	ThreadKey  string
+	MessageKey string
+}
+
+type ThreadVersionSkipsParts struct {
+	ThreadKey  string
+	MessageKey string
 }
 
 func parsePaddedInt(s string, width int) (int64, error) {
@@ -81,196 +134,273 @@ func parsePaddedUint(s string, width int) (uint64, error) {
 }
 
 func ParseMessageKey(key string) (*MessageKeyParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "t" || parts[2] != "m" {
-		return nil, fmt.Errorf("invalid message storage key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	threadKey := parts[1]
-	messageKey := parts[3]
-	seq := parts[4]
+	if parsed.Type != KeyTypeMessage {
+		return nil, fmt.Errorf("expected message key, got %s", parsed.Type)
+	}
 	return &MessageKeyParts{
-		ThreadKey:  threadKey,
-		MessageKey: messageKey,
-		Seq:        seq,
+		ThreadKey:  parsed.ThreadKey,
+		MessageKey: parsed.MessageKey,
+		Seq:        parsed.Seq,
 	}, nil
 }
 
 func ParseVersionKey(key string) (*VersionKeyParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 4 || parts[0] != "v" {
-		return nil, fmt.Errorf("invalid version key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	messageKey := parts[1]
-	messageTS := parts[2]
-	seq := parts[3]
+	if parsed.Type != KeyTypeVersion {
+		return nil, fmt.Errorf("expected version key, got %s", parsed.Type)
+	}
 	return &VersionKeyParts{
-		MessageKey: messageKey,
-		MessageTS:  messageTS,
-		Seq:        seq,
+		MessageKey: parsed.MessageTS, // messageKey from v:{messageKey}:{ts}:{seq}
+		MessageTS:  parsed.VersionTS, // timestamp from v:{messageKey}:{ts}:{seq}
+		Seq:        parsed.Seq,       // seq from v:{messageKey}:{ts}:{seq}
 	}, nil
 }
 
 func ParseThreadKey(key string) (*ThreadMetaParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 2 || parts[0] != "t" {
-		return nil, fmt.Errorf("invalid thread key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &ThreadMetaParts{ThreadKey: parts[1]}, nil
+	if parsed.Type != KeyTypeThread {
+		return nil, fmt.Errorf("expected thread key, got %s", parsed.Type)
+	}
+	return &ThreadMetaParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
 func ParseMessageProvisionalKey(key string) (*MessageKeyParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 4 || parts[0] != "t" || parts[2] != "m" {
-		return nil, fmt.Errorf("invalid provisional message key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	threadKey := parts[1]
-	messageKey := parts[3]
+	if parsed.Type != KeyTypeMessageProvisional {
+		return nil, fmt.Errorf("expected provisional message key, got %s", parsed.Type)
+	}
 	return &MessageKeyParts{
-		ThreadKey:  threadKey,
-		MessageKey: messageKey,
+		ThreadKey:  parsed.ThreadKey,
+		MessageKey: parsed.MessageProvKey,
 		Seq:        "",
 	}, nil
 }
 
-func ParseDeletedThreadsIndex(key string) (*DeletedThreadsIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 6 || parts[0] != "idx" || parts[1] != "t" || parts[2] != "deleted" || parts[3] != "u" || parts[5] != "list" {
-		return nil, fmt.Errorf("invalid deleted threads index key: %s", key)
+func ParseVersionKeySequence(key string) (uint64, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return 0, err
 	}
-	return &DeletedThreadsIndexParts{UserID: parts[4]}, nil
+	if parsed.Type != KeyTypeVersion {
+		return 0, fmt.Errorf("expected version key, got %s", parsed.Type)
+	}
+	return ParseKeySequence(parsed.Seq)
+}
+
+func ParseDeletedThreadsIndex(key string) (*DeletedThreadsIndexParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Type != KeyTypeDeletedThreadsIndex {
+		return nil, fmt.Errorf("expected deleted threads index key, got %s", parsed.Type)
+	}
+	return &DeletedThreadsIndexParts{UserID: parsed.UserID}, nil
 }
 
 func ParseDeletedMessagesIndex(key string) (*DeletedMessagesIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 6 || parts[0] != "idx" || parts[1] != "m" || parts[2] != "deleted" || parts[3] != "u" || parts[5] != "list" {
-		return nil, fmt.Errorf("invalid deleted messages index key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &DeletedMessagesIndexParts{UserID: parts[4]}, nil
+	if parsed.Type != KeyTypeDeletedMessagesIndex {
+		return nil, fmt.Errorf("expected deleted messages index key, got %s", parsed.Type)
+	}
+	return &DeletedMessagesIndexParts{UserID: parsed.UserID}, nil
 }
 
-func ParseThreadMessageStart(key string) (threadID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "start" {
-		return "", fmt.Errorf("invalid thread message start key: %s", key)
+func ParseThreadMessageStart(key string) (*ThreadMessageStartParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], nil
+	if parsed.Type != KeyTypeThreadMessageStart {
+		return nil, fmt.Errorf("expected thread message start key, got %s", parsed.Type)
+	}
+	return &ThreadMessageStartParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadMessageEnd(key string) (threadID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "end" {
-		return "", fmt.Errorf("invalid thread message end key: %s", key)
+func ParseThreadMessageEnd(key string) (*ThreadMessageEndParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], nil
+	if parsed.Type != KeyTypeThreadMessageEnd {
+		return nil, fmt.Errorf("expected thread message end key, got %s", parsed.Type)
+	}
+	return &ThreadMessageEndParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadMessageCDeltas(key string) (threadID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "cdeltas" {
-		return "", fmt.Errorf("invalid thread message cdeltas key: %s", key)
+func ParseThreadMessageCDeltas(key string) (*ThreadMessageCDeltasParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], nil
+	if parsed.Type != KeyTypeThreadMessageCDeltas {
+		return nil, fmt.Errorf("expected thread message cdeltas key, got %s", parsed.Type)
+	}
+	return &ThreadMessageCDeltasParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadMessageUDeltas(key string) (threadID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "udeltas" {
-		return "", fmt.Errorf("invalid thread message udeltas key: %s", key)
+func ParseThreadMessageUDeltas(key string) (*ThreadMessageUDeltasParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], nil
+	if parsed.Type != KeyTypeThreadMessageUDeltas {
+		return nil, fmt.Errorf("expected thread message udeltas key, got %s", parsed.Type)
+	}
+	return &ThreadMessageUDeltasParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadMessageSkips(key string) (threadID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "skips" {
-		return "", fmt.Errorf("invalid thread message skips key: %s", key)
+func ParseThreadMessageSkips(key string) (*ThreadMessageSkipsParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], nil
+	if parsed.Type != KeyTypeThreadMessageSkips {
+		return nil, fmt.Errorf("expected thread message skips key, got %s", parsed.Type)
+	}
+	return &ThreadMessageSkipsParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
 func ParseThreadMessageLC(key string) (*ThreadMessageLCIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "lc" {
-		return nil, fmt.Errorf("invalid thread message lc key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &ThreadMessageLCIndexParts{ThreadKey: parts[2]}, nil
+	if parsed.Type != KeyTypeThreadMessageLC {
+		return nil, fmt.Errorf("expected thread message lc key, got %s", parsed.Type)
+	}
+	return &ThreadMessageLCIndexParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
 func ParseThreadMessageLU(key string) (*ThreadMessageLUIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[4] != "lu" {
-		return nil, fmt.Errorf("invalid thread message lu key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &ThreadMessageLUIndexParts{ThreadKey: parts[2]}, nil
+	if parsed.Type != KeyTypeThreadMessageLU {
+		return nil, fmt.Errorf("expected thread message lu key, got %s", parsed.Type)
+	}
+	return &ThreadMessageLUIndexParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadVersionStart(key string) (threadID, msgID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "start" {
-		return "", "", fmt.Errorf("invalid thread version start key: %s", key)
+func ParseThreadVersionStart(key string) (*ThreadVersionStartParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], parts[4], nil
+	if parsed.Type != KeyTypeThreadVersionStart {
+		return nil, fmt.Errorf("expected thread version start key, got %s", parsed.Type)
+	}
+	return &ThreadVersionStartParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
-func ParseThreadVersionEnd(key string) (threadID, msgID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "end" {
-		return "", "", fmt.Errorf("invalid thread version end key: %s", key)
+func ParseThreadVersionEnd(key string) (*ThreadVersionEndParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], parts[4], nil
+	if parsed.Type != KeyTypeThreadVersionEnd {
+		return nil, fmt.Errorf("expected thread version end key, got %s", parsed.Type)
+	}
+	return &ThreadVersionEndParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
-func ParseThreadVersionCDeltas(key string) (threadID, msgID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "cdeltas" {
-		return "", "", fmt.Errorf("invalid thread version cdeltas key: %s", key)
+func ParseThreadVersionCDeltas(key string) (*ThreadVersionCDeltasParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], parts[4], nil
+	if parsed.Type != KeyTypeThreadVersionCDeltas {
+		return nil, fmt.Errorf("expected thread version cdeltas key, got %s", parsed.Type)
+	}
+	return &ThreadVersionCDeltasParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
-func ParseThreadVersionUDeltas(key string) (threadID, msgID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "udeltas" {
-		return "", "", fmt.Errorf("invalid thread version udeltas key: %s", key)
+func ParseThreadVersionUDeltas(key string) (*ThreadVersionUDeltasParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], parts[4], nil
+	if parsed.Type != KeyTypeThreadVersionUDeltas {
+		return nil, fmt.Errorf("expected thread version udeltas key, got %s", parsed.Type)
+	}
+	return &ThreadVersionUDeltasParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
-func ParseThreadVersionSkips(key string) (threadID, msgID string, err error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "v" || parts[6] != "skips" {
-		return "", "", fmt.Errorf("invalid thread version skips key: %s", key)
+func ParseThreadVersionSkips(key string) (*ThreadVersionSkipsParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return parts[2], parts[4], nil
+	if parsed.Type != KeyTypeThreadVersionSkips {
+		return nil, fmt.Errorf("expected thread version skips key, got %s", parsed.Type)
+	}
+	return &ThreadVersionSkipsParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
 func ParseThreadVersionLC(key string) (*ThreadVersionLCIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "vs" || parts[6] != "lc" {
-		return nil, fmt.Errorf("invalid thread version lc key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &ThreadVersionLCIndexParts{ThreadKey: parts[2], MessageKey: parts[4]}, nil
+	if parsed.Type != KeyTypeThreadVersionLC {
+		return nil, fmt.Errorf("expected thread version lc key, got %s", parsed.Type)
+	}
+	return &ThreadVersionLCIndexParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
 func ParseThreadVersionLU(key string) (*ThreadVersionLUIndexParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 7 || parts[0] != "idx" || parts[1] != "t" || parts[3] != "ms" || parts[5] != "vs" || parts[6] != "lu" {
-		return nil, fmt.Errorf("invalid thread version lu key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	return &ThreadVersionLUIndexParts{ThreadKey: parts[2], MessageKey: parts[4]}, nil
+	if parsed.Type != KeyTypeThreadVersionLU {
+		return nil, fmt.Errorf("expected thread version lu key, got %s", parsed.Type)
+	}
+	return &ThreadVersionLUIndexParts{ThreadKey: parsed.ThreadKey, MessageKey: parsed.MessageTS}, nil
 }
 
 func ParseUserOwnsThread(key string) (*UserOwnsThreadParts, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 5 || parts[0] != "rel" || parts[1] != "u" || parts[3] != "t" {
-		return nil, fmt.Errorf("invalid user owns thread key: %s", key)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
 	}
-	userID := parts[2]
-	// Include the "t:" prefix for thread key as required (i.e., parts[3] + ":" + parts[4])
-	threadKey := parts[3] + ":" + parts[4]
+	if parsed.Type != KeyTypeUserOwnsThread {
+		return nil, fmt.Errorf("expected user owns thread key, got %s", parsed.Type)
+	}
 	return &UserOwnsThreadParts{
-		UserID:    userID,
-		ThreadKey: threadKey,
+		UserID:    parsed.UserID,
+		ThreadKey: parsed.ThreadKey,
+	}, nil
+}
+
+func ParseThreadHasUser(key string) (*ThreadHasUserParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Type != KeyTypeThreadHasUser {
+		return nil, fmt.Errorf("expected thread has user key, got %s", parsed.Type)
+	}
+	return &ThreadHasUserParts{
+		ThreadKey: parsed.ThreadKey,
+		UserID:    parsed.UserID,
 	}, nil
 }
 
@@ -282,24 +412,6 @@ func ParseKeySequence(s string) (uint64, error) {
 	return parsePaddedUint(s, SeqPadWidth)
 }
 
-func ExtractMessageComponents(threadKey, messageKey string) (threadComp, messageComp string, err error) {
-	if parsed, err := ParseKey(threadKey); err == nil && parsed.Type == KeyTypeThread {
-		threadComp = parsed.ThreadTS
-	} else {
-		return "", "", fmt.Errorf("extract thread component: %w", err)
-	}
-
-	if parsed, err := ParseKey(messageKey); err == nil && (parsed.Type == KeyTypeMessageProvisional || parsed.Type == KeyTypeMessage) {
-		messageComp = parsed.MessageTS
-	} else if IsProvisionalMessageKey(messageKey) {
-		messageComp = messageKey
-	} else {
-		return "", "", fmt.Errorf("extract message component: %w", err)
-	}
-
-	return threadComp, messageComp, nil
-}
-
 // KeyType represents the type of key
 type KeyType string
 
@@ -309,14 +421,21 @@ const (
 	KeyTypeMessageProvisional   KeyType = "message_provisional"
 	KeyTypeVersion              KeyType = "version"
 	KeyTypeUserOwnsThread       KeyType = "user_owns_thread"
+	KeyTypeThreadHasUser        KeyType = "thread_has_user"
 	KeyTypeThreadMessageStart   KeyType = "thread_message_start"
 	KeyTypeThreadMessageEnd     KeyType = "thread_message_end"
 	KeyTypeThreadMessageLC      KeyType = "thread_message_lc"
 	KeyTypeThreadMessageLU      KeyType = "thread_message_lu"
+	KeyTypeThreadMessageCDeltas KeyType = "thread_message_cdeltas"
+	KeyTypeThreadMessageUDeltas KeyType = "thread_message_udeltas"
+	KeyTypeThreadMessageSkips   KeyType = "thread_message_skips"
 	KeyTypeThreadVersionStart   KeyType = "thread_version_start"
 	KeyTypeThreadVersionEnd     KeyType = "thread_version_end"
 	KeyTypeThreadVersionLC      KeyType = "thread_version_lc"
 	KeyTypeThreadVersionLU      KeyType = "thread_version_lu"
+	KeyTypeThreadVersionCDeltas KeyType = "thread_version_cdeltas"
+	KeyTypeThreadVersionUDeltas KeyType = "thread_version_udeltas"
+	KeyTypeThreadVersionSkips   KeyType = "thread_version_skips"
 	KeyTypeDeletedThreadsIndex  KeyType = "deleted_threads_index"
 	KeyTypeDeletedMessagesIndex KeyType = "deleted_messages_index"
 )
@@ -332,6 +451,7 @@ type KeyParts struct {
 	Seq            string // "001"
 	UserID         string // For relationship keys
 	IndexType      string // "start", "end", "lc", "lu", etc.
+	VersionTS      string // For version keys: timestamp from v:{messageKey}:{ts}:{seq}
 }
 
 // ParseKey is the unified key parser that can handle all key formats
@@ -426,8 +546,9 @@ func parseVersionKey(key string, parts []string) (*KeyParts, error) {
 
 	return &KeyParts{
 		Type:      KeyTypeVersion,
-		MessageTS: parts[1],
-		Seq:       parts[3],
+		MessageTS: parts[1], // messageKey from v:{messageKey}:{ts}:{seq}
+		VersionTS: parts[2], // timestamp from v:{messageKey}:{ts}:{seq}
+		Seq:       parts[3], // seq from v:{messageKey}:{ts}:{seq}
 	}, nil
 }
 
@@ -442,6 +563,19 @@ func parseRelationKey(key string, parts []string) (*KeyParts, error) {
 			UserID:    parts[2],
 			ThreadKey: fullThreadKey,
 			ThreadTS:  threadTS,
+		}, nil
+	}
+
+	// rel:t:{threadTS}:u:{userID}
+	if len(parts) == 5 && parts[1] == "t" && parts[3] == "u" {
+		threadTS := parts[2]
+		userID := parts[4]
+		fullThreadKey := "t:" + threadTS
+		return &KeyParts{
+			Type:      KeyTypeThreadHasUser,
+			ThreadKey: fullThreadKey,
+			ThreadTS:  threadTS,
+			UserID:    userID,
 		}, nil
 	}
 
@@ -470,6 +604,12 @@ func parseIndexKey(key string, parts []string) (*KeyParts, error) {
 			keyType = KeyTypeThreadMessageLC
 		case "lu":
 			keyType = KeyTypeThreadMessageLU
+		case "cdeltas":
+			keyType = KeyTypeThreadMessageCDeltas
+		case "udeltas":
+			keyType = KeyTypeThreadMessageUDeltas
+		case "skips":
+			keyType = KeyTypeThreadMessageSkips
 		default:
 			return nil, fmt.Errorf("unknown thread message index type: %s", indexType)
 		}
@@ -499,6 +639,12 @@ func parseIndexKey(key string, parts []string) (*KeyParts, error) {
 			keyType = KeyTypeThreadVersionLC
 		case "lu":
 			keyType = KeyTypeThreadVersionLU
+		case "cdeltas":
+			keyType = KeyTypeThreadVersionCDeltas
+		case "udeltas":
+			keyType = KeyTypeThreadVersionUDeltas
+		case "skips":
+			keyType = KeyTypeThreadVersionSkips
 		default:
 			return nil, fmt.Errorf("unknown thread version index type: %s", indexType)
 		}

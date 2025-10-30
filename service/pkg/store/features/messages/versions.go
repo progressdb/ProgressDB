@@ -14,11 +14,11 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func ListMessageVersions(msgID string) ([]string, error) {
+func ListMessageVersions(messageKey string) ([]string, error) {
 	if index.IndexDB == nil {
 		return nil, fmt.Errorf("pebble not opened; call Open first")
 	}
-	prefix := keys.GenAllMessageVersionsPrefix(msgID)
+	prefix := keys.GenAllMessageVersionsPrefix(messageKey)
 	iter, err := index.IndexDB.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return nil, err
@@ -60,17 +60,17 @@ func ListMessageVersions(msgID string) ([]string, error) {
 	return out, iter.Error()
 }
 
-func GetLatestMessage(msgID string) (string, error) {
+func GetLatestMessage(messageKey string) (string, error) {
 	tr := telemetry.Track("storedb.get_latest_message")
 	defer tr.Finish()
 
 	tr.Mark("list_versions")
-	vers, err := ListMessageVersions(msgID)
+	vers, err := ListMessageVersions(messageKey)
 	if err != nil {
 		return "", err
 	}
 	if len(vers) == 0 {
-		return "", fmt.Errorf("no versions found for message %s", msgID)
+		return "", fmt.Errorf("no versions found for message %s", messageKey)
 	}
 	return vers[len(vers)-1], nil
 }
