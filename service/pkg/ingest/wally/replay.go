@@ -22,6 +22,7 @@ var globalWALReplayer *WALReplayer
 type IngestQueue interface {
 	WAL() types.WAL
 	Enqueue(op *types.QueueOp) error
+	EnqueueReplay(op *types.QueueOp) error
 }
 
 type WALReplayer struct {
@@ -122,7 +123,7 @@ func (r *WALReplayer) recoverWAL(stats *ReplayStats) {
 			continue
 		}
 
-		if err := r.queue.Enqueue(&op); err != nil {
+		if err := r.queue.EnqueueReplay(&op); err != nil {
 			logger.Error("wal_replay_enqueue_error", "index", i, "error", err)
 			stats.WALErrors++
 			continue
