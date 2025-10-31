@@ -15,7 +15,6 @@ import (
 	"progressdb/pkg/config/banner"
 )
 
-// printBanner prints the startup banner and build info.
 func (a *App) printBanner() {
 	var srcs []string
 	// Note: config source tracking removed since we no longer pass EffectiveConfigResult
@@ -36,32 +35,32 @@ func (a *App) printBanner() {
 func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 	// check store
 	if !storedb.Ready() {
-		ctx.SetStatusCode(fasthttp.StatusServiceUnavailable)
-		ctx.SetContentType("application/json")
-		_, _ = ctx.WriteString("{\"status\":\"not ready\"}")
+		router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "not ready")
 		return
 	}
 	if a.rc != nil {
 		if err := a.rc.Health(); err != nil {
-			ctx.SetStatusCode(fasthttp.StatusServiceUnavailable)
-			_, _ = ctx.WriteString("{\"status\":\"kms unhealthy\"}")
+			router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "kms unhealthy")
 			return
 		}
 	}
 	ctx.SetStatusCode(fasthttp.StatusOK)
-	ctx.SetContentType("application/json")
 	ver := a.version
 	if ver == "" {
 		ver = "dev"
 	}
-	_, _ = ctx.WriteString("{\"status\":\"ok\",\"version\":\"" + ver + "\"}")
+	router.WriteJSONOk(ctx, map[string]interface{}{
+		"status":  "ok",
+		"version": ver,
+	})
 }
 
 // healthzHandler handles the /healthz endpoint (fasthttp).
 func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 	ctx.SetContentType("application/json")
-	ctx.SetStatusCode(fasthttp.StatusOK)
-	_, _ = ctx.WriteString("{\"status\":\"ok\"}")
+	router.WriteJSONOk(ctx, map[string]interface{}{
+		"status": "ok",
+	})
 }
 
 // startHTTP builds and starts the fasthttp server, returning a channel that delivers errors.
@@ -109,15 +108,17 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 	fastHandler = auth.AuthenticateRequestMiddlewareFast(secCfg)(fastHandler)
 
 	// create fasthttp.Server options for readability and maintainability
+	maxRequestBodySize := config.GetMaxPayloadSize()
+
 	const (
 		readBufferSize       = 64 * 1024        // 64 KiB read buffer per connection
-		maxRequestBodySize   = 5 * 1024 * 1024  // 5 MiB max request body
 		concurrency          = 0                // unlimited concurrency (0 means unlimited in fasthttp)
 		readTimeout          = 10 * time.Second // timeout for reading request
 		writeTimeout         = 10 * time.Second // timeout for writing response
 		idleTimeout          = 30 * time.Second // max keep-alive idle duration per connection
 		maxKeepaliveDuration = 2 * time.Minute  // max duration for keep-alive connection
 	)
+
 	a.srvFast = &fasthttp.Server{
 		Handler:              fastHandler,
 		ReadBufferSize:       readBufferSize,

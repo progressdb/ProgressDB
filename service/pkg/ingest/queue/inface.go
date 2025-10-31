@@ -63,7 +63,7 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 		if err != nil {
 			return err
 		}
-		newOp.WalSeq = walSeq
+		newOp.EnqSeq = walSeq
 		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	} else {
 		// In-memory sequence (current behavior)

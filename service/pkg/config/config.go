@@ -59,13 +59,13 @@ func GetSigningKeys() map[string]struct{} {
 	return out
 }
 
-func GetMaxPayloadSize() int64 {
+func GetMaxPayloadSize() int {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
 	if runtimeCfg == nil || runtimeCfg.MaxPayloadSize == 0 {
 		return 102400
 	}
-	return runtimeCfg.MaxPayloadSize
+	return int(runtimeCfg.MaxPayloadSize)
 }
 
 func (c *Config) Addr() string {

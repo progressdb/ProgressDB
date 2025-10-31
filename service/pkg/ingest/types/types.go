@@ -27,13 +27,11 @@ type RequestMetadata struct {
 
 // QueueOp represents a queue operation with metadata.
 type QueueOp struct {
-	Handler   HandlerID       // Handler to invoke
-	Payload   interface{}     // Payload data (may be nil, can be struct or []byte)
-	TS        int64           // Timestamp (nanoseconds)
-	EnqSeq    uint64          // Assigned sequence at enqueue (used when WAL disabled)
-	WalSeq    uint64          // WAL-assigned sequence (used when WAL enabled)
-	WalOffset int64           // WAL offset, -1 if unset
-	Extras    RequestMetadata // Optional metadata (e.g. user id, role)
+	Handler HandlerID       // Handler to invoke
+	Payload interface{}     // Payload data (may be nil, can be struct or []byte)
+	TS      int64           // Timestamp (nanoseconds)
+	EnqSeq  uint64          // Assigned sequence at enqueue
+	Extras  RequestMetadata // Optional metadata (e.g. user id, role)
 }
 
 // WAL defines the write-ahead log interface (used by engine and WAL code).

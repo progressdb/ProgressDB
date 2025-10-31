@@ -20,8 +20,10 @@ import (
 )
 
 func Health(ctx *fasthttp.RequestCtx) {
-	ctx.Response.Header.Set("Content-Type", "application/json")
-	_, _ = ctx.WriteString(`{"status":"ok","service":"progressdb"}`)
+	router.WriteJSONOk(ctx, map[string]interface{}{
+		"status":  "ok",
+		"service": "progressdb",
+	})
 }
 
 func Stats(ctx *fasthttp.RequestCtx) {

@@ -25,12 +25,6 @@ type IngestQueue struct {
 	walBacked bool
 }
 
-// Done manages the lifecycle of the QueueItem, decrementing inFlight and releasing resources.
-func (q *IngestQueue) jobDone(item *types.QueueItem) {
-	item.JobDone()
-	atomic.AddInt64(&q.inFlight, -1)
-}
-
 // JobDone manages the lifecycle of a QueueItem for this queue.
 func (q *IngestQueue) JobDone(item *types.QueueItem) {
 	item.DoOnce(func() {
