@@ -319,7 +319,7 @@ func EncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	_ = router.WriteJSON(ctx, map[string]string{"kek_hex": kek})
 }
 
-func TestRetentionRun(ctx *fasthttp.RequestCtx) {
+func RunRetentionCleanup(ctx *fasthttp.RequestCtx) {
 	if err := retention.RunImmediate(); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return

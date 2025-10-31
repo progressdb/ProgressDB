@@ -142,8 +142,8 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/admin/debug/pprof/symbol", wrapHTTPHandler(http.HandlerFunc(pprof.Symbol)))
 	r.GET("/admin/debug/pprof/trace", wrapHTTPHandler(http.HandlerFunc(pprof.Trace)))
 
-	// admin test routes
-	r.POST("/admin/test-retention-run", adminRoutes.TestRetentionRun)
+	// admin job routes
+	r.POST("/admin/jobs/purge", adminRoutes.RunRetentionCleanup)
 }
 
 // Handler returns the fasthttp handler for the ProgressDB API.
