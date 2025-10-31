@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/store/keys"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -285,6 +286,34 @@ func (l *Log) TruncateFront(index uint64) error {
 	return l.db.Apply(batch, l.writeOpts())
 }
 
+func (l *Log) TruncateSequences(seqs []uint64) error {
+	if len(seqs) == 0 {
+		return nil
+	}
+
+	// Sort sequences for efficient processing
+	sort.Slice(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.closed {
+		return ErrClosed
+	}
+
+	batch := l.db.NewBatch()
+	defer batch.Close()
+
+	// Queue all sequence deletions in single batch
+	for _, seq := range seqs {
+		key := fmt.Sprintf("%020d", seq)
+		batch.Delete([]byte(key), l.writeOpts())
+	}
+
+	// Single atomic commit with sync
+	return l.db.Apply(batch, l.writeOpts())
+}
+
 func (l *Log) Sync() error {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -293,7 +322,9 @@ func (l *Log) Sync() error {
 		return ErrClosed
 	}
 
-	return l.db.Set([]byte(pebbleSyncMarkerKey), []byte(time.Now().Format(time.RFC3339Nano)), pebble.Sync)
+	// Pebble doesn't have direct Sync() method, sync is handled via WriteOptions
+	// For WAL sync, we write a sync marker
+	return l.db.Set([]byte(pebbleSyncMarkerKey), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), &pebble.WriteOptions{Sync: true})
 }
 
 func (l *Log) IsEmpty() (bool, error) {

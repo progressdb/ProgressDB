@@ -26,7 +26,7 @@ func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, ti
 		buffer:       make([]types.BatchEntry, 0, maxBatchSize),
 		maxSize:      maxBatchSize,
 		timeout:      timeout,
-		applyWorkers: 10, // default number of parallel apply workers
+		applyWorkers: 1, // default number of parallel apply workers
 	}
 }
 

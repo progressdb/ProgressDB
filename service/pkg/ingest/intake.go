@@ -44,6 +44,9 @@ func NewIngestor(q *queue.IngestQueue, dbPath string) *Ingestor {
 	computeWorker := compute.NewComputeWorker(q, computeBuf, cc.WorkerCount, failedOpsPath)
 	applyWorker := apply.NewApplyWorker(computeBuf, applyWorkers, ac.BatchCount, ac.BatchTimeout.Duration())
 
+	// Set WAL reference for apply package
+	apply.SetIntakeWAL(q.WAL())
+
 	return &Ingestor{
 		computeWorker: computeWorker,
 		applyWorker:   applyWorker,

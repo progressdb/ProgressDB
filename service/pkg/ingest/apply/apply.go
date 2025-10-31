@@ -10,11 +10,36 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 
 	"github.com/cockroachdb/pebble"
 )
+
+// Global WAL reference for sequence truncation
+var globalWAL types.WAL
+
+// SetIntakeWAL sets the WAL reference for apply package
+func SetIntakeWAL(wal types.WAL) {
+	globalWAL = wal
+}
+
+// truncateWALWithSequences truncates WAL entries using processed sequences
+func truncateWALWithSequences(seqs []uint64) error {
+	if globalWAL == nil || len(seqs) == 0 {
+		return nil
+	}
+
+	// Type assert to access TruncateSequences method
+	if walWithTruncate, ok := globalWAL.(interface{ TruncateSequences([]uint64) error }); ok {
+		if err := walWithTruncate.TruncateSequences(seqs); err != nil {
+			return fmt.Errorf("wal truncate sequences failed: %w", err)
+		}
+		logger.Debug("wal_truncated_batch", "seq_count", len(seqs))
+	}
+	return nil
+}
 
 type ThreadGroup struct {
 	ThreadKey string
@@ -292,6 +317,17 @@ func nextPrefix(prefix []byte) []byte {
 	return nil // no upper bound if all 0xFF
 }
 
+// extractSequencesFromBatch extracts EnqSeq values from processed batch entries
+func extractSequencesFromBatch(entries []types.BatchEntry) []uint64 {
+	seqs := make([]uint64, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Enq > 0 {
+			seqs = append(seqs, entry.Enq)
+		}
+	}
+	return seqs
+}
+
 func processThreadGroup(threadGroup ThreadGroup, batchProcessor *BatchProcessor) error {
 	// ops sorted by create, update, delete
 	sortedOps := sortOperationsByType(threadGroup.Entries)
@@ -367,6 +403,8 @@ func ApplyBatchToDBParallel(entries []types.BatchEntry, numWorkers int) error {
 				batchProcessor.Index.PrepopulateProvisionalCache(sharedProvMappings)
 			}
 
+			// Collect all entries processed by this worker for WAL truncation
+			var workerEntries []types.BatchEntry
 			for threadGroup := range threadChannel {
 				// Initialize thread state if not already done
 				if threadGroup.ThreadKey != "" {
@@ -378,12 +416,21 @@ func ApplyBatchToDBParallel(entries []types.BatchEntry, numWorkers int) error {
 					errors <- err
 					return
 				}
+
+				// Collect entries for WAL truncation
+				workerEntries = append(workerEntries, threadGroup.Entries...)
 			}
 
 			// Flush this worker's batch
 			if err := batchProcessor.Flush(); err != nil {
 				errors <- fmt.Errorf("worker %d flush failed: %w", workerID, err)
 				return
+			}
+
+			// Extract sequences from this worker's processed entries and truncate WAL
+			workerSeqs := extractSequencesFromBatch(workerEntries)
+			if err := truncateWALWithSequences(workerSeqs); err != nil {
+				logger.Error("wal_truncate_worker_failed", "err", err, "worker_id", workerID, "seq_count", len(workerSeqs))
 			}
 		}(i)
 	}
@@ -450,6 +497,13 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	if err := batchProcessor.Flush(); err != nil {
 		return fmt.Errorf("batch flush failed: %w", err)
 	}
+
+	// Extract sequences from successfully processed batch and truncate WAL
+	seqs := extractSequencesFromBatch(entries)
+	if err := truncateWALWithSequences(seqs); err != nil {
+		logger.Error("wal_truncate_failed", "err", err, "seq_count", len(seqs))
+	}
+
 	storedb.RecordWrite(len(entries))
 	return nil
 }
