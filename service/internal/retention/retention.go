@@ -89,7 +89,7 @@ func (rm *RetentionManager) scheduleLoop() {
 		wait := time.Until(next)
 		if wait <= 0 {
 			// Time is due, run immediately
-			rm.executeRetention()
+			rm.runJob()
 			// Avoid tight loop - wait a bit before recalculating
 			select {
 			case <-time.After(time.Second):
@@ -102,14 +102,14 @@ func (rm *RetentionManager) scheduleLoop() {
 		// Wait until next run time or cancellation
 		select {
 		case <-time.After(wait):
-			rm.executeRetention()
+			rm.runJob()
 		case <-rm.ctx.Done():
 			return
 		}
 	}
 }
 
-func (rm *RetentionManager) executeRetention() {
+func (rm *RetentionManager) runJob() {
 	rm.mutex.Lock()
 	if rm.running {
 		rm.mutex.Unlock()
