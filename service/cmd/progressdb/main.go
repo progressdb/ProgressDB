@@ -10,7 +10,6 @@ import (
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/shutdown"
-	"progressdb/pkg/store/migrations"
 	"runtime"
 	"time"
 
@@ -45,6 +44,7 @@ func main() {
 	if err != nil {
 		shutdown.Abort("failed to load config file", err, flags.DB)
 	}
+	logger.Info("config_file_parsed", "path", flags.Config, "exists", fileExists, "error", err)
 
 	// parse config env variables
 	envCfg, envRes := config.ParseConfigEnvs()
@@ -54,14 +54,24 @@ func main() {
 	if err != nil {
 		shutdown.Abort("failed to build effective config", err, flags.DB)
 	}
-
-	// validate config
-	if err := config.ValidateConfig(eff); err != nil {
-		shutdown.Abort("invalid configuration", err, eff.DBPath)
-	}
+	logger.Info("effective_config_loaded", "source", eff.Source, "addr", eff.Addr, "db_path", eff.DBPath)
 
 	// set global config for use throughout the application
 	config.SetConfig(eff.Config)
+
+	// Debug: verify config was set
+	if cfg := config.GetConfig(); cfg == nil {
+		shutdown.Abort("config was nil after SetConfig", fmt.Errorf("config setting failed"), eff.DBPath)
+	} else {
+		logger.Info("config_set_successfully", "db_path", cfg.Server.DBPath, "ingest_wal_enabled", cfg.Ingest.Intake.WAL.Enabled)
+	}
+
+	// validate config
+	logger.Info("validating_config", "db_path", eff.DBPath)
+	if err := config.ValidateConfig(eff); err != nil {
+		shutdown.Abort("invalid configuration", err, eff.DBPath)
+	}
+	logger.Info("config_validation_passed")
 
 	// Reinitialize logger with config-driven level (overrides env default)
 	logger.InitWithLevel(eff.Config.Logging.Level)
@@ -102,11 +112,6 @@ func main() {
 	// set up context and signal handling for graceful shutdown
 	ctx, cancel := shutdown.SetupSignalHandler(context.Background())
 	defer cancel()
-
-	// run version checks and migrations - before start app
-	if _, err := migrations.Run(ctx, version); err != nil {
-		shutdown.Abort("progressor run failed", err, eff.DBPath)
-	}
 
 	// run the app
 	if err := app.Run(ctx); err != nil {

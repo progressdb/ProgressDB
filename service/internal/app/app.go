@@ -14,6 +14,7 @@ import (
 	"progressdb/pkg/state/telemetry"
 	indexdb "progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
+	"progressdb/pkg/store/migrations"
 
 	"progressdb/internal/retention"
 	"progressdb/pkg/config"
@@ -41,7 +42,7 @@ type App struct {
 func New(version, commit, buildDate string) (*App, error) {
 	cfg := config.GetConfig()
 	if cfg == nil {
-		return nil, fmt.Errorf("config not set - call config.SetConfig() first")
+		return nil, fmt.Errorf("config not set - call config.SetConfig() first. Make sure you're running the service through the main.go entry point with proper config file")
 	}
 
 	// telemetry setup
@@ -121,6 +122,11 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)
+
+	// run version checks and migrations after databases are opened
+	if _, err := migrations.Run(ctx, a.version); err != nil {
+		return fmt.Errorf("migrations run failed: %w", err)
+	}
 
 	// start retention scheduler if enabled
 	if cancel, err := retention.Start(ctx); err != nil {

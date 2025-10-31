@@ -12,29 +12,23 @@ import (
 // TODO: handler error - handlng strategy
 
 var (
-	// enqueue sequence number
 	enqSeq uint64
 )
 
-// Queue errors
 var (
 	ErrQueueFull   = errors.New("ingest queue full")
 	ErrQueueClosed = errors.New("ingest queue closed")
 )
 
-// enqueue operation (non-blocking)
 func (q *IngestQueue) Enqueue(op *types.QueueOp) error {
 	return q.enqueue(op)
 }
 
-// enqueue replay operation (bypasses WAL, preserves original sequence)
 func (q *IngestQueue) EnqueueReplay(op *types.QueueOp) error {
 	return q.enqueueReplay(op)
 }
 
-// internal enqueue function
 func (q *IngestQueue) enqueue(op *types.QueueOp) error {
-	// Acquire enqueue lock to atomically check closed state and increment WaitGroup
 	q.enqMu.Lock()
 	if atomic.LoadInt32(&q.closed) == 1 {
 		q.enqMu.Unlock()
@@ -44,7 +38,6 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 	q.enqMu.Unlock()
 	defer q.enqWg.Done()
 
-	// Final check after acquiring the enqueue slot
 	if atomic.LoadInt32(&q.closed) == 1 {
 		return ErrQueueClosed
 	}
@@ -59,7 +52,6 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 	}
 	var it *types.QueueItem
 	if q.wal != nil && q.walBacked {
-		// WAL manages sequence - get persistent sequence from WAL
 		data, err := json.Marshal(newOp)
 		if err != nil {
 			return err
@@ -71,7 +63,6 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 		newOp.EnqSeq = walSeq
 		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	} else {
-		// In-memory sequence (current behavior)
 		newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
 		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	}
@@ -87,9 +78,7 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 	}
 }
 
-// internal replay enqueue function (bypasses WAL, preserves original sequence)
 func (q *IngestQueue) enqueueReplay(op *types.QueueOp) error {
-	// Acquire enqueue lock to atomically check closed state and increment WaitGroup
 	q.enqMu.Lock()
 	if atomic.LoadInt32(&q.closed) == 1 {
 		q.enqMu.Unlock()
@@ -99,24 +88,20 @@ func (q *IngestQueue) enqueueReplay(op *types.QueueOp) error {
 	q.enqMu.Unlock()
 	defer q.enqWg.Done()
 
-	// Final check after acquiring the enqueue slot
 	if atomic.LoadInt32(&q.closed) == 1 {
 		return ErrQueueClosed
 	}
 
-	// Preserve original operation and sequence from WAL
 	newOp := &types.QueueOp{
 		Handler: op.Handler,
 		Payload: op.Payload,
 		TS:      op.TS,
-		EnqSeq:  op.EnqSeq, // Preserve original WAL sequence
+		EnqSeq:  op.EnqSeq,
 	}
 	if op.Extras != (types.RequestMetadata{}) {
 		newOp.Extras = op.Extras
 	}
 
-	// Bypass WAL entirely - use in-memory sequence generation for consistency
-	// but preserve the original EnqSeq from WAL
 	it := &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 
 	select {
@@ -130,7 +115,6 @@ func (q *IngestQueue) enqueueReplay(op *types.QueueOp) error {
 	}
 }
 
-// shutdown queue
 func (q *IngestQueue) Close() error {
 	if atomic.LoadInt32(&q.closed) == 1 {
 		return nil
@@ -146,12 +130,10 @@ func (q *IngestQueue) Close() error {
 	return nil
 }
 
-// get output channel
 func (q *IngestQueue) Out() <-chan *types.QueueItem {
 	return q.ch
 }
 
-// global enqueue
 func Enqueue(op *types.QueueOp) error {
 	if GlobalIngestQueue != nil {
 		return GlobalIngestQueue.Enqueue(op)

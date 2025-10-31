@@ -11,9 +11,9 @@ import (
 
 // set defaults, fail fast on critical errors
 func ValidateConfig(eff EffectiveConfigResult) error {
-	cfg := GetConfig()
+	cfg := eff.Config
 	if cfg == nil {
-		return fmt.Errorf("config not set - call SetConfig() first")
+		return fmt.Errorf("effective config is nil")
 	}
 	// DB path must be present
 	if p := eff.DBPath; p == "" {
