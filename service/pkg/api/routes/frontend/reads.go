@@ -8,7 +8,6 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/api/router/common"
 	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
 	thread_store "progressdb/pkg/store/features/threads"
@@ -16,7 +15,7 @@ import (
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
-	author, tr, ok := common.SetupReadHandler(ctx, "read_threads_list")
+	author, tr, ok := router.SetupReadHandler(ctx, "read_threads_list")
 	if !ok {
 		return
 	}
@@ -53,21 +52,21 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 }
 
 func ReadThreadItem(ctx *fasthttp.RequestCtx) {
-	author, tr, ok := common.SetupReadHandler(ctx, "read_thread_item")
+	author, tr, ok := router.SetupReadHandler(ctx, "read_thread_item")
 	if !ok {
 		return
 	}
 	defer tr.Finish()
 
-	threadKey, valid := common.ValidatePathParam(ctx, "threadKey")
+	threadKey, valid := router.ValidatePathParam(ctx, "threadKey")
 	if !valid {
 		return
 	}
 
 	tr.Mark("validate_thread")
-	thread, validationErr := common.ValidateReadThread(threadKey, author, true)
+	thread, validationErr := router.ValidateReadThread(threadKey, author, true)
 	if validationErr != nil {
-		common.WriteValidationError(ctx, validationErr)
+		router.WriteValidationError(ctx, validationErr)
 		return
 	}
 
@@ -76,7 +75,7 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 }
 
 func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
-	author, tr, ok := common.SetupReadHandler(ctx, "read_thread_messages")
+	author, tr, ok := router.SetupReadHandler(ctx, "read_thread_messages")
 	if !ok {
 		return
 	}
@@ -85,13 +84,13 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("validate_thread")
-	threadKey, valid := common.ValidatePathParam(ctx, "threadKey")
+	threadKey, valid := router.ValidatePathParam(ctx, "threadKey")
 	if !valid {
 		return
 	}
-	_, validationErr := common.ValidateReadThread(threadKey, author, false)
+	_, validationErr := router.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
-		common.WriteValidationError(ctx, validationErr)
+		router.WriteValidationError(ctx, validationErr)
 		return
 	}
 
@@ -129,36 +128,36 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
-	author, tr, ok := common.SetupReadHandler(ctx, "read_thread_message")
+	author, tr, ok := router.SetupReadHandler(ctx, "read_thread_message")
 	if !ok {
 		return
 	}
 	defer tr.Finish()
 
-	messageKey, valid := common.ValidatePathParam(ctx, "id")
+	messageKey, valid := router.ValidatePathParam(ctx, "id")
 	if !valid {
 		return
 	}
 
-	threadKey := common.PathParam(ctx, "threadKey")
+	threadKey := router.PathParam(ctx, "threadKey")
 
 	tr.Mark("validate_thread")
-	_, validationErr := common.ValidateReadThread(threadKey, author, false)
+	_, validationErr := router.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
-		common.WriteValidationError(ctx, validationErr)
+		router.WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_message")
-	message, validationErr := common.ValidateReadMessage(messageKey, author, true)
+	message, validationErr := router.ValidateReadMessage(messageKey, author, true)
 	if validationErr != nil {
-		common.WriteValidationError(ctx, validationErr)
+		router.WriteValidationError(ctx, validationErr)
 		return
 	}
 
 	tr.Mark("validate_thread_parent")
-	if relErr := common.ValidateMessageThreadRelationship(message, threadKey); relErr != nil {
-		common.WriteValidationError(ctx, relErr)
+	if relErr := router.ValidateMessageThreadRelationship(message, threadKey); relErr != nil {
+		router.WriteValidationError(ctx, relErr)
 		return
 	}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/api/router/common"
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/state/logger"
@@ -41,14 +40,14 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 	reqtime := timeutil.Now().UnixNano()
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
 
 	// parse
-	payload, ok := common.ExtractPayloadOrFail(ctx)
+	payload, ok := router.ExtractPayloadOrFail(ctx)
 	if !ok {
 		return
 	}
@@ -57,7 +56,7 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread payload")
 		return
 	}
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
 	threadKey := keys.GenThreadPrvKey(fmt.Sprintf("%d", reqtime))
@@ -97,26 +96,26 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	reqtime := timeutil.Now().UnixNano()
 
 	// extract
-	threadKey, ok := common.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
+	threadKey, ok := router.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 
 	// validate
-	if err := common.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
 
 	// parse
-	payload, ok := common.ExtractPayloadOrFail(ctx)
+	payload, ok := router.ExtractPayloadOrFail(ctx)
 	if !ok {
 		return
 	}
@@ -126,7 +125,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread update payload")
 		return
 	}
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
 	update.Key = threadKey
@@ -161,23 +160,23 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	// sync
 	reqtime := timeutil.Now().UnixNano()
 
-	threadKey, ok := common.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
+	threadKey, ok := router.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 	// validate
-	if err := common.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	var del models.ThreadDeletePartial
 	del.Key = threadKey
@@ -213,26 +212,26 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	// sync
 	reqtime := timeutil.Now().UnixNano()
 
-	threadKey, ok := common.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
+	threadKey, ok := router.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 
 	// validate
-	if err := common.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
 
 	// parse
-	payload, ok := common.ExtractPayloadOrFail(ctx)
+	payload, ok := router.ExtractPayloadOrFail(ctx)
 	if !ok {
 		return
 	}
@@ -241,7 +240,7 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid message payload")
 		return
 	}
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
 	messageKey := keys.GenMessagePrvKey(threadKey, fmt.Sprintf("%d", reqtime))
@@ -281,35 +280,35 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	reqtime := timeutil.Now().UnixNano()
 
 	// extract
-	threadKey, ok := common.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
+	threadKey, ok := router.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 
-	messageKey, ok := common.ExtractParamOrFail(ctx, "id", "message id missing")
+	messageKey, ok := router.ExtractParamOrFail(ctx, "id", "message id missing")
 	if !ok {
 		return
 	}
 
 	// validate
-	if err := common.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-	if err := common.ValidateMessageKey(messageKey); err != nil {
+	if err := router.ValidateMessageKey(messageKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
 
 	// parse
-	payload, ok := common.ExtractPayloadOrFail(ctx)
+	payload, ok := router.ExtractPayloadOrFail(ctx)
 	if !ok {
 		return
 	}
@@ -319,7 +318,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid message update payload")
 		return
 	}
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
 	update.Key = messageKey
@@ -356,34 +355,34 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	reqtime := timeutil.Now().UnixNano()
 
 	// extract
-	threadKey, ok := common.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
+	threadKey, ok := router.ExtractParamOrFail(ctx, "threadKey", "thread id missing")
 	if !ok {
 		return
 	}
 
-	messageKey, ok := common.ExtractParamOrFail(ctx, "id", "message id missing")
+	messageKey, ok := router.ExtractParamOrFail(ctx, "id", "message id missing")
 	if !ok {
 		return
 	}
 
 	// validate
-	if err := common.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-	if err := common.ValidateMessageKey(messageKey); err != nil {
+	if err := router.ValidateMessageKey(messageKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
 	// resolve
-	author, authErr := common.ValidateAuthor(ctx, "")
+	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
-		common.WriteValidationError(ctx, authErr)
+		router.WriteValidationError(ctx, authErr)
 		return
 	}
 
-	metadata := common.NewRequestMetadata(ctx, author)
+	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
 	var del models.MessageDeletePartial

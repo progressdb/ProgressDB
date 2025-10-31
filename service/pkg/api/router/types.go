@@ -1,4 +1,4 @@
-package common
+package router
 
 // RequestMetadata represents common metadata extracted from HTTP requests
 type RequestMetadata struct {

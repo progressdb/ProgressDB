@@ -68,43 +68,47 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 
 			// if not an authenticated role, deny request
 			if role == RoleUnauth || !hasAPIKey {
-				router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				logger.Warn("request_unauthorized", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
+				router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "unauthorized")
 				return
 			}
 
 			// set for downstream usage
 			ctx.Request.Header.Set("X-Role-Name", roleName)
 
-			// explicit role-path handling with specific logic per combination
+			// request info for logging
 			path := utils.GetPath(ctx)
+			remote := ctx.RemoteAddr().String()
+			reqInfo := []interface{}{"path", path, "remote", remote}
+
+			// explicit role-path handling with specific logic per combination
 			switch role {
 			case RoleAdmin:
 				if !utils.HasPathPrefix(ctx, "/admin") {
 					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-					logger.Warn("admin_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					logger.Warn("admin_path_denied", reqInfo...)
 					return
 				}
-				logger.Debug("admin_path_allowed", "path", path)
+				logger.Debug("admin_path_allowed", reqInfo...)
 			case RoleBackend:
 				if !utils.HasPathPrefix(ctx, "/backend") && !utils.HasPathPrefix(ctx, "/frontend") {
 					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-					logger.Warn("backend_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					logger.Warn("backend_path_denied", reqInfo...)
 					return
 				}
-				logger.Debug("backend_path_allowed", "path", path)
+				logger.Debug("backend_path_allowed", reqInfo...)
 			case RoleFrontend:
 				if !utils.HasPathPrefix(ctx, "/frontend") {
 					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-					logger.Warn("frontend_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					logger.Warn("frontend_path_denied", reqInfo...)
 					return
 				}
-				logger.Debug("frontend_path_allowed", "path", path)
+				logger.Debug("frontend_path_allowed", reqInfo...)
 
 				// frontend requires signature verification
 				if !utils.HasUserSignature(ctx) {
 					router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "signature required")
-					logger.Warn("frontend_missing_signature", "path", path, "remote", ctx.RemoteAddr().String())
+					logger.Warn("frontend_missing_signature", reqInfo...)
 					return
 				}
 				RequireSignedAuthorMiddleware(next)(ctx)
@@ -114,7 +118,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 			// rate limiting (per-key)
 			if !limiters.Allow(key) {
 				router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
-				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", utils.GetPath(ctx))
+				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", path)
 				return
 			}
 
@@ -156,40 +160,6 @@ func validateAPIKey(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool
 		}
 	}
 	return RoleUnauth, key, true
-}
-
-// isRolePathAllowed checks if the role is allowed to access the requested path
-func isRolePathAllowed(ctx *fasthttp.RequestCtx, role Role) bool {
-	switch role {
-	case RoleAdmin:
-		// Admin can only access /admin paths
-		return utils.HasPathPrefix(ctx, "/admin")
-
-	case RoleBackend:
-		// Backend can access /backend and /frontend paths
-		return utils.HasPathPrefix(ctx, "/backend") || utils.HasPathPrefix(ctx, "/frontend")
-
-	case RoleFrontend:
-		// Frontend can only access /frontend paths
-		return utils.HasPathPrefix(ctx, "/frontend")
-
-	default:
-		return false
-	}
-}
-
-// getRoleName converts Role enum to string for logging
-func getRoleName(role Role) string {
-	switch role {
-	case RoleAdmin:
-		return "admin"
-	case RoleBackend:
-		return "backend"
-	case RoleFrontend:
-		return "frontend"
-	default:
-		return "unauth"
-	}
 }
 
 func originAllowed(origin string, allowed []string) bool {

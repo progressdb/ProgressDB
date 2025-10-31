@@ -63,7 +63,7 @@ if ! command -v curl >/dev/null 2>&1; then
   echo "curl required but not found"; exit 1
 fi
 
-SIG_JSON=$(curl -s -X POST "${TARGET_URL%/}/v1/_sign" \
+SIG_JSON=$(curl -s -X POST "${TARGET_URL%/}/backend/sign" \
   -H "Authorization: Bearer ${BACKEND_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{\"userId\":\"${USER_ID}\"}") || SIG_JSON=''
@@ -96,7 +96,7 @@ for ((i=1; i<=THREAD_COUNT; i++)); do
 EOF
 )
     
-    THREAD_RESPONSE=$(curl -s -X POST "${TARGET_URL%/}/v1/threads" \
+    THREAD_RESPONSE=$(curl -s -X POST "${TARGET_URL%/}/frontend/v1/threads" \
         -H "Authorization: Bearer ${FRONTEND_API_KEY}" \
         -H "X-User-ID: ${USER_ID}" \
         -H "X-User-Signature: ${GENERATED_USER_SIGNATURE}" \
@@ -112,7 +112,7 @@ EOF
     fi
     
     # No sleep, immediately GET the thread info
-    THREAD_INFO=$(curl -s -X GET "${TARGET_URL%/}/v1/threads/${THREAD_ID}" \
+    THREAD_INFO=$(curl -s -X GET "${TARGET_URL%/}/frontend/v1/threads/${THREAD_ID}" \
         -H "Authorization: Bearer ${FRONTEND_API_KEY}" \
         -H "X-User-ID: ${USER_ID}" \
         -H "X-User-Signature: ${GENERATED_USER_SIGNATURE}")
@@ -158,7 +158,7 @@ for thread_index in "${!THREAD_IDS[@]}"; do
 EOF
 )
         
-        MESSAGE_RESPONSE=$(curl -s -X POST "${TARGET_URL%/}/v1/threads/${THREAD_ID}/messages" \
+        MESSAGE_RESPONSE=$(curl -s -X POST "${TARGET_URL%/}/frontend/v1/threads/${THREAD_ID}/messages" \
             -H "Authorization: Bearer ${FRONTEND_API_KEY}" \
             -H "X-User-ID: ${USER_ID}" \
             -H "X-User-Signature: ${GENERATED_USER_SIGNATURE}" \

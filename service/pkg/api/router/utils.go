@@ -1,9 +1,8 @@
-package common
+package router
 
 import (
 	"fmt"
 
-	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
@@ -42,7 +41,7 @@ func ValidateMessageKey(key string) error {
 func ExtractParamOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg string) (string, bool) {
 	val := PathParam(ctx, param)
 	if val == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, missingMsg)
+		WriteJSONError(ctx, fasthttp.StatusBadRequest, missingMsg)
 		return "", false
 	}
 	return val, true
@@ -98,7 +97,7 @@ func NewEnqueueRequest(ctx *fasthttp.RequestCtx, author, threadKey, messageKey s
 func ValidatePathParam(ctx *fasthttp.RequestCtx, paramName string) (string, bool) {
 	value := PathParam(ctx, paramName)
 	if value == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, paramName+" missing")
+		WriteJSONError(ctx, fasthttp.StatusBadRequest, paramName+" missing")
 		return "", false
 	}
 	return value, true
