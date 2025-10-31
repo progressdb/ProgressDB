@@ -42,3 +42,13 @@ func saveThread(threadKey string, data string) error {
 	key := keys.GenThreadKey(threadKey)
 	return storedb.SaveKey(key, []byte(data))
 }
+
+
+func extractQueryOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg string) (string, bool) {
+	val := string(ctx.QueryArgs().Peek(param))
+	if val == "" {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, missingMsg)
+		return "", false
+	}
+	return val, true
+}

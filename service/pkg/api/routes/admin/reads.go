@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
@@ -160,7 +161,9 @@ func GetKey(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid key encoding")
 		return
 	}
-	storeParam := string(ctx.QueryArgs().Peek("store"))
+	storeParam, _ := extractQueryOrFail(ctx, "store", "")
+	
+	logger.Debug("GetKey: storeParam", storeParam)
 	var val string
 	switch storeParam {
 	case "index":
@@ -287,6 +290,11 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	threadKey, ok := extractParamOrFail(ctx, "threadKey", "missing threadKey")
 	if !ok {
 		return
+	}
+
+	// Handle case where fasthttp strips the 't:' prefix from path parameters
+	if !strings.HasPrefix(threadKey, "t:") {
+		threadKey = "t:" + threadKey
 	}
 
 	// Parse and validate thread key using unified parser
