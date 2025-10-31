@@ -104,7 +104,6 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 
 	fastHandler := r.Handler
 	// wrap with fasthttp native auth middleware
-	fastHandler = auth.RequireSignedAuthorMiddleware(fastHandler)
 	fastHandler = auth.AuthenticateRequestMiddleware(secCfg)(fastHandler)
 
 	// create fasthttp.Server options for readability and maintainability

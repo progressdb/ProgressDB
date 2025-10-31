@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
+# Set required environment variables for ProgressDB
+export PROGRESSDB_API_SIGNING_KEYS="sign_example"
+
 # defaults
 DEFAULT_TARGET="http://localhost:8080"
 DEFAULT_USER_ID="user1"
