@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
@@ -162,7 +161,7 @@ func GetKey(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	storeParam, _ := extractQueryOrFail(ctx, "store", "")
-	
+
 	logger.Debug("GetKey: storeParam", storeParam)
 	var val string
 	switch storeParam {
@@ -289,13 +288,10 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	threadKey, ok := extractParamOrFail(ctx, "threadKey", "missing threadKey")
 	if !ok {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing or invalid threadKey")
 		return
 	}
-
-	// Handle case where fasthttp strips the 't:' prefix from path parameters
-	if !strings.HasPrefix(threadKey, "t:") {
-		threadKey = "t:" + threadKey
-	}
+	logger.Debug("ListThreadMessages: threadKey =", threadKey)
 
 	// Parse and validate thread key using unified parser
 	parsedThread, err := keys.ParseKey(threadKey)
@@ -311,12 +307,13 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Generate prefix for messages of this thread using the thread timestamp
-	prefix, err := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadTS)
+	prefix, err := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadKey)
 	if err != nil {
 		logger.Error("ListThreadMessages: failed to generate prefix:", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
+	logger.Debug("ListThreadMessages: generated prefix =", prefix)
 	lowerBound := []byte(prefix)
 	upperBound := nextPrefix(lowerBound)
 

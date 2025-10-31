@@ -2,7 +2,6 @@ package admin
 
 import (
 	"fmt"
-	"net/url"
 	"progressdb/pkg/api/router"
 	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
@@ -19,21 +18,13 @@ func extractParamOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg strin
 	return val, true
 }
 
+// pathParam returns the parameter as-is (no additional URL decoding).
 func pathParam(ctx *fasthttp.RequestCtx, param string) string {
 	if v := ctx.UserValue(param); v != nil {
-		var s string
 		if str, ok := v.(string); ok {
-			s = str
-		} else {
-			s = fmt.Sprint(v)
+			return str
 		}
-		// URL decode the parameter
-		decoded, err := url.PathUnescape(s)
-		if err != nil {
-			// If decoding fails, return original value
-			return s
-		}
-		return decoded
+		return fmt.Sprint(v)
 	}
 	return ""
 }
@@ -42,7 +33,6 @@ func saveThread(threadKey string, data string) error {
 	key := keys.GenThreadKey(threadKey)
 	return storedb.SaveKey(key, []byte(data))
 }
-
 
 func extractQueryOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg string) (string, bool) {
 	val := string(ctx.QueryArgs().Peek(param))

@@ -57,14 +57,14 @@ func GenAllMessageVersionsPrefix(messageKey string) (string, error) {
 }
 
 func GenAllThreadMessagesPrefix(threadKey string) (string, error) {
-	result := ValidateKey(threadKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	result, err := ParseKey(threadKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread key: %w", err)
 	}
 	if result.Type != KeyTypeThread {
 		return "", fmt.Errorf("expected thread key, got %s", result.Type)
 	}
-	return fmt.Sprintf(ThreadMessagePrefix, threadKey), nil
+	return fmt.Sprintf(ThreadMessagePrefix, result.ThreadTS), nil
 }
 
 func GenThreadMetadataPrefix() string {
