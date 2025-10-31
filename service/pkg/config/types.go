@@ -78,18 +78,11 @@ type LoggingConfig struct {
 
 // RetentionConfig holds configuration for the automatic purge runner.
 type RetentionConfig struct {
-	Enabled      bool   `yaml:"enabled,default=false"`
-	Cron         string `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
-	Period       string `yaml:"period,default=24h"`
-	BatchSize    int    `yaml:"batch_size,default=1000"`
-	BatchSleepMs int    `yaml:"batch_sleep_ms,default=0"`
-	DryRun       bool   `yaml:"dry_run,default=false"`
-	Paused       bool   `yaml:"paused,default=false"`
-	MinPeriod    string `yaml:"min_period,default=1h"`
-	// LockTTL controls the lease TTL used by the retention scheduler when
-	// acquiring a lock to perform a run. Specified as a duration string
-	// (e.g. "300s"). If zero, a sensible default will be applied.
-	LockTTL Duration `yaml:"lock_ttl,default=300s"`
+	Enabled bool   `yaml:"enabled,default=false"`
+	Cron    string `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
+	Period  string `yaml:"period,default=24h"`
+	DryRun  bool   `yaml:"dry_run,default=false"`
+	Paused  bool   `yaml:"paused,default=false"`
 }
 
 // IngestConfig holds intake, compute, and apply configuration.

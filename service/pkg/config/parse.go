@@ -333,16 +333,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["RETENTION_PERIOD"]; v != "" {
 		envCfg.Retention.Period = v
 	}
-	if v := envs["RETENTION_BATCH_SIZE"]; v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			envCfg.Retention.BatchSize = i
-		}
-	}
-	if v := envs["RETENTION_BATCH_SLEEP_MS"]; v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			envCfg.Retention.BatchSleepMs = i
-		}
-	}
 	if v := envs["RETENTION_DRY_RUN"]; v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes":
@@ -350,14 +340,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		default:
 			envCfg.Retention.DryRun = false
 		}
-	}
-	if v := envs["RETENTION_MIN_PERIOD"]; v != "" {
-		envCfg.Retention.MinPeriod = v
-	}
-
-	// retention lock TTL
-	if v := envs["RETENTION_LOCK_TTL"]; v != "" {
-		envCfg.Retention.LockTTL = parseDuration(v)
 	}
 
 	// telemetry env overrides

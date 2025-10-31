@@ -62,10 +62,6 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 	ret := cfg.Retention
 	// if retention isn't explicitly configured, nothing to validate
 	if ret != (RetentionConfig{}) {
-		// set sensible defaults if empty
-		if ret.MinPeriod == "" {
-			ret.MinPeriod = "1h"
-		}
 		// parse durations
 		parseDur := func(s string) (time.Duration, error) {
 			s = strings.TrimSpace(s)
@@ -84,17 +80,10 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 			// fallback to time.ParseDuration
 			return time.ParseDuration(s)
 		}
-		minD, err := parseDur(ret.MinPeriod)
-		if err != nil {
-			return fmt.Errorf("invalid retention.min_period: %w", err)
-		}
 		if ret.Period != "" {
-			pd, err := parseDur(ret.Period)
+			_, err := parseDur(ret.Period)
 			if err != nil {
 				return fmt.Errorf("invalid retention.period: %w", err)
-			}
-			if pd < minD {
-				return fmt.Errorf("retention.period %s is less than minimum allowed %s", ret.Period, ret.MinPeriod)
 			}
 		}
 		// quick cron-ish validation: 5 or 6 space-separated fields

@@ -10,6 +10,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"progressdb/internal/retention"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/models"
 	storedb "progressdb/pkg/store/db/storedb"
@@ -316,4 +317,12 @@ func EncryptionGenerateKEK(ctx *fasthttp.RequestCtx) {
 	}
 	kek := hex.EncodeToString(buf)
 	_ = router.WriteJSON(ctx, map[string]string{"kek_hex": kek})
+}
+
+func TestRetentionRun(ctx *fasthttp.RequestCtx) {
+	if err := retention.RunImmediate(); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	_ = router.WriteJSON(ctx, map[string]string{"status": "ok", "message": "retention run triggered"})
 }
