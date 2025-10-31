@@ -7,6 +7,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/api/utils"
 	"progressdb/pkg/state/logger"
 )
 
@@ -17,7 +18,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 			logger.LogRequestFast(ctx)
 
 			// cors headers and handle options shortcut
-			origin := string(ctx.Request.Header.Peek("Origin"))
+			origin := utils.GetHeader(ctx, "Origin")
 			if origin != "" && originAllowed(origin, cfg.AllowedOrigins) {
 				ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
 				ctx.Response.Header.Set("Vary", "Origin")
@@ -38,7 +39,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 				logger.Debug("ip_check", "ip", ip)
 				if !ipWhitelisted(ip, cfg.IPWhitelist) {
 					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", string(ctx.Path()))
+					logger.Warn("request_blocked", "reason", "ip_not_whitelisted", "ip", ip, "path", utils.GetPath(ctx))
 					return
 				}
 			}
@@ -68,7 +69,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 			// if not an authenticated role, deny request
 			if role == RoleUnauth || !hasAPIKey {
 				router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "unauthorized")
-				logger.Warn("request_unauthorized", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+				logger.Warn("request_unauthorized", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
 				return
 			}
 			ctx.Request.Header.Set("X-Role-Name", roleName)
@@ -77,31 +78,31 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 			// frontends can only access thread/messages routes
 			if role == RoleFrontend && !frontendAllowedFast(ctx) {
 				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", string(ctx.Path()))
+				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", utils.GetPath(ctx))
 				return
 			}
 			// backend or frontend cannot access /admin
-			if (role == RoleBackend || role == RoleFrontend) && strings.HasPrefix(string(ctx.Path()), "/admin") {
+			if (role == RoleBackend || role == RoleFrontend) && utils.HasPathPrefix(ctx, "/admin") {
 				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "backend api keys cannot access admin routes")
-				logger.Warn("backend_admin_access_attempt", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+				logger.Warn("backend_admin_access_attempt", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
 				return
 			}
 			// admins can only access /admin paths
-			if role == RoleAdmin && !strings.HasPrefix(string(ctx.Path()), "/admin") {
+			if role == RoleAdmin && !utils.HasPathPrefix(ctx, "/admin") {
 				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
-				logger.Warn("admin_route_violation", "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+				logger.Warn("admin_route_violation", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
 				return
 			}
 
 			// rate limiting (per-key)
 			if !limiters.Allow(key) {
 				router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
-				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", string(ctx.Path()))
+				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", utils.GetPath(ctx))
 				return
 			}
 
 			// signed author logic (for frontend/client/user-specific requests)
-			if string(ctx.Request.Header.Peek("X-User-Signature")) != "" {
+			if utils.HasUserSignature(ctx) {
 				RequireSignedAuthorMiddleware(next)(ctx)
 				return
 			}
@@ -122,16 +123,7 @@ func clientIPFast(ctx *fasthttp.RequestCtx) string {
 }
 
 func validateAPIKey(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool) {
-	auth := string(ctx.Request.Header.Peek("Authorization"))
-	var key string
-
-	if len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ") {
-		key = strings.TrimSpace(auth[7:])
-	}
-
-	if key == "" {
-		key = string(ctx.Request.Header.Peek("X-API-Key"))
-	}
+	key := utils.ExtractAPIKey(ctx)
 
 	if key == "" {
 		return RoleUnauth, clientIPFast(ctx), false
@@ -156,7 +148,7 @@ func validateAPIKey(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool
 }
 
 func frontendAllowedFast(ctx *fasthttp.RequestCtx) bool {
-	path := string(ctx.Path())
+	path := utils.GetPath(ctx)
 	if strings.HasPrefix(path, "/v1/messages") {
 		return true
 	}
@@ -188,7 +180,7 @@ func ipWhitelisted(ip string, list []string) bool {
 }
 
 func publicAllowedPath(ctx *fasthttp.RequestCtx) bool {
-	path := string(ctx.Path())
+	path := utils.GetPath(ctx)
 	method := string(ctx.Method())
 
 	if (path == "/healthz" || path == "/readyz") && method == fasthttp.MethodGet {

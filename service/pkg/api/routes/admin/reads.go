@@ -10,6 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/api/utils"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
@@ -120,8 +121,8 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 
 func ListKeys(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
-	prefix := string(ctx.QueryArgs().Peek("prefix"))
-	store := string(ctx.QueryArgs().Peek("store"))
+	prefix := utils.GetQuery(ctx, "prefix")
+	store := utils.GetQuery(ctx, "store")
 	if store == "" {
 		store = "main"
 	}

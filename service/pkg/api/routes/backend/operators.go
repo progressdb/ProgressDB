@@ -9,13 +9,15 @@ import (
 
 	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/api/utils"
 	"progressdb/pkg/config"
 	"progressdb/pkg/state/logger"
 )
 
 func Sign(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
-	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
+
+	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", utils.GetPath(ctx))
 
 	if !isBackendRequest(ctx) {
 		logger.Warn("forbidden: non-backend role attempted to sign", "remote", ctx.RemoteAddr().String())
@@ -44,7 +46,12 @@ func Sign(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	sig := auth.CreateHMACSignature(payload.UserID, signingKey)
+	sig, sigErr := auth.CreateHMACSignature(payload.UserID, signingKey)
+	if sigErr != nil {
+		logger.Error("failed to create HMAC signature", "error", sigErr, "remote", ctx.RemoteAddr().String())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "failed to create HMAC signature")
+		return
+	}
 
 	if err := router.WriteJSON(ctx, map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
@@ -62,7 +69,7 @@ func ValidateUserID(userID string) error {
 }
 
 func isBackendRequest(ctx *fasthttp.RequestCtx) bool {
-	return string(ctx.Request.Header.Peek("X-Role-Name")) == "backend"
+	return utils.IsBackendRole(ctx)
 }
 
 func getSigningKey() (string, error) {

@@ -3,10 +3,9 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
-	"strconv"
-	"strings"
 
 	"github.com/valyala/fasthttp"
+	"progressdb/pkg/api/utils"
 )
 
 type PaginationRequest struct {
@@ -30,14 +29,13 @@ type MessageCursor struct {
 
 func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	req := &PaginationRequest{
-		Limit:  100,
-		Cursor: strings.TrimSpace(string(ctx.QueryArgs().Peek("cursor"))),
+		Limit:  utils.GetQueryInt(ctx, "limit", 100),
+		Cursor: utils.GetQuery(ctx, "cursor"),
 	}
 
-	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
-			req.Limit = parsedLimit
-		}
+	// Enforce maximum limit
+	if req.Limit > 1000 {
+		req.Limit = 1000
 	}
 
 	return req

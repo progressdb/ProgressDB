@@ -2,9 +2,9 @@ package common
 
 import (
 	"fmt"
-	"strconv"
 
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/api/utils"
 	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/keys"
 
@@ -49,15 +49,8 @@ func ExtractParamOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg strin
 }
 
 func ExtractCursorInfoParams(ctx *fasthttp.RequestCtx) (int, string) {
-	limitStr := string(ctx.QueryArgs().Peek("limit"))
-	cursor := string(ctx.QueryArgs().Peek("cursor"))
-
-	limit := 100
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
-		}
-	}
+	limit := utils.GetQueryInt(ctx, "limit", 100)
+	cursor := utils.GetQuery(ctx, "cursor")
 	return limit, cursor
 }
 
@@ -74,9 +67,9 @@ func PathParam(ctx *fasthttp.RequestCtx, param string) string {
 // NewRequestMetadata extracts metadata from the request context
 func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadata {
 	return &RequestMetadata{
-		Role:   string(ctx.Request.Header.Peek("X-Role-Name")),
+		Role:   utils.GetRole(ctx),
 		UserID: author,
-		ReqID:  string(ctx.Request.Header.Peek("X-Request-Id")),
+		ReqID:  utils.GetHeader(ctx, "X-Request-Id"),
 		Remote: ctx.RemoteAddr().String(),
 	}
 }
