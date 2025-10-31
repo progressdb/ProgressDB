@@ -35,15 +35,7 @@ type Log struct {
 	closed bool
 }
 
-func Open(path string, opts *Options) (*Log, error) {
-	if opts == nil {
-		opts = DefaultOptions
-	}
-
-	if path == ":memory:" {
-		return nil, fmt.Errorf("in-memory log not supported")
-	}
-
+func Open(path string) (*Log, error) {
 	pebbleOpts := &pebble.Options{
 		DisableWAL: false, // NEVER disable
 	}
@@ -55,7 +47,7 @@ func Open(path string, opts *Options) (*Log, error) {
 
 	return &Log{
 		path: path,
-		opts: *opts,
+		opts: *DefaultOptions,
 		db:   db,
 	}, nil
 }

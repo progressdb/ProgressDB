@@ -51,21 +51,25 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 		newOp.Extras = op.Extras
 	}
 	var it *types.QueueItem
-	if q.wal != nil && q.walBacked {
+
+	// give item its next sequence
+	EnqSeq := atomic.AddUint64(&enqSeq, 1)
+	newOp.EnqSeq = EnqSeq
+
+	// use wal if needed
+	if q.wal != nil && q.intakeWalEnabled {
+		// write WAL
 		data, err := json.Marshal(newOp)
 		if err != nil {
 			return err
 		}
-		walSeq, err := q.wal.WriteWithSequence(data)
-		if err != nil {
+		if err := q.wal.Write(EnqSeq, data); err != nil {
 			return err
 		}
-		newOp.EnqSeq = walSeq
-		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
-	} else {
-		newOp.EnqSeq = atomic.AddUint64(&enqSeq, 1)
-		it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 	}
+
+	// done
+	it = &types.QueueItem{Op: newOp, Sb: nil, Q: q}
 
 	select {
 	case q.ch <- it:

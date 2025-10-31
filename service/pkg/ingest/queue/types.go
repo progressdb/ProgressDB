@@ -21,11 +21,10 @@ type IngestQueue struct {
 	inFlight  int64
 	enqMu     sync.Mutex // protects enqueue operations
 
-	wal       types.WAL
-	walBacked bool
+	wal              types.WAL
+	intakeWalEnabled bool
 }
 
-// JobDone manages the lifecycle of a QueueItem for this queue.
 func (q *IngestQueue) JobDone(item *types.QueueItem) {
 	item.DoOnce(func() {
 		atomic.AddInt64(&q.inFlight, -1)

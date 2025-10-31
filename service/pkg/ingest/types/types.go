@@ -42,11 +42,10 @@ type WAL interface {
 	FirstIndex() (index uint64, err error)
 	LastIndex() (index uint64, err error)
 	TruncateFront(index uint64) error
+	TruncateSequences(seqs []uint64) error
+	Sync() error
+	IsEmpty() (bool, error)
 	Close() error
-
-	// WriteWithSequence writes data and returns the assigned sequence number.
-	// Used when WAL is enabled to provide persistent sequence generation.
-	WriteWithSequence(data []byte) (uint64, error)
 }
 
 // WALRecord holds a recovered WAL entry and its offset.

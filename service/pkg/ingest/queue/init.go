@@ -10,10 +10,8 @@ import (
 	"progressdb/pkg/ingest/wally"
 )
 
-// GlobalIngestQueue is the global ingest queue instance.
 var GlobalIngestQueue *IngestQueue
 
-// NewIngestQueue creates a bounded IngestQueue of given capacity (>0).
 func NewIngestQueue(capacity int) *IngestQueue {
 	if capacity <= 0 {
 		panic("queue.NewIngestQueue: capacity must be > 0; ensure config.ValidateConfig() applied defaults")
@@ -25,7 +23,6 @@ func NewIngestQueue(capacity int) *IngestQueue {
 	}
 }
 
-// InitGlobalIngestQueue creates and sets the global ingest queue with optional WAL.
 func InitGlobalIngestQueue(dbPath string) error {
 	cfg := config.GetConfig()
 	ic := cfg.Ingest.Intake
@@ -36,32 +33,26 @@ func InitGlobalIngestQueue(dbPath string) error {
 	if ic.WAL.Enabled {
 		// Enable WAL for durability
 		walDir := filepath.Join(dbPath, "wal")
-		opts := &wally.Options{
-			SegmentSize: int(ic.WAL.SegmentSize.Int64()),
-		}
-		wal, err := wally.Open(walDir, opts)
+		wal, err := wally.Open(walDir)
 		if err != nil {
 			return fmt.Errorf("failed to create WAL: %w", err)
 		}
 		queue.wal = wal
-		queue.walBacked = true
+		queue.intakeWalEnabled = true
 	}
 
 	GlobalIngestQueue = queue
 	return nil
 }
 
-// DisableWAL disables WAL backing for enqueues.
 func (q *IngestQueue) DisableWAL() {
-	q.walBacked = false
+	q.intakeWalEnabled = false
 }
 
-// EnableWAL enables WAL backing for enqueues.
 func (q *IngestQueue) EnableWAL() {
-	q.walBacked = true
+	q.intakeWalEnabled = true
 }
 
-// WAL returns the WAL log, if any.
 func (q *IngestQueue) WAL() types.WAL {
 	return q.wal
 }
