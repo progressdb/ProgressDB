@@ -75,12 +75,13 @@ type SecConfig struct {
 	AdminKeys      map[string]struct{}
 }
 
-func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+func RequireSignedAuthorMiddleware(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		tr := telemetry.Track("auth.require_signed_author")
 		defer tr.Finish()
 
 		// parse possible identifiers
+		// ROLE is set by gateway.go - hence the direct access/trust
 		role := strings.ToLower(string(ctx.Request.Header.Peek("X-Role-Name")))
 		userID := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-ID")))
 		sig := strings.TrimSpace(string(ctx.Request.Header.Peek("X-User-Signature")))

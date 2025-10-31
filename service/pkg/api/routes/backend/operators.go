@@ -9,6 +9,7 @@ import (
 
 	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
+	"progressdb/pkg/config"
 	"progressdb/pkg/state/logger"
 )
 
@@ -16,17 +17,9 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	logger.Info("signHandler called", "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 
-	role := string(ctx.Request.Header.Peek("X-Role-Name"))
-	if role != "backend" {
-		logger.Warn("forbidden: non-backend role attempted to sign", "role", role, "remote", ctx.RemoteAddr().String())
+	if !isBackendRequest(ctx) {
+		logger.Warn("forbidden: non-backend role attempted to sign", "remote", ctx.RemoteAddr().String())
 		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-		return
-	}
-
-	key := getAuthorizationAPIKey(ctx)
-	if key == "" {
-		logger.Warn("missing api key in signHandler", "remote", ctx.RemoteAddr().String())
-		router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "missing api key")
 		return
 	}
 
@@ -34,36 +27,28 @@ func Sign(ctx *fasthttp.RequestCtx) {
 		UserID string `json:"userId"`
 	}
 	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&payload); err != nil {
-		logger.Warn("invalid JSON payload in signHandler", "error", err, "remote", ctx.RemoteAddr().String())
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid JSON payload")
 		return
 	}
 
 	// Validate user ID format and content
 	if err := ValidateUserID(payload.UserID); err != nil {
-		logger.Warn("invalid user ID in signHandler", "error", err, "user_id", payload.UserID, "remote", ctx.RemoteAddr().String())
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid user ID: %s", err.Error()))
 		return
 	}
 
-	logger.Info("signing userId", "remote", ctx.RemoteAddr().String(), "role", role)
-	sig := auth.CreateHMACSignature(payload.UserID, key)
+	signingKey, err := getSigningKey()
+	if err != nil {
+		logger.Error("failed to get signing key", "error", err, "remote", ctx.RemoteAddr().String())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	sig := auth.CreateHMACSignature(payload.UserID, signingKey)
 
 	if err := router.WriteJSON(ctx, map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
 	}
-}
-
-func getAuthorizationAPIKey(ctx *fasthttp.RequestCtx) string {
-	auth := string(ctx.Request.Header.Peek("Authorization"))
-	var key string
-	if len(auth) > 7 && (auth[:7] == "Bearer " || auth[:7] == "bearer ") {
-		key = auth[7:]
-	}
-	if key == "" {
-		key = string(ctx.Request.Header.Peek("X-API-Key"))
-	}
-	return key
 }
 
 func ValidateUserID(userID string) error {
@@ -74,4 +59,22 @@ func ValidateUserID(userID string) error {
 		return fmt.Errorf("user ID too long")
 	}
 	return nil
+}
+
+func isBackendRequest(ctx *fasthttp.RequestCtx) bool {
+	return string(ctx.Request.Header.Peek("X-Role-Name")) == "backend"
+}
+
+func getSigningKey() (string, error) {
+	signingKeys := config.GetSigningKeys()
+	if len(signingKeys) == 0 {
+		return "", fmt.Errorf("signing keys not configured")
+	}
+
+	// Return the first available signing key
+	for k := range signingKeys {
+		return k, nil
+	}
+
+	return "", fmt.Errorf("no signing keys available")
 }

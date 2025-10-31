@@ -10,7 +10,7 @@ import (
 	"progressdb/pkg/state/logger"
 )
 
-func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
+func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	limiters := &limiterPool{cfg: cfg}
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return func(ctx *fasthttp.RequestCtx) {
@@ -102,7 +102,7 @@ func AuthenticateRequestMiddlewareFast(cfg SecConfig) func(fasthttp.RequestHandl
 
 			// signed author logic (for frontend/client/user-specific requests)
 			if string(ctx.Request.Header.Peek("X-User-Signature")) != "" {
-				RequireSignedAuthorFast(next)(ctx)
+				RequireSignedAuthorMiddleware(next)(ctx)
 				return
 			}
 
