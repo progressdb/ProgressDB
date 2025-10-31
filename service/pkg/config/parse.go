@@ -87,6 +87,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"API_BACKEND_KEYS":    os.Getenv("PROGRESSDB_API_BACKEND_KEYS"),
 		"API_FRONTEND_KEYS":   os.Getenv("PROGRESSDB_API_FRONTEND_KEYS"),
 		"API_ADMIN_KEYS":      os.Getenv("PROGRESSDB_API_ADMIN_KEYS"),
+		"API_SIGNING_KEYS":    os.Getenv("PROGRESSDB_API_SIGNING_KEYS"),
 		"KMS_MODE":            os.Getenv("PROGRESSDB_KMS_MODE"),
 		"KMS_ENDPOINT":        os.Getenv("PROGRESSDB_KMS_ENDPOINT"),
 		"KMS_DATA_DIR":        os.Getenv("PROGRESSDB_KMS_DATA_DIR"),
@@ -99,6 +100,8 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		// data retentioon feature
 		"RETENTION_ENABLED":        os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
 		"RETENTION_CRON":           os.Getenv("PROGRESSDB_RETENTION_CRON"),
+		"RETENTION_MTTL":           os.Getenv("PROGRESSDB_RETENTION_MTTL"),
+		"RETENTION_TTTL":           os.Getenv("PROGRESSDB_RETENTION_TTTL"),
 		"RETENTION_PERIOD":         os.Getenv("PROGRESSDB_RETENTION_PERIOD"),
 		"RETENTION_BATCH_SIZE":     os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"),
 		"RETENTION_BATCH_SLEEP_MS": os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"),
@@ -273,6 +276,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["API_ADMIN_KEYS"]; v != "" {
 		envCfg.Server.APIKeys.Admin = parseList(v)
 	}
+	if v := envs["API_SIGNING_KEYS"]; v != "" {
+		envCfg.Server.APIKeys.Signing = parseList(v)
+	}
 
 	// kms related env overrides
 	if v := envs["KMS_MODE"]; v != "" {
@@ -314,7 +320,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		backendKeys[k] = struct{}{}
 	}
 	signingKeys := make(map[string]struct{})
-	for k := range backendKeys {
+	for _, k := range envCfg.Server.APIKeys.Signing {
 		signingKeys[k] = struct{}{}
 	}
 
@@ -329,6 +335,16 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 	if v := envs["RETENTION_CRON"]; v != "" {
 		envCfg.Retention.Cron = v
+	}
+	if v := envs["RETENTION_MTTL"]; v != "" {
+		if d, err := time.ParseDuration(strings.TrimSpace(v)); err == nil {
+			envCfg.Retention.MTTL = d
+		}
+	}
+	if v := envs["RETENTION_TTTL"]; v != "" {
+		if d, err := time.ParseDuration(strings.TrimSpace(v)); err == nil {
+			envCfg.Retention.TTTL = d
+		}
 	}
 
 	// telemetry env overrides

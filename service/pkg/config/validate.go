@@ -19,6 +19,11 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 		return fmt.Errorf("database path is empty: set --db flag, PROGRESSDB_DB_PATH env, or server.db_path in config")
 	}
 
+	// Signing keys are required
+	if len(cfg.Server.APIKeys.Signing) == 0 {
+		return fmt.Errorf("signing keys are required: set server.api_keys.signing in config or PROGRESSDB_API_SIGNING_KEYS env")
+	}
+
 	// TLS cert/key presence check if one is set
 	cert := cfg.Server.TLS.CertFile
 	key := cfg.Server.TLS.KeyFile
@@ -65,6 +70,12 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 			if !gron.IsValid(ret.Cron) {
 				return fmt.Errorf("invalid retention.cron: not a valid cron expression")
 			}
+		}
+		if ret.MTTL <= 0 {
+			return fmt.Errorf("invalid retention.mttl: must be positive duration")
+		}
+		if ret.TTTL <= 0 {
+			return fmt.Errorf("invalid retention.tttl: must be positive duration")
 		}
 	}
 

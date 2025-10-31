@@ -14,8 +14,7 @@ type Thread struct {
 	// LastSeq is a per-thread sequence number, incremented and persisted with each message.
 	LastSeq uint64 `json:"last_seq,omitempty"`
 	// Deleted marks a thread as soft-deleted; DeletedTS records deletion time (ns)
-	Deleted   bool  `json:"deleted,omitempty"`
-	DeletedTS int64 `json:"deleted_ts,omitempty"`
+	Deleted bool `json:"deleted,omitempty"`
 
 	// KMS holds optional per-thread DEK metadata used for encrypting child messages.
 	// Use a pointer so the field can be omitted entirely when not set.

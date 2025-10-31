@@ -108,6 +108,7 @@ func (r *WALReplayer) recoverWAL(stats *ReplayStats) {
 	logger.Info("wal_replay_range", "first", first, "last", last, "total_entries", last-first+1)
 
 	replayedCount := int64(0)
+	var replayedSeqs []uint64
 	for i := first; i <= last; i++ {
 		data, err := wal.Read(i)
 		if err != nil {
@@ -130,16 +131,17 @@ func (r *WALReplayer) recoverWAL(stats *ReplayStats) {
 		}
 
 		replayedCount++
+		replayedSeqs = append(replayedSeqs, op.EnqSeq)
 	}
 
 	stats.WALReplayed = replayedCount
 
 	if replayedCount > 0 {
-		if err := wal.TruncateFront(last + 1); err != nil {
-			logger.Error("wal_replay_truncate_error", "error", err)
+		if err := wal.TruncateSequences(replayedSeqs); err != nil {
+			logger.Error("wal_replay_truncate_error", "error", err, "seq_count", len(replayedSeqs))
 			stats.WALErrors++
 		} else {
-			logger.Info("wal_replay_truncated", "up_to_index", last+1)
+			logger.Info("wal_replay_truncated", "seq_count", len(replayedSeqs))
 		}
 	}
 }

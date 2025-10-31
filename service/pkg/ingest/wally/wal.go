@@ -161,36 +161,6 @@ func (l *Log) LastIndex() (uint64, error) {
 	return 0, nil
 }
 
-func (l *Log) TruncateFront(index uint64) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.closed {
-		return ErrClosed
-	}
-
-	batch := l.db.NewBatch()
-	defer batch.Close()
-
-	upperBound := fmt.Sprintf("%020d", index)
-	iter, err := l.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(pebbleLogKeyLowerBound),
-		UpperBound: []byte(upperBound),
-	})
-	if err != nil {
-		return fmt.Errorf("create iterator: %w", err)
-	}
-	defer iter.Close()
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		if err := batch.Delete(iter.Key(), nil); err != nil {
-			return err
-		}
-	}
-
-	return batch.Commit(l.writeOpts())
-}
-
 func (l *Log) TruncateSequences(seqs []uint64) error {
 	if len(seqs) == 0 {
 		return nil

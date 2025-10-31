@@ -2,14 +2,12 @@ package backend
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
 	"github.com/valyala/fasthttp"
 
+	"progressdb/pkg/api/auth"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/state/logger"
 )
@@ -49,9 +47,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	}
 
 	logger.Info("signing userId", "remote", ctx.RemoteAddr().String(), "role", role)
-	mac := hmac.New(sha256.New, []byte(key))
-	mac.Write([]byte(payload.UserID))
-	sig := hex.EncodeToString(mac.Sum(nil))
+	sig := auth.CreateHMACSignature(payload.UserID, key)
 
 	if err := router.WriteJSON(ctx, map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())

@@ -161,13 +161,18 @@ func (rm *RetentionManager) runPurge() error {
 				continue
 			}
 
-			// Check if thread is deleted
+			// Check if thread is deleted and past TTL
 			if thread.Deleted {
-				if err := thread_store.PurgeThreadPermanently(originalKey); err != nil {
-					logger.Error("purge_failed", "key", originalKey, "error", err)
+				deletedTime := time.Unix(0, thread.UpdatedTS)
+				if time.Since(deletedTime) > rm.cfg.TTTL {
+					if err := thread_store.PurgeThreadPermanently(originalKey); err != nil {
+						logger.Error("purge_failed", "key", originalKey, "error", err)
+					} else {
+						purged++
+						logger.Info("purged", "key", originalKey, "deleted_age", time.Since(deletedTime))
+					}
 				} else {
-					purged++
-					logger.Info("purged", "key", originalKey)
+					logger.Debug("thread_not_old_enough_for_purge", "key", originalKey, "deleted_age", time.Since(deletedTime), "tttl", rm.cfg.TTTL)
 				}
 			}
 		}

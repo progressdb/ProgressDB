@@ -63,6 +63,8 @@ func New(version, commit, buildDate string) (*App, error) {
 	}
 	for _, k := range cfg.Server.APIKeys.Backend {
 		runtimeCfg.BackendKeys[k] = struct{}{}
+	}
+	for _, k := range cfg.Server.APIKeys.Signing {
 		runtimeCfg.SigningKeys[k] = struct{}{}
 	}
 	config.SetRuntime(runtimeCfg)

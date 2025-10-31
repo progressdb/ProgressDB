@@ -69,6 +69,7 @@ type APIKeyConfig struct {
 	Backend  []string `yaml:"backend"`
 	Frontend []string `yaml:"frontend"`
 	Admin    []string `yaml:"admin"`
+	Signing  []string `yaml:"signing"`
 }
 
 // LoggingConfig holds logging configuration.
@@ -78,8 +79,10 @@ type LoggingConfig struct {
 
 // RetentionConfig holds configuration for the automatic purge runner.
 type RetentionConfig struct {
-	Enabled bool   `yaml:"enabled,default=false"`
-	Cron    string `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
+	Enabled bool          `yaml:"enabled,default=false"`
+	Cron    string        `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
+	MTTL    time.Duration `yaml:"mttl,default=720h"`      // Message TTL after delete (30 days)
+	TTTL    time.Duration `yaml:"tttl,default=720h"`      // Thread TTL after delete (30 days)
 }
 
 // IngestConfig holds intake, compute, and apply configuration.

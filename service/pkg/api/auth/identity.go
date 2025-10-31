@@ -44,6 +44,26 @@ var (
 	ErrBackendMissingAuth = &AuthorResolutionError{"backend_missing_auth", "author required for backend requests", fasthttp.StatusBadRequest}
 )
 
+// CreateHMACSignature creates an HMAC signature for a user ID
+func CreateHMACSignature(userID, key string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(userID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// VerifyHMACSignature verifies a user ID against its HMAC signature using available signing keys
+func VerifyHMACSignature(userID, signature string) bool {
+	keys := config.GetSigningKeys()
+
+	for k := range keys {
+		expected := CreateHMACSignature(userID, k)
+		if hmac.Equal([]byte(expected), []byte(signature)) {
+			return true
+		}
+	}
+	return false
+}
+
 // security config
 type SecConfig struct {
 	AllowedOrigins []string
@@ -91,27 +111,9 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 			return
 		}
 
-		// reject if no signing keys
-		keys := config.GetSigningKeys()
-		if len(keys) == 0 {
-			logger.Error("no_signing_keys_configured")
-			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, "server misconfigured: no signing secrets available")
-			return
-		}
-
 		tr.Mark("verify_signature")
 		// crypto verify the req: user_id <> hmac is not tampered
-		ok := false
-		for k := range keys {
-			mac := hmac.New(sha256.New, []byte(k))
-			mac.Write([]byte(userID))
-			expected := hex.EncodeToString(mac.Sum(nil))
-			if hmac.Equal([]byte(expected), []byte(sig)) {
-				ok = true
-				break
-			}
-		}
-		if !ok {
+		if !VerifyHMACSignature(userID, sig) {
 			logger.Warn("invalid_signature", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
 			router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "invalid signature")
 			return

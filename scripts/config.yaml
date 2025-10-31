@@ -19,6 +19,7 @@ server:
     backend: ["sk_example"]
     frontend: ["pk_example"]
     admin: ["admin_example"]
+    signing: ["sign_example"]
 
 storage:
   wal: false
