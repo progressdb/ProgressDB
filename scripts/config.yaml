@@ -29,13 +29,6 @@ logging:
 retention:
   enabled: false
   cron: "0 2 * * *"
-  period: "24h"
-  batch_size: 1000
-  batch_sleep_ms: 0
-  dry_run: false
-  paused: false
-  min_period: "1h"
-  lock_ttl: 300s
 
 ingest:
   intake:
@@ -43,10 +36,8 @@ ingest:
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
-      segment_size: 20MB
     recovery:
       enabled: true
-      wal_enabled: false
       temp_idx_enabled: true
   compute:
     worker_count: 24
