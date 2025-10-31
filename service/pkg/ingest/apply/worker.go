@@ -87,13 +87,7 @@ func (aw *ApplyWorker) flush() {
 	})
 
 	// Use parallel processing if we have multiple threads
-	var err error
-	if aw.applyWorkers > 1 {
-		err = ApplyBatchToDBParallel(aw.buffer, aw.applyWorkers)
-	} else {
-		err = ApplyBatchToDB(aw.buffer)
-	}
-
+	err := ApplyBatchToDB(aw.buffer)
 	if err != nil {
 		logger.Error("apply_batch_failed", "err", err, "batch_size", len(aw.buffer), "parallel_workers", aw.applyWorkers)
 	}

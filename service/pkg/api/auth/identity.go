@@ -44,14 +44,14 @@ var (
 	ErrBackendMissingAuth = &AuthorResolutionError{"backend_missing_auth", "author required for backend requests", fasthttp.StatusBadRequest}
 )
 
-// CreateHMACSignature creates an HMAC signature for a user ID
+// creates an HMAC signature for a user ID
 func CreateHMACSignature(userID, key string) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(userID))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// VerifyHMACSignature verifies a user ID against its HMAC signature using available signing keys
+// verifies a user ID against its HMAC signature using available signing keys
 func VerifyHMACSignature(userID, signature string) bool {
 	keys := config.GetSigningKeys()
 
@@ -75,7 +75,6 @@ type SecConfig struct {
 	AdminKeys      map[string]struct{}
 }
 
-// require signed hmac
 func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		tr := telemetry.Track("auth.require_signed_author")
@@ -112,6 +111,7 @@ func RequireSignedAuthorFast(next fasthttp.RequestHandler) fasthttp.RequestHandl
 		}
 
 		tr.Mark("verify_signature")
+
 		// crypto verify the req: user_id <> hmac is not tampered
 		if !VerifyHMACSignature(userID, sig) {
 			logger.Warn("invalid_signature", "user", userID, "remote", ctx.RemoteAddr().String(), "path", string(ctx.Path()))
