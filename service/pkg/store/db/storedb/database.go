@@ -21,7 +21,7 @@ func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 	}
 	var err error
 	opts := &pebble.Options{
-		DisableWAL: storageWalEnabled,
+		DisableWAL: !storageWalEnabled,
 	}
 	walDisabled = opts.DisableWAL
 

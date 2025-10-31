@@ -19,7 +19,7 @@ var PendingWrites uint64
 func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 	var err error
 	opts := &pebble.Options{
-		DisableWAL: storageWalEnabled,
+		DisableWAL: !storageWalEnabled,
 	}
 	WALDisabled = opts.DisableWAL
 
