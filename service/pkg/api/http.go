@@ -93,6 +93,7 @@ func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
 func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
 	r.POST("/backend/sign", backendRoutes.Sign)
+	r.POST("/backend/v1/sign", backendRoutes.Sign)
 
 	// thread metadata operations
 	r.POST("/frontend/v1/threads", frontendRoutes.EnqueueCreateThread)

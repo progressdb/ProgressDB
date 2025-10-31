@@ -217,7 +217,7 @@ func promptPattern() string {
 }
 
 func fetchSignature(cfg Config) string {
-	url := cfg.Host + "/v1/_sign"
+	url := cfg.Host + "/backend/sign"
 	payload := fmt.Sprintf(`{"userId":"%s"}`, cfg.UserID)
 	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 	if err != nil {
@@ -339,7 +339,7 @@ func runThreadWithMessagesBenchmark(cfg Config, signature string) *Metrics {
 }
 
 func createThread(cfg Config, signature string, metrics *Metrics) {
-	url := cfg.Host + "/v1/threads"
+	url := cfg.Host + "/frontend/v1/threads"
 	title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano())
 	payload := fmt.Sprintf(`{"title":"%s"}`, title)
 
@@ -369,7 +369,7 @@ func createThread(cfg Config, signature string, metrics *Metrics) {
 }
 
 func createThreadSync(cfg Config, signature string, threadID *string) {
-	url := cfg.Host + "/v1/threads"
+	url := cfg.Host + "/frontend/v1/threads"
 	title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano())
 	payload := fmt.Sprintf(`{"title":"%s"}`, title)
 
@@ -401,7 +401,7 @@ func createThreadSync(cfg Config, signature string, threadID *string) {
 }
 
 func createMessage(cfg Config, signature string, metrics *Metrics, threadID string) {
-	url := fmt.Sprintf("%s/v1/threads/%s/messages", cfg.Host, threadID)
+	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
 
 	content, checksum := generatePayload(cfg.PayloadSize)
 	messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano(), randomString(9))
