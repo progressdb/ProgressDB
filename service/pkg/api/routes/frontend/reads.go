@@ -8,7 +8,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
-	"progressdb/pkg/api/routes/common"
+	"progressdb/pkg/api/router/common"
 	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
 	thread_store "progressdb/pkg/store/features/threads"
