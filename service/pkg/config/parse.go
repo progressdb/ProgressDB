@@ -330,17 +330,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["RETENTION_CRON"]; v != "" {
 		envCfg.Retention.Cron = v
 	}
-	if v := envs["RETENTION_PERIOD"]; v != "" {
-		envCfg.Retention.Period = v
-	}
-	if v := envs["RETENTION_DRY_RUN"]; v != "" {
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "1", "true", "yes":
-			envCfg.Retention.DryRun = true
-		default:
-			envCfg.Retention.DryRun = false
-		}
-	}
 
 	// telemetry env overrides
 	if v := envs["TELEMETRY_SAMPLE_RATE"]; v != "" {

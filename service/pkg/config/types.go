@@ -80,9 +80,6 @@ type LoggingConfig struct {
 type RetentionConfig struct {
 	Enabled bool   `yaml:"enabled,default=false"`
 	Cron    string `yaml:"cron,default=0 2 * * *"` // Default to daily at 02:00
-	Period  string `yaml:"period,default=24h"`
-	DryRun  bool   `yaml:"dry_run,default=false"`
-	Paused  bool   `yaml:"paused,default=false"`
 }
 
 // IngestConfig holds intake, compute, and apply configuration.

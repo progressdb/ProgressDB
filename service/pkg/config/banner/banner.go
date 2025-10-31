@@ -152,8 +152,6 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 		if retEnabled {
 			if eff.Config.Retention.Cron != "" {
 				retInfo = "cron=" + eff.Config.Retention.Cron
-			} else if eff.Config.Retention.Period != "" {
-				retInfo = "period=" + eff.Config.Retention.Period
 			}
 		}
 	}

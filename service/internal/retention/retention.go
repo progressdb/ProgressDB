@@ -13,6 +13,7 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
+	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/pagination"
@@ -71,7 +72,7 @@ func RunImmediate() error {
 		return fmt.Errorf("retention manager not initialized - call Start() first")
 	}
 
-	return rm.runOnce()
+	return rm.runPurge()
 }
 
 func (rm *RetentionManager) scheduleLoop() {
@@ -128,12 +129,12 @@ func (rm *RetentionManager) executeRetention() {
 		rm.mutex.Unlock()
 	}()
 
-	if err := rm.runOnce(); err != nil {
+	if err := rm.runPurge(); err != nil {
 		logger.Error("retention_run_error", "error", err)
 	}
 }
 
-func (rm *RetentionManager) runOnce() error {
+func (rm *RetentionManager) runPurge() error {
 	runID := fmt.Sprintf("run-%d", timeutil.Now().UnixNano())
 	logger.Info("retention_run_start", "run_id", runID, "dry_run", rm.cfg.DryRun)
 
@@ -147,7 +148,7 @@ func (rm *RetentionManager) runOnce() error {
 	cutoff := timeutil.Now().Add(-retentionPeriod)
 
 	// Scan for deleted items
-	keys, _, err := storedb.ListKeysWithPrefixPaginated("del:", &pagination.PaginationRequest{Limit: 10000})
+	keys, _, err := indexdb.ListKeysWithPrefixPaginated("del:", &pagination.PaginationRequest{Limit: 10000})
 	if err != nil {
 		return fmt.Errorf("scan soft delete markers: %w", err)
 	}

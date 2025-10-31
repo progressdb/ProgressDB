@@ -4,9 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"time"
+
+	"github.com/adhocore/gronx"
 )
 
 // set defaults, fail fast on critical errors
@@ -58,39 +57,13 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 		}
 	}
 
-	// Retention validation: if retention configured, validate durations and cron-ish syntax.
+	// Retention validation: if retention is enabled, validate durations and cron-ish syntax.
 	ret := cfg.Retention
-	// if retention isn't explicitly configured, nothing to validate
-	if ret != (RetentionConfig{}) {
-		// parse durations
-		parseDur := func(s string) (time.Duration, error) {
-			s = strings.TrimSpace(s)
-			if s == "" {
-				return 0, fmt.Errorf("empty duration")
-			}
-			// support days like "30d"
-			if strings.HasSuffix(s, "d") {
-				v := strings.TrimSuffix(s, "d")
-				n, err := strconv.Atoi(v)
-				if err != nil {
-					return 0, err
-				}
-				return time.Duration(n) * 24 * time.Hour, nil
-			}
-			// fallback to time.ParseDuration
-			return time.ParseDuration(s)
-		}
-		if ret.Period != "" {
-			_, err := parseDur(ret.Period)
-			if err != nil {
-				return fmt.Errorf("invalid retention.period: %w", err)
-			}
-		}
-		// quick cron-ish validation: 5 or 6 space-separated fields
+	if ret.Enabled {
 		if ret.Cron != "" {
-			parts := strings.Fields(ret.Cron)
-			if len(parts) < 5 || len(parts) > 6 {
-				return fmt.Errorf("invalid retention.cron: must be 5-6 space-separated cron fields")
+			gron := gronx.New()
+			if !gron.IsValid(ret.Cron) {
+				return fmt.Errorf("invalid retention.cron: not a valid cron expression")
 			}
 		}
 	}
