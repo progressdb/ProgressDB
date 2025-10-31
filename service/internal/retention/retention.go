@@ -40,11 +40,6 @@ func Start(ctx context.Context) (context.CancelFunc, error) {
 		return func() {}, nil
 	}
 
-	if cfg.Retention.Paused {
-		logger.Info("retention_paused")
-		return func() {}, nil
-	}
-
 	ctx2, cancel := context.WithCancel(ctx)
 	rm := &RetentionManager{
 		cfg:     &cfg.Retention,
@@ -58,7 +53,7 @@ func Start(ctx context.Context) (context.CancelFunc, error) {
 	globalManager = rm
 	managerMutex.Unlock()
 
-	logger.Info("retention_enabled", "cron", rm.cfg.Cron, "period", rm.cfg.Period)
+	logger.Info("retention_enabled", "cron", rm.cfg.Cron)
 	go rm.scheduleLoop()
 	return cancel, nil
 }
@@ -136,16 +131,7 @@ func (rm *RetentionManager) executeRetention() {
 
 func (rm *RetentionManager) runPurge() error {
 	runID := fmt.Sprintf("run-%d", timeutil.Now().UnixNano())
-	logger.Info("retention_run_start", "run_id", runID, "dry_run", rm.cfg.DryRun)
-
-	// Parse retention period with default fallback
-	retentionPeriod, err := rm.parseRetentionPeriod(rm.cfg.Period)
-	if err != nil {
-		logger.Error("retention_invalid_period", "period", rm.cfg.Period, "error", err)
-		// Use default 30 days
-		retentionPeriod = 30 * 24 * time.Hour
-	}
-	cutoff := timeutil.Now().Add(-retentionPeriod)
+	logger.Info("retention_run_start", "run_id", runID)
 
 	// Scan for deleted items
 	keys, _, err := indexdb.ListKeysWithPrefixPaginated("del:", &pagination.PaginationRequest{Limit: 10000})
@@ -153,7 +139,7 @@ func (rm *RetentionManager) runPurge() error {
 		return fmt.Errorf("scan soft delete markers: %w", err)
 	}
 
-	var toPurge []string
+	var purged int
 	for _, deleteMarker := range keys {
 		// Extract original key from delete marker
 		originalKey := strings.TrimPrefix(deleteMarker, "del:")
@@ -175,58 +161,18 @@ func (rm *RetentionManager) runPurge() error {
 				continue
 			}
 
-			// Check if thread is deleted and older than cutoff
-			if thread.Deleted && thread.DeletedTS > 0 {
-				deletedTime := time.Unix(0, thread.DeletedTS)
-				if deletedTime.Before(cutoff) {
-					toPurge = append(toPurge, originalKey)
+			// Check if thread is deleted
+			if thread.Deleted {
+				if err := thread_store.PurgeThreadPermanently(originalKey); err != nil {
+					logger.Error("purge_failed", "key", originalKey, "error", err)
+				} else {
+					purged++
+					logger.Info("purged", "key", originalKey)
 				}
 			}
 		}
 	}
 
-	// Purge items if not dry run
-	var purged int
-	if !rm.cfg.DryRun {
-		for _, k := range toPurge {
-			if err := thread_store.PurgeThreadPermanently(k); err != nil {
-				logger.Error("purge_failed", "key", k, "error", err)
-			} else {
-				purged++
-				logger.Info("purged", "key", k)
-			}
-		}
-	} else {
-		// Log what would be purged in dry run mode
-		for _, k := range toPurge {
-			logger.Info("retention_dry_run", "run_id", runID, "would_purge", k)
-		}
-		purged = len(toPurge)
-	}
-
 	logger.Info("retention_run_done", "run_id", runID, "scanned", len(keys), "purged", purged)
 	return nil
-}
-
-func (rm *RetentionManager) parseRetentionPeriod(period string) (time.Duration, error) {
-	if period == "" {
-		return 30 * 24 * time.Hour, nil // default 30 days
-	}
-
-	// Support "d" suffix for days
-	if strings.HasSuffix(period, "d") {
-		days := 0
-		if _, err := fmt.Sscanf(period, "%d", &days); err != nil {
-			return 0, fmt.Errorf("invalid days format: %w", err)
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
-	}
-
-	// Try standard duration parsing
-	duration, err := time.ParseDuration(period)
-	if err != nil {
-		return 0, fmt.Errorf("invalid duration format: %w", err)
-	}
-
-	return duration, nil
 }
