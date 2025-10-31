@@ -92,23 +92,21 @@ func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
 // RegisterRoutes wires all API routes onto the provided router.
 func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
-	r.POST("/_sign", backendRoutes.Sign)
-	r.POST("/v1/_sign", backendRoutes.Sign)
-	r.POST("/v1/sign", backendRoutes.Sign)
+	r.POST("/backend/signature", backendRoutes.Sign)
 
 	// thread metadata operations
-	r.POST("/v1/threads", frontendRoutes.EnqueueCreateThread)
-	r.GET("/v1/threads", frontendRoutes.ReadThreadsList)
-	r.PUT("/v1/threads/{threadKey}", frontendRoutes.EnqueueUpdateThread)
-	r.GET("/v1/threads/{threadKey}", frontendRoutes.ReadThreadItem)
-	r.DELETE("/v1/threads/{threadKey}", frontendRoutes.EnqueueDeleteThread)
+	r.POST("/frontend/v1/threads", frontendRoutes.EnqueueCreateThread)
+	r.GET("/frontend/v1/threads", frontendRoutes.ReadThreadsList)
+	r.PUT("/frontend/v1/threads/{threadKey}", frontendRoutes.EnqueueUpdateThread)
+	r.GET("/frontend/v1/threads/{threadKey}", frontendRoutes.ReadThreadItem)
+	r.DELETE("/frontend/v1/threads/{threadKey}", frontendRoutes.EnqueueDeleteThread)
 
 	// thread message operations
-	r.POST("/v1/threads/{threadKey}/messages", frontendRoutes.EnqueueCreateMessage)
-	r.GET("/v1/threads/{threadKey}/messages", frontendRoutes.ReadThreadMessages)
-	r.GET("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.ReadThreadMessage)
-	r.PUT("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueUpdateMessage)
-	r.DELETE("/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueDeleteMessage)
+	r.POST("/frontend/v1/threads/{threadKey}/messages", frontendRoutes.EnqueueCreateMessage)
+	r.GET("/frontend/v1/threads/{threadKey}/messages", frontendRoutes.ReadThreadMessages)
+	r.GET("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.ReadThreadMessage)
+	r.PUT("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueUpdateMessage)
+	r.DELETE("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueDeleteMessage)
 
 	// thread message reactions - REMOVED
 

@@ -72,25 +72,42 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 				logger.Warn("request_unauthorized", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
 				return
 			}
+
+			// set for downstream usage
 			ctx.Request.Header.Set("X-Role-Name", roleName)
 
-			// apply role-based route restrictions
-			// frontends can only access thread/messages routes
-			if role == RoleFrontend && !frontendAllowedFast(ctx) {
-				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
-				logger.Warn("request_forbidden", "reason", "frontend_not_allowed", "path", utils.GetPath(ctx))
-				return
-			}
-			// backend or frontend cannot access /admin
-			if (role == RoleBackend || role == RoleFrontend) && utils.HasPathPrefix(ctx, "/admin") {
-				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "backend api keys cannot access admin routes")
-				logger.Warn("backend_admin_access_attempt", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
-				return
-			}
-			// admins can only access /admin paths
-			if role == RoleAdmin && !utils.HasPathPrefix(ctx, "/admin") {
-				router.WriteJSONError(ctx, fasthttp.StatusForbidden, "admin api keys may only access /admin routes")
-				logger.Warn("admin_route_violation", "path", utils.GetPath(ctx), "remote", ctx.RemoteAddr().String())
+			// explicit role-path handling with specific logic per combination
+			path := utils.GetPath(ctx)
+			switch role {
+			case RoleAdmin:
+				if !utils.HasPathPrefix(ctx, "/admin") {
+					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+					logger.Warn("admin_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					return
+				}
+				logger.Debug("admin_path_allowed", "path", path)
+			case RoleBackend:
+				if !utils.HasPathPrefix(ctx, "/backend") && !utils.HasPathPrefix(ctx, "/frontend") {
+					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+					logger.Warn("backend_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					return
+				}
+				logger.Debug("backend_path_allowed", "path", path)
+			case RoleFrontend:
+				if !utils.HasPathPrefix(ctx, "/frontend") {
+					router.WriteJSONError(ctx, fasthttp.StatusForbidden, "forbidden")
+					logger.Warn("frontend_path_denied", "path", path, "remote", ctx.RemoteAddr().String())
+					return
+				}
+				logger.Debug("frontend_path_allowed", "path", path)
+
+				// frontend requires signature verification
+				if !utils.HasUserSignature(ctx) {
+					router.WriteJSONError(ctx, fasthttp.StatusUnauthorized, "signature required")
+					logger.Warn("frontend_missing_signature", "path", path, "remote", ctx.RemoteAddr().String())
+					return
+				}
+				RequireSignedAuthorMiddleware(next)(ctx)
 				return
 			}
 
@@ -101,13 +118,7 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 				return
 			}
 
-			// signed author logic (for frontend/client/user-specific requests)
-			if utils.HasUserSignature(ctx) {
-				RequireSignedAuthorMiddleware(next)(ctx)
-				return
-			}
-
-			// authorized: continue to handler
+			// authorized: continue to handler for admin/backend
 			next(ctx)
 		}
 	}
@@ -147,15 +158,38 @@ func validateAPIKey(ctx *fasthttp.RequestCtx, cfg SecConfig) (Role, string, bool
 	return RoleUnauth, key, true
 }
 
-func frontendAllowedFast(ctx *fasthttp.RequestCtx) bool {
-	path := utils.GetPath(ctx)
-	if strings.HasPrefix(path, "/v1/messages") {
-		return true
+// isRolePathAllowed checks if the role is allowed to access the requested path
+func isRolePathAllowed(ctx *fasthttp.RequestCtx, role Role) bool {
+	switch role {
+	case RoleAdmin:
+		// Admin can only access /admin paths
+		return utils.HasPathPrefix(ctx, "/admin")
+
+	case RoleBackend:
+		// Backend can access /backend and /frontend paths
+		return utils.HasPathPrefix(ctx, "/backend") || utils.HasPathPrefix(ctx, "/frontend")
+
+	case RoleFrontend:
+		// Frontend can only access /frontend paths
+		return utils.HasPathPrefix(ctx, "/frontend")
+
+	default:
+		return false
 	}
-	if strings.HasPrefix(path, "/v1/threads") {
-		return true
+}
+
+// getRoleName converts Role enum to string for logging
+func getRoleName(role Role) string {
+	switch role {
+	case RoleAdmin:
+		return "admin"
+	case RoleBackend:
+		return "backend"
+	case RoleFrontend:
+		return "frontend"
+	default:
+		return "unauth"
 	}
-	return false
 }
 
 func originAllowed(origin string, allowed []string) bool {

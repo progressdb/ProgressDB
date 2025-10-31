@@ -6,7 +6,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// ExtractAPIKey extracts API key from Authorization header or X-API-Key header
+// Extracts an API key from either the Authorization header or the X-API-Key header
 func ExtractAPIKey(ctx *fasthttp.RequestCtx) string {
 	auth := GetHeader(ctx, "Authorization")
 	var key string
@@ -22,37 +22,37 @@ func ExtractAPIKey(ctx *fasthttp.RequestCtx) string {
 	return key
 }
 
-// GetRole returns the role from X-Role-Name header
+// Returns the value of the X-Role-Name header, lowercased
 func GetRole(ctx *fasthttp.RequestCtx) string {
 	return GetHeaderLower(ctx, "X-Role-Name")
 }
 
-// GetUserID returns the user ID from X-User-ID header
+// Returns the value of the X-User-ID header
 func GetUserID(ctx *fasthttp.RequestCtx) string {
 	return GetHeader(ctx, "X-User-ID")
 }
 
-// GetUserSignature returns the user signature from X-User-Signature header
+// Returns the value of the X-User-Signature header
 func GetUserSignature(ctx *fasthttp.RequestCtx) string {
 	return GetHeader(ctx, "X-User-Signature")
 }
 
-// IsBackendRole checks if the request has backend role
+// Checks if the role in the request is "backend"
 func IsBackendRole(ctx *fasthttp.RequestCtx) bool {
 	return GetRole(ctx) == "backend"
 }
 
-// IsFrontendRole checks if the request has frontend role
+// Checks if the role in the request is "frontend"
 func IsFrontendRole(ctx *fasthttp.RequestCtx) bool {
 	return GetRole(ctx) == "frontend"
 }
 
-// IsAdminRole checks if the request has admin role
+// Checks if the role in the request is "admin"
 func IsAdminRole(ctx *fasthttp.RequestCtx) bool {
 	return GetRole(ctx) == "admin"
 }
 
-// HasUserSignature checks if the request has a user signature
+// Checks if the user signature exists in the request
 func HasUserSignature(ctx *fasthttp.RequestCtx) bool {
 	return GetUserSignature(ctx) != ""
 }
