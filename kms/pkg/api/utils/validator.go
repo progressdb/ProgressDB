@@ -30,22 +30,22 @@ func ValidateKeyID(keyID string) error {
 }
 
 // ValidateThreadID validates a thread ID format
-func ValidateThreadID(threadID string) error {
-	if threadID == "" {
-		return errors.New("thread_id cannot be empty")
+func ValidateThreadID(threadKey string) error {
+	if threadKey == "" {
+		return errors.New("thread_key cannot be empty")
 	}
 
-	if len(threadID) > 256 {
-		return errors.New("thread_id too long (max 256 characters)")
+	if len(threadKey) > 256 {
+		return errors.New("thread_key too long (max 256 characters)")
 	}
 
 	// Allow alphanumeric, underscore, dash, and forward slash
-	matched, err := regexp.MatchString(`^[a-zA-Z0-9_\-/]+$`, threadID)
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9_\-/]+$`, threadKey)
 	if err != nil {
-		return errors.New("invalid thread_id format")
+		return errors.New("invalid thread_key format")
 	}
 	if !matched {
-		return errors.New("thread_id contains invalid characters")
+		return errors.New("thread_key contains invalid characters")
 	}
 
 	return nil

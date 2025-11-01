@@ -214,7 +214,7 @@ func (h *hashicorpProvider) CreateDEK() (string, []byte, error) {
 	return kid, h.wrapped[kid].Data(), nil
 }
 
-func (h *hashicorpProvider) CreateDEKForThread(threadID string) (string, []byte, string, string, error) {
+func (h *hashicorpProvider) CreateDEKForThread(threadKey string) (string, []byte, string, string, error) {
 	kid, wrapped, err := h.CreateDEK()
 	if err != nil {
 		return "", nil, "", "", err

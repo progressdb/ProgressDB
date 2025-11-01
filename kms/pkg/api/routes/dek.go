@@ -10,7 +10,7 @@ import (
 )
 
 type CreateDEKRequest struct {
-	ThreadID string `json:"thread_id"`
+	ThreadID string `json:"thread_key"`
 }
 
 type CreateDEKResponse struct {
@@ -44,8 +44,8 @@ func (d *Dependencies) CreateDEK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := map[string]string{
-		"wrapped":   base64.StdEncoding.EncodeToString(wrapped),
-		"thread_id": req.ThreadID,
+		"wrapped":    base64.StdEncoding.EncodeToString(wrapped),
+		"thread_key": req.ThreadID,
 	}
 	mb, _ := json.Marshal(meta)
 	_ = d.Store.SaveKeyMeta(kid, mb)

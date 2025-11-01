@@ -8,7 +8,6 @@ import (
 	server "github.com/progressdb/kms/internal"
 	"github.com/progressdb/kms/pkg/config"
 	security "github.com/progressdb/kms/pkg/core"
-	"github.com/progressdb/kms/pkg/embedded"
 )
 
 func main() {
@@ -16,7 +15,6 @@ func main() {
 		endpoint = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
 		dataDir  = flag.String("data-dir", "./core-data", "data directory")
 		cfgPath  = flag.String("config", "", "optional config yaml")
-		embedded = flag.Bool("embedded", false, "run in embedded mode (no HTTP server)")
 	)
 	flag.Parse()
 
@@ -62,36 +60,6 @@ func main() {
 		provider = p
 	}
 
-	// Choose mode based on flag
-	if *embedded {
-		runEmbeddedMode(provider, cfg)
-	} else {
-		runServiceMode(provider, cfg)
-	}
-}
-
-func runEmbeddedMode(provider security.KMSProvider, cfg *config.Config) {
-	embeddedKMS, err := embedded.New(context.Background(), &embedded.Config{
-		MasterKey: cfg.GetMasterKey(),
-		DataDir:   cfg.DataDir,
-	})
-	if err != nil {
-		log.Fatalf("failed to create embedded KMS: %v", err)
-	}
-	defer embeddedKMS.Close()
-
-	// Example usage - in real scenarios, this would be used programmatically
-	log.Printf("Embedded KMS initialized successfully")
-	log.Printf("Provider enabled: %v", embeddedKMS.Enabled())
-
-	if err := embeddedKMS.Health(); err != nil {
-		log.Printf("Health check failed: %v", err)
-	} else {
-		log.Printf("Health check passed")
-	}
-}
-
-func runServiceMode(provider security.KMSProvider, cfg *config.Config) {
 	// Create and start server
 	srv, err := server.New(cfg.Endpoint, provider, cfg.DataDir)
 	if err != nil {

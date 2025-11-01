@@ -56,8 +56,8 @@ func (d *Dependencies) Rewrap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := map[string]string{
-		"wrapped":   base64.StdEncoding.EncodeToString(newWrapped),
-		"thread_id": m["thread_id"],
+		"wrapped":    base64.StdEncoding.EncodeToString(newWrapped),
+		"thread_key": m["thread_key"],
 	}
 	mb, _ = json.Marshal(meta)
 	_ = d.Store.SaveKeyMeta(req.KeyID, mb)

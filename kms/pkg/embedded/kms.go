@@ -22,7 +22,7 @@ type DEK struct {
 	Wrapped    []byte `json:"wrapped"`
 	KekID      string `json:"kek_id"`
 	KekVersion string `json:"kek_version"`
-	ThreadID   string `json:"thread_id,omitempty"`
+	ThreadID   string `json:"thread_key,omitempty"`
 }
 
 // Config holds configuration for embedded KMS
@@ -61,20 +61,20 @@ func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
 }
 
 // CreateDEK creates a new Data Encryption Key for the specified thread
-func (e *EmbeddedKMS) CreateDEK(threadID string) (*DEK, error) {
+func (e *EmbeddedKMS) CreateDEK(threadKey string) (*DEK, error) {
 	if !e.provider.Enabled() {
 		return nil, fmt.Errorf("KMS provider not enabled")
 	}
 
-	dekID, wrapped, kekID, kekVersion, err := e.provider.CreateDEKForThread(threadID)
+	dekID, wrapped, kekID, kekVersion, err := e.provider.CreateDEKForThread(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DEK: %w", err)
 	}
 
 	// Save metadata to store
 	meta := map[string]string{
-		"wrapped":   string(wrapped),
-		"thread_id": threadID,
+		"wrapped":    string(wrapped),
+		"thread_key": threadKey,
 	}
 	metaBytes, _ := json.Marshal(meta)
 	_ = e.store.SaveKeyMeta(dekID, metaBytes)
@@ -84,7 +84,7 @@ func (e *EmbeddedKMS) CreateDEK(threadID string) (*DEK, error) {
 		Wrapped:    wrapped,
 		KekID:      kekID,
 		KekVersion: kekVersion,
-		ThreadID:   threadID,
+		ThreadID:   threadKey,
 	}, nil
 }
 
@@ -139,8 +139,8 @@ func (e *EmbeddedKMS) Rewrap(dekID string, newKEK string) (*DEK, error) {
 	}
 
 	meta := map[string]string{
-		"wrapped":   string(newWrapped),
-		"thread_id": m["thread_id"],
+		"wrapped":    string(newWrapped),
+		"thread_key": m["thread_key"],
 	}
 	metaBytes, _ := json.Marshal(meta)
 	_ = e.store.SaveKeyMeta(dekID, metaBytes)
@@ -150,7 +150,7 @@ func (e *EmbeddedKMS) Rewrap(dekID string, newKEK string) (*DEK, error) {
 		Wrapped:    newWrapped,
 		KekID:      newKekID,
 		KekVersion: newKekVersion,
-		ThreadID:   m["thread_id"],
+		ThreadID:   m["thread_key"],
 	}, nil
 }
 

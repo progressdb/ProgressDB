@@ -28,7 +28,7 @@ type KMSProvider interface {
 	Enabled() bool
 
 	// Core 4-method API
-	CreateDEKForThread(threadID string) (dekID string, wrappedDEK []byte, kekID string, kekVersion string, err error)
+	CreateDEKForThread(threadKey string) (dekID string, wrappedDEK []byte, kekID string, kekVersion string, err error)
 	EncryptWithDEK(dekID string, plaintext, aad []byte) (ciphertext []byte, keyVersion string, err error)
 	DecryptWithDEK(dekID string, ciphertext, aad []byte) (plaintext []byte, err error)
 	RewrapDEKForThread(dekID string, newKEKHex string) (newWrappedDEK []byte, newKekID string, newKekVersion string, err error)
@@ -183,7 +183,7 @@ func CreateDEK() (string, []byte, error) {
 	return "", nil, errors.New("provider does not support CreateDEK")
 }
 
-func CreateDEKForThread(threadID string) (string, []byte, error) {
+func CreateDEKForThread(threadKey string) (string, []byte, error) {
 	providerMu.RLock()
 	p := provider
 	providerMu.RUnlock()
@@ -194,7 +194,7 @@ func CreateDEKForThread(threadID string) (string, []byte, error) {
 		CreateDEKForThread(string) (string, []byte, string, string, error)
 	}
 	if tc, ok := p.(threadCreator); ok {
-		kid, wrapped, _, _, err := tc.CreateDEKForThread(threadID)
+		kid, wrapped, _, _, err := tc.CreateDEKForThread(threadKey)
 		return kid, wrapped, err
 	}
 	// Fallback to generic CreateDEK

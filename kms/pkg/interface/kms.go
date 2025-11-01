@@ -7,13 +7,13 @@ type DEK struct {
 	Wrapped    []byte `json:"wrapped"`
 	KekID      string `json:"kek_id"`
 	KekVersion string `json:"kek_version"`
-	ThreadID   string `json:"thread_id,omitempty"`
+	ThreadID   string `json:"thread_key,omitempty"`
 }
 
 // KMS defines the unified interface for both embedded and external KMS operations
 type KMS interface {
 	// Core encryption operations
-	CreateDEK(threadID string) (*DEK, error)
+	CreateDEK(threadKey string) (*DEK, error)
 	Encrypt(dekID string, plaintext []byte) ([]byte, error)
 	Decrypt(dekID string, ciphertext []byte) ([]byte, error)
 
@@ -32,7 +32,7 @@ type Provider interface {
 	KMS
 
 	// Provider-specific operations
-	CreateDEKForThread(threadID string) (string, []byte, string, string, error)
+	CreateDEKForThread(threadKey string) (string, []byte, string, string, error)
 	EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error)
 	DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error)
 	RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error)
