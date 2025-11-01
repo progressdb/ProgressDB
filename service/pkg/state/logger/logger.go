@@ -33,48 +33,41 @@ var logCh chan []byte
 var logStopCh chan struct{}
 var logWG sync.WaitGroup
 
-func Init() {
-	sink := os.Getenv("PROGRESSDB_LOG_SINK")
-	lvl := strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_LOG_LEVEL")))
-	var level slog.Level
-	switch lvl {
+func Init(level string, dbPath string) {
+	var slogLevel slog.Level
+	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
-		level = slog.LevelDebug
+		slogLevel = slog.LevelDebug
 	case "warn", "warning":
-		level = slog.LevelWarn
+		slogLevel = slog.LevelWarn
 	case "error":
-		level = slog.LevelError
+		slogLevel = slog.LevelError
 	case "info":
-		level = slog.LevelInfo
+		slogLevel = slog.LevelInfo
 	default:
-		level = slog.LevelInfo
+		slogLevel = slog.LevelInfo
+	}
+
+	// Use dbPath to construct logs path
+	logsDir := filepath.Join(dbPath, "state", "logs")
+	globalFile, err := os.OpenFile(filepath.Join(logsDir, "global.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open global log file: %v\n", err)
+		return
 	}
 
 	logCh = make(chan []byte, 10000)
 	logStopCh = make(chan struct{})
 	aw := &asyncWriter{ch: logCh}
-	Log = slog.New(slog.NewTextHandler(aw, &slog.HandlerOptions{Level: level}))
+	Log = slog.New(slog.NewJSONHandler(aw, &slog.HandlerOptions{Level: slogLevel}))
 
 	logWG.Add(1)
 	go func() {
 		defer logWG.Done()
-		var buf *bufio.Writer
-		var f *os.File
-		if strings.HasPrefix(sink, "file:") {
-			path := strings.TrimPrefix(sink, "file:")
-			var err error
-			f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
-				buf = bufio.NewWriterSize(os.Stdout, 8192)
-			} else {
-				buf = bufio.NewWriterSize(f, 8192)
-			}
-		} else {
-			buf = bufio.NewWriterSize(os.Stdout, 8192)
-		}
+		buf := bufio.NewWriterSize(globalFile, 8192)
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+		defer globalFile.Close()
 		for {
 			select {
 			case b := <-logCh:
@@ -83,99 +76,17 @@ func Init() {
 				buf.Flush()
 			case <-logStopCh:
 				buf.Flush()
-				if f != nil {
-					f.Close()
-				}
 				return
 			}
 		}
 	}()
+
+	// Initialize audit logger
+	attachAuditLogger(logsDir)
 }
 
-func InitWithLevel(level string) {
-	sink := os.Getenv("PROGRESSDB_LOG_SINK")
-	lvl := strings.ToLower(strings.TrimSpace(level))
-	if lvl == "" {
-		lvl = strings.ToLower(strings.TrimSpace(os.Getenv("PROGRESSDB_LOG_LEVEL")))
-	}
-	var lv slog.Level
-	switch lvl {
-	case "debug":
-		lv = slog.LevelDebug
-	case "warn", "warning":
-		lv = slog.LevelWarn
-	case "error":
-		lv = slog.LevelError
-	case "info":
-		lv = slog.LevelInfo
-	default:
-		lv = slog.LevelInfo
-	}
-
-	logCh = make(chan []byte, 10000)
-	logStopCh = make(chan struct{})
-	aw := &asyncWriter{ch: logCh}
-	Log = slog.New(slog.NewTextHandler(aw, &slog.HandlerOptions{Level: lv}))
-
-	logWG.Add(1)
-	go func() {
-		defer logWG.Done()
-		var buf *bufio.Writer
-		var f *os.File
-		if strings.HasPrefix(sink, "file:") {
-			path := strings.TrimPrefix(sink, "file:")
-			var err error
-			f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", path, err)
-				buf = bufio.NewWriterSize(os.Stdout, 8192)
-			} else {
-				buf = bufio.NewWriterSize(f, 8192)
-			}
-		} else {
-			buf = bufio.NewWriterSize(os.Stdout, 8192)
-		}
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case b := <-logCh:
-				buf.Write(b)
-			case <-ticker.C:
-				buf.Flush()
-			case <-logStopCh:
-				buf.Flush()
-				if f != nil {
-					f.Close()
-				}
-				return
-			}
-		}
-	}()
-}
-
-func AttachAuditFileSink(auditDir string) error {
-	if auditDir == "" {
-		return fmt.Errorf("empty audit dir")
-	}
-	if fi, err := os.Lstat(auditDir); err == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("audit path is a symlink: %s", auditDir)
-		}
-		if !fi.IsDir() {
-			return fmt.Errorf("audit path exists and is not a directory: %s", auditDir)
-		}
-	}
-	if err := os.MkdirAll(auditDir, 0o700); err != nil {
-		return fmt.Errorf("failed to create audit directory: %w", err)
-	}
-	if fi2, err := os.Lstat(auditDir); err == nil {
-		if fi2.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("audit path is a symlink after creation: %s", auditDir)
-		}
-	}
-
-	fname := filepath.Join(auditDir, "audit.log")
+func attachAuditLogger(logsDir string) {
+	fname := filepath.Join(logsDir, "audit.log")
 	if fi, err := os.Stat(fname); err == nil {
 		const maxSize = 10 * 1024 * 1024
 		if fi.Size() > maxSize {
@@ -185,12 +96,12 @@ func AttachAuditFileSink(auditDir string) error {
 	}
 	f, err := os.OpenFile(fname, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("failed to open audit log file: %w", err)
+		fmt.Fprintf(os.Stderr, "failed to open audit log file: %v\n", err)
+		return
 	}
 	h := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
 	Audit = slog.New(h)
 	Audit.Info("audit_sink_attached", "path", fname)
-	return nil
 }
 
 func Sync() {
@@ -226,22 +137,4 @@ func Error(msg string, args ...any) {
 		return
 	}
 	Log.Error(msg, args...)
-}
-
-func LogConfigSummary(title string, items []string) {
-	if len(items) == 0 {
-		return
-	}
-	human := strings.ReplaceAll(title, "_", " ")
-	human = strings.Title(human)
-	header := "== " + human + " "
-	const width = 60
-	if len(header) < width {
-		header = header + strings.Repeat("=", width-len(header))
-	}
-	fmt.Fprintln(os.Stdout, header)
-	for _, it := range items {
-		fmt.Fprintln(os.Stdout, "- "+it)
-	}
-	fmt.Fprintln(os.Stdout)
 }

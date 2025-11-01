@@ -12,6 +12,7 @@ type Paths struct {
 	KMS       string
 	Tmp       string
 	Tel       string
+	Logs      string
 	Index     string
 	Crash     string // failed compute operations for recovery
 }
@@ -34,6 +35,7 @@ func PathsFor(dbPath string) Paths {
 		KMS:       filepath.Join(statePath, "kms"),
 		Tmp:       filepath.Join(statePath, "tmp"),
 		Tel:       filepath.Join(statePath, "telemetry"),
+		Logs:      filepath.Join(statePath, "logs"),
 		Crash:     filepath.Join(statePath, "crash"),
 	}
 }

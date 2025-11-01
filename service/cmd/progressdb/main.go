@@ -27,10 +27,6 @@ func main() {
 	// load .env file if present
 	_ = godotenv.Load(".env")
 
-	// initialize centralized logger (env defaults) so startup logs are available.
-	logger.Init()
-	defer logger.Sync()
-
 	// parse config flags
 	flags := config.ParseConfigFlags()
 	if !flags.Set["db"] {
@@ -44,7 +40,6 @@ func main() {
 	if err != nil {
 		shutdown.Abort("failed to load config file", err, flags.DB)
 	}
-	logger.Info("config_file_parsed", "path", flags.Config, "exists", fileExists, "error", err)
 
 	// parse config env variables
 	envCfg, envRes := config.ParseConfigEnvs()
@@ -54,27 +49,18 @@ func main() {
 	if err != nil {
 		shutdown.Abort("failed to build effective config", err, flags.DB)
 	}
-	logger.Info("effective_config_loaded", "source", eff.Source, "addr", eff.Addr, "db_path", eff.DBPath)
-
-	// set global config for use throughout the application
-	config.SetConfig(eff.Config)
-
-	// Debug: verify config was set
-	if cfg := config.GetConfig(); cfg == nil {
-		shutdown.Abort("config was nil after SetConfig", fmt.Errorf("config setting failed"), eff.DBPath)
-	} else {
-		logger.Info("config_set_successfully", "db_path", cfg.Server.DBPath, "ingest_wal_enabled", cfg.Ingest.Intake.WAL.Enabled)
-	}
 
 	// validate config
-	logger.Info("validating_config", "db_path", eff.DBPath)
 	if err := config.ValidateConfig(eff); err != nil {
 		shutdown.Abort("invalid configuration", err, eff.DBPath)
 	}
-	logger.Info("config_validation_passed")
 
-	// Reinitialize logger with config-driven level (overrides env default)
-	logger.InitWithLevel(eff.Config.Logging.Level)
+	// initialize logger after config is fully loaded
+	logger.Init(eff.Config.Logging.Level, eff.DBPath)
+	defer logger.Sync()
+
+	logger.Info("effective_config_loaded", "source", eff.Source, "addr", eff.Addr, "db_path", eff.DBPath)
+	logger.Info("config_validation_passed")
 
 	// set to maximum cpu's available
 	numCPU := runtime.NumCPU()
@@ -94,13 +80,6 @@ func main() {
 		logger.Error("state_dirs_setup_failed", "error", err)
 		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
 		shutdown.Abort(fmt.Sprintf("failed to ensure state directories under %s", eff.DBPath), err, eff.DBPath)
-	}
-
-	// create audit file for audit logs if not present
-	auditPath := state.PathsVar.Audit
-	if err := logger.AttachAuditFileSink(auditPath); err != nil {
-		logger.Error("attach_audit_sink_failed", "error", err)
-		shutdown.Abort(fmt.Sprintf("failed to attach audit sink at %s", auditPath), err, eff.DBPath)
 	}
 
 	// initialize app

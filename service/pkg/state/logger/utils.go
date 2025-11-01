@@ -1,9 +1,10 @@
 package logger
 
 import (
-	"net/http"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/valyala/fasthttp"
 )
 
 func maskedValue(v string) string {
@@ -25,21 +26,19 @@ func redactHeaderValue(_ string, v string) string {
 	}
 	return maskedValue(v)
 }
-
-func SafeHeaders(r *http.Request) string {
-	parts := make([]string, 0, len(r.Header))
-	for k, v := range r.Header {
-		if len(v) == 0 {
-			continue
-		}
-		parts = append(parts, k+"="+redactHeaderValue(k, v[0]))
-	}
+func SafeHeadersFast(ctx *fasthttp.RequestCtx) string {
+	parts := make([]string, 0)
+	ctx.Request.Header.VisitAll(func(k, v []byte) {
+		key := string(k)
+		val := redactHeaderValue(key, string(v))
+		parts = append(parts, key+"="+val)
+	})
 	return strings.Join(parts, "; ")
 }
 
-func LogRequest(r *http.Request) {
+func LogRequestFast(ctx *fasthttp.RequestCtx) {
 	if Log == nil {
 		return
 	}
-	Info("incoming_request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr, "headers", SafeHeaders(r))
+	Info("incoming_request", "method", string(ctx.Method()), "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
 }
