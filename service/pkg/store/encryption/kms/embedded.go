@@ -3,7 +3,7 @@ package kms
 import (
 	"context"
 
-	kmss "github.com/progressdb/kms/pkg/security"
+	kmss "github.com/progressdb/kms/pkg/core"
 )
 
 func NewHashicorpEmbeddedProvider(ctx context.Context, masterHex string) (KMSProvider, error) {
