@@ -11,7 +11,6 @@ import (
 	"io"
 )
 
-// AuditSign signs audit bytes and returns base64 signature. Default: HMAC-SHA256
 func AuditSign(b []byte) (string, error) {
 	if len(key) == 0 {
 		return "", nil
@@ -21,12 +20,8 @@ func AuditSign(b []byte) (string, error) {
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-// LockMemory/UnlockMemory provided by platform-specific files in `pkg/conn`.
-
-// Exported helper used by callers outside this package.
 func SecurityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
 
-// WrapDEKWithKeyBytes provides a helper to wrap dek with raw key bytes.
 func WrapDEKWithKeyBytes(kb, dek []byte) ([]byte, error) {
 	if len(kb) != 32 {
 		return nil, errors.New("invalid key length")
@@ -47,7 +42,6 @@ func WrapDEKWithKeyBytes(kb, dek []byte) ([]byte, error) {
 	return append(nonce, ct...), nil
 }
 
-// EncryptWithRawKey encrypts plaintext using the provided raw key (DEK)
 func EncryptWithRawKey(dek, plaintext []byte) ([]byte, error) {
 	if len(dek) != 32 {
 		return nil, errors.New("invalid dek length")
@@ -68,7 +62,6 @@ func EncryptWithRawKey(dek, plaintext []byte) ([]byte, error) {
 	return append(nonce, ct...), nil
 }
 
-// DecryptWithRawKey decrypts ciphertext produced by EncryptWithRawKey
 func DecryptWithRawKey(dek, data []byte) ([]byte, error) {
 	if len(dek) != 32 {
 		return nil, errors.New("invalid dek length")
