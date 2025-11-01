@@ -21,9 +21,6 @@ server:
     admin: ["admin_example"]
     signing: ["sign_example"]
 
-storage:
-  wal: false
-
 logging:
   level: "debug"
 
@@ -36,7 +33,7 @@ ingest:
     queue_capacity: 200_000
     shutdown_poll_interval: 5ms
     wal:
-      enabled: true
+      enabled: false
     recovery:
       enabled: true
       temp_idx_enabled: true
@@ -44,8 +41,8 @@ ingest:
     worker_count: 24
     buffer_capacity: 100_000
   apply:
-     batch_count: 10_000
-     batch_timeout: 10ms
+     batch_count: 1_000
+     batch_timeout: 1ms
      fsync_after_batch: true
 
 telemetry:

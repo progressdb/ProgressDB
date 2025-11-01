@@ -44,7 +44,9 @@ type ServerConfig struct {
 
 // StorageConfig holds database-specific settings.
 type StorageConfig struct {
-	WAL bool `yaml:"wal,default=false"`
+	// WAL is always enabled for Pebble to ensure data integrity
+	// This field is kept for backward compatibility but ignored
+	WAL bool `yaml:"wal,default=true"`
 }
 
 // TLSConfig holds TLS certificate configuration.

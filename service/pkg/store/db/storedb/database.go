@@ -20,13 +20,15 @@ func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 		return nil
 	}
 	var err error
+	// WAL is always enabled for data integrity
+	// storageWalEnabled parameter is kept for backward compatibility but ignored
 	opts := &pebble.Options{
-		DisableWAL: !storageWalEnabled,
+		DisableWAL: false, // Always enable WAL for durability
 	}
-	walDisabled = opts.DisableWAL
+	walDisabled = false // WAL is always enabled
 
-	if walDisabled && !intakeWALEnabled {
-		logger.Warn("durability_disabled", "durability", "no WAL enabled")
+	if !intakeWALEnabled {
+		logger.Warn("intake_wal_disabled", "durability", "intake WAL disabled but storage WAL enabled")
 	}
 
 	Client, err = pebble.Open(path, opts)

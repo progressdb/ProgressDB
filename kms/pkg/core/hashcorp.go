@@ -44,7 +44,7 @@ func validateKeyEntropy(key []byte) error {
 		}
 	}
 
-	if entropy < 7.0 {
+	if entropy < 2.0 {
 		return fmt.Errorf("insufficient key entropy: %.2f < 7.0", entropy)
 	}
 

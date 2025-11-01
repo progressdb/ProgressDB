@@ -18,13 +18,15 @@ var PendingWrites uint64
 
 func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
 	var err error
+	// WAL is always enabled for data integrity
+	// storageWalEnabled parameter is kept for backward compatibility but ignored
 	opts := &pebble.Options{
-		DisableWAL: !storageWalEnabled,
+		DisableWAL: false, // Always enable WAL for durability
 	}
-	WALDisabled = opts.DisableWAL
+	WALDisabled = false // WAL is always enabled
 
-	if WALDisabled && !intakeWALEnabled {
-		logger.Warn("durability_disabled", "durability", "no WAL enabled for index DB")
+	if !intakeWALEnabled {
+		logger.Warn("intake_wal_disabled", "durability", "intake WAL disabled but storage WAL enabled for index DB")
 	}
 
 	Client, err = pebble.Open(path, opts)
@@ -114,7 +116,8 @@ func DeleteKey(key string) error {
 }
 
 func WriteOpt(requestSync bool) *pebble.WriteOptions {
-	if requestSync && !WALDisabled {
+	// WAL is always enabled, so we can safely sync when requested
+	if requestSync {
 		return pebble.Sync
 	}
 	return pebble.Sync

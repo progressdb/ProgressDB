@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
+	kmsconfig "github.com/progressdb/kms/pkg/config"
 	"progressdb/pkg/config"
 	"progressdb/pkg/store/encryption/kms"
 )
@@ -42,27 +42,36 @@ func resolveEncryptionEnabled(cfg *config.Config) bool {
 }
 
 func resolveMasterKey(cfg *config.Config) (string, error) {
-	var mk string
-	switch {
-	case strings.TrimSpace(cfg.Encryption.KMS.MasterKeyFile) != "":
-		mkFile := strings.TrimSpace(cfg.Encryption.KMS.MasterKeyFile)
-		keyb, err := os.ReadFile(mkFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read master key file %s: %w", mkFile, err)
-		}
-		mk = strings.TrimSpace(string(keyb))
-	case strings.TrimSpace(cfg.Encryption.KMS.MasterKeyHex) != "":
-		mk = strings.TrimSpace(cfg.Encryption.KMS.MasterKeyHex)
-	default:
-		return "", fmt.Errorf("encryption enabled but no master key provided in server config. Set encryption.kms.master_key_file or encryption.kms.master_key_hex")
+	// Convert service config to KMS config format
+	kmsCfg := &kmsconfig.Config{
+		Encryption: kmsconfig.EncryptionConfig{
+			KMS: struct {
+				Mode          string `yaml:"mode,default=embedded"`
+				Endpoint      string `yaml:"endpoint,default=127.0.0.1:6820"`
+				DataDir       string `yaml:"data_dir,default=/kms"`
+				Binary        string `yaml:"binary,default=/usr/local/bin/progressdb-kms"`
+				MasterKeyFile string `yaml:"master_key_file"`
+				MasterKeyHex  string `yaml:"master_key_hex"`
+			}{
+				Mode:          cfg.Encryption.KMS.Mode,
+				Endpoint:      cfg.Encryption.KMS.Endpoint,
+				DataDir:       cfg.Encryption.KMS.DataDir,
+				Binary:        cfg.Encryption.KMS.Binary,
+				MasterKeyFile: cfg.Encryption.KMS.MasterKeyFile,
+				MasterKeyHex:  cfg.Encryption.KMS.MasterKeyHex,
+			},
+		},
 	}
-	if mk == "" {
-		return "", fmt.Errorf("master key is empty")
+
+	// Use centralized KMS config loading
+	masterKeyBytes, err := kmsconfig.LoadMasterKey(kmsCfg)
+	if err != nil {
+		return "", err
 	}
-	if kb, err := hex.DecodeString(mk); err != nil || len(kb) != 32 {
-		return "", fmt.Errorf("invalid master_key_hex: must be 64-hex (32 bytes)")
-	}
-	return mk, nil
+
+	// Convert to hex string for embedded provider
+	masterKeyHex := hex.EncodeToString(masterKeyBytes)
+	return masterKeyHex, nil
 }
 
 func resolveKMSMode(cfg *config.Config) string {
