@@ -1,9 +1,5 @@
 package tests
 
-// Objectives (from docs/tests.md):
-// 1. Validate utility helpers: ID generation, slug generation, path splitting, JSON helpers.
-// 2. Cover boundary and error cases for helper functions.
-
 import (
 	"testing"
 
@@ -13,33 +9,30 @@ import (
 )
 
 func TestUtils_Suite(t *testing.T) {
-	// Subtest: Validate ID/slug/path helpers produce expected non-empty outputs and correct splitting.
-	t.Run("GenMessageID_Slug_Split", func(t *testing.T) {
-		// Pass Now function explicitly if needed
+	t.Run("BasicHelpers", func(t *testing.T) {
+		// Test basic utility functions
 		nowFunc := timeutil.Now().UTC().String()
 		id := keys.GenMessageKey(nowFunc, "test", 0)
 		if id == "" {
-			t.Fatalf("expected GenMessageID to produce a value")
+			t.Fatalf("expected GenMessageKey to produce a value")
 		}
+
 		tid := keys.GenThreadKey(nowFunc)
 		if tid == "" {
-			t.Fatalf("expected GenThreadID to produce a value")
+			t.Fatalf("expected GenThreadKey to produce a value")
 		}
+
 		slug := MakeSlug("Hello World!", "xyz")
 		if slug == "" {
 			t.Fatalf("expected MakeSlug to produce a value")
 		}
+
 		parts := SplitPath("/a/b/c/")
 		if len(parts) != 3 {
 			t.Fatalf("expected SplitPath to return 3 segments; got %d", len(parts))
 		}
-		_ = id
-		_ = tid
-		_ = slug
-		_ = parts
 	})
 
-	// Subtest: Ensure JSON helper converts strings to RawMessage correctly.
 	t.Run("JSONHelpers", func(t *testing.T) {
 		vals := []string{"{\"a\":1}", "{\"b\":2}"}
 		raws := router.ToRawMessages(vals)

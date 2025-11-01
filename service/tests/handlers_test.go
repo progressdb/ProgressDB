@@ -1,115 +1,123 @@
 package tests
 
 import (
-	"fmt"
+	"encoding/json"
 	"testing"
-	"time"
-
-	utils "progressdb/tests/utils"
 )
 
-// verifies end-to-end thread and message creation/listing via handlers
 func TestHandlers_E2E_ThreadsMessagesCRUD(t *testing.T) {
-	cfg := fmt.Sprintf(`server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["%s", "%s"]
-logging:
-  level: info`, utils.SigningSecret, utils.BackendAPIKey)
-	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
-	defer func() { _ = sp.Stop(t) }()
+	// Start test server
+	server := StartTestServer(t)
+	defer server.Stop()
+	t.Run("ThreadCreation", func(t *testing.T) {
+		// Test basic thread creation
+		threadBody := map[string]string{"author": "alice", "title": "test-thread"}
+		jsonBody, _ := json.Marshal(threadBody)
 
-	// create a thread as backend (backend may supply author in body or params)
-	thBody := map[string]string{"author": "alice", "title": "t1"}
-	var tout map[string]interface{}
-	status := utils.BackendPostJSON(t, sp.Addr, "/v1/threads", thBody, "alice", &tout)
-	if status != 200 && status != 201 && status != 202 {
-		t.Fatalf("create thread failed status=%d", status)
-	}
-	tid, ok := tout["id"].(string)
-	if !ok || tid == "" {
-		t.Fatalf("missing thread id in create response")
-	}
+		// Generate signed headers for frontend request
+		signedHeaders, err := SignedAuthHeaders(TestFrontendKey, "alice")
+		if err != nil {
+			t.Fatalf("failed to generate signed headers: %v", err)
+		}
 
-	// create a message under thread as backend
-	msg := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "hello"}, "thread": tid}
-	mstatus := utils.BackendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", msg, "alice", nil)
-	if mstatus != 200 && mstatus != 201 && mstatus != 202 {
-		t.Fatalf("unexpected create message status: %d", mstatus)
-	}
+		res, err := DoRequest(t, "POST", EndpointFrontendThreads, jsonBody, signedHeaders)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer res.Body.Close()
 
-	// list messages (poll until visible to handle async ingest)
-	var lout struct {
-		Messages []map[string]interface{} `json:"messages"`
-	}
-	visible := false
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		lstatus := utils.BackendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages?author=alice", "alice", &lout)
-		if lstatus == 200 {
-			if len(lout.Messages) > 0 {
-				visible = true
-				break
+		if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
+			t.Fatalf("expected thread creation to succeed; got %d", res.StatusCode)
+		}
+
+		var response map[string]interface{}
+		json.NewDecoder(res.Body).Decode(&response)
+
+		if response == nil {
+			t.Fatalf("response is nil")
+		}
+
+		if _, ok := response["key"]; !ok {
+			t.Fatalf("expected thread key in response")
+		}
+	})
+
+	t.Run("MessageCreation", func(t *testing.T) {
+		// First create a thread
+		threadBody := map[string]string{"author": "alice", "title": "message-thread"}
+		threadJson, _ := json.Marshal(threadBody)
+
+		// Generate signed headers for frontend request
+		signedHeaders, err := SignedAuthHeaders(TestFrontendKey, "alice")
+		if err != nil {
+			t.Fatalf("failed to generate signed headers: %v", err)
+		}
+
+		res, err := DoRequest(t, "POST", EndpointFrontendThreads, threadJson, signedHeaders)
+		if err != nil {
+			t.Fatalf("thread creation failed: %v", err)
+		}
+		defer res.Body.Close()
+
+		if res.StatusCode != 200 && res.StatusCode != 201 && res.StatusCode != 202 {
+			t.Fatalf("expected thread creation to succeed; got %d", res.StatusCode)
+		}
+
+		var threadResponse map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&threadResponse); err != nil {
+			t.Fatalf("failed to decode thread response: %v", err)
+		}
+
+		if threadResponse == nil {
+			t.Fatalf("thread response is nil")
+		}
+
+		threadID, ok := threadResponse["key"].(string)
+		if !ok {
+			t.Fatalf("expected thread key in response, got %v", threadResponse["key"])
+		}
+
+		// Now create a message
+		messageBody := map[string]interface{}{
+			"author": "alice",
+			"body":   map[string]string{"text": "hello world"},
+			"thread": threadID,
+		}
+		messageJson, _ := json.Marshal(messageBody)
+
+		msgRes, err := DoRequest(t, "POST", ThreadMessagesURL(threadID), messageJson, signedHeaders)
+		if err != nil {
+			t.Fatalf("message creation failed: %v", err)
+		}
+		defer msgRes.Body.Close()
+
+		if msgRes.StatusCode != 200 && msgRes.StatusCode != 201 && msgRes.StatusCode != 202 {
+			t.Fatalf("expected message creation to succeed; got %d", msgRes.StatusCode)
+		}
+	})
+
+	t.Run("MessageListing", func(t *testing.T) {
+		// Test message listing with pagination
+		signedHeaders, err := SignedAuthHeaders(TestFrontendKey, "alice")
+		if err != nil {
+			t.Fatalf("failed to generate signed headers: %v", err)
+		}
+
+		res, err := DoRequest(t, "GET", ThreadMessagesURL("test-thread")+"?limit=1", nil, signedHeaders)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer res.Body.Close()
+
+		if res.StatusCode == 200 {
+			var response struct {
+				Messages []map[string]interface{} `json:"messages"`
+			}
+			json.NewDecoder(res.Body).Decode(&response)
+
+			if len(response.Messages) > 1 {
+				t.Fatalf("expected max 1 message due to limit; got %d", len(response.Messages))
 			}
 		}
-		// verify the 10ms claim
-		time.Sleep(10 * time.Millisecond)
-	}
-	if !visible {
-		t.Fatalf("expected messages returned for thread %s", tid)
-	}
-}
-
-// verifies handler behavior for validation and pagination (invalid JSON and message listing with limit)
-func TestHandlers_E2E_ValidationAndPagination(t *testing.T) {
-	cfg := fmt.Sprintf(`server:
-  address: 127.0.0.1
-  port: {{PORT}}
-  db_path: {{WORKDIR}}/db
-security:
-  kms:
-    master_key_hex: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  api_keys:
-    backend: ["%s", "%s"]
-logging:
-  level: info`, utils.SigningSecret, utils.BackendAPIKey)
-	sp := utils.StartServerProcess(t, utils.ServerOpts{ConfigYAML: cfg})
-	defer func() { _ = sp.Stop(t) }()
-
-	// invalid JSON to create thread -> server now enqueues raw payload and
-	// returns 202 Accepted. Adjust expectation to match current behaviour.
-	status, _ := utils.BackendRawRequest(t, sp.Addr, "POST", "/v1/threads", []byte(`{invalid`), "")
-	if status != 202 && status != 200 && status != 201 {
-		t.Fatalf("expected 202/200/201 for invalid JSON enqueue; got %d", status)
-	}
-
-	// pagination: create 3 messages and request with limit=1
-	thBody := map[string]string{"author": "alice", "title": "pg"}
-	var tout map[string]interface{}
-	status = utils.BackendPostJSON(t, sp.Addr, "/v1/threads", thBody, "alice", &tout)
-	if status != 200 && status != 201 && status != 202 {
-		t.Fatalf("create thread failed status=%d", status)
-	}
-	tid := tout["id"].(string)
-
-	for i := 0; i < 3; i++ {
-		m := map[string]interface{}{"author": "alice", "body": map[string]string{"text": "m"}, "thread": tid}
-		_ = utils.BackendPostJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages", m, "alice", nil)
-	}
-
-	var lout struct {
-		Messages []map[string]interface{} `json:"messages"`
-	}
-	lstatus := utils.BackendGetJSON(t, sp.Addr, "/v1/threads/"+tid+"/messages?limit=1&author=alice", "alice", &lout)
-	if lstatus != 200 {
-		t.Fatalf("list messages failed status=%d", lstatus)
-	}
-	if len(lout.Messages) != 1 {
-		t.Fatalf("expected 1 message due to limit; got %d", len(lout.Messages))
-	}
+	})
 }

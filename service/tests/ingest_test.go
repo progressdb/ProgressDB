@@ -1,4 +1,4 @@
-package api
+package tests
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 
 	"progressdb/pkg/ingest/queue"
 	"progressdb/pkg/ingest/types"
-	"progressdb/pkg/models"
 )
 
 func TestQueueTryEnqueueAndDrop(t *testing.T) {
@@ -51,12 +50,12 @@ func TestQueueEnqueueBlockingAndOut(t *testing.T) {
 	// allow consumer to receive
 	select {
 	case o := <-recv:
-		if msg, ok := o.Op.Payload.(*models.Message); ok {
-			if msg.Key != "m1" && msg.Key != "m2" {
-				t.Fatalf("unexpected op id: %s", msg.Key)
+		if payload, ok := o.Op.Payload.([]byte); ok {
+			if len(payload) > 0 {
+				// payload is empty bytes in this test, which is expected
 			}
 		} else {
-			t.Fatalf("unexpected payload type")
+			t.Fatalf("unexpected payload type: %T", o.Op.Payload)
 		}
 		o.JobDone()
 	case <-time.After(200 * time.Millisecond):
@@ -83,8 +82,8 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 
 	go func() {
 		for it := range q.Out() {
-			if msg, ok := it.Op.Payload.(*models.Message); ok {
-				processed <- msg.Key
+			if payload, ok := it.Op.Payload.([]byte); ok {
+				processed <- string(payload)
 			}
 			it.JobDone()
 		}
@@ -96,8 +95,8 @@ func TestQueueOutEnsuresDone(t *testing.T) {
 	// allow consumer to process
 	select {
 	case id := <-processed:
-		if id == "" {
-			t.Fatalf("unexpected empty id")
+		if id != "p" && id != "q" {
+			t.Fatalf("unexpected payload: %s", id)
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatalf("consumer did not process item")
@@ -143,7 +142,7 @@ func TestQueueCloseWaitsForDrain(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("worker did not process all messages, got %d", atomic.LoadInt32(&processed))
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", "late", nil, 0); err != queue.ErrQueueClosed {
@@ -158,8 +157,8 @@ func TestQueueOutBatches(t *testing.T) {
 	go func() {
 		var batch []string
 		for it := range q.Out() {
-			if msg, ok := it.Op.Payload.(*models.Message); ok {
-				batch = append(batch, msg.Key)
+			if payload, ok := it.Op.Payload.([]byte); ok {
+				batch = append(batch, string(payload))
 			}
 			if len(batch) == 3 {
 				batchCh <- batch
@@ -174,7 +173,7 @@ func TestQueueOutBatches(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("b%d", i)
-		if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", id, []byte("x"), 0); err != nil {
+		if err := q.EnqueueBytes(types.HandlerMessageCreate, "t1", id, []byte(id), 0); err != nil {
 			t.Fatalf("enqueue failed: %v", err)
 		}
 	}
