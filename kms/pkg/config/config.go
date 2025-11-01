@@ -14,7 +14,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Endpoint: "127.0.0.1:6820",
-		DataDir:  "./kms-data",
+		DataDir:  "./kms",
 	}
 }
 
@@ -34,7 +34,7 @@ func LoadFromFile(path string) (*Config, error) {
 
 func (c *Config) Validate() error {
 	if c.DataDir == "" {
-		c.DataDir = "./kms-data"
+		c.DataDir = "./kms"
 	}
 
 	if c.Endpoint == "" {

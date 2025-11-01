@@ -13,7 +13,7 @@ import (
 func main() {
 	var (
 		endpoint = flag.String("endpoint", "127.0.0.1:6820", "HTTP endpoint address (host:port) or full URL")
-		dataDir  = flag.String("data-dir", "./core-data", "data directory")
+		dataDir  = flag.String("data-dir", "./kms", "data directory")
 		cfgPath  = flag.String("config", "", "optional config yaml")
 	)
 	flag.Parse()
@@ -34,7 +34,12 @@ func main() {
 			log.Fatalf("failed to load config from file %s: %v", *cfgPath, err)
 		}
 	} else {
-		cfg = config.DefaultConfig()
+		log.Fatalf("config file is required for external KMS mode")
+	}
+
+	// Master key is required for external mode
+	if masterHex == "" {
+		log.Fatalf("master_key or master_key_hex is required in config file")
 	}
 
 	// Override with command line flags if provided

@@ -27,18 +27,25 @@ type DEK struct {
 
 // Config holds configuration for embedded KMS
 type Config struct {
-	MasterKey string `json:"master_key"`
-	DataDir   string `json:"data_dir"`
+	MasterKey    string `json:"master_key"`
+	MasterKeyHex string `json:"master_key_hex"`
+	DataDir      string `json:"data_dir"`
 }
 
 // New creates a new embedded KMS instance
 func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
-	if cfg.MasterKey == "" {
-		return nil, fmt.Errorf("master key is required for embedded KMS")
+	// Get master key from either field
+	masterKey := cfg.MasterKeyHex
+	if masterKey == "" {
+		masterKey = cfg.MasterKey
+	}
+
+	if masterKey == "" {
+		return nil, fmt.Errorf("master_key or master_key_hex is required for embedded KMS")
 	}
 
 	// Initialize provider
-	provider, err := security.NewHashicorpProviderFromHex(ctx, cfg.MasterKey)
+	provider, err := security.NewHashicorpProviderFromHex(ctx, masterKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
@@ -46,7 +53,7 @@ func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
 	// Initialize store
 	dataPath := cfg.DataDir
 	if dataPath == "" {
-		dataPath = "./kms-data/kms.db"
+		dataPath = "./kms"
 	}
 
 	st, err := store.New(dataPath)
