@@ -112,20 +112,3 @@ func SetIndexKey(key, val []byte) error {
 func GetIndexPendingWrites() uint64 {
 	return atomic.LoadUint64(&indexdb.PendingWrites)
 }
-
-func ForceIndexSync() error {
-	if indexdb.Client == nil {
-		return fmt.Errorf("pebble not opened; call Open first")
-	}
-	if indexdb.WALDisabled {
-		logger.Debug("pebble_force_sync_noop_wal_disabled")
-		return nil
-	}
-	key := []byte("__progressDB_index_wal_sync_marker__")
-	val := []byte(timeutil.Now().Format(time.RFC3339Nano))
-	if err := indexdb.Client.Set(key, val, indexdb.WriteOpt(true)); err != nil {
-		logger.Error("pebble_force_sync_failed", "err", err)
-		return err
-	}
-	return nil
-}

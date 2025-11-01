@@ -36,7 +36,7 @@ ingest:
     queue_capacity: 200_000
     shutdown_poll_interval: 5ms
     wal:
-      enabled: false
+      enabled: true
     recovery:
       enabled: true
       temp_idx_enabled: true
@@ -45,7 +45,7 @@ ingest:
     buffer_capacity: 100_000
   apply:
      batch_count: 10_000
-     batch_timeout: 1s
+     batch_timeout: 10ms
      fsync_after_batch: true
 
 telemetry:
@@ -65,12 +65,12 @@ sensor:
     recovery_window: 5s
 
 encryption:
-  enabled: false
-  fields: []
+  enabled: true
+  fields: ["body.content"]
   kms:
     mode: "embedded"
     endpoint: "127.0.0.1:6820"
     data_dir: "./kms-data"
     binary: "/usr/local/bin/progressdb-kms"
     master_key_file: ""
-    master_key_hex: ""
+    master_key_hex: "d899a1b62c16e8a97f804f8c317c8c09eb758d2e231a4faf63dc882bc5f5ec3f"

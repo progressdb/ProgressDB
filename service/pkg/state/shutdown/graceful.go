@@ -64,10 +64,22 @@ func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteCl
 		hwSensor.Stop()
 	}
 
+	// force sync index to disc before closing
+	log.Printf("shutdown: syncing index to disc")
+	if err := storedb.Client.Flush(); err != nil {
+		log.Printf("shutdown: index force sync error: %v", err)
+	}
+
 	// close index
 	log.Printf("shutdown: closing index")
 	if err := indexdb.Close(); err != nil {
 		log.Printf("shutdown: index close error: %v", err)
+	}
+
+	// force sync storage to disc before closing
+	log.Printf("shutdown: syncing storage to disc")
+	if err := storedb.Client.Flush(); err != nil {
+		log.Printf("shutdown: store force sync error: %v", err)
 	}
 
 	// flush close the storage
