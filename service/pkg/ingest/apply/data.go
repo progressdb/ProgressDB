@@ -100,7 +100,7 @@ func (dm *DataManager) GetThreadMetaCopy(threadKey string) ([]byte, error) {
 	}
 
 	// Not in batch or deleted, fetch from DB
-	dataStr, err := threads.GetThread(threadKey)
+	dataStr, err := threads.GetThreadData(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get thread from DB: %w", err)
 	}
@@ -115,7 +115,7 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 	}
 
 	// Not in batch, fetch from DB
-	data, err := messages.GetLatestMessage(messageKey)
+	data, err := messages.GetLatestMessageData(messageKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message from DB: %w", err)
 	}

@@ -19,7 +19,7 @@ func RotateThreadDEK(threadKey string, newKeyID string) error {
 		return fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 	oldKeyID := ""
-	if s, err := threads.GetThread(threadKey); err == nil {
+	if s, err := threads.GetThreadData(threadKey); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS != nil {
@@ -101,7 +101,7 @@ func RotateThreadDEK(threadKey string, newKeyID string) error {
 			return fmt.Errorf("write new ciphertext failed: %w", err)
 		}
 	}
-	if s, terr := threads.GetThread(threadKey); terr == nil {
+	if s, terr := threads.GetThreadData(threadKey); terr == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			if th.KMS == nil {

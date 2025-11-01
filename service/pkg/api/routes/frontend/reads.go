@@ -24,7 +24,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")
-	threadIDs, paginationResp, err := indexdb.GetUserThreadsCursor(author, qp.Cursor, qp.Limit)
+	threadIDs, paginationResp, err := indexdb.ListUserThreadsPaginated(author, qp.Cursor, qp.Limit)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -33,7 +33,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	tr.Mark("fetch_threads")
 	out := make([]models.Thread, 0, len(threadIDs))
 	for _, threadKey := range threadIDs {
-		threadStr, err := thread_store.GetThread(threadKey)
+		threadStr, err := thread_store.GetThreadData(threadKey)
 		if err != nil {
 			continue
 		}
@@ -95,7 +95,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("get_thread_indexes")
-	threadIndexes, err := indexdb.GetThreadMessageIndexes(threadKey)
+	threadIndexes, err := indexdb.GetThreadMessageIndexData(threadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return

@@ -34,7 +34,7 @@ func ListMessages(threadKey string, reqCursor models.ReadRequestCursorInfo) ([]s
 		return nil, models.ReadResponseCursorInfo{}, fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
 
-	threadStr, err := threads.GetThread(threadKey)
+	threadStr, err := threads.GetThreadData(threadKey)
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
@@ -43,7 +43,7 @@ func ListMessages(threadKey string, reqCursor models.ReadRequestCursorInfo) ([]s
 		return nil, models.ReadResponseCursorInfo{}, err
 	}
 
-	threadIndexes, err := indexdb.GetThreadMessageIndexes(threadKey)
+	threadIndexes, err := indexdb.GetThreadMessageIndexData(threadKey)
 	if err != nil {
 		return nil, models.ReadResponseCursorInfo{}, err
 	}

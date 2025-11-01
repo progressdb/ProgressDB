@@ -173,7 +173,7 @@ func ValidateReadThread(threadKey, author string, requireOwnership bool) (*model
 		}
 	}
 
-	stored, err := thread_store.GetThread(threadKey)
+	stored, err := thread_store.GetThreadData(threadKey)
 	if err != nil {
 		return nil, &AuthorResolutionError{
 			Type:    "thread_not_found",
@@ -229,7 +229,7 @@ func ValidateReadMessage(messageKey, author string, requireOwnership bool) (*mod
 		}
 	}
 
-	stored, err := message_store.GetLatestMessage(messageKey)
+	stored, err := message_store.GetLatestMessageData(messageKey)
 	if err != nil {
 		return nil, &AuthorResolutionError{
 			Type:    "message_not_found",

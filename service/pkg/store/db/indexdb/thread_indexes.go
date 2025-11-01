@@ -63,7 +63,7 @@ func DeleteThreadMessageIndexes(threadKey string) error {
 	return nil
 }
 
-func GetThreadIndexValue(threadKey, suffix string) (string, error) {
+func GetThreadIndexData(threadKey, suffix string) (string, error) {
 	var key string
 	switch suffix {
 	case "start":
@@ -86,7 +86,7 @@ func GetThreadIndexValue(threadKey, suffix string) (string, error) {
 	return GetKey(key)
 }
 
-func GetThreadMessageIndexes(threadKey string) (ThreadMessageIndexes, error) {
+func GetThreadMessageIndexData(threadKey string) (ThreadMessageIndexes, error) {
 	var indexes ThreadMessageIndexes
 
 	fields := map[string]interface{}{

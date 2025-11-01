@@ -164,7 +164,7 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) err
 		if _, ok := im.kv.GetIndexKV(keys.GenThreadMessageEnd(threadKey)); ok {
 			continue
 		}
-		idx, err := indexdb.GetThreadMessageIndexes(threadKey)
+		idx, err := indexdb.GetThreadMessageIndexData(threadKey)
 		if err != nil {
 			if errors.Is(err, pebble.ErrNotFound) {
 				idx = indexdb.ThreadMessageIndexes{

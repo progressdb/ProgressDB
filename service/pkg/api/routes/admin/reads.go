@@ -64,7 +64,7 @@ func Stats(ctx *fasthttp.RequestCtx) {
 			}
 			var th models.Thread
 			if err := json.Unmarshal([]byte(val), &th); err == nil {
-				indexes, err := indexdb.GetThreadMessageIndexes(th.Key)
+				indexes, err := indexdb.GetThreadMessageIndexData(th.Key)
 				if err == nil {
 					msgCount += int64(indexes.End)
 				}

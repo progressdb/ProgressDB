@@ -51,7 +51,7 @@ func ComputeThreadUpdate(ctx context.Context, op *types.QueueOp) ([]types.BatchE
 	}
 
 	// resolve
-	threadData, err := threads.GetThread(update.Key)
+	threadData, err := threads.GetThreadData(update.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}
@@ -83,7 +83,7 @@ func ComputeThreadDelete(ctx context.Context, op *types.QueueOp) ([]types.BatchE
 	}
 
 	// resolve
-	threadData, err := threads.GetThread(del.Key)
+	threadData, err := threads.GetThreadData(del.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve thread: %w", err)
 	}

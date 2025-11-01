@@ -8,7 +8,7 @@ import (
 )
 
 // gets thread metadata JSON for id
-func GetThread(threadKey string) (string, error) {
+func GetThreadData(threadKey string) (string, error) {
 	if storedb.Client == nil {
 		return "", fmt.Errorf("pebble not opened; call storedb.Open first")
 	}

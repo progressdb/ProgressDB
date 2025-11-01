@@ -63,7 +63,7 @@ func ListMessageVersions(messageKey string) ([]string, error) {
 	return out, iter.Error()
 }
 
-func GetLatestMessage(messageKey string) (string, error) {
+func GetLatestMessageData(messageKey string) (string, error) {
 	tr := telemetry.Track("storedb.get_latest_message")
 	defer tr.Finish()
 

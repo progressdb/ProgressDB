@@ -33,7 +33,7 @@ func rewrapDEKWorker(id string, newKEKHex string, sem chan struct{}, resCh chan 
 
 func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan DashboardEncryptJobResult) {
 	defer func() { <-sem }()
-	stored, err := thread_store.GetThread(threadKey)
+	stored, err := thread_store.GetThreadData(threadKey)
 	if err != nil {
 		resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "thread not found", Success: false}
 		return
@@ -144,7 +144,7 @@ func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	if s, err := thread_store.GetThread(threadKey); err == nil {
+	if s, err := thread_store.GetThreadData(threadKey); err == nil {
 		var th models.Thread
 		if err := json.Unmarshal([]byte(s), &th); err == nil {
 			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
@@ -199,7 +199,7 @@ func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
 
 	keyIDs := make(map[string]struct{})
 	for _, tkey := range threadIDs {
-		if s, err := thread_store.GetThread(tkey); err == nil {
+		if s, err := thread_store.GetThreadData(tkey); err == nil {
 			var th models.Thread
 			if err := json.Unmarshal([]byte(s), &th); err == nil {
 				if th.KMS != nil && th.KMS.KeyID != "" {

@@ -11,7 +11,7 @@ import (
 	"progressdb/pkg/store/pagination"
 )
 
-func GetUserThreads(userID string) ([]string, error) {
+func ListUserThreadKeys(userID string) ([]string, error) {
 	prefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate user thread prefix: %w", err)
@@ -35,11 +35,11 @@ type ThreadWithTimestamp struct {
 	Timestamp int64
 }
 
-func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *pagination.PaginationResponse, error) {
+func ListUserThreadsPaginated(userID, cursor string, limit int) ([]string, *pagination.PaginationResponse, error) {
 	tr := telemetry.Track("indexdb.get_user_threads_cursor")
 	defer tr.Finish()
 
-	threadKeys, err := GetUserThreads(userID)
+	threadKeys, err := ListUserThreadKeys(userID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -109,7 +109,7 @@ func GetUserThreadsCursor(userID, cursor string, limit int) ([]string, *paginati
 	return threadKeysOnly, pagination.NewPaginationResponse(limit, hasMore, pagination.EncodeCursor(nextCursor), len(threadKeysOnly), len(threads)), nil
 }
 
-func GetThreadParticipants(threadKey string) ([]string, error) {
+func ListThreadParticipantKeys(threadKey string) ([]string, error) {
 	prefix, err := keys.GenThreadUserRelPrefix(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate thread user prefix: %w", err)
