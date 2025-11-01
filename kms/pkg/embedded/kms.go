@@ -22,7 +22,7 @@ type DEK struct {
 	Wrapped    []byte `json:"wrapped"`
 	KekID      string `json:"kek_id"`
 	KekVersion string `json:"kek_version"`
-	ThreadID   string `json:"thread_key,omitempty"`
+	ThreadKey  string `json:"thread_key,omitempty"`
 }
 
 // Config holds configuration for embedded KMS
@@ -84,7 +84,7 @@ func (e *EmbeddedKMS) CreateDEK(threadKey string) (*DEK, error) {
 		Wrapped:    wrapped,
 		KekID:      kekID,
 		KekVersion: kekVersion,
-		ThreadID:   threadKey,
+		ThreadKey:  threadKey,
 	}, nil
 }
 
@@ -150,7 +150,7 @@ func (e *EmbeddedKMS) Rewrap(dekID string, newKEK string) (*DEK, error) {
 		Wrapped:    newWrapped,
 		KekID:      newKekID,
 		KekVersion: newKekVersion,
-		ThreadID:   m["thread_key"],
+		ThreadKey:  m["thread_key"],
 	}, nil
 }
 

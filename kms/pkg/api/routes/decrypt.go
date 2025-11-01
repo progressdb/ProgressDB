@@ -28,7 +28,7 @@ func (d *Dependencies) Decrypt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.ValidateKeyID(req.KeyID); err != nil {
+	if err := utils.ValidateKey(req.KeyID); err != nil {
 		api.WriteBadRequest(w, err.Error())
 		return
 	}

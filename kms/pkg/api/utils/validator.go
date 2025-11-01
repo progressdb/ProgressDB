@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// ValidateKeyID validates a key ID format
-func ValidateKeyID(keyID string) error {
+// ValidateKey validates a key ID format
+func ValidateKey(keyID string) error {
 	if keyID == "" {
 		return errors.New("key_id cannot be empty")
 	}
@@ -29,8 +29,8 @@ func ValidateKeyID(keyID string) error {
 	return nil
 }
 
-// ValidateThreadID validates a thread ID format
-func ValidateThreadID(threadKey string) error {
+// ValidateThreadKey validates a thread ID format
+func ValidateThreadKey(threadKey string) error {
 	if threadKey == "" {
 		return errors.New("thread_key cannot be empty")
 	}

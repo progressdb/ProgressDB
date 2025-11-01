@@ -10,7 +10,7 @@ import (
 )
 
 type CreateDEKRequest struct {
-	ThreadID string `json:"thread_key"`
+	ThreadKey string `json:"thread_key"`
 }
 
 type CreateDEKResponse struct {
@@ -32,12 +32,12 @@ func (d *Dependencies) CreateDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.ValidateThreadID(req.ThreadID); err != nil {
+	if err := utils.ValidateThreadKey(req.ThreadKey); err != nil {
 		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
-	kid, wrapped, kekID, kekVer, err := d.Provider.CreateDEKForThread(req.ThreadID)
+	kid, wrapped, kekID, kekVer, err := d.Provider.CreateDEKForThread(req.ThreadKey)
 	if err != nil {
 		api.WriteInternalError(w, err.Error())
 		return
@@ -45,7 +45,7 @@ func (d *Dependencies) CreateDEK(w http.ResponseWriter, r *http.Request) {
 
 	meta := map[string]string{
 		"wrapped":    base64.StdEncoding.EncodeToString(wrapped),
-		"thread_key": req.ThreadID,
+		"thread_key": req.ThreadKey,
 	}
 	mb, _ := json.Marshal(meta)
 	_ = d.Store.SaveKeyMeta(kid, mb)
@@ -76,7 +76,7 @@ func (d *Dependencies) GetWrapped(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.ValidateKeyID(keyID); err != nil {
+	if err := utils.ValidateKey(keyID); err != nil {
 		api.WriteBadRequest(w, err.Error())
 		return
 	}

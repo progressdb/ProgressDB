@@ -7,7 +7,7 @@ type DEK struct {
 	Wrapped    []byte `json:"wrapped"`
 	KekID      string `json:"kek_id"`
 	KekVersion string `json:"kek_version"`
-	ThreadID   string `json:"thread_key,omitempty"`
+	ThreadKey  string `json:"thread_key,omitempty"`
 }
 
 // KMS defines the unified interface for both embedded and external KMS operations
