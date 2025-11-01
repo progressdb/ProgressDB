@@ -21,6 +21,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 	defer tr.Finish()
 
+	// parse paging req for defaults
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")

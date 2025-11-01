@@ -1,7 +1,6 @@
 package threads
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,53 +10,45 @@ import (
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"
 )
 
 func PurgeThreadPermanently(threadKey string) error {
-	if storedb.Client == nil {
-		return fmt.Errorf("pebble not opened; call storedb.Open first")
-	}
-
 	if threadKey == "" {
 		return fmt.Errorf("threadKey cannot be empty")
 	}
 
-	const deleteBatchSize = 1000
-	var deletedKeys int
-	var mainBatch [][]byte
-	var versionKeys [][]byte
-
-	deleteMainBatch := func(keys [][]byte) {
-		for _, k := range keys {
-			if err := storedb.Client.Delete(k, storedb.WriteOpt(true)); err != nil {
-				logger.Error("purge_delete_failed", "key", string(k), "error", err)
-			} else {
-				deletedKeys++
-			}
-		}
+	// Store: delete all messages in thread
+	if err := deleteAllMessagesInThread(threadKey); err != nil {
+		return fmt.Errorf("failed to delete messages: %w", err)
 	}
 
-	deleteVersionBatch := func(keys [][]byte) {
-		for _, k := range keys {
-			if err := storedb.Client.Delete(k, storedb.WriteOpt(true)); err != nil {
-				logger.Error("purge_version_delete_failed", "key", string(k), "error", err)
-			} else {
-				deletedKeys++
-			}
-		}
+	// Store: delete the thread data
+	if err := deleteThreadData(threadKey); err != nil {
+		return fmt.Errorf("failed to delete thread data: %w", err)
 	}
 
-	threadKey = keys.GenThreadKey(threadKey)
-	if err := storedb.Client.Delete([]byte(threadKey), storedb.WriteOpt(true)); err != nil {
-		logger.Error("delete_thread_meta_failed", "thread", threadKey, "error", err)
-		return fmt.Errorf("failed to delete thread metadata: %w", err)
-	} else {
-		deletedKeys++
+	// Index: delete the thread message indexes
+	if err := indexdb.DeleteThreadMessageIndexes(threadKey); err != nil {
+		logger.Error("delete_thread_message_indexes_failed", "thread", threadKey, "error", err)
 	}
 
+	// Get all thread <> user relationships and delete each
+	if err := deleteThreadUserRelationships(threadKey); err != nil {
+		logger.Error("delete_thread_user_relationships_failed", "thread", threadKey, "error", err)
+	}
+
+	// Delete the soft delete marker
+	if err := indexdb.UnmarkSoftDeleted(threadKey); err != nil {
+		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadKey, "error", err)
+	}
+
+	logger.Info("purge_thread_completed", "thread", threadKey)
+	return nil
+}
+
+func deleteAllMessagesInThread(threadKey string) error {
 	threadPrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to generate thread prefix: %w", err)
@@ -75,12 +66,17 @@ func PurgeThreadPermanently(threadKey string) error {
 	}
 	defer iter.Close()
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := append([]byte(nil), iter.Key()...)
-		mainBatch = append(mainBatch, key)
+	// First pass: collect all message keys and their version keys
+	var messageKeys []string
+	var versionKeys []string
 
-		if bytes.Contains(key, []byte(":m:")) {
-			value := append([]byte(nil), iter.Value()...)
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := string(iter.Key())
+		messageKeys = append(messageKeys, key)
+
+		// If this is a message, check if it has versions and collect them
+		if strings.Contains(key, ":m:") {
+			value := iter.Value()
 			var m models.Message
 			if err := json.Unmarshal(value, &m); err == nil && m.Key != "" {
 				versionPrefix, err := keys.GenAllMessageVersionsPrefix(m.Key)
@@ -88,98 +84,107 @@ func PurgeThreadPermanently(threadKey string) error {
 					logger.Error("failed_to_generate_version_prefix", "error", err)
 					continue
 				}
+
+				// Only look for versions if they might exist
+				// Check if there are any version keys before iterating
 				vIter, err := storedb.Client.NewIter(&pebble.IterOptions{
 					LowerBound: []byte(versionPrefix),
 					UpperBound: calculateUpperBound(versionPrefix),
 				})
 				if err == nil {
-					for vIter.First(); vIter.Valid(); vIter.Next() {
-						vKey := append([]byte(nil), vIter.Key()...)
-						versionKeys = append(versionKeys, vKey)
-						if len(versionKeys) >= deleteBatchSize {
-							deleteVersionBatch(versionKeys)
-							versionKeys = versionKeys[:0]
+					// Only iterate if we find at least one version
+					if vIter.First() && vIter.Valid() {
+						for ; vIter.Valid(); vIter.Next() {
+							versionKeys = append(versionKeys, string(vIter.Key()))
 						}
 					}
 					vIter.Close()
 				}
 			}
 		}
+	}
 
-		if len(mainBatch) >= deleteBatchSize {
-			deleteMainBatch(mainBatch)
-			mainBatch = mainBatch[:0]
+	// Second pass: delete all version keys
+	for _, versionKey := range versionKeys {
+		if err := storedb.DeleteKey(versionKey); err != nil {
+			logger.Error("delete_version_failed", "key", versionKey, "error", err)
 		}
 	}
 
-	if len(mainBatch) > 0 {
-		deleteMainBatch(mainBatch)
-	}
-	if len(versionKeys) > 0 {
-		deleteVersionBatch(versionKeys)
-	}
-
-	if err := indexdb.DeleteThreadMessageIndexes(threadKey); err != nil {
-		logger.Error("delete_thread_message_indexes_failed", "thread", threadKey, "error", err)
+	// Third pass: delete all message keys
+	for _, messageKey := range messageKeys {
+		if err := storedb.DeleteKey(messageKey); err != nil {
+			logger.Error("delete_message_failed", "key", messageKey, "error", err)
+		}
 	}
 
-	if err := indexdb.UnmarkSoftDeleted(threadKey); err != nil {
-		logger.Error("unmark_thread_soft_deleted_purge_failed", "thread", threadKey, "error", err)
-	}
-
-	if err := cleanupThreadRelationships(threadKey); err != nil {
-		logger.Error("cleanup_thread_relationships_failed", "thread", threadKey, "error", err)
-	}
-
-	logger.Info("purge_thread_completed", "thread", threadKey, "deleted_keys", deletedKeys)
 	return nil
 }
 
-func cleanupThreadRelationships(threadKey string) error {
-	ownershipPrefix := keys.UserThreadsRelPrefix
-	var ownershipKeys []string
-	cursor := ""
-	for {
-		keys, resp, err := indexdb.ListKeysWithPrefixPaginated(ownershipPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
-		if err != nil {
-			return fmt.Errorf("list ownership keys: %w", err)
-		}
-		ownershipKeys = append(ownershipKeys, keys...)
-		if !resp.HasMore {
-			break
-		}
-		cursor = resp.NextCursor
-	}
+func deleteThreadData(threadKey string) error {
+	threadKey = keys.GenThreadKey(threadKey)
+	return storedb.DeleteKey(threadKey)
+}
 
-	for _, key := range ownershipKeys {
-		if strings.Contains(key, fmt.Sprintf(":t:%s", threadKey)) {
-			if err := indexdb.DeleteKey(key); err != nil {
-				logger.Error("delete_ownership_relationship_failed", "key", key, "error", err)
-			}
-		}
-	}
-
+func deleteThreadUserRelationships(threadKey string) error {
+	// First, get all users that have a relationship with this thread
 	participationPrefix, err := keys.GenThreadUserRelPrefix(threadKey)
 	if err != nil {
 		return fmt.Errorf("failed to generate participation prefix: %w", err)
 	}
-	var participationKeys []string
-	cursor = ""
-	for {
-		keys, resp, err := indexdb.ListKeysWithPrefixPaginated(participationPrefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
-		if err != nil {
-			return fmt.Errorf("list participation keys: %w", err)
-		}
-		participationKeys = append(participationKeys, keys...)
-		if !resp.HasMore {
-			break
-		}
-		cursor = resp.NextCursor
-	}
 
-	for _, key := range participationKeys {
+	// Collect all user IDs from thread <> user relationships
+	var userIDs []string
+	iter, err := indexdb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(participationPrefix),
+		UpperBound: calculateUpperBound(participationPrefix),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create participation iterator: %w", err)
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := string(iter.Key())
+		// Parse the key to extract user ID: rel:t:{thread_key}:u:{user_id}
+		parts := strings.Split(key, ":")
+		if len(parts) >= 5 && parts[0] == "rel" && parts[1] == "t" && parts[3] == "u" {
+			userID := parts[4]
+			userIDs = append(userIDs, userID)
+		}
+
+		// Delete the thread <> user relationship
 		if err := indexdb.DeleteKey(key); err != nil {
 			logger.Error("delete_participation_relationship_failed", "key", key, "error", err)
+		}
+	}
+
+	// Now delete the corresponding user <> thread ownership relationships for each user
+	for _, userID := range userIDs {
+		ownershipKey := keys.GenUserOwnsThreadKey(userID, threadKey)
+		if err := indexdb.DeleteKey(ownershipKey); err != nil {
+			logger.Error("delete_ownership_relationship_failed", "key", ownershipKey, "error", err)
+		}
+	}
+
+	return nil
+}
+
+func deleteRelationshipsWithPrefix(prefix, threadKey string) error {
+	iter, err := indexdb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(prefix),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create ownership iterator: %w", err)
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := string(iter.Key())
+		if strings.Contains(key, fmt.Sprintf(":t:%s", threadKey)) {
+			if err := indexdb.DeleteKey(key); err != nil {
+				logger.Error("delete_ownership_relationship_failed", "key", key, "error", err)
+			}
 		}
 	}
 

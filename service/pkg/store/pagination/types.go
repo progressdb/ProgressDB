@@ -7,8 +7,8 @@ import (
 )
 
 type CursorPayload struct {
-	ThreadKey  string `json:"threadKey,omitempty"`  // key of the last thread fetched
-	MessageKey string `json:"messageKey,omitempty"` // key of the last message fetched
+	LastThreadKey  string `json:"last_thread_key,omitempty"`  // key of the last thread fetched
+	LastMessageKey string `json:"last_message_key,omitempty"` // key of the last message fetched
 }
 
 type PaginationRequest struct {
