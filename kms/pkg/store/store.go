@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"time"
 
 	pebble "github.com/cockroachdb/pebble"
 )
@@ -72,16 +71,4 @@ func (s *Store) IterateMeta(fn func(key string, meta []byte) error) error {
 		}
 	}
 	return nil
-}
-
-func (s *Store) BackupKeyMeta(keyID, backupDir string) error {
-	b, err := s.GetKeyMeta(keyID)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(backupDir, 0700); err != nil {
-		return err
-	}
-	path := filepath.Join(backupDir, keyID+"."+time.Now().Format("20060102T150405"))
-	return os.WriteFile(path, b, 0600)
 }

@@ -223,15 +223,6 @@ func (h *hashicorpProvider) CreateDEKForThread(threadID string) (string, []byte,
 	return kid, wrapped, kidInfo, "", nil
 }
 
-func (h *hashicorpProvider) CreateDEKForThreadWithMeta(threadID string) (string, []byte, string, string, error) {
-	kid, wrapped, err := h.CreateDEK()
-	if err != nil {
-		return "", nil, "", "", err
-	}
-	kidInfo, _ := h.w.KeyId(h.ctx)
-	return kid, wrapped, kidInfo, "", nil
-}
-
 func (h *hashicorpProvider) EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error) {
 	h.mu.RLock()
 	secureWrapped, ok := h.wrapped[dekID]
@@ -383,12 +374,4 @@ func NewHashicorpProviderFromHex(ctx context.Context, hexKey string) (KMSProvide
 	}
 
 	return NewHashicorpProviderFromRaw(ctx, b)
-}
-
-func (h *hashicorpProvider) KeyInfo() (string, string) {
-	if h == nil || h.w == nil {
-		return "", ""
-	}
-	kid, _ := h.w.KeyId(h.ctx)
-	return kid, ""
 }
