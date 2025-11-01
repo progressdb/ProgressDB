@@ -7,4 +7,4 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/progressdb-kms ./cmd/progressdb-km
 FROM scratch
 COPY --from=build /out/progressdb-kms /usr/local/bin/progressdb-kms
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/progressdb-kms"]
+ENTRYPOINT ["/usr/local/bin/prgkms"]

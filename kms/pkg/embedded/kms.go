@@ -2,10 +2,9 @@ package embedded
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/progressdb/kms/pkg/config"
 	security "github.com/progressdb/kms/pkg/core"
@@ -30,14 +29,17 @@ type DEK struct {
 
 // New creates a new embedded KMS instance using the service-compatible config
 func New(ctx context.Context, cfg *config.Config) (*EmbeddedKMS, error) {
-	// Get master key using same logic as main config
-	masterKey, err := getMasterKeyFromConfig(cfg)
+	// Get master key using centralized config logic
+	masterKeyBytes, err := config.LoadMasterKey(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get master key: %w", err)
 	}
 
+	// Convert to hex string for provider
+	masterKeyHex := hex.EncodeToString(masterKeyBytes)
+
 	// Initialize provider
-	provider, err := security.NewHashicorpProviderFromHex(ctx, masterKey)
+	provider, err := security.NewHashicorpProviderFromHex(ctx, masterKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
@@ -57,34 +59,6 @@ func New(ctx context.Context, cfg *config.Config) (*EmbeddedKMS, error) {
 		provider: provider,
 		store:    st,
 	}, nil
-}
-
-// getMasterKeyFromConfig extracts master key from service-compatible config
-func getMasterKeyFromConfig(cfg *config.Config) (string, error) {
-	kmsConfig := &cfg.Encryption.KMS
-
-	// Check master key file first
-	if kmsConfig.MasterKeyFile != "" {
-		keyBytes, err := os.ReadFile(kmsConfig.MasterKeyFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read master key file %s: %w", kmsConfig.MasterKeyFile, err)
-		}
-		keyHex := strings.TrimSpace(string(keyBytes))
-		if err := config.ValidateMasterKey(keyHex); err != nil {
-			return "", fmt.Errorf("invalid master key in file %s: %w", kmsConfig.MasterKeyFile, err)
-		}
-		return keyHex, nil
-	}
-
-	// Check master key hex
-	if kmsConfig.MasterKeyHex != "" {
-		if err := config.ValidateMasterKey(kmsConfig.MasterKeyHex); err != nil {
-			return "", fmt.Errorf("invalid master_key_hex: %w", err)
-		}
-		return kmsConfig.MasterKeyHex, nil
-	}
-
-	return "", fmt.Errorf("no master key configured: set either master_key_file or master_key_hex")
 }
 
 // CreateDEK creates a new Data Encryption Key for the specified thread
