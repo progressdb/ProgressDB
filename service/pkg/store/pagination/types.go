@@ -1,34 +1,48 @@
 package pagination
 
-import "encoding/base64"
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+)
+
+type CursorPayload struct {
+	ThreadKey  string `json:"threadKey,omitempty"`  // key of the last thread fetched
+	MessageKey string `json:"messageKey,omitempty"` // key of the last message fetched
+}
 
 type PaginationRequest struct {
-	Limit  int    `json:"limit,omitempty"`
-	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`  // number of items to fetch per page
+	Cursor string `json:"cursor,omitempty"` // key of the last item fetched
 }
 
 type PaginationResponse struct {
-	Limit      int    `json:"limit"`
-	HasMore    bool   `json:"has_more"`
-	NextCursor string `json:"next_cursor,omitempty"`
-	Count      int    `json:"count"`
-	Total      int    `json:"total,omitempty"`
+	Limit      int    `json:"limit"`                 // number of items to fetch per page
+	HasMore    bool   `json:"has_more"`              // true if there are more items to fetch
+	NextCursor string `json:"next_cursor,omitempty"` // key of the next item to fetch
+	Count      int    `json:"count"`                 // number of items returned
+	Total      int    `json:"total,omitempty"`       // complete total number of items
 }
 
-func EncodeCursor(key string) string {
-	if key == "" {
+func EncodeCursor(payload CursorPayload) string {
+	b, err := json.Marshal(payload)
+	if err != nil {
 		return ""
 	}
-	return base64.StdEncoding.EncodeToString([]byte(key))
+	return base64.StdEncoding.EncodeToString(b)
 }
 
-func DecodeCursor(cursor string) (string, error) {
+func DecodeCursor(cursor string) (CursorPayload, error) {
+	var cp CursorPayload
 	if cursor == "" {
-		return "", nil
+		return cp, nil
 	}
 	data, err := base64.StdEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", err
+		return cp, fmt.Errorf("decode base64: %w", err)
 	}
-	return string(data), nil
+	if err := json.Unmarshal(data, &cp); err != nil {
+		return cp, fmt.Errorf("decode cursor JSON: %w", err)
+	}
+	return cp, nil
 }
