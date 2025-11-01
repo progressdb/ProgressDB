@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"log"
 
@@ -18,33 +19,39 @@ func main() {
 	flag.Parse()
 
 	// Load configuration
-	if err := config.LoadConfig(*configPath); err != nil {
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
+	// Store config globally for other packages
+	config.SetGlobalConfig(cfg)
+
 	// Load master key
-	if err := config.LoadMasterKey(*configPath); err != nil {
+	masterKey, err := config.LoadMasterKey(cfg)
+	if err != nil {
 		log.Fatalf("failed to load master key: %v", err)
 	}
 
-	cfg := config.GetConfig()
-	masterKey := config.GetMasterKey()
+	// Store master key globally
+	config.SetMasterKey(masterKey)
 
 	// Initialize provider
-	provider, err := security.NewHashicorpProviderFromHex(context.Background(), masterKey)
+	masterKeyHex := hex.EncodeToString(masterKey)
+	provider, err := security.NewHashicorpProviderFromHex(context.Background(), masterKeyHex)
 	if err != nil {
 		log.Fatalf("failed to init provider: %v", err)
 	}
 
 	// Create and start server
-	srv, err := server.New(*address, provider, cfg.DataDir)
+	srv, err := server.New(*address, provider, cfg.Encryption.KMS.DataDir)
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}
 	defer srv.Close()
 
 	log.Printf("Starting KMS server on %s", *address)
-	log.Printf("Data directory: %s", cfg.DataDir)
+	log.Printf("Data directory: %s", cfg.Encryption.KMS.DataDir)
 
 	if err := srv.Start(*address); err != nil {
 		log.Fatalf("server failed: %v", err)
