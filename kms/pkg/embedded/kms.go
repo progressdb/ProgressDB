@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/progressdb/kms/pkg/config"
 	security "github.com/progressdb/kms/pkg/core"
 	"github.com/progressdb/kms/pkg/store"
 )
@@ -27,21 +30,18 @@ type DEK struct {
 
 // Config holds configuration for embedded KMS
 type Config struct {
-	MasterKey    string `json:"master_key"`
-	MasterKeyHex string `json:"master_key_hex"`
-	DataDir      string `json:"data_dir"`
+	MasterKey     string `json:"master_key"`
+	MasterKeyHex  string `json:"master_key_hex"`
+	MasterKeyFile string `json:"master_key_file"`
+	DataDir       string `json:"data_dir"`
 }
 
 // New creates a new embedded KMS instance
 func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
-	// Get master key from either field
-	masterKey := cfg.MasterKeyHex
-	if masterKey == "" {
-		masterKey = cfg.MasterKey
-	}
-
-	if masterKey == "" {
-		return nil, fmt.Errorf("master_key or master_key_hex is required for embedded KMS")
+	// Get master key using same logic as main config
+	masterKey, err := getMasterKeyFromConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get master key: %w", err)
 	}
 
 	// Initialize provider
@@ -53,7 +53,7 @@ func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
 	// Initialize store
 	dataPath := cfg.DataDir
 	if dataPath == "" {
-		dataPath = "./kms"
+		dataPath = "./kms/kms.db"
 	}
 
 	st, err := store.New(dataPath)
@@ -65,6 +65,40 @@ func New(ctx context.Context, cfg *Config) (*EmbeddedKMS, error) {
 		provider: provider,
 		store:    st,
 	}, nil
+}
+
+// getMasterKeyFromConfig extracts master key from embedded config
+func getMasterKeyFromConfig(cfg *Config) (string, error) {
+	// Check direct hex key first
+	if cfg.MasterKeyHex != "" {
+		if err := config.ValidateMasterKey(cfg.MasterKeyHex); err != nil {
+			return "", fmt.Errorf("invalid master_key_hex: %w", err)
+		}
+		return cfg.MasterKeyHex, nil
+	}
+
+	// Check fallback master key
+	if cfg.MasterKey != "" {
+		if err := config.ValidateMasterKey(cfg.MasterKey); err != nil {
+			return "", fmt.Errorf("invalid master_key: %w", err)
+		}
+		return cfg.MasterKey, nil
+	}
+
+	// Check master key file
+	if cfg.MasterKeyFile != "" {
+		keyBytes, err := os.ReadFile(cfg.MasterKeyFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to read master key file %s: %w", cfg.MasterKeyFile, err)
+		}
+		keyHex := strings.TrimSpace(string(keyBytes))
+		if err := config.ValidateMasterKey(keyHex); err != nil {
+			return "", fmt.Errorf("invalid master key in file %s: %w", cfg.MasterKeyFile, err)
+		}
+		return keyHex, nil
+	}
+
+	return "", fmt.Errorf("no master key configured: set master_key_hex, master_key, or master_key_file")
 }
 
 // CreateDEK creates a new Data Encryption Key for the specified thread
