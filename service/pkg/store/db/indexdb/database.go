@@ -117,7 +117,7 @@ func WriteOpt(requestSync bool) *pebble.WriteOptions {
 	if requestSync && !WALDisabled {
 		return pebble.Sync
 	}
-	return pebble.NoSync
+	return pebble.Sync
 }
 
 func ListKeysPaginated(limit int, cursor string) ([]string, *pagination.PaginationResponse, error) {

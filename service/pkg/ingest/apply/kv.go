@@ -6,6 +6,8 @@ import (
 
 	indexdb "progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
+
+	"github.com/cockroachdb/pebble"
 )
 
 type KVManager struct {
@@ -87,7 +89,8 @@ func (kvm *KVManager) Flush() error {
 			}
 		}
 
-		if err := storeBatch.Commit(storedb.WriteOpt(true)); err != nil {
+		// fsync the batch
+		if err := storeBatch.Commit(pebble.Sync); err != nil {
 			return err
 		}
 	}
@@ -104,7 +107,8 @@ func (kvm *KVManager) Flush() error {
 			}
 		}
 
-		if err := indexBatch.Commit(indexdb.WriteOpt(true)); err != nil {
+		// fsync the batch
+		if err := indexBatch.Commit(pebble.Sync); err != nil {
 			return err
 		}
 	}
