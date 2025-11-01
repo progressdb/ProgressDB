@@ -4,14 +4,11 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
-
-	"github.com/progressdb/kms/pkg/conn"
 )
 
 // securityRandReadImpl reads cryptographically secure random bytes.
@@ -83,33 +80,6 @@ func SetEncryptionFieldPolicy(fields []EncField) error {
 }
 
 func EncryptionHasFieldPolicy() bool { return len(fieldRules) > 0 }
-
-func setKeyHex(hexKey string) error {
-	if hexKey == "" {
-		if key != nil && keyLocked {
-			_ = conn.UnlockMemory(key)
-			keyLocked = false
-		}
-		key = nil
-		return nil
-	}
-	b, err := hex.DecodeString(hexKey)
-	if err != nil {
-		return err
-	}
-	if l := len(b); l != 32 {
-		return errors.New("encryption key must be 32 bytes (AES-256)")
-	}
-	if key != nil && keyLocked {
-		_ = conn.UnlockMemory(key)
-		keyLocked = false
-	}
-	key = b
-	if err := conn.LockMemory(key); err == nil {
-		keyLocked = true
-	}
-	return nil
-}
 
 func Enabled() bool {
 	providerMu.RLock()
