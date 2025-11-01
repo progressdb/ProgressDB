@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	validation "github.com/progressdb/kms/pkg/api/utils"
+	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
 type DecryptRequest struct {
@@ -27,12 +27,12 @@ func (d *Dependencies) Decrypt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validation.ValidateKeyID(req.KeyID); err != nil {
+	if err := utils.ValidateKeyID(req.KeyID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := validation.ValidateBase64(req.Ciphertext); err != nil {
+	if err := utils.ValidateBase64(req.Ciphertext); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

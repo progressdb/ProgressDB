@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	validation "github.com/progressdb/kms/pkg/api/utils"
+	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
 type CreateDEKRequest struct {
@@ -31,7 +31,7 @@ func (d *Dependencies) CreateDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validation.ValidateThreadID(req.ThreadID); err != nil {
+	if err := utils.ValidateThreadID(req.ThreadID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -75,7 +75,7 @@ func (d *Dependencies) GetWrapped(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validation.ValidateKeyID(keyID); err != nil {
+	if err := utils.ValidateKeyID(keyID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

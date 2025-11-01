@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	validation "github.com/progressdb/kms/pkg/api/utils"
+	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
 type EncryptRequest struct {
@@ -28,12 +28,12 @@ func (d *Dependencies) Encrypt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validation.ValidateKeyID(req.KeyID); err != nil {
+	if err := utils.ValidateKeyID(req.KeyID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := validation.ValidatePlaintext(req.Plaintext); err != nil {
+	if err := utils.ValidatePlaintext(req.Plaintext); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

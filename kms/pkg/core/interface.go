@@ -14,6 +14,9 @@ import (
 // securityRandReadImpl reads cryptographically secure random bytes.
 func securityRandReadImpl(b []byte) (int, error) { return rand.Read(b) }
 
+// SecurityRandRead provides a wrapper for cryptographically secure random bytes.
+func SecurityRandRead(b []byte) (int, error) { return securityRandReadImpl(b) }
+
 var key []byte
 var (
 	providerMu sync.RWMutex
