@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/progressdb/kms/pkg/api"
 	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
@@ -21,24 +22,24 @@ type CreateDEKResponse struct {
 
 func (d *Dependencies) CreateDEK(w http.ResponseWriter, r *http.Request) {
 	if !d.Provider.Enabled() {
-		http.Error(w, "no provider configured", http.StatusInternalServerError)
+		api.WriteInternalError(w, "no provider configured")
 		return
 	}
 
 	var req CreateDEKRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		api.WriteBadRequest(w, "invalid request body")
 		return
 	}
 
 	if err := utils.ValidateThreadID(req.ThreadID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	kid, wrapped, kekID, kekVer, err := d.Provider.CreateDEKForThread(req.ThreadID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		api.WriteInternalError(w, err.Error())
 		return
 	}
 
@@ -71,24 +72,24 @@ type GetWrappedResponse struct {
 func (d *Dependencies) GetWrapped(w http.ResponseWriter, r *http.Request) {
 	keyID := r.URL.Query().Get("key_id")
 	if keyID == "" {
-		http.Error(w, "missing key_id", http.StatusBadRequest)
+		api.WriteBadRequest(w, "missing key_id")
 		return
 	}
 
 	if err := utils.ValidateKeyID(keyID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	mb, err := d.Store.GetKeyMeta(keyID)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		api.WriteNotFound(w, "key not found")
 		return
 	}
 
 	var m map[string]string
 	if err := json.Unmarshal(mb, &m); err != nil {
-		http.Error(w, "invalid key metadata", http.StatusInternalServerError)
+		api.WriteInternalError(w, "invalid key metadata")
 		return
 	}
 

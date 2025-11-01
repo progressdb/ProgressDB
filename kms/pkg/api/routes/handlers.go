@@ -3,21 +3,12 @@ package handlers
 import (
 	"encoding/base64"
 
+	security "github.com/progressdb/kms/pkg/core"
 	"github.com/progressdb/kms/pkg/store"
 )
 
-type ProviderInterface interface {
-	CreateDEKForThread(threadID string) (string, []byte, string, string, error)
-	EncryptWithDEK(dekID string, plaintext, aad []byte) ([]byte, string, error)
-	DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error)
-	RewrapDEKForThread(dekID string, newKEKHex string) ([]byte, string, string, error)
-	Enabled() bool
-	Health() error
-	Close() error
-}
-
 type Dependencies struct {
-	Provider ProviderInterface
+	Provider security.KMSProvider
 	Store    *store.Store
 }
 

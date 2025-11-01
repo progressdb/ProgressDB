@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/progressdb/kms/pkg/api"
 	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
@@ -23,29 +24,29 @@ type DecryptResponse struct {
 func (d *Dependencies) Decrypt(w http.ResponseWriter, r *http.Request) {
 	var req DecryptRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		api.WriteBadRequest(w, "invalid request body")
 		return
 	}
 
 	if err := utils.ValidateKeyID(req.KeyID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	if err := utils.ValidateBase64(req.Ciphertext); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	mb, err := d.Store.GetKeyMeta(req.KeyID)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		api.WriteNotFound(w, "key not found")
 		return
 	}
 
 	var m map[string]string
 	if err := json.Unmarshal(mb, &m); err != nil {
-		http.Error(w, "invalid key metadata", http.StatusInternalServerError)
+		api.WriteInternalError(w, "invalid key metadata")
 		return
 	}
 
@@ -60,20 +61,20 @@ func (d *Dependencies) Decrypt(w http.ResponseWriter, r *http.Request) {
 
 	wrappedB, err := base64.StdEncoding.DecodeString(m["wrapped"])
 	if err != nil {
-		http.Error(w, "invalid wrapped key", http.StatusInternalServerError)
+		api.WriteInternalError(w, "invalid wrapped key")
 		return
 	}
 
 	if u, ok := d.Provider.(interface{ UnwrapDEK([]byte) ([]byte, error) }); ok {
 		dek, err := u.UnwrapDEK(wrappedB)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			api.WriteInternalError(w, err.Error())
 			return
 		}
 
 		pt, err := decryptWithRaw(dek, req.Ciphertext)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			api.WriteInternalError(w, err.Error())
 			return
 		}
 
@@ -85,7 +86,7 @@ func (d *Dependencies) Decrypt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Error(w, "decryption not supported", http.StatusInternalServerError)
+	api.WriteInternalError(w, "decryption not supported")
 }
 
 func decryptWithRaw(dek []byte, b64 string) ([]byte, error) {

@@ -21,7 +21,6 @@ var key []byte
 var (
 	providerMu sync.RWMutex
 	provider   KMSProvider
-	keyLocked  bool
 )
 
 // KMSProvider mirrors the minimal interface expected by the security layer.
@@ -107,7 +106,7 @@ func Encrypt(plaintext []byte) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			if iv != nil && len(iv) > 0 {
+			if len(iv) > 0 {
 				return append(iv, ct...), nil
 			}
 			return ct, nil

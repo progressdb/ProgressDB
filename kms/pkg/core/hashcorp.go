@@ -128,7 +128,7 @@ func (sb *secureBytes) Clear() {
 		return
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		for j := range sb.data {
 			sb.data[j] = 0
 		}
@@ -144,7 +144,7 @@ func secureWipe(data []byte) {
 		return
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		crand.Read(data)
 	}
 

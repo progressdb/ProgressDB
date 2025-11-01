@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/progressdb/kms/pkg/api"
 	utils "github.com/progressdb/kms/pkg/api/utils"
 )
 
@@ -22,35 +23,35 @@ type RewrapResponse struct {
 func (d *Dependencies) Rewrap(w http.ResponseWriter, r *http.Request) {
 	var req RewrapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		api.WriteBadRequest(w, "invalid request body")
 		return
 	}
 
 	if err := utils.ValidateKeyID(req.KeyID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	if err := utils.ValidateHexKey(req.NewKEKHex); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		api.WriteBadRequest(w, err.Error())
 		return
 	}
 
 	mb, err := d.Store.GetKeyMeta(req.KeyID)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		api.WriteNotFound(w, "key not found")
 		return
 	}
 
 	var m map[string]string
 	if err := json.Unmarshal(mb, &m); err != nil {
-		http.Error(w, "invalid key metadata", http.StatusInternalServerError)
+		api.WriteInternalError(w, "invalid key metadata")
 		return
 	}
 
 	newWrapped, newKekID, newKekVersion, err := d.Provider.RewrapDEKForThread(req.KeyID, req.NewKEKHex)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		api.WriteInternalError(w, err.Error())
 		return
 	}
 
