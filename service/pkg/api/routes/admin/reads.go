@@ -32,19 +32,18 @@ func Stats(ctx *fasthttp.RequestCtx) {
 
 	// Get all thread metadata keys using prefix pagination
 	var allKeys []string
-	cursor := ""
 	for {
 		prefix := keys.GenThreadMetadataPrefix()
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		req := pagination.PaginationRequest{Limit: 100}
+		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &req)
 		if err != nil {
 			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 			return
 		}
 		allKeys = append(allKeys, keys...)
-		if !resp.HasMore {
+		if !resp.HasAfter {
 			break
 		}
-		cursor = resp.NextCursor
 	}
 
 	// Filter only thread keys and get their values
@@ -83,19 +82,18 @@ func ListThreads(ctx *fasthttp.RequestCtx) {
 
 	// Get all thread metadata keys using prefix pagination
 	var allKeys []string
-	cursor := ""
 	for {
 		prefix := keys.GenThreadMetadataPrefix()
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 100, Cursor: cursor})
+		req := pagination.PaginationRequest{Limit: 100}
+		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &req)
 		if err != nil {
 			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 			return
 		}
 		allKeys = append(allKeys, keys...)
-		if !resp.HasMore {
+		if !resp.HasAfter {
 			break
 		}
-		cursor = resp.NextCursor
 	}
 
 	// Filter only thread keys and get their values
@@ -126,17 +124,17 @@ func ListKeys(ctx *fasthttp.RequestCtx) {
 	if store == "" {
 		store = "main"
 	}
-	paginationReq := pagination.ParsePaginationRequest(ctx)
+	paginationReq := utils.ParsePaginationRequest(ctx)
 
 	// Use direct database call with prefix pagination
 	var keys []string
-	var paginationResp *pagination.PaginationResponse
+	var paginationResp pagination.PaginationResponse
 	var err error
 
 	if store == "index" {
-		keys, paginationResp, err = indexdb.ListKeysWithPrefixPaginated(prefix, paginationReq)
+		keys, paginationResp, err = indexdb.ListKeysWithPrefixPaginated(prefix, &paginationReq)
 	} else {
-		keys, paginationResp, err = storedb.ListKeysWithPrefixPaginated(prefix, paginationReq)
+		keys, paginationResp, err = storedb.ListKeysWithPrefixPaginated(prefix, &paginationReq)
 	}
 
 	if err != nil {

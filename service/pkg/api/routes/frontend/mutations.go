@@ -180,7 +180,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 
 	var del models.ThreadDeletePartial
 	del.Key = threadKey
-	del.TS = reqtime
+	del.UpdatedTS = reqtime
 
 	// sync
 	if err := router.ValidateAllFieldsNonEmpty(&del); err != nil {
@@ -247,7 +247,8 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	m.Author = author
 	m.Key = messageKey
 	m.Thread = threadKey
-	m.TS = reqtime
+	m.CreatedTS = reqtime
+	m.UpdatedTS = reqtime
 
 	//validate
 	if err := router.ValidateAllFieldsNonEmpty(&m); err != nil {
@@ -323,7 +324,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	// sync
 	update.Key = messageKey
 	update.Thread = threadKey
-	update.TS = reqtime
+	update.UpdatedTS = reqtime
 
 	//validate
 	if err := router.ValidateAllFieldsNonEmpty(&update); err != nil {
@@ -389,7 +390,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	del.Key = messageKey
 	del.Thread = threadKey
 	del.Deleted = true
-	del.TS = reqtime
+	del.UpdatedTS = reqtime
 	del.Author = author
 
 	//validate

@@ -114,15 +114,15 @@ func extractTS(entry types.BatchEntry) int64 {
 		return 0
 	case types.HandlerMessageCreate:
 		if m, ok := entry.Payload.(*models.Message); ok {
-			return m.TS
+			return m.CreatedTS
 		}
 	case types.HandlerMessageUpdate:
-		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.TS != 0 {
-			return update.TS
+		if update, ok := entry.Payload.(*models.MessageUpdatePartial); ok && update.UpdatedTS != 0 {
+			return update.UpdatedTS
 		}
 	case types.HandlerMessageDelete:
 		if del, ok := entry.Payload.(*models.MessageDeletePartial); ok {
-			return del.TS
+			return del.UpdatedTS
 		}
 	}
 

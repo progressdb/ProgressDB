@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"progressdb/pkg/state/logger"
+	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -119,4 +120,57 @@ func WriteOpt(requestSync bool) *pebble.WriteOptions {
 		return pebble.Sync
 	}
 	return pebble.Sync
+}
+
+func ListKeysWithPrefixPaginated(prefix string, req *pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
+	if Client == nil {
+		return nil, pagination.PaginationResponse{}, fmt.Errorf("pebble not opened; call Open first")
+	}
+
+	iter, err := Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(prefix),
+		UpperBound: nextPrefix([]byte(prefix)),
+	})
+	if err != nil {
+		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to create iterator: %w", err)
+	}
+	defer iter.Close()
+
+	var keys []string
+	count := 0
+
+	// Simple forward iteration from prefix
+	for iter.SeekGE([]byte(prefix)); iter.Valid(); iter.Next() {
+		key := string(iter.Key())
+		keys = append(keys, key)
+		count++
+
+		if count >= req.Limit {
+			break
+		}
+	}
+
+	hasMore := iter.Valid() && len(keys) > 0
+
+	response := pagination.PaginationResponse{
+		HasAfter: hasMore,
+		OrderBy:  req.OrderBy,
+		Count:    len(keys),
+		Total:    len(keys), // We don't have total count without scanning all
+	}
+
+	return keys, response, iter.Error()
+}
+
+// nextPrefix returns the next prefix after the given prefix for range scanning
+func nextPrefix(prefix []byte) []byte {
+	next := make([]byte, len(prefix))
+	copy(next, prefix)
+	for i := len(next) - 1; i >= 0; i-- {
+		if next[i] < 0xff {
+			next[i]++
+			return next[:i+1]
+		}
+	}
+	return prefix // overflow, return original
 }

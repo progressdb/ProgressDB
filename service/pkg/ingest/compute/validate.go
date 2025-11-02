@@ -37,8 +37,8 @@ func ValidateReadyForBatchEntry(p interface{}) error {
 			if v.Author == "" {
 				errors = append(errors, "author: cannot be empty")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 			if v.Body == nil {
 				errors = append(errors, "body: cannot be empty")
@@ -74,8 +74,8 @@ func ValidateReadyForBatchEntry(p interface{}) error {
 			if v.Body == nil {
 				errors = append(errors, "body: cannot be empty")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 		}
 	case *models.ThreadDeletePartial:
@@ -96,8 +96,11 @@ func ValidateReadyForBatchEntry(p interface{}) error {
 			if !v.Deleted {
 				errors = append(errors, "deleted: must be true")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
+			}
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 			if v.Thread == "" {
 				errors = append(errors, "thread: cannot be empty")

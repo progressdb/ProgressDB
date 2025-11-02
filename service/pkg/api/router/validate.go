@@ -66,8 +66,8 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if v.Body == nil {
 				errors = append(errors, "body: cannot be empty")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 		}
 	case *models.ThreadDeletePartial:
@@ -77,8 +77,8 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if v.Key == "" {
 				errors = append(errors, "key: cannot be empty")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 		}
 	case *models.MessageDeletePartial:
@@ -91,8 +91,8 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if !v.Deleted {
 				errors = append(errors, "deleted: must be true")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 			if v.Thread == "" {
 				errors = append(errors, "thread: cannot be empty")
@@ -117,8 +117,8 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if v.Body == nil {
 				errors = append(errors, "body: cannot be empty")
 			}
-			if v.TS == 0 {
-				errors = append(errors, "ts: cannot be zero")
+			if v.UpdatedTS == 0 {
+				errors = append(errors, "updated_ts: cannot be zero")
 			}
 		}
 	case *models.Thread:

@@ -152,7 +152,7 @@ func ComputeMessageDelete(ctx context.Context, op *types.QueueOp) ([]types.Batch
 	}
 
 	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{Key: del.Key, Deleted: true, TS: del.TS, Thread: del.Thread, Author: del.Author}
+	tomb := models.Message{Key: del.Key, Deleted: true, UpdatedTS: del.UpdatedTS, Thread: del.Thread, Author: del.Author}
 	op.Payload = &tomb
 
 	// validate

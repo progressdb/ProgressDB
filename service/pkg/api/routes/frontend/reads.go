@@ -1,20 +1,16 @@
 package frontend
 
 import (
-	"encoding/json"
 	"fmt"
-
-	"progressdb/pkg/models"
 
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
-	message_store "progressdb/pkg/store/features/messages"
 
-	"progressdb/pkg/store/iterator/thread"
-	"progressdb/pkg/store/pagination"
+	"progressdb/pkg/store/iterator/mi"
+	"progressdb/pkg/store/iterator/ti"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -33,7 +29,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("query_threads")
-	threadIter := thread.NewThreadIterator(indexdb.Client)
+	threadIter := ti.NewThreadIterator(indexdb.Client)
 	threadKeys, paginationResp, err := threadIter.ExecuteThreadQuery(author, req)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read threads: %v", err))
@@ -41,7 +37,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("fetch_threads")
-	fetcher := thread.NewThreadFetcher()
+	fetcher := ti.NewThreadFetcher()
 	threads, err := fetcher.FetchThreads(threadKeys, author)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to fetch threads: %v", err))
@@ -49,7 +45,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("sort_threads")
-	sorter := thread.NewThreadSorter()
+	sorter := ti.NewThreadSorter()
 	threads = sorter.SortThreads(threads, req.SortBy, req.OrderBy)
 
 	tr.Mark("encode_response")
@@ -104,9 +100,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tr.Mark("list_messages")
-
-	// Parse new pagination parameters
+	tr.Mark("parse_pagination")
 	req := utils.ParsePaginationRequest(ctx)
 
 	// Validate request
@@ -115,69 +109,28 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// TODO: Implement message iterator with new pagination system
-	// For now, use existing message store with converted parameters
-	reqCursor := models.ReadRequestCursorInfo{
-		Cursor: "", // New pagination doesn't use cursor
-		Limit:  req.Limit,
-	}
-	rawMsgs, respCursor, err := message_store.ListMessages(threadKey, reqCursor)
+	tr.Mark("query_messages")
+	messageIter := mi.NewMessageIterator(indexdb.Client)
+	messageKeys, paginationResp, err := messageIter.ExecuteMessageQuery(threadKey, req)
 	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read messages: %v", err))
 		return
 	}
 
-	// Convert to new response format
-	paginationResp := pagination.PaginationResponse{
-		HasAfter: respCursor.HasMore,
-		OrderBy:  req.OrderBy,
-		Count:    len(rawMsgs),
-		Total:    int(respCursor.TotalCount),
+	tr.Mark("fetch_messages")
+	fetcher := mi.NewMessageFetcher()
+	messages, err := fetcher.FetchMessages(messageKeys)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to fetch messages: %v", err))
+		return
 	}
 
-	tr.Mark("process_messages")
-	msgs := make([]models.Message, 0, len(rawMsgs))
-	for _, raw := range rawMsgs {
-		var msg models.Message
-		if err := json.Unmarshal([]byte(raw), &msg); err != nil {
-			continue
-		}
-		msgs = append(msgs, msg)
-	}
+	tr.Mark("sort_messages")
+	sorter := mi.NewMessageSorter()
+	messages = sorter.SortMessages(messages, req.SortBy, req.OrderBy)
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: msgs, Metadata: threadIndexes, Pagination: &paginationResp})
-}
-
-// readMessagesWithNewPagination uses the new bidirectional pagination system (POC)
-func readMessagesWithNewPagination(ctx *fasthttp.RequestCtx, threadKey string) ([]string, pagination.PaginationResponse, error) {
-	// POC implementation - for now, fall back to legacy
-	return readMessagesWithLegacyPagination(ctx, threadKey)
-}
-
-// readMessagesWithLegacyPagination uses the original cursor-based system
-func readMessagesWithLegacyPagination(ctx *fasthttp.RequestCtx, threadKey string) ([]string, pagination.PaginationResponse, error) {
-	// Parse pagination
-	qp := utils.ParsePaginationRequest(ctx)
-
-	reqCursor := models.ReadRequestCursorInfo{
-		Cursor: "", // Legacy cursor field doesn't exist in new struct
-		Limit:  qp.Limit,
-	}
-	rawMsgs, respCursor, err := message_store.ListMessages(threadKey, reqCursor)
-	if err != nil {
-		return nil, pagination.PaginationResponse{}, err
-	}
-
-	// Convert to new response format
-	response := pagination.PaginationResponse{
-		HasAfter: respCursor.HasMore,
-		OrderBy:  "asc", // Messages are typically read chronologically
-		Count:    len(rawMsgs),
-		Total:    int(respCursor.TotalCount),
-	}
-
-	return rawMsgs, response, nil
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Metadata: threadIndexes, Pagination: &paginationResp})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {

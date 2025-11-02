@@ -111,7 +111,7 @@ func ListMessages(threadKey string, reqCursor models.ReadRequestCursorInfo) ([]s
 
 		var msgData models.Message
 		if err := json.Unmarshal(v, &msgData); err == nil {
-			ts = msgData.TS
+			ts = msgData.UpdatedTS
 		}
 
 		out = append(out, string(v))

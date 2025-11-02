@@ -1,4 +1,4 @@
-package thread
+package ti
 
 import (
 	"encoding/json"

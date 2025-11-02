@@ -131,8 +131,8 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *mo
 	}
 
 	msgKey := message.Key
-	createdAt := message.TS
-	updatedAt := message.TS
+	createdAt := message.CreatedTS
+	updatedAt := message.UpdatedTS
 	isDelete := message.Deleted
 
 	// deletes mean not new

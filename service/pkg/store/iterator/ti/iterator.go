@@ -1,11 +1,12 @@
-package thread
+package ti
 
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
+
+	"github.com/cockroachdb/pebble"
 )
 
 // ThreadIterator handles thread-specific pagination
@@ -77,6 +78,12 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 			HasAfter:  hasMoreAfter,
 			OrderBy:   req.OrderBy,
 			Count:     len(relationshipKeys),
+		}
+
+		// Set anchors for anchor case
+		if len(relationshipKeys) > 0 {
+			response.StartAnchor = relationshipKeys[0]
+			response.EndAnchor = relationshipKeys[len(relationshipKeys)-1]
 		}
 
 	case req.Before != "":
@@ -208,6 +215,12 @@ func (ti *ThreadIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination
 		HasAfter:  false, // No items after when starting from bottom
 		OrderBy:   req.OrderBy,
 		Count:     len(items),
+	}
+
+	// Set anchors if we have items
+	if len(items) > 0 {
+		response.StartAnchor = items[0]
+		response.EndAnchor = items[len(items)-1]
 	}
 
 	return items, response, nil

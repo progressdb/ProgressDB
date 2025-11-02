@@ -248,7 +248,8 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// sync message fields
 	msg.Thread = threadKey
 	msg.Author = author
-	msg.TS = entry.TS
+	msg.CreatedTS = entry.TS
+	msg.UpdatedTS = entry.TS
 	msg.Key = finalMessageKey
 
 	// index
@@ -323,8 +324,8 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	if update.Body != nil {
 		msg.Body = update.Body
 	}
-	if update.TS != 0 {
-		msg.TS = update.TS
+	if update.UpdatedTS != 0 {
+		msg.UpdatedTS = update.UpdatedTS
 	}
 
 	// store
@@ -388,7 +389,7 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 
 	// mark deleted
 	existingMessage.Deleted = true
-	existingMessage.TS = entry.TS
+	existingMessage.UpdatedTS = entry.TS
 
 	// store
 	if err := batchProcessor.Data.SetMessageData(finalMessageKey, existingMessage, entry.TS); err != nil {
