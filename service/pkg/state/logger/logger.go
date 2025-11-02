@@ -1,14 +1,12 @@
 package logger
 
 import (
-	"bufio"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 var Log *slog.Logger
@@ -48,41 +46,11 @@ func Init(level string, dbPath string) {
 		slogLevel = slog.LevelInfo
 	}
 
-	// Use dbPath to construct logs path
-	logsDir := filepath.Join(dbPath, "state", "logs")
-	globalFile, err := os.OpenFile(filepath.Join(logsDir, "global.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open global log file: %v\n", err)
-		return
-	}
+	// Simple console logger - no files, no async complications
+	Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevel}))
 
-	logCh = make(chan []byte, 10000)
-	logStopCh = make(chan struct{})
-	aw := &asyncWriter{ch: logCh}
-	Log = slog.New(slog.NewJSONHandler(aw, &slog.HandlerOptions{Level: slogLevel}))
-
-	logWG.Add(1)
-	go func() {
-		defer logWG.Done()
-		buf := bufio.NewWriterSize(globalFile, 8192)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		defer globalFile.Close()
-		for {
-			select {
-			case b := <-logCh:
-				buf.Write(b)
-			case <-ticker.C:
-				buf.Flush()
-			case <-logStopCh:
-				buf.Flush()
-				return
-			}
-		}
-	}()
-
-	// Initialize audit logger
-	attachAuditLogger(logsDir)
+	// Initialize audit logger (simplified)
+	// attachAuditLogger(filepath.Join(dbPath, "state", "logs"))
 }
 
 func attachAuditLogger(logsDir string) {

@@ -40,5 +40,10 @@ func LogRequestFast(ctx *fasthttp.RequestCtx) {
 	if Log == nil {
 		return
 	}
-	Info("incoming_request", "method", string(ctx.Method()), "path", string(ctx.Path()), "remote", ctx.RemoteAddr().String())
+	fullURL := string(ctx.URI().FullURI())
+	Info("incoming_request",
+		"method", string(ctx.Method()),
+		"remote", ctx.RemoteAddr().String(),
+		"url", fullURL,
+	)
 }

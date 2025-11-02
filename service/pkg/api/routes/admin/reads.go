@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"sort"
 
 	"github.com/cockroachdb/pebble"
@@ -286,44 +287,76 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 }
 
 func ListThreadMessages(ctx *fasthttp.RequestCtx) {
+	// DEBUG: Log function entry
+	fmt.Fprintf(os.Stderr, "DEBUG: ListThreadMessages called for path: %s\n", string(ctx.Path()))
+
 	threadKey, ok := extractParamOrFail(ctx, "threadKey", "missing threadKey")
 	if !ok {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing or invalid threadKey")
 		return
 	}
+
+	// DEBUG: Log extracted threadKey
+	fmt.Fprintf(os.Stderr, "DEBUG: Extracted threadKey: %s\n", threadKey)
+
+	// Debug: Write to file immediately after extraction
+	os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Extracted threadKey: '%s'\n", threadKey)), 0644)
+
 	logger.Debug("ListThreadMessages: threadKey =", threadKey)
 
 	// Parse and validate thread key using unified parser
 	parsedThread, err := keys.ParseKey(threadKey)
 	if err != nil {
+		// Debug: Log parsing error
+		os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("ParseKey error: %v\n", err)), 0644)
 		logger.Error("ListThreadMessages: invalid thread key", threadKey, err)
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 	if parsedThread.Type != keys.KeyTypeThread {
+		// Debug: Log type mismatch
+		os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Type mismatch: expected thread, got %s\n", parsedThread.Type)), 0644)
 		logger.Error("ListThreadMessages: not a thread key", threadKey)
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Errorf("expected thread key, got %s", parsedThread.Type).Error())
 		return
 	}
 
-	// Use admin message iterator for proper pagination
-	msgIter := mi.NewMessageIterator(storedb.Client)
+	// Debug: Log parsed result
+	os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Parsed: Type=%s, ThreadKey=%s, ThreadTS=%s\n", parsedThread.Type, parsedThread.ThreadKey, parsedThread.ThreadTS)), 0644)
 
-	// Parse pagination request from query params
+	// Debug: Check if we reach iterator creation
+	os.WriteFile("/tmp/debug_admin.txt", []byte("About to create iterator\n"), 0644)
+
+	// Use working key iterator for messages (message iterator has issues)
+	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	keyIter := ki.NewKeyIterator(storedb.Client)
 	paginationReq := utils.ParsePaginationRequest(ctx)
 	if paginationReq.Limit == 0 {
 		paginationReq.Limit = 100 // default
 	}
 
-	// Execute message query for this thread
-	msgKeys, paginationResp, err := msgIter.ExecuteMessageQuery(parsedThread.ThreadKey, paginationReq)
+	// Get message keys using working key iterator
+	msgKeys, paginationResp, err := keyIter.ExecuteKeyQuery(messagePrefix, paginationReq)
 	if err != nil {
-		logger.Error("ListThreadMessages: failed to execute message query:", err)
+		logger.Error("ListThreadMessages: key iterator failed:", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
-	logger.Info("ListThreadMessages: found", len(msgKeys), "messages for thread", threadKey)
+	// Get total count using message iterator (this part works)
+	msgIter := mi.NewMessageIterator(storedb.Client)
+	total, err := msgIter.GetMessageCount(threadKey)
+	if err != nil {
+		total = 0 // fallback
+	}
+	paginationResp.Total = total
+
+	logger.Info("ListThreadMessages: found", "count", len(msgKeys), "thread", threadKey)
 
 	result := &DashboardMessagesResult{
 		Messages:   msgKeys,

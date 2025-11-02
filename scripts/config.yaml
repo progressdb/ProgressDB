@@ -22,7 +22,7 @@ server:
     signing: ["sign_example"]
 
 logging:
-  level: "debug"
+  level: "info"
 
 retention:
   enabled: false

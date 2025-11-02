@@ -50,12 +50,21 @@ func main() {
 		shutdown.Abort("failed to build effective config", err, flags.DB)
 	}
 
+	// set config globally for app to access
+	config.SetConfig(eff.Config)
+
 	// validate config
 	if err := config.ValidateConfig(eff); err != nil {
 		shutdown.Abort("invalid configuration", err, eff.DBPath)
 	}
 
-	// initialize logger after config is fully loaded
+	// init database folders and ensure filesystem layout FIRST
+	if err := state.Init(eff.DBPath); err != nil {
+		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
+		shutdown.Abort(fmt.Sprintf("failed to ensure state directories under %s", eff.DBPath), err, eff.DBPath)
+	}
+
+	// initialize logger after directories are created
 	logger.Init(eff.Config.Logging.Level, eff.DBPath)
 	defer logger.Sync()
 
@@ -73,13 +82,6 @@ func main() {
 	if cc.WorkerCount > maxAllowedWorkers {
 		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", maxAllowedWorkers)
 		cc.WorkerCount = maxAllowedWorkers
-	}
-
-	// init database folders and ensure the filesystem layout.
-	if err := state.Init(eff.DBPath); err != nil {
-		logger.Error("state_dirs_setup_failed", "error", err)
-		fmt.Fprintf(os.Stderr, "state_dirs_setup_failed: %v\n", err)
-		shutdown.Abort(fmt.Sprintf("failed to ensure state directories under %s", eff.DBPath), err, eff.DBPath)
 	}
 
 	// initialize app

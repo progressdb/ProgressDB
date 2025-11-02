@@ -18,7 +18,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "Starting development service..."
 CFG="$ROOT_DIR/scripts/config.yaml"
 cd "$ROOT_DIR/service"
+
+# Build first
+echo "Building ProgressDB..."
+go build -o progressdb ./cmd/progressdb
+
+# Run the built binary
+echo "Running ProgressDB..."
 mkdir -p .gopath/pkg/mod
 export GOPATH="$PWD/.gopath"
 export GOMODCACHE="$PWD/.gopath/pkg/mod"
-exec go run ./cmd/progressdb --config "$CFG" "$@"
+exec ./progressdb --config "$CFG" "$@"

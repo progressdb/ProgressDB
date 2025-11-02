@@ -5,6 +5,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 )
 
@@ -33,8 +34,11 @@ func (mi *MessageIterator) GetMessageCount(threadKey string) (int, error) {
 
 // countMessagesManually counts messages by iterating through message keys
 func (mi *MessageIterator) countMessagesManually(threadKey string) (int, error) {
-	// Generate message key prefix for this thread
-	messagePrefix := fmt.Sprintf("t:%s:m:", threadKey)
+	// Generate message key prefix for this thread using the proper keys package function
+	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to generate message prefix: %w", err)
+	}
 
 	iter, err := mi.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(messagePrefix),
@@ -55,13 +59,24 @@ func (mi *MessageIterator) countMessagesManually(threadKey string) (int, error) 
 
 // ExecuteMessageQuery executes message pagination for a specific thread
 func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
-	// Generate message key prefix for this thread
-	messagePrefix := fmt.Sprintf("t:%s:m:", threadKey)
+	// Check if thread exists and get proper thread key format
+	if !keys.IsThreadKey(threadKey) {
+		return nil, pagination.PaginationResponse{}, fmt.Errorf("invalid thread key: %s", threadKey)
+	}
 
-	// Create iterator with bounds
+	// Generate message key prefix for this thread using the proper keys package function
+	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate message prefix: %w", err)
+	}
+
+	// Create iterator with bounds - use same approach as working key iterator
+	lowerBound := []byte(messagePrefix)
+	upperBound := nextPrefix(lowerBound)
+
 	iter, err := mi.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(messagePrefix),
-		UpperBound: nextPrefix([]byte(messagePrefix)),
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
 	})
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to create iterator: %w", err)
@@ -72,9 +87,13 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	var response pagination.PaginationResponse
 
 	// Handle different query types exactly as specified
+	// Debug: Log which case we take
+	fmt.Printf("DEBUG: req.Before='%s', req.After='%s', req.Anchor='%s'\n", req.Before, req.After, req.Anchor)
+
 	switch {
 	case req.Before != "" && req.After != "":
 		// Both before and after - execute two distinct methods and merge
+		fmt.Printf("DEBUG: Taking Before+After case\n")
 		beforeKeys, hasMoreBefore, err := mi.fetchBefore(iter, req.Before, req.Limit/2)
 		if err != nil {
 			return nil, pagination.PaginationResponse{}, err
@@ -222,9 +241,11 @@ func (mi *MessageIterator) fetchInitialLoad(iter *pebble.Iterator, req paginatio
 	valid := iter.Last()
 
 	// Collect items going backward to limit
+	count := 0
 	for valid && len(items) < req.Limit {
 		key := string(iter.Key())
 		items = append(items, key)
+		count++
 		valid = iter.Prev()
 	}
 
