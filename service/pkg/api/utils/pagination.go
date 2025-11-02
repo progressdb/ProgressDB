@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/valyala/fasthttp"
 	"progressdb/pkg/store/pagination"
+
+	"github.com/valyala/fasthttp"
 )
 
 // ParsePaginationRequest parses new pagination parameters from HTTP request
@@ -27,7 +28,7 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) pagination.PaginationReque
 
 	// Set defaults
 	if req.Limit == 0 {
-		req.Limit = 50
+		req.Limit = 100
 	}
 	if req.OrderBy == "" {
 		req.OrderBy = "desc" // Default to descending for threads

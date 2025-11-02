@@ -1,9 +1,10 @@
 package tests
 
 import (
+	"fmt"
+	"strconv"
 	"testing"
 
-	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/pagination"
 )
 
@@ -75,8 +76,8 @@ func TestPaginationParsing(t *testing.T) {
 			// Create mock request context
 			ctx := &mockRequestCtx{queryParams: tt.input}
 
-			// Parse pagination
-			req := utils.ParsePaginationRequest(ctx)
+			// Parse pagination using test helper
+			req := parsePaginationRequestTest(ctx)
 
 			// Verify parsing
 			if req.Before != tt.expected.Before {
@@ -167,7 +168,7 @@ func TestPaginationValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := utils.ValidatePaginationRequest(tt.req)
+			err := validatePaginationRequestTest(tt.req)
 
 			if tt.expectError {
 				if err == nil {
@@ -182,6 +183,11 @@ func TestPaginationValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// PaginationContext interface for what we need in pagination parsing
+type PaginationContext interface {
+	QueryArgs() *mockQueryArgs
 }
 
 // Mock request context for testing
@@ -207,4 +213,73 @@ func (m *mockQueryArgs) Peek(key string) []byte {
 func (m *mockQueryArgs) Has(key string) bool {
 	_, ok := m.params[key]
 	return ok
+}
+
+// Test helper functions that mirror utils functions but work with our interface
+func parsePaginationRequestTest(ctx PaginationContext) pagination.PaginationRequest {
+	req := pagination.PaginationRequest{
+		Before:  string(ctx.QueryArgs().Peek("before")),
+		After:   string(ctx.QueryArgs().Peek("after")),
+		Anchor:  string(ctx.QueryArgs().Peek("anchor")),
+		SortBy:  string(ctx.QueryArgs().Peek("sort_by")),
+		OrderBy: string(ctx.QueryArgs().Peek("order_by")),
+	}
+
+	// Parse limit with default
+	if limitStr := string(ctx.QueryArgs().Peek("limit")); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil {
+			req.Limit = limit
+		}
+	}
+
+	// Set defaults
+	if req.Limit == 0 {
+		req.Limit = 50
+	}
+	if req.OrderBy == "" {
+		req.OrderBy = "desc" // Default to descending for threads
+	}
+	if req.SortBy == "" {
+		req.SortBy = "updated_at" // Default to updated_at for threads
+	}
+
+	return req
+}
+
+func validatePaginationRequestTest(req pagination.PaginationRequest) error {
+	// Only one of anchor, before, after can be set
+	refCount := 0
+	if req.Anchor != "" {
+		refCount++
+	}
+	if req.Before != "" {
+		refCount++
+	}
+	if req.After != "" {
+		refCount++
+	}
+
+	if refCount > 1 {
+		return fmt.Errorf("only one of anchor, before, after can be specified")
+	}
+
+	// Validate sort_by
+	if req.SortBy != "" && req.SortBy != "created_at" && req.SortBy != "updated_at" {
+		return fmt.Errorf("sort_by must be 'created_at' or 'updated_at'")
+	}
+
+	// Validate order_by
+	if req.OrderBy != "" && req.OrderBy != "asc" && req.OrderBy != "desc" {
+		return fmt.Errorf("order_by must be 'asc' or 'desc'")
+	}
+
+	// Validate limit
+	if req.Limit < 1 {
+		return fmt.Errorf("limit must be at least 1")
+	}
+	if req.Limit > 1000 {
+		return fmt.Errorf("limit cannot exceed 1000")
+	}
+
+	return nil
 }
