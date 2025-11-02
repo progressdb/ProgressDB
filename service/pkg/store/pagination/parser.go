@@ -22,12 +22,12 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	return req
 }
 
-func NewPaginationResponse(limit int, hasMore bool, nextCursor string, count int, total int) *PaginationResponse {
+func NewPaginationResponse(limit int, hasMore bool, cursor string, count int, total int) *PaginationResponse {
 	return &PaginationResponse{
-		Limit:      limit,
-		HasMore:    hasMore,
-		NextCursor: nextCursor,
-		Count:      count,
-		Total:      total,
+		Limit:   limit,
+		HasMore: hasMore,
+		Cursor:  cursor,
+		Count:   count,
+		Total:   total,
 	}
 }

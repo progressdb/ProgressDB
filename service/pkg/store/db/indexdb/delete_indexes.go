@@ -13,7 +13,7 @@ func MarkSoftDeleted(originalKey string) error {
 	return SaveKey(deleteKey, []byte("1"))
 }
 
-func UnmarkSoftDeleted(originalKey string) error {
+func DeleteSoftDeleteMarker(originalKey string) error {
 	tr := telemetry.Track("indexdb.unmark_soft_deleted")
 	defer tr.Finish()
 

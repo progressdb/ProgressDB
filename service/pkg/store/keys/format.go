@@ -12,7 +12,7 @@ const (
 	// del = soft delete marker
 	// rel = relationship marker
 	// All keys are lowercase; segments are separated by ":"
-	// <...> = variable segment (e.g. <thread_key>, <msg_id>)
+	// <...> = variable segment (e.g. <thread_key>, <message_key>)
 
 	// provisional
 	ThreadPrvKey  = "t:%s"      // t:<threadTS>
@@ -32,14 +32,14 @@ const (
 	ThreadMessageLC      = "idx:t:%s:ms:lc"      // idx:t:<thread_key>:ms:lc (last created at)
 	ThreadMessageLU      = "idx:t:%s:ms:lu"      // idx:t:<thread_key>:ms:lu (last updated at)
 
-	// thread → message version indexes
-	ThreadVersionStart   = "idx:t:%s:ms:%s:vs:start"   // idx:t:<thread_key>:ms:<msg_id>:vs:start
-	ThreadVersionEnd     = "idx:t:%s:ms:%s:vs:end"     // idx:t:<thread_key>:ms:<msg_id>:vs:end
-	ThreadVersionCDeltas = "idx:t:%s:ms:%s:vs:cdeltas" // idx:t:<thread_key>:ms:<msg_id>:vs:cdeltas
-	ThreadVersionUDeltas = "idx:t:%s:ms:%s:vs:udeltas" // idx:t:<thread_key>:ms:<msg_id>:vs:udeltas
-	ThreadVersionSkips   = "idx:t:%s:ms:%s:vs:skips"   // idx:t:<thread_key>:ms:<msg_id>:vs:skips
-	ThreadVersionLC      = "idx:t:%s:ms:%s:vs:lc"      // idx:t:<thread_key>:ms:<msg_id>:vs:lc (last created at for version)
-	ThreadVersionLU      = "idx:t:%s:ms:%s:vs:lu"      // idx:t:<thread_key>:ms:<msg_id>:vs:lu (last updated at for version)
+	// thread -> message → message version indexes
+	ThreadVersionStart   = "idx:t:%s:ms:%s:vs:start"   // idx:t:<thread_key>:ms:<message_key>:vs:start
+	ThreadVersionEnd     = "idx:t:%s:ms:%s:vs:end"     // idx:t:<thread_key>:ms:<message_key>:vs:end
+	ThreadVersionCDeltas = "idx:t:%s:ms:%s:vs:cdeltas" // idx:t:<thread_key>:ms:<message_key>:vs:cdeltas
+	ThreadVersionUDeltas = "idx:t:%s:ms:%s:vs:udeltas" // idx:t:<thread_key>:ms:<message_key>:vs:udeltas
+	ThreadVersionSkips   = "idx:t:%s:ms:%s:vs:skips"   // idx:t:<thread_key>:ms:<message_key>:vs:skips
+	ThreadVersionLC      = "idx:t:%s:ms:%s:vs:lc"      // idx:t:<thread_key>:ms:<message_key>:vs:lc (last created at for version)
+	ThreadVersionLU      = "idx:t:%s:ms:%s:vs:lu"      // idx:t:<thread_key>:ms:<message_key>:vs:lu (last updated at for version)
 
 	// soft delete markers
 	SoftDeleteMarker = "del:%s" // del:<original_key>

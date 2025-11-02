@@ -2,8 +2,11 @@ package frontend
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/keys"
 
 	"github.com/valyala/fasthttp"
 
@@ -25,15 +28,76 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	qp := pagination.ParsePaginationRequest(ctx)
 
 	tr.Mark("get_user_threads")
-	threadIDs, paginationResp, err := indexdb.ListUserThreadsPaginated(author, qp.Cursor, qp.Limit)
+
+	// Decode cursor to get starting point
+	cursorPayload, err := pagination.DecodeCursor(qp.Cursor)
 	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid cursor: %v", err))
 		return
 	}
 
+	// Generate user thread relationship prefix
+	userThreadPrefix, err := keys.GenUserThreadRelPrefix(author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to generate prefix: %v", err))
+		return
+	}
+
+	// Create iterator
+	iter, err := indexdb.Client.NewIter(nil)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to create iterator: %v", err))
+		return
+	}
+	defer iter.Close()
+
+	var threadKeys []string
+	var LastListItemKey string
+	count := 0
+
+	// Determine starting point
+	var startKey []byte
+	if cursorPayload.LastListItemKey != "" {
+		startKey = []byte(cursorPayload.LastListItemKey)
+	} else {
+		startKey = []byte(userThreadPrefix)
+	}
+
+	// Iterate through user thread relationships
+	for ok := iter.SeekGE(startKey); ok && iter.Valid(); ok = iter.Next() {
+		key := string(iter.Key())
+
+		// Stop if we're past the user thread prefix
+		if !strings.HasPrefix(key, userThreadPrefix) {
+			break
+		}
+
+		// Skip the cursor key itself if we're starting from a cursor
+		if cursorPayload.LastListItemKey != "" && key == cursorPayload.LastListItemKey {
+			continue
+		}
+
+		// Parse the user owns thread relationship key
+		parsed, err := keys.ParseUserOwnsThread(key)
+		if err != nil {
+			continue
+		}
+
+		threadKeys = append(threadKeys, parsed.ThreadKey)
+		LastListItemKey = key
+		count++
+
+		if count >= qp.Limit {
+			break
+		}
+	}
+
+	// Check if there are more results
+	hasMore := iter.Valid() && strings.HasPrefix(string(iter.Key()), userThreadPrefix)
+
 	tr.Mark("fetch_threads")
-	out := make([]models.Thread, 0, len(threadIDs))
-	for _, threadKey := range threadIDs {
+	out := make([]models.Thread, 0, len(threadKeys))
+	for _, threadKey := range threadKeys {
 		threadStr, err := thread_store.GetThreadData(threadKey)
 		if err != nil {
 			continue
@@ -49,6 +113,16 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("encode_response")
+
+	// Encode next cursor
+	var nextCursor string
+	if hasMore && LastListItemKey != "" {
+		nextCursor = pagination.EncodeCursor(pagination.CursorPayload{
+			LastListItemKey: LastListItemKey,
+		})
+	}
+
+	paginationResp := pagination.NewPaginationResponse(qp.Limit, hasMore, nextCursor, len(out), 0)
 	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: out, Pagination: paginationResp})
 }
 

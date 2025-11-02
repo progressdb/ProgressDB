@@ -61,7 +61,7 @@ func PurgeMessagePermanently(messageKey string) error {
 		if err := storedb.Client.Delete([]byte(msgKey), storedb.WriteOpt(true)); err != nil {
 			logger.Error("purge_main_message_failed", "key", msgKey, "error", err)
 		}
-		if err := indexdb.UnmarkSoftDeleted(messageKey); err != nil {
+		if err := indexdb.DeleteSoftDeleteMarker(messageKey); err != nil {
 			logger.Error("unmark_soft_deleted_purge_failed", "msg", messageKey, "error", err)
 		}
 	}

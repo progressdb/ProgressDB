@@ -7,21 +7,27 @@ import (
 )
 
 type CursorPayload struct {
-	LastThreadKey  string `json:"last_thread_key,omitempty"`  // key of the last thread fetched
-	LastMessageKey string `json:"last_message_key,omitempty"` // key of the last message fetched
+	LastListItemKey string `json:"last_list_item_key,omitempty"` // key of the last item fetched
+	ListOrder       string `json:"list_order,omitempty"`         // oldest-first, latest-first
 }
 
 type PaginationRequest struct {
-	Limit  int    `json:"limit,omitempty"`  // number of items to fetch per page
-	Cursor string `json:"cursor,omitempty"` // key of the last item fetched
+	Before  string `json:"before,omitempty"`   // Fetch items older than this reference ID
+	After   string `json:"after,omitempty"`    // Fetch items newer than this reference ID
+	Anchor  string `json:"anchor,omitempty"`   // Fetch items around this anchor (takes precedence if set)
+	Limit   int    `json:"limit,omitempty"`    // Max number to return
+	SortBy  string `json:"sort_by,omitempty"`  // Sort by field: "created_at" or "updated_at"
+	OrderBy string `json:"order_by,omitempty"` // "asc" for ascending, "desc" for descending
 }
 
 type PaginationResponse struct {
-	Limit      int    `json:"limit"`                 // number of items to fetch per page
-	HasMore    bool   `json:"has_more"`              // true if there are more items to fetch
-	NextCursor string `json:"next_cursor,omitempty"` // key of the next item to fetch
-	Count      int    `json:"count"`                 // number of items returned
-	Total      int    `json:"total,omitempty"`       // complete total number of items
+	StartAnchor string `json:"start_anchor,omitempty"`
+	EndAnchor   string `json:"end_anchor,omitempty"`
+	HasBefore   bool   `json:"has_before"`         // NEW: More items before start_anchor
+	HasAfter    bool   `json:"has_after"`          // NEW: More items after end_anchor
+	OrderBy     string `json:"order_by,omitempty"` // "asc" for ascending, "desc" for descending
+	Count       int    `json:"count"`              // number of items returned
+	Total       int    `json:"total,omitempty"`    // complete total number of items (messages, threads, etc)
 }
 
 func EncodeCursor(payload CursorPayload) string {
