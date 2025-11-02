@@ -2,15 +2,14 @@ package pagination
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/valyala/fasthttp"
 )
 
-func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
+// ParseLegacyPaginationRequest parses the old cursor-based pagination (for backward compatibility)
+func ParseLegacyPaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	req := &PaginationRequest{
-		Limit:  100,
-		Cursor: strings.TrimSpace(string(ctx.QueryArgs().Peek("cursor"))),
+		Limit: 100,
 	}
 
 	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
@@ -22,12 +21,10 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	return req
 }
 
-func NewPaginationResponse(limit int, hasMore bool, cursor string, count int, total int) *PaginationResponse {
+// NewLegacyPaginationResponse creates the old-style response format (for backward compatibility)
+func NewLegacyPaginationResponse(limit int, hasMore bool, cursor string, count int, total int) *PaginationResponse {
 	return &PaginationResponse{
-		Limit:   limit,
-		HasMore: hasMore,
-		Cursor:  cursor,
-		Count:   count,
-		Total:   total,
+		Count: count,
+		Total: total,
 	}
 }

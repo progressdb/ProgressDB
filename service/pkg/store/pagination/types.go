@@ -21,13 +21,13 @@ type PaginationRequest struct {
 }
 
 type PaginationResponse struct {
-	StartAnchor string `json:"start_anchor,omitempty"`
-	EndAnchor   string `json:"end_anchor,omitempty"`
-	HasBefore   bool   `json:"has_before"`         // NEW: More items before start_anchor
-	HasAfter    bool   `json:"has_after"`          // NEW: More items after end_anchor
-	OrderBy     string `json:"order_by,omitempty"` // "asc" for ascending, "desc" for descending
-	Count       int    `json:"count"`              // number of items returned
-	Total       int    `json:"total,omitempty"`    // complete total number of items (messages, threads, etc)
+	StartAnchor string `json:"start_anchor"` // First item in the current page
+	EndAnchor   string `json:"end_anchor"`   // Last item in the current page
+	HasBefore   bool   `json:"has_before"`   // True if there are items before StartAnchor (previous page exists)
+	HasAfter    bool   `json:"has_after"`    // True if there are items after EndAnchor (next page exists)
+	OrderBy     string `json:"order_by"`     // Current sort order: "asc" or "desc"
+	Count       int    `json:"count"`        // Number of items returned in this page
+	Total       int    `json:"total"`        // Total number of items available
 }
 
 func EncodeCursor(payload CursorPayload) string {
