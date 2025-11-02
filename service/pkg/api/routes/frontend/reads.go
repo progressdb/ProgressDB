@@ -9,8 +9,8 @@ import (
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
 
-	"progressdb/pkg/store/iterator/mi"
-	"progressdb/pkg/store/iterator/ti"
+	"progressdb/pkg/store/iterator/frontend/mi"
+	"progressdb/pkg/store/iterator/frontend/ti"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
