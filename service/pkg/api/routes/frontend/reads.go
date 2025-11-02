@@ -12,8 +12,8 @@ import (
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
-	thread_store "progressdb/pkg/store/features/threads"
-	"progressdb/pkg/store/iterator"
+
+	"progressdb/pkg/store/iterator/thread"
 	"progressdb/pkg/store/pagination"
 )
 
@@ -33,7 +33,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("query_threads")
-	threadIter := iterator.NewThreadIterator(indexdb.Client)
+	threadIter := thread.NewThreadIterator(indexdb.Client)
 	threadKeys, paginationResp, err := threadIter.ExecuteThreadQuery(author, req)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read threads: %v", err))
@@ -41,20 +41,16 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("fetch_threads")
-	threads := make([]models.Thread, 0, len(threadKeys))
-	for _, threadKey := range threadKeys {
-		threadData, err := thread_store.GetThreadData(threadKey)
-		if err != nil {
-			continue
-		}
-		var thread models.Thread
-		if err := json.Unmarshal([]byte(threadData), &thread); err != nil {
-			continue
-		}
-		if thread.Author == author {
-			threads = append(threads, thread)
-		}
+	fetcher := thread.NewThreadFetcher()
+	threads, err := fetcher.FetchThreads(threadKeys, author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to fetch threads: %v", err))
+		return
 	}
+
+	tr.Mark("sort_threads")
+	sorter := thread.NewThreadSorter()
+	threads = sorter.SortThreads(threads, req.SortBy, req.OrderBy)
 
 	tr.Mark("encode_response")
 	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: threads, Pagination: &paginationResp})

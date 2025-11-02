@@ -1,4 +1,4 @@
-package iterator
+package thread
 
 import (
 	"fmt"
@@ -107,6 +107,14 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		}
 	}
 
+	// Get total count of all threads for this user
+	total, err := ti.getTotalThreadCount(userID)
+	if err != nil {
+		// Log error but don't fail the request
+		total = 0
+	}
+	response.Total = total
+
 	// Convert relationship keys to thread keys
 	threadKeys := make([]string, 0, len(relationshipKeys))
 	for _, relKey := range relationshipKeys {
@@ -116,14 +124,6 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		}
 		threadKeys = append(threadKeys, parsed.ThreadKey)
 	}
-
-	// Get total count of all threads for this user
-	total, err := ti.getTotalThreadCount(userID)
-	if err != nil {
-		// Log error but don't fail the request
-		total = 0
-	}
-	response.Total = total
 
 	// Update response anchors to use thread keys
 	if len(threadKeys) > 0 {
