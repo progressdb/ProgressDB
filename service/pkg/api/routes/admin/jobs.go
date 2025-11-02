@@ -99,7 +99,7 @@ func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan Dashboa
 func determineThreadKeys(ids []string, all bool) ([]string, error) {
 	if all {
 		prefix := keys.GenThreadMetadataPrefix()
-		keyList, _, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000, Cursor: ""})
+		keyList, _, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000})
 		if err != nil {
 			return nil, err
 		}

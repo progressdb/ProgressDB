@@ -5,23 +5,23 @@ import (
 )
 
 type DashboardKeysResult struct {
-	Keys       []string                       `json:"keys"`
-	Pagination *pagination.PaginationResponse `json:"pagination"`
+	Keys       []string                      `json:"keys"`
+	Pagination pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardUsersResult struct {
-	Users      []string                       `json:"users"`
-	Pagination *pagination.PaginationResponse `json:"pagination"`
+	Users      []string                      `json:"users"`
+	Pagination pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardThreadsResult struct {
-	Threads    []string                       `json:"threads"`
-	Pagination *pagination.PaginationResponse `json:"pagination"`
+	Threads    []string                      `json:"threads"`
+	Pagination pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardMessagesResult struct {
-	Messages   []string                       `json:"messages"`
-	Pagination *pagination.PaginationResponse `json:"pagination"`
+	Messages   []string                      `json:"messages"`
+	Pagination pagination.PaginationResponse `json:"pagination"`
 }
 
 type DashboardRewrapJobResult struct {

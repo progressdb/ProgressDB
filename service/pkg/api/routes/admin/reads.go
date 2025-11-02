@@ -14,6 +14,8 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
+	"progressdb/pkg/store/iterator/admin/ki"
+	"progressdb/pkg/store/iterator/admin/mi"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 
@@ -30,26 +32,22 @@ func Health(ctx *fasthttp.RequestCtx) {
 func Stats(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	// Get all thread metadata keys using prefix pagination
-	var allKeys []string
-	for {
-		prefix := keys.GenThreadMetadataPrefix()
-		req := pagination.PaginationRequest{Limit: 100}
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &req)
-		if err != nil {
-			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-			return
-		}
-		allKeys = append(allKeys, keys...)
-		if !resp.HasAfter {
-			break
-		}
+	// Use admin key iterator to get all thread metadata keys
+	keyIter := ki.NewKeyIterator(storedb.Client)
+
+	// Get all thread keys with large limit
+	req := pagination.PaginationRequest{Limit: 10000}
+	threadKeys, _, err := keyIter.ExecuteKeyQuery(keys.GenThreadMetadataPrefix(), req)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
 	}
 
-	// Filter only thread keys and get their values
+	// Count threads and messages
 	var threadCount int
 	var msgCount int64
-	for _, key := range allKeys {
+
+	for _, key := range threadKeys {
 		parsed, err := keys.ParseKey(key)
 		if err != nil {
 			continue
@@ -80,25 +78,20 @@ func Stats(ctx *fasthttp.RequestCtx) {
 func ListThreads(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	// Get all thread metadata keys using prefix pagination
-	var allKeys []string
-	for {
-		prefix := keys.GenThreadMetadataPrefix()
-		req := pagination.PaginationRequest{Limit: 100}
-		keys, resp, err := storedb.ListKeysWithPrefixPaginated(prefix, &req)
-		if err != nil {
-			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-			return
-		}
-		allKeys = append(allKeys, keys...)
-		if !resp.HasAfter {
-			break
-		}
+	// Use admin key iterator to get all thread metadata keys
+	keyIter := ki.NewKeyIterator(storedb.Client)
+
+	// Get all thread keys with large limit
+	req := pagination.PaginationRequest{Limit: 10000}
+	threadKeys, _, err := keyIter.ExecuteKeyQuery(keys.GenThreadMetadataPrefix(), req)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
 	}
 
 	// Filter only thread keys and get their values
 	var threads []string
-	for _, key := range allKeys {
+	for _, key := range threadKeys {
 		parsed, err := keys.ParseKey(key)
 		if err != nil {
 			continue
@@ -126,15 +119,17 @@ func ListKeys(ctx *fasthttp.RequestCtx) {
 	}
 	paginationReq := utils.ParsePaginationRequest(ctx)
 
-	// Use direct database call with prefix pagination
+	// Use admin key iterator for proper pagination
 	var keys []string
 	var paginationResp pagination.PaginationResponse
 	var err error
 
 	if store == "index" {
-		keys, paginationResp, err = indexdb.ListKeysWithPrefixPaginated(prefix, &paginationReq)
+		keyIter := ki.NewKeyIterator(indexdb.Client)
+		keys, paginationResp, err = keyIter.ExecuteKeyQuery(prefix, paginationReq)
 	} else {
-		keys, paginationResp, err = storedb.ListKeysWithPrefixPaginated(prefix, &paginationReq)
+		keyIter := ki.NewKeyIterator(storedb.Client)
+		keys, paginationResp, err = keyIter.ExecuteKeyQuery(prefix, paginationReq)
 	}
 
 	if err != nil {
@@ -217,8 +212,11 @@ func ListUsers(ctx *fasthttp.RequestCtx) {
 	sort.Strings(allUsers)
 
 	result := &DashboardUsersResult{
-		Users:      allUsers,
-		Pagination: nil,
+		Users: allUsers,
+		Pagination: pagination.PaginationResponse{
+			Count: len(allUsers),
+			Total: len(allUsers),
+		},
 	}
 	_ = router.WriteJSON(ctx, result)
 }
@@ -278,8 +276,11 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 	}
 
 	result := &DashboardThreadsResult{
-		Threads:    threadKeys,
-		Pagination: nil,
+		Threads: threadKeys,
+		Pagination: pagination.PaginationResponse{
+			Count: len(threadKeys),
+			Total: len(threadKeys),
+		},
 	}
 	_ = router.WriteJSON(ctx, result)
 }
@@ -305,60 +306,28 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Generate prefix for messages of this thread using the thread timestamp
-	prefix, err := keys.GenAllThreadMessagesPrefix(parsedThread.ThreadKey)
+	// Use admin message iterator for proper pagination
+	msgIter := mi.NewMessageIterator(storedb.Client)
+
+	// Parse pagination request from query params
+	paginationReq := utils.ParsePaginationRequest(ctx)
+	if paginationReq.Limit == 0 {
+		paginationReq.Limit = 100 // default
+	}
+
+	// Execute message query for this thread
+	msgKeys, paginationResp, err := msgIter.ExecuteMessageQuery(parsedThread.ThreadKey, paginationReq)
 	if err != nil {
-		logger.Error("ListThreadMessages: failed to generate prefix:", err)
+		logger.Error("ListThreadMessages: failed to execute message query:", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
-	logger.Debug("ListThreadMessages: generated prefix =", prefix)
-	lowerBound := []byte(prefix)
-	upperBound := nextPrefix(lowerBound)
 
-	logger.Debug("ListThreadMessages: using range lowerBound=", string(lowerBound), "upperBound=", string(upperBound))
-
-	// Use direct database iteration
-	iter, err := storedb.Client.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		logger.Error("ListThreadMessages: failed to create iterator:", err)
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-	defer iter.Close()
-
-	var msgKeys []string
-	count := 0
-	limit := 100 // default
-
-	for valid := iter.First(); valid && count < limit; valid = iter.Next() {
-		messagekey := string(iter.Key())
-
-		// Use unified parser to validate and extract message info
-		parsedMsg, err := keys.ParseKey(messagekey)
-		if err != nil {
-			logger.Debug("ListThreadMessages: skipping invalid message key", messagekey, err)
-			continue
-		}
-
-		// Only include message keys (not provisional) for this thread
-		if parsedMsg.Type != keys.KeyTypeMessage || parsedMsg.ThreadKey != parsedThread.ThreadKey {
-			logger.Debug("ListThreadMessages: skipping non-matching message", messagekey)
-			continue
-		}
-
-		logger.Debug("ListThreadMessages: found message", messagekey)
-		msgKeys = append(msgKeys, messagekey)
-		count++
-	}
-	logger.Info("ListThreadMessages: found", count, "messages for thread", threadKey)
+	logger.Info("ListThreadMessages: found", len(msgKeys), "messages for thread", threadKey)
 
 	result := &DashboardMessagesResult{
 		Messages:   msgKeys,
-		Pagination: pagination.NewPaginationResponse(limit, count == limit, "", count, count),
+		Pagination: paginationResp,
 	}
 	_ = router.WriteJSON(ctx, result)
 }
