@@ -153,7 +153,6 @@ type ValidationResult struct {
 	Data    interface{}
 }
 
-// ValidateReadThread validates read access to a thread
 func ValidateReadThread(threadKey, author string, requireOwnership bool) (*models.Thread, *AuthorResolutionError) {
 	if author != "" {
 		isDeleted, err := indexdb.IsSoftDeleted(threadKey)
