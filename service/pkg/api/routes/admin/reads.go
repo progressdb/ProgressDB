@@ -317,7 +317,7 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	keyIter := ki.NewKeyIterator(storedb.Client)
 	paginationReq := utils.ParsePaginationRequest(ctx)
 	if paginationReq.Limit == 0 {
-		paginationReq.Limit = 50 // default
+		paginationReq.Limit = pagination.AdminDefaultLimit // admin default
 	}
 
 	// Get message keys using working key iterator
