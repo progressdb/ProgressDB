@@ -20,7 +20,7 @@ func (mf *MessageFetcher) FetchMessages(messageKeys []string) ([]models.Message,
 	messages := make([]models.Message, 0, len(messageKeys))
 
 	for _, messageKey := range messageKeys {
-		messageData, err := message_store.GetLatestMessageData(messageKey)
+		messageData, err := message_store.GetMessageData(messageKey)
 		if err != nil {
 			continue // Skip messages that can't be loaded
 		}

@@ -13,6 +13,7 @@ import (
 	"progressdb/internal/retention"
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/encryption/kms"
@@ -82,8 +83,8 @@ func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan Dashboa
 				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
 			}
-			backupKey := append([]byte(keys.BackupEncryptPrefix), k...)
-			if err := storedb.SaveKey(string(backupKey), v); err != nil {
+			backupKey := string(append([]byte(keys.BackupEncryptPrefix), k...))
+			if err := storedb.SaveKey(backupKey, v); err != nil {
 				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
 			}
@@ -99,7 +100,7 @@ func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan Dashboa
 func determineThreadKeys(ids []string, all bool) ([]string, error) {
 	if all {
 		prefix := keys.GenThreadMetadataPrefix()
-		keyList, _, err := storedb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000})
+		keyList, _, err := indexdb.ListKeysWithPrefixPaginated(prefix, &pagination.PaginationRequest{Limit: 10000})
 		if err != nil {
 			return nil, err
 		}

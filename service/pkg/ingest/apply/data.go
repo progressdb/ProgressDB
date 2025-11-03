@@ -115,7 +115,7 @@ func (dm *DataManager) GetMessageDataCopy(messageKey string) ([]byte, error) {
 	}
 
 	// Not in batch, fetch from DB
-	data, err := messages.GetLatestMessageData(messageKey)
+	data, err := messages.GetMessageData(messageKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message from DB: %w", err)
 	}

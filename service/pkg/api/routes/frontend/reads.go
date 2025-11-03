@@ -8,6 +8,7 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/iterator/frontend/ki"
 	"progressdb/pkg/store/iterator/frontend/mi"
 	"progressdb/pkg/store/iterator/frontend/ti"
@@ -94,13 +95,6 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tr.Mark("get_thread_indexes")
-	threadIndexes, err := indexdb.GetThreadMessageIndexData(threadKey)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-
 	tr.Mark("parse_pagination")
 	req := utils.ParsePaginationRequest(ctx)
 
@@ -111,17 +105,26 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("query_messages")
+	// Use proper keys method to generate message prefix
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to generate message prefix: %v", err))
 		return
 	}
 
-	keyIter := ki.NewKeyIterator(indexdb.Client)
+	// Debug: Log the prefix being used
+	fmt.Printf("[DEBUG] Generated message prefix: %q for threadKey: %q\n", messagePrefix, threadKey)
+
+	keyIter := ki.NewKeyIterator(storedb.Client)
 	messageKeys, paginationResp, err := keyIter.ExecuteKeyQuery(messagePrefix, req)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read messages: %v", err))
 		return
+	}
+
+	// Debug: Log what we got from key iterator
+	if len(messageKeys) == 0 {
+		fmt.Printf("[DEBUG] No message keys found - checking if prefix is correct\n")
 	}
 
 	tr.Mark("fetch_messages")
@@ -137,7 +140,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	messages = sorter.SortMessages(messages, req.SortBy, req.OrderBy)
 
 	tr.Mark("encode_response")
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Metadata: threadIndexes, Pagination: &paginationResp})
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Pagination: &paginationResp})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {

@@ -32,7 +32,6 @@ type ThreadResponse struct {
 type MessagesListResponse struct {
 	Thread     string                         `json:"thread"`
 	Messages   []models.Message               `json:"messages"`
-	Metadata   interface{}                    `json:"metadata,omitempty"`
 	Pagination *pagination.PaginationResponse `json:"pagination"`
 }
 

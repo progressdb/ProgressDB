@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"progressdb/pkg/models"
-	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/keys"
@@ -61,19 +60,4 @@ func ListMessageVersions(messageKey string) ([]string, error) {
 		out = append(out, string(decrypted))
 	}
 	return out, iter.Error()
-}
-
-func GetLatestMessageData(messageKey string) (string, error) {
-	tr := telemetry.Track("storedb.get_latest_message")
-	defer tr.Finish()
-
-	tr.Mark("list_versions")
-	vers, err := ListMessageVersions(messageKey)
-	if err != nil {
-		return "", err
-	}
-	if len(vers) == 0 {
-		return "", fmt.Errorf("no versions found for message %s", messageKey)
-	}
-	return vers[len(vers)-1], nil
 }

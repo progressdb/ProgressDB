@@ -229,7 +229,7 @@ func ValidateReadMessage(messageKey, author string, requireOwnership bool) (*mod
 		}
 	}
 
-	stored, err := message_store.GetLatestMessageData(messageKey)
+	stored, err := message_store.GetMessageData(messageKey)
 	if err != nil {
 		return nil, &AuthorResolutionError{
 			Type:    "message_not_found",
