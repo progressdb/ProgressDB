@@ -7,6 +7,7 @@ import (
 	crand "crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	wrapping "github.com/hashicorp/go-kms-wrapping/v2"
 	aead "github.com/hashicorp/go-kms-wrapping/v2/aead"
+	"github.com/progressdb/kms/pkg/store"
 )
 
 type hashicorpProvider struct {
@@ -24,6 +26,7 @@ type hashicorpProvider struct {
 	w       *aead.Wrapper
 	mu      sync.RWMutex
 	wrapped map[string]*secureBytes
+	store   *store.Store
 }
 
 func validateKeyEntropy(key []byte) error {
@@ -156,6 +159,10 @@ func secureWipe(data []byte) {
 }
 
 func NewHashicorpProviderFromRaw(ctx context.Context, key []byte) (KMSProvider, error) {
+	return NewHashicorpProviderFromRawWithStore(ctx, key, "")
+}
+
+func NewHashicorpProviderFromRawWithStore(ctx context.Context, key []byte, storePath string) (KMSProvider, error) {
 	if err := validateKeyEntropy(key); err != nil {
 		return nil, fmt.Errorf("weak master key: %w", err)
 	}
@@ -165,7 +172,84 @@ func NewHashicorpProviderFromRaw(ctx context.Context, key []byte) (KMSProvider, 
 	if _, err := w.SetConfig(ctx, wrapping.WithConfigMap(cfg)); err != nil {
 		return nil, fmt.Errorf("wrapper setconfig failed: %w", err)
 	}
-	return &hashicorpProvider{ctx: ctx, w: w, wrapped: make(map[string]*secureBytes)}, nil
+
+	var st *store.Store
+	var err error
+	if storePath != "" {
+		st, err = store.New(storePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create store: %w", err)
+		}
+	}
+
+	provider := &hashicorpProvider{
+		ctx:     ctx,
+		w:       w,
+		wrapped: make(map[string]*secureBytes),
+		store:   st,
+	}
+
+	// Load existing DEKs from store
+	if st != nil {
+		if err := provider.loadDEKsFromStore(); err != nil {
+			return nil, fmt.Errorf("failed to load DEKs from store: %w", err)
+		}
+	}
+
+	return provider, nil
+}
+
+// loadDEKsFromStore loads all DEKs from the persistent store into memory
+func (h *hashicorpProvider) loadDEKsFromStore() error {
+	if h.store == nil {
+		return nil
+	}
+
+	return h.store.IterateMeta(func(keyID string, meta []byte) error {
+		var m map[string]string
+		if err := json.Unmarshal(meta, &m); err != nil {
+			return fmt.Errorf("invalid metadata for DEK %s: %w", keyID, err)
+		}
+
+		wrapped, ok := m["wrapped"]
+		if !ok {
+			return fmt.Errorf("missing wrapped data for DEK %s", keyID)
+		}
+
+		h.mu.Lock()
+		h.wrapped[keyID] = newSecureBytes([]byte(wrapped))
+		h.mu.Unlock()
+
+		return nil
+	})
+}
+
+// loadDEKFromStore loads a specific DEK from the persistent store into memory
+func (h *hashicorpProvider) loadDEKFromStore(dekID string) error {
+	if h.store == nil {
+		return fmt.Errorf("no store available")
+	}
+
+	meta, err := h.store.GetKeyMeta(dekID)
+	if err != nil {
+		return fmt.Errorf("failed to get DEK metadata: %w", err)
+	}
+
+	var m map[string]string
+	if err := json.Unmarshal(meta, &m); err != nil {
+		return fmt.Errorf("invalid metadata for DEK %s: %w", dekID, err)
+	}
+
+	wrapped, ok := m["wrapped"]
+	if !ok {
+		return fmt.Errorf("missing wrapped data for DEK %s", dekID)
+	}
+
+	h.mu.Lock()
+	h.wrapped[dekID] = newSecureBytes([]byte(wrapped))
+	h.mu.Unlock()
+
+	return nil
 }
 
 func (h *hashicorpProvider) Enabled() bool {
@@ -253,12 +337,25 @@ func (h *hashicorpProvider) EncryptWithDEK(dekID string, plaintext, aad []byte) 
 }
 
 func (h *hashicorpProvider) DecryptWithDEK(dekID string, ciphertext, aad []byte) ([]byte, error) {
+	// First try to get DEK from memory
 	h.mu.RLock()
 	secureWrapped, ok := h.wrapped[dekID]
 	h.mu.RUnlock()
+
+	// If not in memory, try to load from store
 	if !ok {
-		return nil, fmt.Errorf("dek not found: %s", dekID)
+		if err := h.loadDEKFromStore(dekID); err != nil {
+			return nil, fmt.Errorf("dek not found: %s", dekID)
+		}
+		// Try again from memory
+		h.mu.RLock()
+		secureWrapped, ok = h.wrapped[dekID]
+		h.mu.RUnlock()
+		if !ok {
+			return nil, fmt.Errorf("dek not found: %s", dekID)
+		}
 	}
+
 	dek, err := h.UnwrapDEK(secureWrapped.Data())
 	if err != nil {
 		return nil, err
@@ -360,6 +457,10 @@ func (h *hashicorpProvider) Close() error {
 }
 
 func NewHashicorpProviderFromHex(ctx context.Context, hexKey string) (KMSProvider, error) {
+	return NewHashicorpProviderFromHexWithStore(ctx, hexKey, "")
+}
+
+func NewHashicorpProviderFromHexWithStore(ctx context.Context, hexKey, storePath string) (KMSProvider, error) {
 	if hexKey == "" {
 		return nil, errors.New("master key cannot be empty")
 	}
@@ -373,5 +474,5 @@ func NewHashicorpProviderFromHex(ctx context.Context, hexKey string) (KMSProvide
 		return nil, fmt.Errorf("weak master key: %w", err)
 	}
 
-	return NewHashicorpProviderFromRaw(ctx, b)
+	return NewHashicorpProviderFromRawWithStore(ctx, b, storePath)
 }

@@ -38,18 +38,19 @@ func New(ctx context.Context, cfg *config.Config) (*EmbeddedKMS, error) {
 	// Convert to hex string for provider
 	masterKeyHex := hex.EncodeToString(masterKeyBytes)
 
-	// Initialize provider
-	provider, err := security.NewHashicorpProviderFromHex(ctx, masterKeyHex)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create provider: %w", err)
-	}
-
-	// Initialize store
+	// Initialize store path
 	dataPath := cfg.Encryption.KMS.DataDir
 	if dataPath == "" {
 		dataPath = "./kms/kms.db"
 	}
 
+	// Initialize provider with store
+	provider, err := security.NewHashicorpProviderFromHexWithStore(ctx, masterKeyHex, dataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	// Create separate store for metadata operations
 	st, err := store.New(dataPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
