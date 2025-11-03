@@ -4,23 +4,21 @@ import (
 	"sort"
 
 	"progressdb/pkg/models"
+	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/pagination"
 )
 
-// ThreadSorter handles sorting threads by different fields
 type ThreadSorter struct{}
 
-// NewThreadSorter creates a new thread sorter
 func NewThreadSorter() *ThreadSorter {
 	return &ThreadSorter{}
 }
 
-// SortThreads sorts threads by specified field and order
 func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy, orderBy string) []models.Thread {
 	if len(threads) == 0 {
 		return threads
 	}
 
-	// Default sort field and order
 	if sortBy == "" {
 		sortBy = "created_at"
 	}
@@ -34,14 +32,73 @@ func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy, orderBy str
 	case "updated_at", "updated_ts":
 		ts.sortByUpdatedTS(threads, orderBy)
 	default:
-		// Default to created_ts if unknown field
 		ts.sortByCreatedTS(threads, orderBy)
 	}
 
 	return threads
 }
 
-// sortByCreatedTS sorts threads by creation timestamp
+func (ts *ThreadSorter) SortKeys(keys []string, sortBy, orderBy string, response *pagination.PaginationResponse) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if orderBy == "" {
+		orderBy = "desc"
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		tsI := ts.extractTimestampFromKey(keys[i], sortBy)
+		tsJ := ts.extractTimestampFromKey(keys[j], sortBy)
+
+		if orderBy == "desc" {
+			return tsI > tsJ
+		}
+		return tsI < tsJ
+	})
+
+	response.OrderBy = orderBy
+
+	if len(keys) > 0 {
+		response.StartAnchor = keys[0]
+		response.EndAnchor = keys[len(keys)-1]
+	}
+
+	return keys
+}
+
+func (ts *ThreadSorter) extractTimestampFromKey(key string, sortBy string) int64 {
+	parsed, err := keys.ParseUserOwnsThread(key)
+	if err != nil {
+		return 0
+	}
+
+	threadParsed, err := keys.ParseKey(parsed.ThreadKey)
+	if err != nil {
+		return 0
+	}
+
+	switch sortBy {
+	case "created_at", "created_ts":
+		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+			return ts
+		}
+	case "updated_at", "updated_ts":
+		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+			return ts
+		}
+	default:
+		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+			return ts
+		}
+	}
+
+	return 0
+}
+
 func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread, orderBy string) {
 	sort.Slice(threads, func(i, j int) bool {
 		tsI := threads[i].CreatedTS
@@ -54,7 +111,6 @@ func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread, orderBy string)
 	})
 }
 
-// sortByUpdatedTS sorts threads by update timestamp
 func (ts *ThreadSorter) sortByUpdatedTS(threads []models.Thread, orderBy string) {
 	sort.Slice(threads, func(i, j int) bool {
 		tsI := threads[i].UpdatedTS

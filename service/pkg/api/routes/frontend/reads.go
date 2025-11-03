@@ -8,9 +8,10 @@ import (
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
-
+	"progressdb/pkg/store/iterator/frontend/ki"
 	"progressdb/pkg/store/iterator/frontend/mi"
 	"progressdb/pkg/store/iterator/frontend/ti"
+	"progressdb/pkg/store/keys"
 )
 
 func ReadThreadsList(ctx *fasthttp.RequestCtx) {
@@ -110,8 +111,14 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	tr.Mark("query_messages")
-	messageIter := mi.NewMessageIterator(indexdb.Client)
-	messageKeys, paginationResp, err := messageIter.ExecuteMessageQuery(threadKey, req)
+	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to generate message prefix: %v", err))
+		return
+	}
+
+	keyIter := ki.NewKeyIterator(indexdb.Client)
+	messageKeys, paginationResp, err := keyIter.ExecuteKeyQuery(messagePrefix, req)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read messages: %v", err))
 		return
