@@ -26,12 +26,12 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) pagination.PaginationReque
 		}
 	}
 
-	// Set defaults
+	// Set defaults using constants
 	if req.Limit == 0 {
-		req.Limit = 100
+		req.Limit = pagination.DefaultLimit
 	}
 	if req.OrderBy == "" {
-		req.OrderBy = "desc" // Default to descending for threads
+		req.OrderBy = "asc" // Default to ascending for chronological order
 	}
 	if req.SortBy == "" {
 		req.SortBy = "updated_at" // Default to updated_at for threads
@@ -68,12 +68,12 @@ func ValidatePaginationRequest(req pagination.PaginationRequest) error {
 		return fmt.Errorf("order_by must be 'asc' or 'desc'")
 	}
 
-	// Validate limit
+	// Validate limit using constants
 	if req.Limit < 1 {
 		return fmt.Errorf("limit must be at least 1")
 	}
-	if req.Limit > 1000 {
-		return fmt.Errorf("limit cannot exceed 1000")
+	if req.Limit > pagination.MaxLimit {
+		return fmt.Errorf("limit cannot exceed %d", pagination.MaxLimit)
 	}
 
 	return nil

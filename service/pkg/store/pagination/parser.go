@@ -9,11 +9,11 @@ import (
 // ParseLegacyPaginationRequest parses the old cursor-based pagination (for backward compatibility)
 func ParseLegacyPaginationRequest(ctx *fasthttp.RequestCtx) *PaginationRequest {
 	req := &PaginationRequest{
-		Limit: 100,
+		Limit: AdminDefaultLimit,
 	}
 
 	if limStr := string(ctx.QueryArgs().Peek("limit")); limStr != "" {
-		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
+		if parsedLimit, err := strconv.Atoi(limStr); err == nil && parsedLimit > 0 && parsedLimit <= AdminMaxLimit {
 			req.Limit = parsedLimit
 		}
 	}

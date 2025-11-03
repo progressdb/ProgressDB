@@ -134,6 +134,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 
 	// Set anchors if we have keys
 	if len(keys) > 0 {
+		// Always set StartAnchor to the first element and EndAnchor to the last element in the keys array
 		response.StartAnchor = keys[0]
 		response.EndAnchor = keys[len(keys)-1]
 		fmt.Printf("[KeyIterator] Set anchors: StartAnchor=%q, EndAnchor=%q\n", response.StartAnchor, response.EndAnchor)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"sort"
 
 	"github.com/cockroachdb/pebble"
@@ -287,45 +286,26 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 }
 
 func ListThreadMessages(ctx *fasthttp.RequestCtx) {
-	// DEBUG: Log function entry
-	fmt.Fprintf(os.Stderr, "DEBUG: ListThreadMessages called for path: %s\n", string(ctx.Path()))
-
 	threadKey, ok := extractParamOrFail(ctx, "threadKey", "missing threadKey")
 	if !ok {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing or invalid threadKey")
 		return
 	}
 
-	// DEBUG: Log extracted threadKey
-	fmt.Fprintf(os.Stderr, "DEBUG: Extracted threadKey: %s\n", threadKey)
-
-	// Debug: Write to file immediately after extraction
-	os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Extracted threadKey: '%s'\n", threadKey)), 0644)
-
 	logger.Debug("ListThreadMessages: threadKey =", threadKey)
 
 	// Parse and validate thread key using unified parser
 	parsedThread, err := keys.ParseKey(threadKey)
 	if err != nil {
-		// Debug: Log parsing error
-		os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("ParseKey error: %v\n", err)), 0644)
 		logger.Error("ListThreadMessages: invalid thread key", threadKey, err)
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 	if parsedThread.Type != keys.KeyTypeThread {
-		// Debug: Log type mismatch
-		os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Type mismatch: expected thread, got %s\n", parsedThread.Type)), 0644)
 		logger.Error("ListThreadMessages: not a thread key", threadKey)
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Errorf("expected thread key, got %s", parsedThread.Type).Error())
 		return
 	}
-
-	// Debug: Log parsed result
-	os.WriteFile("/tmp/debug_admin.txt", []byte(fmt.Sprintf("Parsed: Type=%s, ThreadKey=%s, ThreadTS=%s\n", parsedThread.Type, parsedThread.ThreadKey, parsedThread.ThreadTS)), 0644)
-
-	// Debug: Check if we reach iterator creation
-	os.WriteFile("/tmp/debug_admin.txt", []byte("About to create iterator\n"), 0644)
 
 	// Use working key iterator for messages (message iterator has issues)
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
@@ -337,7 +317,7 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	keyIter := ki.NewKeyIterator(storedb.Client)
 	paginationReq := utils.ParsePaginationRequest(ctx)
 	if paginationReq.Limit == 0 {
-		paginationReq.Limit = 100 // default
+		paginationReq.Limit = 50 // default
 	}
 
 	// Get message keys using working key iterator
@@ -356,10 +336,53 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 	paginationResp.Total = total
 
-	logger.Info("ListThreadMessages: found", "count", len(msgKeys), "thread", threadKey)
+	// Sort message keys according to order_by parameter
+	sorter := mi.NewMessageSorter()
+
+	// Convert string keys to Message objects for sorting
+	var messages []models.Message
+	for _, key := range msgKeys {
+		// Parse the key to extract timestamp for sorting
+		parsed, err := keys.ParseKey(key)
+		if err != nil {
+			logger.Warn("ListThreadMessages: failed to parse key", "key", key, "error", err)
+			continue
+		}
+
+		// Convert timestamp string to int64
+		timestamp, err := keys.ParseKeyTimestamp(parsed.MessageTS)
+		if err != nil {
+			logger.Warn("ListThreadMessages: failed to parse timestamp", "key", key, "timestamp", parsed.MessageTS, "error", err)
+			continue
+		}
+
+		// Create a minimal Message object for sorting
+		messages = append(messages, models.Message{
+			Key:       key,
+			CreatedTS: timestamp,
+			UpdatedTS: timestamp, // Use same timestamp for both
+		})
+	}
+
+	// Sort the messages
+	sortedMessages := sorter.SortMessages(messages, paginationReq.SortBy, paginationReq.OrderBy)
+
+	// Extract sorted keys back
+	var sortedKeys []string
+	for _, msg := range sortedMessages {
+		sortedKeys = append(sortedKeys, msg.Key)
+	}
+
+	logger.Info("ListThreadMessages: found", "count", len(sortedKeys), "thread", threadKey)
+
+	// Update anchors to reflect sorted order
+	if len(sortedKeys) > 0 {
+		paginationResp.StartAnchor = sortedKeys[0]
+		paginationResp.EndAnchor = sortedKeys[len(sortedKeys)-1]
+	}
 
 	result := &DashboardMessagesResult{
-		Messages:   msgKeys,
+		Messages:   sortedKeys,
 		Pagination: paginationResp,
 	}
 	_ = router.WriteJSON(ctx, result)
