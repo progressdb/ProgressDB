@@ -2,6 +2,7 @@ package encryption
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"github.com/progressdb/kms/pkg/kms"
 	"github.com/progressdb/kms/pkg/store"
 	"progressdb/pkg/config"
+	"progressdb/pkg/state"
 )
 
 var (
@@ -48,14 +50,23 @@ func setupEmbeddedKMS(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 
-	dbPath := cfg.Encryption.KMS.DBPath
-	if dbPath == "" {
-		dbPath = "./kms"
-	}
+	// Use standardized KMS path from state package
+	dbPath := state.KMSPath(cfg.Server.DBPath)
+
+	// Clean any whitespace
+	masterKeyHex = strings.TrimSpace(masterKeyHex)
 
 	masterKeyBytes, err := hex.DecodeString(masterKeyHex)
 	if err != nil {
 		return fmt.Errorf("failed to decode master key hex: %w", err)
+	}
+
+	// Ensure key is exactly 32 bytes for AES-256-GCM
+	if len(masterKeyBytes) != 32 {
+		// Hash the key to get exactly 32 bytes
+		hash := sha256.Sum256(masterKeyBytes)
+		masterKeyBytes = hash[:]
+		log.Printf("kms: master key hashed to 32 bytes for AES-256-GCM")
 	}
 
 	st, err := store.New(dbPath)

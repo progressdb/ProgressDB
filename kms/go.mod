@@ -7,7 +7,6 @@ toolchain go1.24.7
 require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/hashicorp/go-kms-wrapping/v2 v2.0.18
-	golang.org/x/sys v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -45,6 +44,7 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 )

@@ -128,10 +128,7 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/admin/users/{userId}/threads/{threadKey}/messages/{messageKey}", adminRoutes.GetThreadMessage)
 
 	// admin enc routes
-	r.POST("/admin/encryption/rotate-thread-dek", adminRoutes.EncryptionRotateThreadDEK)
-	r.POST("/admin/encryption/rewrap-deks", adminRoutes.EncryptionRewrapDEKs)
-	r.POST("/admin/encryption/encrypt-existing", adminRoutes.EncryptionEncryptExisting)
-	r.POST("/admin/encryption/generate-kek", adminRoutes.EncryptionGenerateKEK)
+	r.POST("/admin/encryption/encrypt-threads", adminRoutes.EncryptThreads)
 
 	// admin debug routes
 	r.GET("/admin/debug/prometheus", wrapHTTPHandler(promhttp.Handler()))

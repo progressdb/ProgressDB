@@ -27,12 +27,12 @@ func PathsFor(dbPath string) Paths {
 		Store: filepath.Join(dbPath, "store"),
 		Index: filepath.Join(dbPath, "index"),
 		Wal:   filepath.Join(dbPath, "wal"),
+		KMS:   filepath.Join(dbPath, "kms"),
 
 		// state
 		State:     statePath,
 		Audit:     filepath.Join(statePath, "audit"),
 		Retention: filepath.Join(statePath, "retention"),
-		KMS:       filepath.Join(statePath, "kms"),
 		Tmp:       filepath.Join(statePath, "tmp"),
 		Tel:       filepath.Join(statePath, "telemetry"),
 		Logs:      filepath.Join(statePath, "logs"),

@@ -43,6 +43,9 @@ const (
 
 	// Upper bound (exclusive limit) for iterating temporary index keys; normally "temp_idx;" due to ASCII ordering.
 	TempIndexUpperBound = "temp_idx;"
+
+	// Used for scanning all soft delete markers.
+	SoftDeletePrefix = "del:"
 )
 
 func GenAllMessageVersionsPrefix(messageKey string) (string, error) {
@@ -98,6 +101,10 @@ func GenThreadUserRelPrefix(threadKey string) (string, error) {
 		return "", fmt.Errorf("expected thread key, got %s", result.Type)
 	}
 	return fmt.Sprintf(ThreadUserRelPrefix, threadKey), nil
+}
+
+func GenSoftDeletePrefix() string {
+	return SoftDeletePrefix
 }
 
 // Legacy functions which panic on error (backward-compatibility)

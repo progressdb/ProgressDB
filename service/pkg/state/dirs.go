@@ -11,16 +11,16 @@ import (
 func EnsureStateDirs(dbPath string) error {
 	storePath := filepath.Join(dbPath, "store")
 	walPath := filepath.Join(dbPath, "wal")
+	kmsPath := filepath.Join(dbPath, "kms")
 	statePath := filepath.Join(dbPath, "state")
 	auditPath := filepath.Join(statePath, "audit")
 	retentionPath := filepath.Join(statePath, "retention")
-	kmsPath := filepath.Join(statePath, "kms")
 	tmpPath := filepath.Join(statePath, "tmp")
 	telPath := filepath.Join(statePath, "telemetry")
 	logsPath := filepath.Join(statePath, "logs")
 	indexPath := filepath.Join(dbPath, "index")
 
-	paths := []string{storePath, walPath, auditPath, retentionPath, kmsPath, tmpPath, telPath, logsPath, indexPath}
+	paths := []string{storePath, walPath, kmsPath, auditPath, retentionPath, tmpPath, telPath, logsPath, indexPath}
 
 	for _, p := range paths {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {

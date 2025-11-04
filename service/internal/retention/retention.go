@@ -14,8 +14,9 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/db/indexdb"
-	storedb "progressdb/pkg/store/db/storedb"
 	thread_store "progressdb/pkg/store/features/threads"
+	"progressdb/pkg/store/iterator/admin/ki"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 	"progressdb/pkg/timeutil"
 )
@@ -134,7 +135,8 @@ func (rm *RetentionManager) runPurge() error {
 	logger.Info("retention_run_start", "run_id", runID)
 
 	// Scan for deleted items
-	keys, _, err := indexdb.ListKeysWithPrefixPaginated("del:", &pagination.PaginationRequest{Limit: 10000})
+	keyIter := ki.NewKeyIterator(indexdb.Client)
+	keys, _, err := keyIter.ExecuteKeyQuery(keys.GenSoftDeletePrefix(), pagination.PaginationRequest{Limit: 10000})
 	if err != nil {
 		return fmt.Errorf("scan soft delete markers: %w", err)
 	}
@@ -149,7 +151,7 @@ func (rm *RetentionManager) runPurge() error {
 
 		// Check if this is a thread delete marker
 		if strings.HasPrefix(originalKey, "t:") {
-			data, err := storedb.GetKey(originalKey)
+			data, err := indexdb.GetKey(originalKey)
 			if err != nil {
 				logger.Debug("retention_thread_not_found", "key", originalKey)
 				continue
