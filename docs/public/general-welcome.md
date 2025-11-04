@@ -15,17 +15,17 @@ ProgressDB is optimized for the patterns of chat systems: append-only timelines,
 
 ## Why ProgressDB
 
+### First-class chat primitives as a database
+
+Message versioning, edits, replies, reactions, and soft deletes are built-in primitives — providing auditability and consistency without extra application-level bookkeeping. The database only understands Threads, Messages and related operations.
+
 ### Purpose-built indexing
 
 Keys are organized for append-ordered timeline access, making message listing extremely efficient compared to full table scans or wide secondary queries.
 
 ### Small, predictable storage engine
 
-ProgressDB uses Pebble, an embedded key-value store that delivers fast local I/O, automatic compaction, and minimal operational overhead. No heavyweight cluster coordination is required for single-node deployments.
-
-### First-class chat features
-
-Message versioning, edits, replies, reactions, and soft deletes are built-in primitives — providing auditability and consistency without extra application-level bookkeeping.
+ProgressDB uses Pebble for its storage engine, it delivers fast local I/O, automatic compaction, and minimal operational overhead.
 
 ### Security-first by design
 

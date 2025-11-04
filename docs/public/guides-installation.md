@@ -61,10 +61,9 @@ go build -o progressdb ./cmd/progressdb
 
 Common flags and their env var equivalents:
 
-- `--db` / `--db-path` — storage path (env: `PROGRESSDB_DB_PATH`)
-- `--addr` — bind address (env: `PROGRESSDB_ADDR` or `PROGRESSDB_ADDRESS`/`PROGRESSDB_PORT`)
+- `--db` — storage path (env: `PROGRESSDB_DB_PATH`)
+- `--addr` — bind address (env: `PROGRESSDB_ADDR`)
 - `--config` — YAML config file path (env: `PROGRESSDB_CONFIG`)
-- `--tls-cert` / `--tls-key` — TLS cert and key paths (env: `PROGRESSDB_TLS_CERT`, `PROGRESSDB_TLS_KEY`)
 
 Example: start with a config file
 
@@ -72,13 +71,8 @@ Example: start with a config file
 ./progressdb --config ./configs/config.yaml
 ```
 
-## Running behind Docker Compose
+Read [configuration](/configuration) for the configurables.
 
-Use the provided example `docs/configs/docker-compose.yml` as a starting
-point. Typical requirements:
-
-- Mount a persistent volume for the DB path.
-- Inject API keys and KMS config via environment variables or secrets.
 
 ## SDKs & clients
 

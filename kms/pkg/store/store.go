@@ -8,10 +8,12 @@ import (
 	pebble "github.com/cockroachdb/pebble"
 )
 
+// Store handles DEK storage and retrieval
 type Store struct {
 	db *pebble.DB
 }
 
+// New creates a new store instance
 func New(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
@@ -23,6 +25,7 @@ func New(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// Close closes the store
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
@@ -30,12 +33,16 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) SaveKeyMeta(keyID string, meta []byte) error {
-	return s.db.Set([]byte("meta:"+keyID), meta, pebble.Sync)
+// SaveKeyMeta stores a wrapped DEK
+func (s *Store) SaveKeyMeta(keyID string, wrappedDEK []byte) error {
+	storedKey := FormatDEKKey(keyID)
+	return s.db.Set([]byte(storedKey), wrappedDEK, pebble.Sync)
 }
 
+// GetKeyMeta retrieves a wrapped DEK
 func (s *Store) GetKeyMeta(keyID string) ([]byte, error) {
-	v, closer, err := s.db.Get([]byte("meta:" + keyID))
+	storedKey := FormatDEKKey(keyID)
+	v, closer, err := s.db.Get([]byte(storedKey))
 	if err != nil {
 		return nil, err
 	}
@@ -48,13 +55,14 @@ func (s *Store) GetKeyMeta(keyID string) ([]byte, error) {
 	return out, nil
 }
 
+// IterateMeta iterates over all stored DEKs
 func (s *Store) IterateMeta(fn func(key string, meta []byte) error) error {
 	it, err := s.db.NewIter(nil)
 	if err != nil {
 		return err
 	}
 	defer it.Close()
-	prefix := []byte("meta:")
+	prefix := []byte(DEKPrefix)
 	for ok := it.First(); ok; ok = it.Next() {
 		k := it.Key()
 		if !bytes.HasPrefix(k, prefix) {

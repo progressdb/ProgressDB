@@ -83,10 +83,16 @@ func resolveKMSMode(cfg *config.Config) string {
 }
 
 func (a *App) setupEmbeddedKMS(ctx context.Context, masterKey string) error {
-	if err := kms.RegisterHashicorpEmbeddedProvider(ctx, masterKey); err != nil {
+	cfg := config.GetConfig()
+	dataDir := cfg.Encryption.KMS.DataDir
+	if dataDir == "" {
+		dataDir = "./kms-data"
+	}
+
+	if err := kms.RegisterHashicorpEmbeddedProvider(ctx, masterKey, dataDir); err != nil {
 		return fmt.Errorf("failed to initialize embedded KMS provider: %w", err)
 	}
-	log.Printf("encryption enabled: true (embedded mode, hashicorp AEAD)")
+	log.Printf("encryption enabled: true (embedded mode, hashicorp AEAD, store=%s)", dataDir)
 	return nil
 }
 

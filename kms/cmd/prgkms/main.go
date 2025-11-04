@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"flag"
 	"log"
 
-	server "github.com/progressdb/kms/internal"
+	httpserver "github.com/progressdb/kms/internal"
 	"github.com/progressdb/kms/pkg/config"
-	security "github.com/progressdb/kms/pkg/core"
+	"github.com/progressdb/kms/pkg/kms"
+	"github.com/progressdb/kms/pkg/store"
 )
 
 func main() {
@@ -24,36 +24,32 @@ func main() {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	// Store config globally for other packages
-	config.SetGlobalConfig(cfg)
-
 	// Load master key
 	masterKey, err := config.LoadMasterKey(cfg)
 	if err != nil {
 		log.Fatalf("failed to load master key: %v", err)
 	}
 
-	// Store master key globally
-	config.SetMasterKey(masterKey)
-
-	// Initialize provider
-	masterKeyHex := hex.EncodeToString(masterKey)
-	provider, err := security.NewHashicorpProviderFromHex(context.Background(), masterKeyHex)
+	// Initialize store
+	st, err := store.New(cfg.KMS.DataDir + "/kms.db")
 	if err != nil {
-		log.Fatalf("failed to init provider: %v", err)
+		log.Fatalf("failed to create store: %v", err)
+	}
+	defer st.Close()
+
+	// Initialize KMS
+	kmsInstance, err := kms.New(context.Background(), st, masterKey)
+	if err != nil {
+		log.Fatalf("failed to create KMS: %v", err)
 	}
 
-	// Create and start server
-	srv, err := server.New(*address, provider, cfg.Encryption.KMS.DataDir)
-	if err != nil {
-		log.Fatalf("failed to create server: %v", err)
-	}
-	defer srv.Close()
+	// Create and start HTTP server
+	server := httpserver.NewServer(kmsInstance, *address)
 
 	log.Printf("Starting KMS server on %s", *address)
-	log.Printf("Data directory: %s", cfg.Encryption.KMS.DataDir)
+	log.Printf("Data directory: %s", cfg.KMS.DataDir)
 
-	if err := srv.Start(*address); err != nil {
+	if err := server.Start(); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
