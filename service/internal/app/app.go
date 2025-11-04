@@ -20,7 +20,6 @@ import (
 	"progressdb/pkg/config"
 	"progressdb/pkg/state"
 	"progressdb/pkg/store/encryption"
-	"progressdb/pkg/store/encryption/kms"
 )
 
 type App struct {
@@ -28,7 +27,6 @@ type App struct {
 	version         string
 	commit          string
 	buildDate       string
-	rc              *kms.RemoteClient // kms
 
 	srvFast *fasthttp.Server
 	state   string
@@ -80,7 +78,7 @@ func New(version, commit, buildDate string) (*App, error) {
 
 func (a *App) Run(ctx context.Context) error {
 	// establish kms setup
-	if err := a.setupKMS(ctx); err != nil {
+	if err := encryption.SetupKMS(ctx); err != nil {
 		return err
 	}
 	a.printBanner()

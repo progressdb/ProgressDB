@@ -15,14 +15,13 @@ import (
 	"progressdb/pkg/state/telemetry"
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
-	kms "progressdb/pkg/store/encryption/kms"
 
 	"github.com/valyala/fasthttp"
 )
 
 // ShutdownApp performs graceful shutdown of all app components.
 // This consolidates shutdown logic from both app.go and shutdown.go.
-func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteClient, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
+func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
 	log.Printf("shutdown: requested")
 
 	// stop accepting new requests
@@ -32,16 +31,6 @@ func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, rc *kms.RemoteCl
 			log.Printf("shutdown: fasthttp shutdown error: %v", err)
 		}
 	}
-
-	// close kms client and unregister provider
-	if rc != nil {
-		log.Printf("shutdown: closing KMS client")
-		if err := rc.Close(); err != nil {
-			log.Printf("shutdown: kms client close error: %v", err)
-		}
-	}
-	log.Printf("shutdown: unregistering KMS provider")
-	kms.UnregisterKMSProvider()
 
 	// cancel retention scheduler if running
 	if retentionCancel != nil {

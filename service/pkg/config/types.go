@@ -225,8 +225,7 @@ type EncryptionConfig struct {
 	KMS     struct {
 		Mode          string `yaml:"mode,default=embedded"`
 		Endpoint      string `yaml:"endpoint,default=127.0.0.1:6820"`
-		DataDir       string `yaml:"data_dir,default=./kms-data"`
-		Binary        string `yaml:"binary,default=/usr/local/bin/progressdb-kms"`
+		DBPath        string `yaml:"db_path,default=./kms"`
 		MasterKeyFile string `yaml:"master_key_file"`
 		MasterKeyHex  string `yaml:"master_key_hex"`
 	} `yaml:"kms"`

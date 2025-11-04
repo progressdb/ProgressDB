@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"strings"
 
 	"github.com/valyala/fasthttp"
 
@@ -16,21 +15,10 @@ import (
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption"
-	"progressdb/pkg/store/encryption/kms"
 	thread_store "progressdb/pkg/store/features/threads"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 )
-
-func rewrapDEKWorker(id string, newKEKHex string, sem chan struct{}, resCh chan DashboardRewrapJobResult) {
-	defer func() { <-sem }()
-	_, newKek, _, err := kms.RewrapDEKForThread(id, strings.TrimSpace(newKEKHex))
-	if err != nil {
-		resCh <- DashboardRewrapJobResult{Key: id, Error: err.Error(), Success: false}
-		return
-	}
-	resCh <- DashboardRewrapJobResult{Key: id, NewKEK: newKek, Success: true}
-}
 
 func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan DashboardEncryptJobResult) {
 	defer func() { <-sem }()
@@ -46,7 +34,7 @@ func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan Dashboa
 	}
 
 	if th.KMS == nil || th.KMS.KeyID == "" {
-		newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
+		newKeyID, wrapped, kekID, kekVer, err := encryption.CreateDEK(threadKey)
 		if err != nil {
 			resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: "create DEK failed: " + err.Error(), Success: false}
 			return
@@ -78,7 +66,7 @@ func encryptThreadWorker(threadKey string, sem chan struct{}, resCh chan Dashboa
 		k := append([]byte(nil), iter.Key()...)
 		v := append([]byte(nil), iter.Value()...)
 		if encryption.LikelyJSON(v) {
-			ct, _, err := kms.EncryptWithDEK(th.KMS.KeyID, v, nil)
+			ct, _, err := encryption.EncryptWithDEK(th.KMS.KeyID, v, nil)
 			if err != nil {
 				resCh <- DashboardEncryptJobResult{Key: keys.GenThreadKey(threadKey), Error: err.Error(), Success: false}
 				return
@@ -116,130 +104,11 @@ func determineThreadKeys(ids []string, all bool) ([]string, error) {
 }
 
 func EncryptionRotateThreadDEK(ctx *fasthttp.RequestCtx) {
-	var req EncryptionRotateRequest
-	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid request")
-		return
-	}
-	if strings.TrimSpace(req.Key) == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing key")
-		return
-	}
-	parsed, err := keys.ParseKey(req.Key)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
-		return
-	}
-	if parsed.Type != keys.KeyTypeThread {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
-		return
-	}
-
-	threadKey := parsed.ThreadKey
-	newKeyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-	if err := encryption.RotateThreadDEK(threadKey, newKeyID); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-	if s, err := thread_store.GetThreadData(threadKey); err == nil {
-		var th models.Thread
-		if err := json.Unmarshal([]byte(s), &th); err == nil {
-			th.KMS = &models.KMSMeta{KeyID: newKeyID, WrappedDEK: base64.StdEncoding.EncodeToString(wrapped), KEKID: kekID, KEKVersion: kekVer}
-			if payload, merr := json.Marshal(th); merr == nil {
-				_ = saveThread(th.Key, string(payload))
-			}
-		}
-	}
-	_ = router.WriteJSON(ctx, map[string]string{"status": "ok", "new_key": newKeyID})
+	router.WriteJSONError(ctx, fasthttp.StatusNotImplemented, "key rotation not supported in simplified KMS")
 }
 
 func EncryptionRewrapDEKs(ctx *fasthttp.RequestCtx) {
-	var req EncryptionRewrapRequest
-	if err := json.NewDecoder(bytes.NewReader(ctx.PostBody())).Decode(&req); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid request")
-		return
-	}
-	if strings.TrimSpace(req.NewKEKHex) == "" {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "missing new_kek_hex")
-		return
-	}
-	if req.Parallelism <= 0 {
-		req.Parallelism = 4
-	}
-
-	var threadIDs []string
-	if !req.All {
-		threadIDs = make([]string, 0, len(req.Keys))
-		for _, k := range req.Keys {
-			parsed, err := keys.ParseKey(k)
-			if err != nil {
-				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid thread key")
-				return
-			}
-			if parsed.Type != keys.KeyTypeThread {
-				router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "expected thread key")
-				return
-			}
-			threadIDs = append(threadIDs, parsed.ThreadKey)
-		}
-	}
-
-	threadIDs, err := determineThreadKeys(threadIDs, req.All)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-	if len(threadIDs) == 0 {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "no threads specified")
-		return
-	}
-
-	keyIDs := make(map[string]struct{})
-	for _, tkey := range threadIDs {
-		if s, err := thread_store.GetThreadData(tkey); err == nil {
-			var th models.Thread
-			if err := json.Unmarshal([]byte(s), &th); err == nil {
-				if th.KMS != nil && th.KMS.KeyID != "" {
-					keyIDs[th.KMS.KeyID] = struct{}{}
-				}
-			}
-		}
-	}
-
-	if len(keyIDs) == 0 {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "no key mappings found for provided threads")
-		return
-	}
-
-	sem := make(chan struct{}, req.Parallelism)
-	resCh := make(chan DashboardRewrapJobResult, len(keyIDs))
-	for kid := range keyIDs {
-		sem <- struct{}{}
-		go rewrapDEKWorker(kid, req.NewKEKHex, sem, resCh)
-	}
-	for i := 0; i < cap(sem); i++ {
-		sem <- struct{}{}
-	}
-	close(resCh)
-
-	out := map[string]map[string]string{}
-	for res := range resCh {
-		if _, ok := out[res.Key]; !ok {
-			out[res.Key] = map[string]string{}
-		}
-		if !res.Success {
-			out[res.Key]["status"] = "error"
-			out[res.Key]["error"] = res.Error
-		} else {
-			out[res.Key]["status"] = "ok"
-			out[res.Key]["kek_id"] = res.NewKEK
-		}
-	}
-	_ = router.WriteJSON(ctx, out)
+	router.WriteJSONError(ctx, fasthttp.StatusNotImplemented, "key rewrapping not supported in simplified KMS")
 }
 
 func EncryptionEncryptExisting(ctx *fasthttp.RequestCtx) {

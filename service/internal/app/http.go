@@ -38,12 +38,7 @@ func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 		router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "not ready")
 		return
 	}
-	if a.rc != nil {
-		if err := a.rc.Health(); err != nil {
-			router.WriteJSONError(ctx, fasthttp.StatusServiceUnavailable, "kms unhealthy")
-			return
-		}
-	}
+
 	ctx.SetStatusCode(fasthttp.StatusOK)
 	ver := a.version
 	if ver == "" {

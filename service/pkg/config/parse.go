@@ -287,8 +287,8 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["KMS_ENDPOINT"]; v != "" {
 		envCfg.Encryption.KMS.Endpoint = v
 	}
-	if v := envs["KMS_DATA_DIR"]; v != "" {
-		envCfg.Encryption.KMS.DataDir = v
+	if v := envs["KMS_DB_PATH"]; v != "" {
+		envCfg.Encryption.KMS.DBPath = v
 	}
 	if v := envs["KMS_MASTER_KEY_FILE"]; v != "" {
 		envCfg.Encryption.KMS.MasterKeyFile = v

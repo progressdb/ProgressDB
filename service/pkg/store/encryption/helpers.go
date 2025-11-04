@@ -11,18 +11,12 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/telemetry"
-	"progressdb/pkg/store/encryption/kms"
 )
 
 var key []byte
-var keyLocked bool
 
 func SetKeyEncryptionHex(hexKey string) error {
 	if hexKey == "" {
-		if key != nil && keyLocked {
-			_ = UnlockMemory(key)
-			keyLocked = false
-		}
 		key = nil
 		return nil
 	}
@@ -33,19 +27,12 @@ func SetKeyEncryptionHex(hexKey string) error {
 	if l := len(b); l != 32 {
 		return errors.New("encryption key must be 32 bytes (AES-256)")
 	}
-	if key != nil && keyLocked {
-		_ = UnlockMemory(key)
-		keyLocked = false
-	}
 	key = b
-	if err := LockMemory(key); err == nil {
-		keyLocked = true
-	}
 	return nil
 }
 
 func EncryptionEnabled() bool {
-	if kms.IsProviderEnabled() {
+	if IsProviderEnabled() {
 		return true
 	}
 	return len(key) == 32
@@ -57,7 +44,7 @@ func encryptBodyPath(bodyNode interface{}, segments []string, keyID string) inte
 		if err != nil {
 			return bodyNode
 		}
-		ct, _, err := kms.EncryptWithDEK(keyID, raw, nil)
+		ct, _, err := EncryptWithDEK(keyID, raw, nil)
 		if err != nil {
 			return bodyNode
 		}
@@ -120,7 +107,7 @@ func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, e
 			return nil, err
 		}
 
-		if !kms.IsProviderEnabled() {
+		if !IsProviderEnabled() {
 			return nil, errors.New("no kms provider registered")
 		}
 
@@ -152,7 +139,7 @@ func EncryptMessageBody(m *models.Message, thread models.Thread) (interface{}, e
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal message body: %w", err)
 		}
-		ct, _, err := kms.EncryptWithDEK(keyID, bodyBytes, nil)
+		ct, _, err := EncryptWithDEK(keyID, bodyBytes, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +158,7 @@ func decryptBodyPath(value interface{}, segments []string, keyID string) (interf
 					if err != nil {
 						return value, fmt.Errorf("base64 decode failed: %w", err)
 					}
-					pt, err := kms.DecryptWithDEK(keyID, raw, nil)
+					pt, err := DecryptWithDEK(keyID, raw, nil)
 					if err != nil {
 						return value, fmt.Errorf("kms decrypt failed: %w", err)
 					}
@@ -292,7 +279,7 @@ func DecryptMessageBody(m *models.Message, threadKeyID string) (interface{}, err
 						logger.Warn("decrypt_message_body_base64_decode_failed", "error", err)
 						return m.Body, fmt.Errorf("base64 decode failed: %w", err)
 					}
-					pt, err := kms.DecryptWithDEK(threadKeyID, raw, nil)
+					pt, err := DecryptWithDEK(threadKeyID, raw, nil)
 					if err != nil {
 						logger.Warn("decrypt_message_body_decrypt_failed", "error", err)
 						return m.Body, fmt.Errorf("kms decrypt failed: %w", err)

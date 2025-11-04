@@ -8,7 +8,7 @@ import (
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	storedb "progressdb/pkg/store/db/storedb"
-	"progressdb/pkg/store/encryption/kms"
+
 	"progressdb/pkg/store/keys"
 )
 
@@ -52,7 +52,7 @@ func EncryptMessageData(threadKey string, data []byte) ([]byte, error) {
 		msg.Body = encBody
 		return json.Marshal(msg)
 	} else {
-		enc, _, err := kms.EncryptWithDEK(kmsMeta.KeyID, data, nil)
+		enc, _, err := EncryptWithDEK(kmsMeta.KeyID, data, nil)
 		return enc, err
 	}
 }
@@ -79,7 +79,7 @@ func DecryptMessageData(kmsMeta *models.KMSMeta, data []byte) ([]byte, error) {
 		msg.Body = decBody
 		return json.Marshal(msg)
 	} else {
-		return kms.DecryptWithDEK(kmsMeta.KeyID, data, nil)
+		return DecryptWithDEK(kmsMeta.KeyID, data, nil)
 	}
 }
 
@@ -89,20 +89,23 @@ func ProvisionThreadKMS(threadKey string) (*models.KMSMeta, error) {
 		return nil, nil
 	}
 
-	if !kms.IsProviderEnabled() {
+	if !IsProviderEnabled() {
 		logger.Info("encryption_enabled_but_no_kms_provider", "thread", threadKey)
 		return nil, nil
 	}
 
 	logger.Info("provisioning_thread_kms", "thread", threadKey)
-	keyID, wrapped, kekID, kekVer, err := kms.CreateDEKForThread(threadKey)
+	keyID, wrapped, kekID, kekVer, err := CreateDEK(threadKey)
 	if err != nil {
 		return nil, fmt.Errorf("kms provision failed: %w", err)
 	}
 
+	// Convert wrapped DEK to base64 string for storage
+	wrappedStr := base64.StdEncoding.EncodeToString(wrapped)
+
 	return &models.KMSMeta{
 		KeyID:      keyID,
-		WrappedDEK: base64.StdEncoding.EncodeToString(wrapped),
+		WrappedDEK: wrappedStr,
 		KEKID:      kekID,
 		KEKVersion: kekVer,
 	}, nil
