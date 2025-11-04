@@ -16,7 +16,7 @@ type Config struct {
 
 // KMSConfig holds KMS specific settings
 type KMSConfig struct {
-	DataDir       string `yaml:"data_dir,default=/kms"`
+	DBPath        string `yaml:"db_path,default=/kms"`
 	MasterKeyFile string `yaml:"master_key_file"`
 	MasterKeyHex  string `yaml:"master_key_hex"`
 }
@@ -60,8 +60,8 @@ func loadFromFile(path string, cfg *Config) error {
 
 // overrideWithEnv overrides config values with environment variables
 func overrideWithEnv(cfg *Config) {
-	if dataDir := os.Getenv("KMS_DATA_DIR"); dataDir != "" {
-		cfg.KMS.DataDir = dataDir
+	if DBPath := os.Getenv("KMS_DATA_DIR"); DBPath != "" {
+		cfg.KMS.DBPath = DBPath
 	}
 	if masterKeyFile := os.Getenv("KMS_MASTER_KEY_FILE"); masterKeyFile != "" {
 		cfg.KMS.MasterKeyFile = masterKeyFile
@@ -73,8 +73,8 @@ func overrideWithEnv(cfg *Config) {
 
 // setDefaults sets default values for empty configuration fields
 func setDefaults(cfg *Config) {
-	if cfg.KMS.DataDir == "" {
-		cfg.KMS.DataDir = "/kms"
+	if cfg.KMS.DBPath == "" {
+		cfg.KMS.DBPath = "/kms"
 	}
 }
 

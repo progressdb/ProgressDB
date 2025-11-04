@@ -181,7 +181,7 @@ Partial
 - [ ] Metrics - Metrics are present, but need cleanup for prod
 
 Planned
-- [ ] Encryption - cloud-backed KMS ~ HSM integration from local only
+- [ ] Encryption - cloud-backed KMS ~ HSM integration from local only / dek rewrap feature
 - [ ] Backups - backups & tested restore of chat datas
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery
 - [ ] Search - search API / indexed search experience

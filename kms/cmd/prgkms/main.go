@@ -31,7 +31,7 @@ func main() {
 	}
 
 	// Initialize store
-	st, err := store.New(cfg.KMS.DataDir + "/kms.db")
+	st, err := store.New(cfg.KMS.DBPath)
 	if err != nil {
 		log.Fatalf("failed to create store: %v", err)
 	}
@@ -47,7 +47,7 @@ func main() {
 	server := httpserver.NewServer(kmsInstance, *address)
 
 	log.Printf("Starting KMS server on %s", *address)
-	log.Printf("Data directory: %s", cfg.KMS.DataDir)
+	log.Printf("Data directory: %s", cfg.KMS.DBPath)
 
 	if err := server.Start(); err != nil {
 		log.Fatalf("server failed: %v", err)
