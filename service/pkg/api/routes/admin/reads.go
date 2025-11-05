@@ -227,9 +227,9 @@ func ListUserThreads(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Validate userID
-	if err := keys.ValidateUserID(userID); err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+	// Validate userID by attempting to parse it as a user key
+	if _, err := keys.ParseKey("u:" + userID); err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, "invalid userID format")
 		return
 	}
 

@@ -253,7 +253,7 @@ func (im *IndexManager) ResolveMessageKey(msgKey string) (string, error) {
 	}
 
 	// Already a final (non-provisional) key? Just return it.
-	if !keys.IsProvisionalMessageKey(msgKey) {
+	if parsed, err := keys.ParseKey(msgKey); err == nil && parsed.Type != keys.KeyTypeMessageProvisional {
 		logger.Debug("resolve_message_key", "source", "final_key_direct", "msgKey", msgKey)
 		return msgKey, nil
 	}

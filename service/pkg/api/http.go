@@ -17,13 +17,13 @@ import (
 )
 
 var (
-	goroutines = prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Name: "go_goroutines",
-			Help: "Number of active goroutines.",
-		},
-		func() float64 { return float64(runtime.NumGoroutine()) },
-	)
+	// goroutines = prometheus.NewGaugeFunc(
+	// 	prometheus.GaugeOpts{
+	// 		Name: "go_goroutines",
+	// 		Help: "Number of active goroutines.",
+	// 	},
+	// 	func() float64 { return float64(runtime.NumGoroutine()) },
+	// )
 
 	gcPauseTotal = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
@@ -75,14 +75,13 @@ var (
 )
 
 func init() {
-	// prometheus.MustRegister(goroutines) // Already registered by Prometheus client library
+	// prometheus.MustRegister(goroutines)
 	prometheus.MustRegister(gcPauseTotal)
 	prometheus.MustRegister(heapAlloc)
 	prometheus.MustRegister(heapSys)
 	prometheus.MustRegister(numGC)
 }
 
-// wrapHTTPHandler wraps an http.Handler to work with fasthttp.
 func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
 	return func(ctx *fasthttp.RequestCtx) {
 		fasthttpadaptor.NewFastHTTPHandler(h)(ctx)
@@ -108,12 +107,6 @@ func RegisterRoutes(r *router.Router) {
 	r.GET("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.ReadThreadMessage)
 	r.PUT("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueUpdateMessage)
 	r.DELETE("/frontend/v1/threads/{threadKey}/messages/{id}", frontendRoutes.EnqueueDeleteMessage)
-
-	// thread message reactions - REMOVED
-
-	// // helper message endpoints
-	// r.POST("/v1/messages", CreateMessage)
-	// r.GET("/v1/messages", ListMessages)
 
 	// admin data routes
 	r.GET("/admin/health", adminRoutes.Health)

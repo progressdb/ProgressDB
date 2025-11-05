@@ -49,25 +49,25 @@ const (
 )
 
 func GenAllMessageVersionsPrefix(messageKey string) (string, error) {
-	result := ValidateKey(messageKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid message key: %w", result.Error)
+	parsed, err := ParseKey(messageKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid message key: %w", err)
 	}
-	if result.Type != KeyTypeMessage && result.Type != KeyTypeMessageProvisional {
-		return "", fmt.Errorf("expected message key, got %s", result.Type)
+	if parsed.Type != KeyTypeMessage && parsed.Type != KeyTypeMessageProvisional {
+		return "", fmt.Errorf("expected message key, got %s", parsed.Type)
 	}
 	return fmt.Sprintf(VersionPrefix, messageKey), nil
 }
 
 func GenAllThreadMessagesPrefix(threadKey string) (string, error) {
-	result, err := ParseKey(threadKey)
+	parsed, err := ParseKey(threadKey)
 	if err != nil {
 		return "", fmt.Errorf("invalid thread key: %w", err)
 	}
-	if result.Type != KeyTypeThread {
-		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	if parsed.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", parsed.Type)
 	}
-	return fmt.Sprintf(ThreadMessagePrefix, result.ThreadTS), nil
+	return fmt.Sprintf(ThreadMessagePrefix, parsed.ThreadTS), nil
 }
 
 func GenThreadMetadataPrefix() string {
@@ -75,30 +75,31 @@ func GenThreadMetadataPrefix() string {
 }
 
 func GenThreadMessagesGEPrefix(threadKey string, seq uint64) (string, error) {
-	result := ValidateKey(threadKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	parsed, err := ParseKey(threadKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread key: %w", err)
 	}
-	if result.Type != KeyTypeThread {
-		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	if parsed.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", parsed.Type)
 	}
 	return fmt.Sprintf(ThreadMessageGEPrefix, threadKey, PadSeq(seq)), nil
 }
 
 func GenUserThreadRelPrefix(userID string) (string, error) {
-	if err := ValidateUserID(userID); err != nil {
-		return "", fmt.Errorf("invalid user ID: %w", err)
+	// Simple user ID validation - non-empty and reasonable length
+	if userID == "" || len(userID) > 256 {
+		return "", fmt.Errorf("invalid user ID: %q", userID)
 	}
 	return fmt.Sprintf(UserThreadRelPrefix, userID), nil
 }
 
 func GenThreadUserRelPrefix(threadKey string) (string, error) {
-	result := ValidateKey(threadKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid thread key: %w", result.Error)
+	parsed, err := ParseKey(threadKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread key: %w", err)
 	}
-	if result.Type != KeyTypeThread {
-		return "", fmt.Errorf("expected thread key, got %s", result.Type)
+	if parsed.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", parsed.Type)
 	}
 	return fmt.Sprintf(ThreadUserRelPrefix, threadKey), nil
 }
@@ -107,172 +108,104 @@ func GenSoftDeletePrefix() string {
 	return SoftDeletePrefix
 }
 
-// Legacy functions which panic on error (backward-compatibility)
-
-func GenAllMessageVersionsPrefixLegacy(messageKey string) string {
-	prefix, err := GenAllMessageVersionsPrefix(messageKey)
-	if err != nil {
-		panic(fmt.Sprintf("GenAllMessageVersionsPrefix: %v", err))
-	}
-	return prefix
-}
-
-func GenAllThreadMessagesPrefixLegacy(threadKey string) string {
-	prefix, err := GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		panic(fmt.Sprintf("GenAllThreadMessagesPrefix: %v", err))
-	}
-	return prefix
-}
-
-func GenThreadMessagesGEPrefixLegacy(threadKey string, seq uint64) string {
-	prefix, err := GenThreadMessagesGEPrefix(threadKey, seq)
-	if err != nil {
-		panic(fmt.Sprintf("GenThreadMessagesGEPrefix: %v", err))
-	}
-	return prefix
-}
-
-func GenUserThreadRelPrefixLegacy(userID string) string {
-	prefix, err := GenUserThreadRelPrefix(userID)
-	if err != nil {
-		panic(fmt.Sprintf("GenUserThreadRelPrefix: %v", err))
-	}
-	return prefix
-}
-
-func GenThreadUserRelPrefixLegacy(threadKey string) string {
-	prefix, err := GenThreadUserRelPrefix(threadKey)
-	if err != nil {
-		panic(fmt.Sprintf("GenThreadUserRelPrefix: %v", err))
-	}
-	return prefix
-}
-
-// Key validation and parsing helpers
-
 func ExtractThreadKeyFromMessage(messageKey string) (string, error) {
-	result := ValidateKey(messageKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid message key: %w", result.Error)
+	parsed, err := ParseKey(messageKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid message key: %w", err)
 	}
-	if result.Type != KeyTypeMessage && result.Type != KeyTypeMessageProvisional {
-		return "", fmt.Errorf("expected message key, got %s", result.Type)
+	if parsed.Type != KeyTypeMessage && parsed.Type != KeyTypeMessageProvisional {
+		return "", fmt.Errorf("expected message key, got %s", parsed.Type)
 	}
-	if result.Parsed == nil {
-		return "", fmt.Errorf("failed to parse message key")
-	}
-	return result.Parsed.ThreadTS, nil
+	return parsed.ThreadTS, nil
 }
 
 func ExtractMessageKeyFromVersion(versionKey string) (string, error) {
-	result := ValidateKey(versionKey)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid version key: %w", result.Error)
+	parsed, err := ParseKey(versionKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid version key: %w", err)
 	}
-	if result.Type != KeyTypeVersion {
-		return "", fmt.Errorf("expected version key, got %s", result.Type)
+	if parsed.Type != KeyTypeVersion {
+		return "", fmt.Errorf("expected version key, got %s", parsed.Type)
 	}
-	if result.Parsed == nil {
-		return "", fmt.Errorf("failed to parse version key")
-	}
-	threadTS := result.Parsed.ThreadTS
-	messageTS := result.Parsed.MessageTS
+	threadTS := parsed.ThreadTS
+	messageTS := parsed.MessageTS
 	return fmt.Sprintf("t:%s:m:%s", threadTS, messageTS), nil
 }
 
 func IsThreadKey(key string) bool {
-	result := ValidateKey(key)
-	return result.Valid && result.Type == KeyTypeThread
+	parsed, err := ParseKey(key)
+	return err == nil && parsed.Type == KeyTypeThread
 }
 
 func IsMessageKey(key string) bool {
-	result := ValidateKey(key)
-	return result.Valid && (result.Type == KeyTypeMessage || result.Type == KeyTypeMessageProvisional)
+	parsed, err := ParseKey(key)
+	return err == nil && (parsed.Type == KeyTypeMessage || parsed.Type == KeyTypeMessageProvisional)
 }
 
 func IsVersionKey(key string) bool {
-	result := ValidateKey(key)
-	return result.Valid && result.Type == KeyTypeVersion
+	parsed, err := ParseKey(key)
+	return err == nil && parsed.Type == KeyTypeVersion
 }
 
 func IsRelationKey(key string) bool {
-	result := ValidateKey(key)
-	return result.Valid && (result.Type == KeyTypeUserOwnsThread || result.Type == KeyTypeThreadHasUser)
+	parsed, err := ParseKey(key)
+	return err == nil && (parsed.Type == KeyTypeUserOwnsThread || parsed.Type == KeyTypeThreadHasUser)
 }
 
 func IsIndexKey(key string) bool {
-	result := ValidateKey(key)
-	return result.Valid && (result.Type == KeyTypeThreadMessageStart ||
-		result.Type == KeyTypeThreadMessageEnd ||
-		result.Type == KeyTypeThreadMessageLC ||
-		result.Type == KeyTypeThreadMessageLU ||
-		result.Type == KeyTypeThreadMessageCDeltas ||
-		result.Type == KeyTypeThreadMessageUDeltas ||
-		result.Type == KeyTypeThreadMessageSkips ||
-		result.Type == KeyTypeThreadVersionStart ||
-		result.Type == KeyTypeThreadVersionEnd ||
-		result.Type == KeyTypeThreadVersionLC ||
-		result.Type == KeyTypeThreadVersionLU ||
-		result.Type == KeyTypeThreadVersionCDeltas ||
-		result.Type == KeyTypeThreadVersionUDeltas ||
-		result.Type == KeyTypeThreadVersionSkips ||
-		result.Type == KeyTypeDeletedThreadsIndex ||
-		result.Type == KeyTypeDeletedMessagesIndex)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return false
+	}
+	switch parsed.Type {
+	case KeyTypeThreadMessageStart, KeyTypeThreadMessageEnd, KeyTypeThreadMessageLC, KeyTypeThreadMessageLU,
+		KeyTypeThreadMessageCDeltas, KeyTypeThreadMessageUDeltas, KeyTypeThreadMessageSkips,
+		KeyTypeThreadVersionStart, KeyTypeThreadVersionEnd, KeyTypeThreadVersionLC, KeyTypeThreadVersionLU,
+		KeyTypeThreadVersionCDeltas, KeyTypeThreadVersionUDeltas, KeyTypeThreadVersionSkips,
+		KeyTypeDeletedThreadsIndex, KeyTypeDeletedMessagesIndex:
+		return true
+	default:
+		return false
+	}
 }
 
 func GetKeyType(key string) KeyType {
-	result := ValidateKey(key)
-	if !result.Valid {
+	parsed, err := ParseKey(key)
+	if err != nil {
 		return ""
 	}
-	return result.Type
+	return parsed.Type
 }
 
 func NormalizeKey(key string) (string, error) {
-	result := ValidateKey(key)
-	if !result.Valid {
-		return "", fmt.Errorf("invalid key: %w", result.Error)
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return "", fmt.Errorf("invalid key: %w", err)
 	}
-	if result.Type == "simple" {
-		return key, nil
-	}
-	switch result.Type {
+	switch parsed.Type {
 	case KeyTypeThread:
-		if result.Parsed != nil {
-			return fmt.Sprintf("t:%s", result.Parsed.ThreadTS), nil
-		}
+		return fmt.Sprintf("t:%s", parsed.ThreadTS), nil
 	case KeyTypeMessage:
-		if result.Parsed != nil {
-			return fmt.Sprintf("t:%s:m:%s:%s",
-				result.Parsed.ThreadTS,
-				result.Parsed.MessageTS,
-				result.Parsed.Seq), nil
-		}
+		return fmt.Sprintf("t:%s:m:%s:%s",
+			parsed.ThreadTS,
+			parsed.MessageTS,
+			parsed.Seq), nil
 	case KeyTypeMessageProvisional:
-		if result.Parsed != nil {
-			return fmt.Sprintf("t:%s:m:%s",
-				result.Parsed.ThreadTS,
-				result.Parsed.MessageTS), nil
-		}
+		return fmt.Sprintf("t:%s:m:%s",
+			parsed.ThreadTS,
+			parsed.MessageTS), nil
 	case KeyTypeVersion:
-		if result.Parsed != nil {
-			return fmt.Sprintf("v:%s:m:%s",
-				result.Parsed.ThreadTS,
-				result.Parsed.MessageTS), nil
-		}
+		return fmt.Sprintf("v:%s:m:%s",
+			parsed.ThreadTS,
+			parsed.MessageTS), nil
 	case KeyTypeUserOwnsThread:
-		if result.Parsed != nil {
-			return fmt.Sprintf("rel:u:%s:t:%s",
-				result.Parsed.UserID,
-				result.Parsed.ThreadTS), nil
-		}
+		return fmt.Sprintf("rel:u:%s:t:%s",
+			parsed.UserID,
+			parsed.ThreadTS), nil
 	case KeyTypeThreadHasUser:
-		if result.Parsed != nil {
-			return fmt.Sprintf("rel:t:%s:u:%s",
-				result.Parsed.ThreadTS,
-				result.Parsed.UserID), nil
-		}
+		return fmt.Sprintf("rel:t:%s:u:%s",
+			parsed.ThreadTS,
+			parsed.UserID), nil
 	}
 	return key, nil
 }

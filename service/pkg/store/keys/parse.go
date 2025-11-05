@@ -58,6 +58,10 @@ type ThreadHasUserParts struct {
 	UserID    string
 }
 
+type SoftDeleteMarkerParts struct {
+	OriginalKey string
+}
+
 type ThreadMessageStartParts struct {
 	ThreadKey string
 }
@@ -404,12 +408,39 @@ func ParseThreadHasUser(key string) (*ThreadHasUserParts, error) {
 	}, nil
 }
 
+func ParseSoftDeleteMarker(key string) (*SoftDeleteMarkerParts, error) {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Type != KeyTypeSoftDeleteMarker {
+		return nil, fmt.Errorf("expected soft delete marker key, got %s", parsed.Type)
+	}
+
+	// Extract original key by removing "del:" prefix
+	originalKey := strings.TrimPrefix(key, "del:")
+	return &SoftDeleteMarkerParts{
+		OriginalKey: originalKey,
+	}, nil
+}
+
 func ParseKeyTimestamp(s string) (int64, error) {
 	return parsePaddedInt(s, TSPadWidth)
 }
 
 func ParseKeySequence(s string) (uint64, error) {
 	return parsePaddedUint(s, SeqPadWidth)
+}
+
+// IsProvisionalMessageKey checks if a key is a provisional message key
+// Provisional keys have format: t:{threadTS}:m:{messageTS}
+// Final keys have format: t:{threadTS}:m:{messageTS}:{seq}
+func IsProvisionalMessageKey(key string) bool {
+	parsed, err := ParseKey(key)
+	if err != nil {
+		return false
+	}
+	return parsed.Type == KeyTypeMessageProvisional
 }
 
 // KeyType represents the type of key
@@ -438,6 +469,7 @@ const (
 	KeyTypeThreadVersionSkips   KeyType = "thread_version_skips"
 	KeyTypeDeletedThreadsIndex  KeyType = "deleted_threads_index"
 	KeyTypeDeletedMessagesIndex KeyType = "deleted_messages_index"
+	KeyTypeSoftDeleteMarker     KeyType = "soft_delete_marker"
 )
 
 // KeyParts represents the parsed parts of any key
@@ -452,6 +484,7 @@ type KeyParts struct {
 	UserID         string // For relationship keys
 	IndexType      string // "start", "end", "lc", "lu", etc.
 	VersionTS      string // For version keys: timestamp from v:{messageKey}:{ts}:{seq}
+	OriginalKey    string // For soft delete markers: original key without "del:" prefix
 }
 
 // ParseKey is the unified key parser that can handle all key formats
@@ -475,6 +508,8 @@ func ParseKey(key string) (*KeyParts, error) {
 		return parseRelationKey(key, parts)
 	case "idx":
 		return parseIndexKey(key, parts)
+	case "del":
+		return parseSoftDeleteKey(key, parts)
 	default:
 		return nil, fmt.Errorf("unknown key prefix: %s", parts[0])
 	}
@@ -675,4 +710,18 @@ func parseIndexKey(key string, parts []string) (*KeyParts, error) {
 	}
 
 	return nil, fmt.Errorf("invalid index key format: %s", key)
+}
+
+// parseSoftDeleteKey handles keys starting with "del:"
+func parseSoftDeleteKey(key string, parts []string) (*KeyParts, error) {
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid soft delete key format: %s", key)
+	}
+
+	// Extract original key by removing "del:" prefix
+	originalKey := strings.TrimPrefix(key, "del:")
+	return &KeyParts{
+		Type:        KeyTypeSoftDeleteMarker,
+		OriginalKey: originalKey,
+	}, nil
 }

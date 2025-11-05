@@ -255,8 +255,10 @@ func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
 	provKeyMap := make(map[string]bool) // dedup set
 	for _, entry := range entries {
 		// only *models.Message with provisional key
-		if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" && keys.IsProvisionalMessageKey(msg.Key) {
-			provKeyMap[msg.Key] = true
+		if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" {
+			if parsed, err := keys.ParseKey(msg.Key); err == nil && parsed.Type == keys.KeyTypeMessageProvisional {
+				provKeyMap[msg.Key] = true
+			}
 		}
 	}
 	provKeys := make([]string, 0, len(provKeyMap)) // result list

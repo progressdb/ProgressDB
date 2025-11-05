@@ -81,7 +81,7 @@ if [[ $BUILD -eq 1 ]]; then
   # Use a repo-local module cache to avoid writing to the global module cache
   GOCACHE_DIR="$ROOT_DIR/.gocache_modules"
   mkdir -p "$GOCACHE_DIR"
-  (cd "$ROOT_DIR/kms" && GOMODCACHE="$GOCACHE_DIR" GO111MODULE=on go build -mod=mod -o "$KMS_BIN" ./cmd/progressdb-kms)
+  (cd "$ROOT_DIR/kms" && GOMODCACHE="$GOCACHE_DIR" GO111MODULE=on go build -mod=mod -o "$KMS_BIN" ./cmd/prgkms)
   chmod +x "$KMS_BIN" || true
 else
   echo "[dev-kms][debug] Skipping build; using $KMS_BIN"

@@ -19,23 +19,25 @@ func ExtractPayloadOrFail(ctx *fasthttp.RequestCtx) ([]byte, bool) {
 }
 
 func ValidateThreadKey(key string) error {
-	if err := keys.ValidateThreadKey(key); err == nil {
-		return nil
+	parsed, err := keys.ParseKey(key)
+	if err != nil {
+		return fmt.Errorf("invalid thread key format: %w", err)
 	}
-	if err := keys.ValidateThreadPrvKey(key); err == nil {
-		return nil
+	if parsed.Type != keys.KeyTypeThread {
+		return fmt.Errorf("expected thread key, got %s", parsed.Type)
 	}
-	return fmt.Errorf("invalid thread key format")
+	return nil
 }
 
 func ValidateMessageKey(key string) error {
-	if err := keys.ValidateMessageKey(key); err == nil {
-		return nil
+	parsed, err := keys.ParseKey(key)
+	if err != nil {
+		return fmt.Errorf("invalid message key format: %w", err)
 	}
-	if err := keys.ValidateMessagePrvKey(key); err == nil {
-		return nil
+	if parsed.Type != keys.KeyTypeMessage && parsed.Type != keys.KeyTypeMessageProvisional {
+		return fmt.Errorf("expected message key, got %s", parsed.Type)
 	}
-	return fmt.Errorf("invalid message key format")
+	return nil
 }
 
 func ExtractParamOrFail(ctx *fasthttp.RequestCtx, param string, missingMsg string) (string, bool) {

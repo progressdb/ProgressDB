@@ -56,7 +56,7 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 
 	// resolve
 	threadKey := ExtractTKey(entry.QueueOp)
-	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
+	if _, err := keys.ParseKey(threadKey); err != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadKey>", threadKey)
 	}
 	thread.Key = threadKey
@@ -87,7 +87,7 @@ func BProcThreadDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// validate
-	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
+	if _, err := keys.ParseKey(threadKey); err != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadKey>", threadKey)
 	}
 
@@ -153,7 +153,7 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 
 	// resolve
 	threadKey := ExtractTKey(entry.QueueOp)
-	if keys.ValidateThreadKey(threadKey) != nil && keys.ValidateThreadPrvKey(threadKey) != nil {
+	if _, err := keys.ParseKey(threadKey); err != nil {
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadKey>", threadKey)
 	}
 

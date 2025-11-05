@@ -25,8 +25,10 @@ logging:
   level: "info"
 
 retention:
-  enabled: false
-  cron: "0 2 * * *"
+  enabled: true
+  cron: "*/1 * * * *"  # Run every 1 minute
+  mttl: 30s  # Messages deleted after 30 seconds
+  tttl: 30s  # Threads deleted after 10 minutes
 
 ingest:
   intake:
