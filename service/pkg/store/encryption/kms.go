@@ -5,9 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"strings"
+
+	"progressdb/pkg/state/logger"
 
 	"github.com/progressdb/kms/pkg/kms"
 	"github.com/progressdb/kms/pkg/store"
@@ -25,7 +26,7 @@ func SetupKMS(ctx context.Context) error {
 	cfg := config.GetConfig()
 
 	if !cfg.Encryption.Enabled {
-		log.Printf("kms: encryption disabled")
+		logger.Log.Info("kms: encryption disabled")
 		return nil
 	}
 
@@ -66,7 +67,7 @@ func setupEmbeddedKMS(ctx context.Context, cfg *config.Config) error {
 		// Hash the key to get exactly 32 bytes
 		hash := sha256.Sum256(masterKeyBytes)
 		masterKeyBytes = hash[:]
-		log.Printf("kms: master key hashed to 32 bytes for AES-256-GCM")
+		logger.Log.Info("kms: master key hashed to 32 bytes for AES-256-GCM")
 	}
 
 	st, err := store.New(dbPath)
@@ -80,7 +81,7 @@ func setupEmbeddedKMS(ctx context.Context, cfg *config.Config) error {
 	}
 
 	useEmbedded = true
-	log.Printf("encryption enabled: true (embedded mode, db=%s)", dbPath)
+	logger.Log.Info("encryption enabled: true (embedded mode)", "db_path", dbPath)
 	return nil
 }
 
@@ -92,7 +93,7 @@ func setupExternalKMS(kmsEndpoint string) error {
 		return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", kmsEndpoint, err)
 	}
 
-	log.Printf("encryption enabled: true (external KMS endpoint=%s)", kmsEndpoint)
+	logger.Log.Info("encryption enabled: true (external KMS)", "endpoint", kmsEndpoint)
 	return nil
 }
 

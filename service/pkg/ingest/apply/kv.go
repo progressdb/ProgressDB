@@ -1,9 +1,9 @@
 package apply
 
 import (
-	"fmt"
 	"sync"
 
+	"progressdb/pkg/state/logger"
 	indexdb "progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 
@@ -26,14 +26,14 @@ func NewKVManager() *KVManager {
 }
 
 func (kvm *KVManager) SetStoreKV(key string, value []byte) {
-	fmt.Printf("[KVManager] SetStoreKV - key: %s\n", key)
+	logger.Log.Debug("[KVManager] SetStoreKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.storeKV[key] = value
 }
 
 func (kvm *KVManager) SetIndexKV(key string, value []byte) {
-	fmt.Printf("[KVManager] SetIndexKV - key: %s\n", key)
+	logger.Log.Debug("[KVManager] SetIndexKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.indexKV[key] = value
@@ -60,7 +60,7 @@ func (kvm *KVManager) GetIndexKV(key string) ([]byte, bool) {
 }
 
 func (kvm *KVManager) SetStateKV(key string, value string) {
-	fmt.Printf("[KVManager] SetStateKV - key: %s\n", key)
+	logger.Log.Debug("[KVManager] SetStateKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.stateKV[key] = value
@@ -83,7 +83,7 @@ func (kvm *KVManager) Flush() error {
 		defer storeBatch.Close()
 
 		for key, value := range kvm.storeKV {
-			fmt.Printf("[KVManager] Writing storeKV key: %s (len=%d)\n", key, len(value))
+			logger.Log.Debug("[KVManager] Writing storeKV", "key", key, "len", len(value))
 			if err := storeBatch.Set([]byte(key), value, nil); err != nil {
 				return err
 			}
@@ -101,7 +101,7 @@ func (kvm *KVManager) Flush() error {
 		defer indexBatch.Close()
 
 		for key, value := range kvm.indexKV {
-			fmt.Printf("[KVManager] Writing indexKV key: %s (len=%d)\n", key, len(value))
+			logger.Log.Debug("[KVManager] Writing indexKV", "key", key, "len", len(value))
 			if err := indexBatch.Set([]byte(key), value, nil); err != nil {
 				return err
 			}

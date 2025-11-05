@@ -8,6 +8,7 @@ import (
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
 )
 
@@ -241,7 +242,7 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// resolve message key
 	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
 	if err != nil {
-		fmt.Printf("BProcMessageCreate: failed to resolve message key for msg.Key=%s: %v\n", msg.Key, err)
+		logger.Log.Error("BProcMessageCreate: failed to resolve message key", "msg_key", msg.Key, "error", err)
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 

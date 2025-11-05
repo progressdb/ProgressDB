@@ -209,3 +209,15 @@ func NormalizeKey(key string) (string, error) {
 	}
 	return key, nil
 }
+
+// GenThreadIndexPrefix generates the prefix for all thread-related indexes
+func GenThreadIndexPrefix(threadKey string) (string, error) {
+	parsed, err := ParseKey(threadKey)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread key: %w", err)
+	}
+	if parsed.Type != KeyTypeThread {
+		return "", fmt.Errorf("expected thread key, got %s", parsed.Type)
+	}
+	return fmt.Sprintf("idx:t:%s:", parsed.ThreadTS), nil
+}

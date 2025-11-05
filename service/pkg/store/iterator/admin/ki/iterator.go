@@ -3,6 +3,7 @@ package ki
 import (
 	"fmt"
 
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/pagination"
 
 	"github.com/cockroachdb/pebble"
@@ -18,8 +19,14 @@ func NewKeyIterator(db *pebble.DB) *KeyIterator {
 
 func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
 	// Most important log: new request, prefix, and relevant parts of req
-	fmt.Printf("[KeyIterator] Query: prefix=%q, Before=%q, After=%q, Anchor=%q, Limit=%d, SortBy:%s, OrderBy:%s\n",
-		prefix, req.Before, req.After, req.Anchor, req.Limit, req.SortBy, req.OrderBy,
+	logger.Log.Debug("[KeyIterator] Query",
+		"prefix", prefix,
+		"before", req.Before,
+		"after", req.After,
+		"anchor", req.Anchor,
+		"limit", req.Limit,
+		"sort_by", req.SortBy,
+		"order_by", req.OrderBy,
 	)
 
 	var iter *pebble.Iterator
@@ -37,7 +44,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		})
 	}
 	if err != nil {
-		fmt.Printf("[KeyIterator] Failed to create iterator: %v\n", err)
+		logger.Log.Error("[KeyIterator] Failed to create iterator", "error", err)
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
@@ -49,12 +56,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	case req.Anchor != "":
 		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Anchor, req.Limit/2)
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchBefore error (anchor): %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchBefore error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.Anchor, req.Limit-len(beforeKeys))
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchAfter error (anchor): %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchAfter error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		keys = append(beforeKeys, req.Anchor)
@@ -69,12 +76,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	case req.Before != "" && req.After != "":
 		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Before, req.Limit/2)
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchBefore error (before+after): %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchBefore error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.After, req.Limit-len(beforeKeys))
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchAfter error (before+after): %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchAfter error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		keys = append(beforeKeys, afterKeys...)
@@ -88,7 +95,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	case req.Before != "":
 		keys, response.HasBefore, err = ki.fetchBefore(iter, req.Before, req.Limit)
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchBefore error: %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchBefore error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasAfter, _ = ki.checkHasAfter(iter, req.Before)
@@ -98,7 +105,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	case req.After != "":
 		keys, response.HasAfter, err = ki.fetchAfter(iter, req.After, req.Limit)
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchAfter error: %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchAfter error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasBefore, _ = ki.checkHasBefore(iter, req.After)
@@ -108,10 +115,10 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	default:
 		// Only keep this log for initial load
 		// (Can be useful for debugging first pagination experience)
-		fmt.Printf("[KeyIterator] Initial load: Limit=%d\n", req.Limit)
+		logger.Log.Debug("[KeyIterator] Initial load", "limit", req.Limit)
 		keys, response, err = ki.fetchInitialLoad(iter, req)
 		if err != nil {
-			fmt.Printf("[KeyIterator] fetchInitialLoad error: %v\n", err)
+			logger.Log.Error("[KeyIterator] fetchInitialLoad error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 	}
@@ -120,10 +127,14 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	sortedKeys := sorter.SortKeys(keys, req.SortBy, req.OrderBy, &response)
 	// Only print anchors if there are results (this is helpful for anchor debugging)
 	if len(sortedKeys) > 0 {
-		fmt.Printf("[KeyIterator] Result anchors: StartAnchor=%q, EndAnchor=%q, Count=%d, HasBefore=%v, HasAfter=%v\n",
-			response.StartAnchor, response.EndAnchor, response.Count, response.HasBefore, response.HasAfter)
+		logger.Log.Debug("[KeyIterator] Result anchors",
+			"start_anchor", response.StartAnchor,
+			"end_anchor", response.EndAnchor,
+			"count", response.Count,
+			"has_before", response.HasBefore,
+			"has_after", response.HasAfter)
 	} else {
-		fmt.Printf("[KeyIterator] No keys returned from query.\n")
+		logger.Log.Debug("[KeyIterator] No keys returned from query")
 	}
 
 	return sortedKeys, response, nil
