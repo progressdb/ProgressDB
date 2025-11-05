@@ -34,7 +34,7 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Validate user ID format and content
-	if err := ValidateUserID(payload.UserID); err != nil {
+	if err := router.ValidateUserID(payload.UserID); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid user ID: %s", err.Error()))
 		return
 	}
@@ -56,16 +56,6 @@ func Sign(ctx *fasthttp.RequestCtx) {
 	if err := router.WriteJSON(ctx, map[string]string{"userId": payload.UserID, "signature": sig}); err != nil {
 		logger.Error("failed to encode signHandler response", "error", err, "remote", ctx.RemoteAddr().String())
 	}
-}
-
-func ValidateUserID(userID string) error {
-	if userID == "" {
-		return fmt.Errorf("user ID cannot be empty")
-	}
-	if len(userID) > 100 {
-		return fmt.Errorf("user ID too long")
-	}
-	return nil
 }
 
 func isBackendRequest(ctx *fasthttp.RequestCtx) bool {

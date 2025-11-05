@@ -94,7 +94,7 @@ func (s *Sensor) checkHardware() {
 	var stat unix.Statfs_t
 	err := unix.Statfs("/", &stat)
 	if err != nil {
-		logger.Log.Error("failed to get disk stat", "error", err)
+		logger.Error("failed to get disk stat", "error", err)
 		return
 	}
 	available := stat.Bavail * uint64(stat.Bsize)
@@ -103,14 +103,14 @@ func (s *Sensor) checkHardware() {
 
 	if usedPct > float64(s.config.DiskHighPct) {
 		if !s.diskAlert {
-			logger.Log.Warn("disk usage high", "usage_pct", usedPct, "threshold", s.config.DiskHighPct)
+			logger.Warn("disk usage high", "usage_pct", usedPct, "threshold", s.config.DiskHighPct)
 			s.diskAlert = true
 			s.lastDiskAlert = now
 		}
 	} else if usedPct < float64(s.config.DiskLowPct) && s.diskAlert {
 		// Check if we've been below threshold for the recovery window
 		if now.Sub(s.lastDiskAlert) >= s.config.RecoveryWindow {
-			logger.Log.Info("disk usage recovered", "usage_pct", usedPct, "threshold", s.config.DiskLowPct, "recovery_window", s.config.RecoveryWindow)
+			logger.Info("disk usage recovered", "usage_pct", usedPct, "threshold", s.config.DiskLowPct, "recovery_window", s.config.RecoveryWindow)
 			s.diskAlert = false
 		}
 	}
@@ -122,14 +122,14 @@ func (s *Sensor) checkHardware() {
 
 	if memUsedPct > float64(s.config.MemHighPct) {
 		if !s.memAlert {
-			logger.Log.Warn("memory usage high", "usage_pct", memUsedPct, "threshold", s.config.MemHighPct)
+			logger.Warn("memory usage high", "usage_pct", memUsedPct, "threshold", s.config.MemHighPct)
 			s.memAlert = true
 			s.lastMemAlert = now
 		}
 	} else if s.memAlert {
 		// Memory recovery - check if we've been below threshold for the recovery window
 		if now.Sub(s.lastMemAlert) >= s.config.RecoveryWindow {
-			logger.Log.Info("memory usage recovered", "usage_pct", memUsedPct, "threshold", s.config.MemHighPct, "recovery_window", s.config.RecoveryWindow)
+			logger.Info("memory usage recovered", "usage_pct", memUsedPct, "threshold", s.config.MemHighPct, "recovery_window", s.config.RecoveryWindow)
 			s.memAlert = false
 		}
 	}

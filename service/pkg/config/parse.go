@@ -42,7 +42,7 @@ type EffectiveConfigResult struct {
 func ParseConfigFlags() Flags {
 	// parse any flags with defaults
 	addrPtr := flag.String("addr", ":8080", "HTTP listen address")
-	dbPtr := flag.String("db", "./.database", "Pebble DB path")
+	dbPtr := flag.String("db", "./database", "Pebble DB path")
 	cfgPtr := flag.String("config", "./config.yaml", "Path to config file")
 	flag.Parse()
 

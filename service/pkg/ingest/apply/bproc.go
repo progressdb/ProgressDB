@@ -242,7 +242,7 @@ func BProcMessageCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	// resolve message key
 	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
 	if err != nil {
-		logger.Log.Error("BProcMessageCreate: failed to resolve message key", "msg_key", msg.Key, "error", err)
+		logger.Error("BProcMessageCreate: failed to resolve message key", "msg_key", msg.Key, "error", err)
 		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
 	}
 

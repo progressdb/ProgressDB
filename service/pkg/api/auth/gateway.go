@@ -76,6 +76,13 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 			// set for downstream usage
 			ctx.Request.Header.Set("X-Role-Name", roleName)
 
+			// rate limit bfore key handling
+			if !limiters.Allow(key) {
+				router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
+				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", utils.GetPath(ctx))
+				return
+			}
+
 			// request info for logging
 			path := utils.GetPath(ctx)
 			remote := ctx.RemoteAddr().String()
@@ -112,13 +119,6 @@ func AuthenticateRequestMiddleware(cfg SecConfig) func(fasthttp.RequestHandler) 
 					return
 				}
 				RequireSignedAuthorMiddleware(next)(ctx)
-				return
-			}
-
-			// rate limiting (per-key)
-			if !limiters.Allow(key) {
-				router.WriteJSONError(ctx, fasthttp.StatusTooManyRequests, "rate limit exceeded")
-				logger.Warn("rate_limited", "has_api_key", hasAPIKey, "path", path)
 				return
 			}
 

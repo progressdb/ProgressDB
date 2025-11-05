@@ -26,7 +26,7 @@ func SetupKMS(ctx context.Context) error {
 	cfg := config.GetConfig()
 
 	if !cfg.Encryption.Enabled {
-		logger.Log.Info("kms: encryption disabled")
+		logger.Info("kms: encryption disabled")
 		return nil
 	}
 
@@ -67,7 +67,7 @@ func setupEmbeddedKMS(ctx context.Context, cfg *config.Config) error {
 		// Hash the key to get exactly 32 bytes
 		hash := sha256.Sum256(masterKeyBytes)
 		masterKeyBytes = hash[:]
-		logger.Log.Info("kms: master key hashed to 32 bytes for AES-256-GCM")
+		logger.Info("kms: master key hashed to 32 bytes for AES-256-GCM")
 	}
 
 	st, err := store.New(dbPath)
@@ -81,7 +81,7 @@ func setupEmbeddedKMS(ctx context.Context, cfg *config.Config) error {
 	}
 
 	useEmbedded = true
-	logger.Log.Info("encryption enabled: true (embedded mode)", "db_path", dbPath)
+	logger.Info("encryption enabled: true (embedded mode)", "db_path", dbPath)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func setupExternalKMS(kmsEndpoint string) error {
 		return fmt.Errorf("KMS health check failed at %s: %w; ensure KMS is installed and reachable", kmsEndpoint, err)
 	}
 
-	logger.Log.Info("encryption enabled: true (external KMS)", "endpoint", kmsEndpoint)
+	logger.Info("encryption enabled: true (external KMS)", "endpoint", kmsEndpoint)
 	return nil
 }
 

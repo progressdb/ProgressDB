@@ -21,19 +21,19 @@ import (
 // ShutdownApp performs graceful shutdown of all app components.
 // This consolidates shutdown logic from both app.go and shutdown.go.
 func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, retentionCancel context.CancelFunc, ingestIngestor *ingest.Ingestor, hwSensor *sensor.Sensor) error {
-	logger.Log.Info("shutdown: requested")
+	logger.Info("shutdown: requested")
 
 	// stop accepting new requests
 	if srvFast != nil {
-		logger.Log.Info("shutdown: stopping FastHTTP server")
+		logger.Info("shutdown: stopping FastHTTP server")
 		if err := srvFast.Shutdown(); err != nil {
-			logger.Log.Error("shutdown: fasthttp shutdown error", "error", err)
+			logger.Error("shutdown: fasthttp shutdown error", "error", err)
 		}
 	}
 
 	// cancel retention scheduler if running
 	if retentionCancel != nil {
-		logger.Log.Info("shutdown: stopping retention scheduler")
+		logger.Info("shutdown: stopping retention scheduler")
 		retentionCancel()
 	}
 
@@ -42,45 +42,45 @@ func ShutdownApp(ctx context.Context, srvFast *fasthttp.Server, retentionCancel 
 		queue.GlobalIngestQueue.Close()
 	}
 	if ingestIngestor != nil {
-		logger.Log.Info("shutdown: stopping ingestor")
+		logger.Info("shutdown: stopping ingestor")
 		ingestIngestor.Stop()
 	}
 
 	// stop sensor
 	if hwSensor != nil {
-		logger.Log.Info("shutdown: stopping sensor")
+		logger.Info("shutdown: stopping sensor")
 		hwSensor.Stop()
 	}
 
 	// force sync index to disc before closing
-	logger.Log.Info("shutdown: syncing index to disc")
+	logger.Info("shutdown: syncing index to disc")
 	if err := storedb.Client.Flush(); err != nil {
-		logger.Log.Error("shutdown: index force sync error", "error", err)
+		logger.Error("shutdown: index force sync error", "error", err)
 	}
 
 	// close index
-	logger.Log.Info("shutdown: closing index")
+	logger.Info("shutdown: closing index")
 	if err := indexdb.Close(); err != nil {
-		logger.Log.Error("shutdown: index close error", "error", err)
+		logger.Error("shutdown: index close error", "error", err)
 	}
 
 	// force sync storage to disc before closing
-	logger.Log.Info("shutdown: syncing storage to disc")
+	logger.Info("shutdown: syncing storage to disc")
 	if err := storedb.Client.Flush(); err != nil {
-		logger.Log.Error("shutdown: store force sync error", "error", err)
+		logger.Error("shutdown: store force sync error", "error", err)
 	}
 
 	// flush close the storage
-	logger.Log.Info("shutdown: closing store")
+	logger.Info("shutdown: closing store")
 	if err := storedb.Close(); err != nil {
-		logger.Log.Error("shutdown: store close error", "error", err)
+		logger.Error("shutdown: store close error", "error", err)
 	}
 
 	// close telemetry
-	logger.Log.Info("shutdown: closing telemetry")
+	logger.Info("shutdown: closing telemetry")
 	telemetry.Close()
 
-	logger.Log.Info("shutdown: complete")
+	logger.Info("shutdown: complete")
 	return nil
 }
 

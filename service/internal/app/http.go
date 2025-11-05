@@ -31,7 +31,6 @@ func (a *App) printBanner() {
 	banner.Print(cfg.Addr(), cfg.Server.DBPath, "config", verStr)
 }
 
-// readyzHandler handles the /readyz endpoint (fasthttp).
 func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 	// check store
 	if !storedb.Ready() {
@@ -49,8 +48,6 @@ func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {
 		"version": ver,
 	})
 }
-
-// healthzHandler handles the /healthz endpoint (fasthttp).
 func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 	ctx.SetContentType("application/json")
 	router.WriteJSONOk(ctx, map[string]interface{}{
@@ -58,7 +55,7 @@ func (a *App) healthzHandlerFast(ctx *fasthttp.RequestCtx) {
 	})
 }
 
-// startHTTP builds and starts the fasthttp server, returning a channel that delivers errors.
+// starts the http server and returns cancel functionality
 func (a *App) startHTTP(_ context.Context) <-chan error {
 	cfg := config.GetConfig()
 	// build security config for auth middleware
@@ -84,13 +81,10 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 		secCfg.AdminKeys[k] = struct{}{}
 	}
 
-	// build fasthttp router and register API routes
+	// http router registration
 	r := router.New()
-	// health and ready handlers
 	r.GET("/healthz", a.healthzHandlerFast)
 	r.GET("/readyz", a.readyzHandlerFast)
-
-	// Register API routes on fasthttp router
 	api.RegisterRoutes(r)
 
 	r.NotFound(func(ctx *fasthttp.RequestCtx) {
@@ -118,7 +112,7 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 		ReadBufferSize:       readBufferSize,
 		MaxRequestBodySize:   maxRequestBodySize,
 		Concurrency:          concurrency,
-		ReduceMemoryUsage:    true, // reduces memory usage at the expense of performance
+		ReduceMemoryUsage:    false, // reduces memory usage at the expense of performance
 		ReadTimeout:          readTimeout,
 		WriteTimeout:         writeTimeout,
 		IdleTimeout:          idleTimeout,

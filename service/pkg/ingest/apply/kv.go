@@ -26,14 +26,14 @@ func NewKVManager() *KVManager {
 }
 
 func (kvm *KVManager) SetStoreKV(key string, value []byte) {
-	logger.Log.Debug("[KVManager] SetStoreKV", "key", key)
+	logger.Debug("[KVManager] SetStoreKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.storeKV[key] = value
 }
 
 func (kvm *KVManager) SetIndexKV(key string, value []byte) {
-	logger.Log.Debug("[KVManager] SetIndexKV", "key", key)
+	logger.Debug("[KVManager] SetIndexKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.indexKV[key] = value
@@ -60,7 +60,7 @@ func (kvm *KVManager) GetIndexKV(key string) ([]byte, bool) {
 }
 
 func (kvm *KVManager) SetStateKV(key string, value string) {
-	logger.Log.Debug("[KVManager] SetStateKV", "key", key)
+	logger.Debug("[KVManager] SetStateKV", "key", key)
 	kvm.mu.Lock()
 	defer kvm.mu.Unlock()
 	kvm.stateKV[key] = value
@@ -83,7 +83,7 @@ func (kvm *KVManager) Flush() error {
 		defer storeBatch.Close()
 
 		for key, value := range kvm.storeKV {
-			logger.Log.Debug("[KVManager] Writing storeKV", "key", key, "len", len(value))
+			logger.Debug("[KVManager] Writing storeKV", "key", key, "len", len(value))
 			if err := storeBatch.Set([]byte(key), value, nil); err != nil {
 				return err
 			}
@@ -101,7 +101,7 @@ func (kvm *KVManager) Flush() error {
 		defer indexBatch.Close()
 
 		for key, value := range kvm.indexKV {
-			logger.Log.Debug("[KVManager] Writing indexKV", "key", key, "len", len(value))
+			logger.Debug("[KVManager] Writing indexKV", "key", key, "len", len(value))
 			if err := indexBatch.Set([]byte(key), value, nil); err != nil {
 				return err
 			}
