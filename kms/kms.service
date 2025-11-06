@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=kms
 Group=kms
-ExecStart=/usr/local/bin/progressdb-kms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms
+ExecStart=/usr/local/bin/prgkms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms
 LimitMEMLOCK=infinity
 NoNewPrivileges=yes
 PrivateTmp=yes
