@@ -82,6 +82,7 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 			"handler", newOp.Handler,
 			"capacity", q.capacity,
 			"dropped_count", dropped,
+			"in_flight", atomic.LoadInt64(&q.inFlight),
 			"enq_seq", newOp.EnqSeq)
 		it.JobDone()
 		return ErrQueueFull

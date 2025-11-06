@@ -2,7 +2,7 @@ server:
   address: "0.0.0.0"
   port: 8080
   db_path: "./database"
-  max_payload_size: "200KB"
+  max_payload_size: "100KB"
   cors:
     allowed_origins:
       - "http://localhost:3000"
@@ -29,7 +29,7 @@ retention:
 
 ingest:
   intake:
-    queue_capacity: 10
+    queue_capacity: 10_000
     shutdown_poll_interval: 5ms
     wal:
       enabled: true
@@ -38,11 +38,10 @@ ingest:
       temp_idx_enabled: true
   compute:
     worker_count: 24
-    buffer_capacity: 100_000
+    buffer_capacity: 10_000
   apply:
      batch_count: 1_000
-     batch_timeout: 2ms
-     fsync_after_batch: true
+     batch_timeout: 1s
 
 telemetry:
   sample_rate: 0.001

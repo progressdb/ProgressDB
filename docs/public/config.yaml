@@ -48,9 +48,8 @@ ingest:
     worker_count: 64
     buffer_capacity: 100_000
   apply:
-     batch_count: 1_000
-     batch_timeout: 1s
-     fsync_after_batch: true
+      batch_count: 1_000
+      batch_timeout: 1s
 
 telemetry:
   sample_rate: 0.001
