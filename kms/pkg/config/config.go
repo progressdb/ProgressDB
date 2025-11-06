@@ -14,7 +14,7 @@ type Config struct {
 }
 
 type KMSConfig struct {
-	DBPath        string `yaml:"db_path,default=/kms"`
+	DBPath        string `yaml:"db_path"`
 	MasterKeyFile string `yaml:"master_key_file"`
 	MasterKeyHex  string `yaml:"master_key_hex"`
 }

@@ -5,8 +5,8 @@
 FROM golang:1.21 AS builder
 WORKDIR /src
 
-# Copy only the server module into the build context to ensure go.mod is present
-COPY server /src/service
+# Copy only the service module into the build context to ensure go.mod is present
+COPY service /src/service
 WORKDIR /src/service
 ARG VERSION=dev
 ARG COMMIT=none
@@ -38,4 +38,4 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
   CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/progressdb"]
-CMD ["--db", "/data/progressdb"]
+CMD ["--config", "/data/config.yaml"]

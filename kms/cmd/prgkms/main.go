@@ -31,17 +31,21 @@ func main() {
 	}
 
 	// Initialize store
+	log.Printf("Initializing KMS store at: %s", cfg.KMS.DBPath)
 	st, err := store.New(cfg.KMS.DBPath)
 	if err != nil {
 		log.Fatalf("failed to create store: %v", err)
 	}
+	log.Printf("KMS store initialized successfully")
 	defer st.Close()
 
 	// Initialize KMS
+	log.Printf("Initializing KMS with master key...")
 	kmsInstance, err := kms.New(context.Background(), st, masterKey)
 	if err != nil {
 		log.Fatalf("failed to create KMS: %v", err)
 	}
+	log.Printf("KMS initialized successfully")
 
 	// Create and start HTTP server
 	server := httpserver.NewServer(kmsInstance, *address)

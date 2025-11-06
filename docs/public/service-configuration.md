@@ -48,7 +48,7 @@ encryption:
     mode: "external"     # embedded | external
     endpoint: "127.0.0.1:6820"
     data_dir: "./kms-data"
-    binary: "/usr/local/bin/progressdb-kms"
+    binary: "/usr/local/bin/prgkms"
     master_key_file: ""   # embedded mode only
     master_key_hex: ""    # alternative to file (embedded only)
 

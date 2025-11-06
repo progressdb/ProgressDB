@@ -3,7 +3,6 @@ package tests
 import (
 	"encoding/json"
 	"testing"
-	"time"
 )
 
 func TestAuthentication_Suite(t *testing.T) {
@@ -35,10 +34,6 @@ func TestAuthentication_Suite(t *testing.T) {
 			t.Fatalf("expected frontend key to be forbidden for admin endpoints; got 200")
 		}
 	})
-
-	time.Sleep(100 * time.Millisecond)
-
-	time.Sleep(100 * time.Millisecond)
 
 	t.Run("BackendKeyScope", func(t *testing.T) {
 		// Test that backend key can call sign endpoint

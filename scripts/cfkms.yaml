@@ -1,0 +1,20 @@
+# KMS Configuration File
+# Usage: ./scripts/kms
+
+kms:
+  # Data directory for KMS storage
+  db_path: "/tmp/kms-data"
+  
+  # Master key configuration - choose ONE of these options:
+  
+  # Option 1: Load master key from file (hex encoded)
+  # master_key_file: "./master-key.hex"
+  
+  # Option 2: Master key as hex string (for development/testing only)
+  # Generate with: openssl rand -hex 32
+  master_key_hex: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
+# Environment variables can also be used:
+# KMS_DATA_DIR - overrides db_path
+# KMS_MASTER_KEY_FILE - overrides master_key_file  
+# KMS_MASTER_KEY_HEX - overrides master_key_hex

@@ -18,10 +18,10 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
-  - id: kmsd
+  - id: prgkms
     dir: ./kms
-    main: ./cmd/progressdb-kms
-    binary: progressdb-kms
+    main: ./cmd/prgkms
+    binary: prgkms
     goos:
       - linux
       - darwin

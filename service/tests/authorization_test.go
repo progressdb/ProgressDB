@@ -48,21 +48,28 @@ func TestAuthorization_Suite(t *testing.T) {
 		body := map[string]string{"userId": "test-user"}
 		jsonBody, _ := json.Marshal(body)
 
-		// Make multiple requests quickly
-		for i := 0; i < 10; i++ {
+		// Make multiple requests quickly to potentially trigger rate limiting
+		rateLimited := false
+		for i := 0; i < 20; i++ {
 			res, err := DoRequest(t, "POST", EndpointBackendSign, jsonBody, AuthHeaders(TestBackendKey))
 			if err != nil {
 				t.Fatalf("request %d failed: %v", i, err)
 			}
-			res.Body.Close()
 
-			// If we get rate limited, that's expected behavior
 			if res.StatusCode == 429 {
-				return // Test passed
+				rateLimited = true
+				res.Body.Close()
+				break
 			}
+			res.Body.Close()
 		}
 
-		// If we get here, rate limiting might not be working
-		t.Logf("Warning: No rate limiting detected in 10 requests")
+		// Note: Rate limiting behavior depends on configuration
+		// This test documents the behavior rather than enforcing it
+		if rateLimited {
+			t.Logf("Rate limiting detected as expected")
+		} else {
+			t.Logf("Rate limiting not triggered (may be disabled or high limits)")
+		}
 	})
 }

@@ -63,7 +63,7 @@ encryption:
   enabled: true
   fields: ["body.content"]
   kms:
-    mode: "embedded"
+    mode: "external"
     endpoint: "127.0.0.1:6820"
     master_key_file: ""
     master_key_hex: "d899a1b62c16e8a97f804f8c317c8c09eb758d2e231a4faf63dc882bc5f5ec3f"
