@@ -137,7 +137,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"INTAKE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_INTAKE_WAL_SEGMENT_SIZE"),
 		// recovery
 		"INTAKE_RECOVERY_ENABLED":          os.Getenv("PROGRESSDB_INTAKE_RECOVERY_ENABLED"),
-		"INTAKE_RECOVERY_WAL_ENABLED":      os.Getenv("PROGRESSDB_INTAKE_RECOVERY_WAL_ENABLED"),
 		"INTAKE_RECOVERY_TEMP_IDX_ENABLED": os.Getenv("PROGRESSDB_INTAKE_RECOVERY_TEMP_IDX_ENABLED"),
 		// compute
 		"COMPUTE_WORKER_COUNT":    os.Getenv("PROGRESSDB_COMPUTE_WORKER_COUNT"),
@@ -402,9 +401,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	// recovery env overrides
 	if v := envs["INTAKE_RECOVERY_ENABLED"]; v != "" {
 		envCfg.Ingest.Intake.Recovery.Enabled = parseBool(v, true)
-	}
-	if v := envs["INTAKE_RECOVERY_WAL_ENABLED"]; v != "" {
-		envCfg.Ingest.Intake.Recovery.WALEnabled = parseBool(v, true)
 	}
 	if v := envs["INTAKE_RECOVERY_TEMP_IDX_ENABLED"]; v != "" {
 		envCfg.Ingest.Intake.Recovery.TempIdxEnabled = parseBool(v, true)

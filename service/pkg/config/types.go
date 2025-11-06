@@ -131,7 +131,6 @@ type WALConfig struct {
 // RecoveryConfig controls crash recovery behavior.
 type RecoveryConfig struct {
 	Enabled        bool `yaml:"enabled,default=true"`
-	WALEnabled     bool `yaml:"wal_enabled,default=true"`
 	TempIdxEnabled bool `yaml:"temp_index_enabled,default=true"`
 }
 

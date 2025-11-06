@@ -23,6 +23,8 @@ type exitRequest struct {
 }
 
 func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
+	// Log to console immediately
+	logger.Error("CRASH_DUMP", "context", contextMsg, "error", err)
 
 	if dbPath == "" {
 		dbPath = config.ParseConfigFlags().DB
@@ -51,6 +53,9 @@ func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
 }
 
 func AbortWithDiagnostics(dbPath, reason string, err error) (string, string, error) {
+	// Log to console immediately
+	logger.Error("CRASH_DUMP", "reason", reason, "error", err)
+
 	crashDir := "./crash"
 	abortDir := "./abort"
 	if dbPath != "" {

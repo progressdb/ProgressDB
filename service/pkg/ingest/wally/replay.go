@@ -8,6 +8,7 @@ import (
 
 	"progressdb/pkg/config"
 	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	indexdb "progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
@@ -120,6 +121,13 @@ func (r *WALReplayer) recoverWAL(stats *ReplayStats) {
 		var op types.QueueOp
 		if err := json.Unmarshal(data, &op); err != nil {
 			logger.Error("wal_replay_unmarshal_error", "index", i, "error", err)
+			stats.WALErrors++
+			continue
+		}
+
+		// Fix payload type based on handler
+		if err := r.convertPayloadToType(&op); err != nil {
+			logger.Error("wal_replay_payload_fix_error", "index", i, "handler", op.Handler, "error", err)
 			stats.WALErrors++
 			continue
 		}
@@ -247,6 +255,59 @@ func (r *WALReplayer) cleanupTempKeys(tempKeys []string) error {
 	return storedb.Client.Apply(mainBatch, nil)
 }
 
+func (r *WALReplayer) convertPayloadToType(op *types.QueueOp) error {
+	if op.Payload == nil {
+		return nil
+	}
+
+	// Convert map[string]interface{} to JSON then to proper struct
+	payloadMap, ok := op.Payload.(map[string]interface{})
+	if !ok {
+		// Already proper type, nothing to fix
+		return nil
+	}
+
+	payloadJSON, err := json.Marshal(payloadMap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload map: %w", err)
+	}
+
+	switch op.Handler {
+	case types.HandlerMessageCreate, types.HandlerMessageUpdate:
+		var msg models.Message
+		if err := json.Unmarshal(payloadJSON, &msg); err != nil {
+			return fmt.Errorf("failed to unmarshal payload as Message: %w", err)
+		}
+		op.Payload = &msg
+
+	case types.HandlerMessageDelete:
+		var msg models.MessageDeletePartial
+		if err := json.Unmarshal(payloadJSON, &msg); err != nil {
+			return fmt.Errorf("failed to unmarshal payload as MessageDeletePartial: %w", err)
+		}
+		op.Payload = &msg
+
+	case types.HandlerThreadCreate, types.HandlerThreadUpdate:
+		var thread models.Thread
+		if err := json.Unmarshal(payloadJSON, &thread); err != nil {
+			return fmt.Errorf("failed to unmarshal payload as Thread: %w", err)
+		}
+		op.Payload = &thread
+
+	case types.HandlerThreadDelete:
+		var thread models.ThreadDeletePartial
+		if err := json.Unmarshal(payloadJSON, &thread); err != nil {
+			return fmt.Errorf("failed to unmarshal payload as ThreadDeletePartial: %w", err)
+		}
+		op.Payload = &thread
+
+	default:
+		return fmt.Errorf("unknown handler type: %s", op.Handler)
+	}
+
+	return nil
+}
+
 func InitWALReplay(q IngestQueue) {
 	cfg := config.GetConfig()
 	recoveryConfig := cfg.Ingest.Intake.Recovery
@@ -255,7 +316,7 @@ func InitWALReplay(q IngestQueue) {
 	globalWALReplayer = NewWALReplayer(
 		q,
 		recoveryConfig.Enabled,
-		recoveryConfig.WALEnabled && intakeWALEnabled,
+		intakeWALEnabled,
 		recoveryConfig.TempIdxEnabled,
 	)
 }

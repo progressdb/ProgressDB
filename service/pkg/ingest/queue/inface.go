@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/state/logger"
 )
 
 // TODO: queue full - drop strategy
@@ -76,7 +77,12 @@ func (q *IngestQueue) enqueue(op *types.QueueOp) error {
 		atomic.AddInt64(&q.inFlight, 1)
 		return nil
 	default:
-		atomic.AddUint64(&q.dropped, 1)
+		dropped := atomic.AddUint64(&q.dropped, 1)
+		logger.Warn("ingest_queue_full",
+			"handler", newOp.Handler,
+			"capacity", q.capacity,
+			"dropped_count", dropped,
+			"enq_seq", newOp.EnqSeq)
 		it.JobDone()
 		return ErrQueueFull
 	}
@@ -113,7 +119,12 @@ func (q *IngestQueue) enqueueReplay(op *types.QueueOp) error {
 		atomic.AddInt64(&q.inFlight, 1)
 		return nil
 	default:
-		atomic.AddUint64(&q.dropped, 1)
+		dropped := atomic.AddUint64(&q.dropped, 1)
+		logger.Warn("ingest_queue_full_replay",
+			"handler", newOp.Handler,
+			"capacity", q.capacity,
+			"dropped_count", dropped,
+			"enq_seq", newOp.EnqSeq)
 		it.JobDone()
 		return ErrQueueFull
 	}
