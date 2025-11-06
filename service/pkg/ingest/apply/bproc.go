@@ -363,6 +363,21 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("thread key required for message deletion")
 	}
 
+	// check access
+	hasOwnership, err := batchProcessor.Index.DoesUserOwnThread(author, finalThreadKey)
+	if err != nil {
+		return fmt.Errorf("failed to check thread ownership: %w", err)
+	}
+
+	hasParticipation, err := batchProcessor.Index.DoesThreadHaveUser(finalThreadKey, author)
+	if err != nil {
+		return fmt.Errorf("failed to check thread participation: %w", err)
+	}
+
+	if !hasOwnership && !hasParticipation {
+		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, finalThreadKey)
+	}
+
 	var msg models.Message
 	if entry.Payload != nil {
 		if m, ok := entry.Payload.(*models.Message); ok {

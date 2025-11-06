@@ -59,6 +59,24 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// check access via ownership or participation
+	hasOwnership, err := indexdb.DoesUserOwnThread(author, threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread ownership: %v", err))
+		return
+	}
+
+	hasParticipation, err := indexdb.DoesThreadHaveUser(threadKey, author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread participation: %v", err))
+		return
+	}
+
+	if !hasOwnership && !hasParticipation {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		return
+	}
+
 	thread, validationErr := router.ValidateReadThread(threadKey, author, true)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
@@ -78,6 +96,25 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	if !valid {
 		return
 	}
+
+	// check access via ownership or participation
+	hasOwnership, err := indexdb.DoesUserOwnThread(author, threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread ownership: %v", err))
+		return
+	}
+
+	hasParticipation, err := indexdb.DoesThreadHaveUser(threadKey, author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread participation: %v", err))
+		return
+	}
+
+	if !hasOwnership && !hasParticipation {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		return
+	}
+
 	_, validationErr := router.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
@@ -130,13 +167,32 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 
 	threadKey := router.PathParam(ctx, "threadKey")
 
+	// check access via ownership or participation
+	hasOwnership, err := indexdb.DoesUserOwnThread(author, threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread ownership: %v", err))
+		return
+	}
+
+	hasParticipation, err := indexdb.DoesThreadHaveUser(threadKey, author)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread participation: %v", err))
+		return
+	}
+
+	if !hasOwnership && !hasParticipation {
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		return
+	}
+
 	_, validationErr := router.ValidateReadThread(threadKey, author, false)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
 		return
 	}
 
-	message, validationErr := router.ValidateReadMessage(messageKey, author, true)
+	// For individual message access, allow thread participants to read any message in the thread
+	message, validationErr := router.ValidateReadMessage(messageKey, author, false)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
 		return
