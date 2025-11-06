@@ -19,20 +19,20 @@ server:
     signing: ["sign_example"]
 
 logging:
-  level: "info"
+  level: "debug"
 
 retention:
   enabled: true
-  cron: "*/1 * * * *"  # Run every 1 minute
-  mttl: 30s  # Messages deleted after 30 seconds
-  tttl: 30s  # Threads deleted after 10 minutes
+  cron: "0 2 28-31 * *"  # Run at 2am on possible end-of-month days
+  mttl: 30d  # Messages deleted after 30 days - since their delete
+  tttl: 30d  # Threads deleted after 30 days - since their delete
 
 ingest:
   intake:
     queue_capacity: 200_000
     shutdown_poll_interval: 5ms
     wal:
-      enabled: false
+      enabled: true
     recovery:
       enabled: true
       temp_idx_enabled: true
