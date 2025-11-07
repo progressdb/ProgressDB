@@ -61,9 +61,9 @@ sensor:
 
 encryption:
   enabled: true
-  fields: ["body.content"]
+  fields: ["body"]
   kms:
-    mode: "external"
+    mode: "embedded"
     endpoint: "127.0.0.1:6820"
     master_key_file: ""
-    master_key_hex: "d899a1b62c16e8a97f804f8c317c8c09eb758d2e231a4faf63dc882bc5f5ec3f"
+    master_key_hex: "b748dbd094c8da033bb830f52963c051f2c41387c27c89bcf507736da944f337"
