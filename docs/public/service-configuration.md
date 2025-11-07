@@ -114,7 +114,7 @@ Configuration reference (option → explanation → env var)
   - Note: full-message encryption vs field-level: configuration defines behavior; see `service/docs/encryption.md`.
 
 - `encryption.kms.mode` (embedded|external)
-  - What it does: selects the KMS provider mode. `embedded` runs an in-process KMS (dev/test). `external` makes HTTP calls to a separate `progressdb-kms` service (recommended for production).
+  - What it does: selects the KMS provider mode. `embedded` runs an in-process KMS (dev/test). `external` makes HTTP calls to a separate `prgkms` service (recommended for production).
   - Env var: `PROGRESSDB_KMS_MODE`.
 
 - `encryption.kms.endpoint`
@@ -150,5 +150,5 @@ Command-line flags (common)
 Notes & best practices
 
 - Do not store long-lived backend API keys in plaintext in `config.yaml` on production hosts — use a secret files/manager and inject keys via environment variables or your orchestration secrets mechanism.
-- Prefer `security.kms.mode: external` in production and run `progressdb-kms` on a separate host with strict access controls.
+- Prefer `security.kms.mode: external` in production and run `prgkms` on a separate host with strict access controls.
 - Always snapshot the DB path before performing upgrades or KMS rewrap operations.

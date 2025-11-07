@@ -92,8 +92,8 @@ dockers:
 
   - id: dockerhub_kmsd_amd64
     image_templates:
-      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-amd64"
-      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-amd64"
+      - "docker.io/progressdb/prgkms:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/prgkms:{{ .Version }}-amd64"
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -116,8 +116,8 @@ dockers:
 
   - id: dockerhub_kmsd_arm64
     image_templates:
-      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-arm64"
-      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-arm64"
+      - "docker.io/progressdb/prgkms:{{ .Tag }}-arm64"
+      - "docker.io/progressdb/prgkms:{{ .Version }}-arm64"
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -136,11 +136,11 @@ docker_manifests:
       - "docker.io/progressdb/progressdb:{{ .Version }}-amd64"
       - "docker.io/progressdb/progressdb:{{ .Version }}-arm64"
 
-  - name_template: "docker.io/progressdb/kmsd:{{ .Tag }}"
+  - name_template: "docker.io/progressdb/prgkms:{{ .Tag }}"
     image_templates:
-      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-amd64"
-      - "docker.io/progressdb/progressdb-kms:{{ .Tag }}-arm64"
-  - name_template: "docker.io/progressdb/kmsd:{{ .Version }}"
+      - "docker.io/progressdb/prgkms:{{ .Tag }}-amd64"
+      - "docker.io/progressdb/prgkms:{{ .Tag }}-arm64"
+  - name_template: "docker.io/progressdb/prgkms:{{ .Version }}"
     image_templates:
-      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-amd64"
-      - "docker.io/progressdb/progressdb-kms:{{ .Version }}-arm64"
+      - "docker.io/progressdb/prgkms:{{ .Version }}-amd64"
+      - "docker.io/progressdb/prgkms:{{ .Version }}-arm64"

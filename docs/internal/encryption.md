@@ -6,7 +6,7 @@ This document explains the current server KMS/encryption design, runtime flows, 
 -----------------
 - Purpose: keep raw DEKs out of the main server process, provision per-thread DEKs, and perform encryption/decryption via a KMS provider.
 - Modes:
-  - External KMS: separate `progressdb-kms` process; server talks to it via HTTP (UDS or TCP).
+  - External KMS: separate `prgkms` process; server talks to it via HTTP (UDS or TCP).
   - Embedded/dev provider: in-process provider used for development or tests (master key in memory).
 
 2) Canonical storage

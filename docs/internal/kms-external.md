@@ -1,24 +1,24 @@
 # KMS Installation & Spawn Guide
 
-This document explains how to install the ProgressDB KMS binary and how the server spawns and connects to it. The KMS is implemented as a Go module and includes a small CLI at `cmd/progressdb-kms` so it can be installed as a standalone binary and launched as a separate process.
+This document explains how to install the ProgressDB KMS binary and how the server spawns and connects to it. The KMS is implemented as a Go module and includes a small CLI at `cmd/prgkms` so it can be installed as a standalone binary and launched as a separate process.
 
 **Install:**
-- **Go (recommended / development):** build the CLI locally and name the binary `progressdb-kms`:
+- **Go (recommended / development):** build the CLI locally and name the binary `prgkms`:
 
   ```sh
   cd kms
-  go build -o ../bin/progressdb-kms ./cmd/progressdb-kms
+  go build -o ../bin/prgkms ./cmd/prgkms
   ```
 
-  Alternatively use Goreleaser or your packaging tool to produce `progressdb-kms` as a release artifact.
+  Alternatively use Goreleaser or your packaging tool to produce `prgkms` as a release artifact.
 - **Release binary:** download the prebuilt `kms` artifact from the project releases and place it in `/usr/local/bin` (or another path in `PATH`).
 
 **Service / process model**
 
 - Embedded: the server includes an embedded KMS provider and, when `PROGRESSDB_KMS_MODE=embedded`, performs KMS operations in-process using the embedded library.
- - External: the server expects an external `progressdb-kms` process to be running and configured; when `PROGRESSDB_KMS_MODE=external` the server connects to the configured endpoint (HTTP host:port) to delegate KMS operations.
+ - External: the server expects an external `prgkms` process to be running and configured; when `PROGRESSDB_KMS_MODE=external` the server connects to the configured endpoint (HTTP host:port) to delegate KMS operations.
 
-The server does not automatically spawn `progressdb-kms` by default. Operators who prefer the server to manage a child `progressdb-kms` process may implement that supervision externally (systemd, container runtime, or wrapper scripts). For external mode, ensure a `progressdb-kms` binary is available (install via `go install github.com/progressdb/kms/cmd/progressdb-kms@latest` or from releases) and start it before starting the server.
+The server does not automatically spawn `prgkms` by default. Operators who prefer the server to manage a child `prgkms` process may implement that supervision externally (systemd, container runtime, or wrapper scripts). For external mode, ensure a `prgkms` binary is available (install via `go install github.com/progressdb/kms/cmd/prgkms@latest` or from releases) and start it before starting the server.
 
 **Environment & configuration**
 - `PROGRESSDB_USE_ENCRYPTION`: `true|1|yes` to enable encryption features in the server.
@@ -28,7 +28,7 @@ The server does not automatically spawn `progressdb-kms` by default. Operators w
 - Server config keys: `security.kms.master_key_hex` or `security.kms.master_key_file` — supply a master KEK for the KMS to use on startup. If not provided, KMS will generate an ephemeral master key (dev only).
 
 **Systemd example**
-Copy the `progressdb-kms` binary to `/usr/local/bin/progressdb-kms` (or install via `go install`) and create a systemd unit similar to the example below (a `progressdb-kms.service` example is included in the repo under the `kms/` directory):
+Copy the `prgkms` binary to `/usr/local/bin/prgkms` (or install via `go install`) and create a systemd unit similar to the example below (a `prgkms.service` example is included in the repo under the `kms/` directory):
 
 ```
 [Unit]
@@ -39,7 +39,7 @@ After=network.target
 Type=simple
 User=progressdb
 Group=progressdb
-ExecStart=/usr/local/bin/progressdb-kms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
+ExecStart=/usr/local/bin/prgkms --endpoint 127.0.0.1:6820 --data-dir /var/lib/progressdb/kms --config /etc/progressdb/kms-config.yaml
 Restart=on-failure
 RestartSec=5
 
@@ -51,7 +51,7 @@ Ensure directories used by the KMS have restrictive permissions (e.g. `/var/lib/
 
 **Operational notes**
  - Authorization: protect the KMS HTTP endpoint using network-level controls (firewall / service mesh) or transport auth (mTLS, tokens). The server should not be relied upon to supply the master key in external mode.
- - Upgrade & install: tag a git release for the `github.com/progressdb/kms` module and use your release artifacts (or `go build -o`) to produce `progressdb-kms` for installation.
+ - Upgrade & install: tag a git release for the `github.com/progressdb/kms` module and use your release artifacts (or `go build -o`) to produce `prgkms` for installation.
 - Local development: the server includes a `replace` directive in its `go.mod` pointing to `../kms` for local testing. For production deployments, remove the `replace` and depend on published releases.
 
 **Troubleshooting**

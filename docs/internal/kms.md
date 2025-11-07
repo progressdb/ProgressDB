@@ -6,7 +6,7 @@ This document explains the current KMS design used by the server: architecture, 
 ---------------
 - Purpose: manage master KEK, create/unwrap per-thread DEKs, and perform encrypt/decrypt operations so the server does not handle raw DEKs.
 - Modes:
-  - External KMS: separate binary `progressdb-kms` that exposes HTTP endpoints (over Unix Domain Socket or TCP). Recommended for production.
+  - External KMS: separate binary `prgkms` that exposes HTTP endpoints (over Unix Domain Socket or TCP). Recommended for production.
   - Embedded/local provider: in-process provider used for development and tests (server holds master key in memory).
 - The server interacts with KMS through a pluggable provider interface (`server/pkg/kms` + `server/pkg/security` bridge). The remote client adapts provider calls to HTTP endpoints.
 
