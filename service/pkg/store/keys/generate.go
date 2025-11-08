@@ -26,8 +26,8 @@ func GenMessageKey(threadTS, messageTS string, seq uint64) string {
 	return fmt.Sprintf(MessageKey, threadTS, messageTS, PadSeq(seq))
 }
 
-func GenVersionKey(messageTS string, ts int64, seq uint64) string {
-	return fmt.Sprintf(VersionKey, messageTS, PadTS(ts), PadSeq(seq))
+func GenMessageVersionKey(messageKey string, ts int64, versionSeq uint64) string {
+	return fmt.Sprintf(VersionKey, messageKey, PadTS(ts), PadSeq(versionSeq))
 }
 
 func GenThreadKey(threadTS string) string {
@@ -79,50 +79,6 @@ func GenThreadMessageLU(threadTS string) string {
 		threadTS = parsed.ThreadTS
 	}
 	return fmt.Sprintf(ThreadMessageLU, threadTS)
-}
-
-// versioning
-func GenThreadVersionStart(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionStart, threadTS, messageTS)
-}
-func GenThreadVersionEnd(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionEnd, threadTS, messageTS)
-}
-func GenThreadVersionCDeltas(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionCDeltas, threadTS, messageTS)
-}
-func GenThreadVersionUDeltas(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionUDeltas, threadTS, messageTS)
-}
-func GenThreadVersionSkips(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionSkips, threadTS, messageTS)
-}
-func GenThreadVersionLC(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionLC, threadTS, messageTS)
-}
-func GenThreadVersionLU(threadTS, messageTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadVersionLU, threadTS, messageTS)
 }
 
 // deletes

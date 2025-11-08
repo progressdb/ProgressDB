@@ -1,0 +1,17 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+  db_path: ./migrated_db
+  api_keys:
+    backend: ["test_backend_key"]
+    frontend: ["test_frontend_key"]
+    admin: ["test_admin_key"]
+    signing: ["test_signing_key"]
+  rate_limit:
+    rps: 0
+    burst: 0
+encryption:
+  kms:
+    master_key_hex: "0000000000000000000000000000000000000000000000000000000000000000"
+logging:
+  level: debug

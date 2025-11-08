@@ -339,7 +339,7 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("failed to parse message sequence from key %s: %w", finalMessageKey, err)
 	}
 
-	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, messageSeq)
+	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
 	if err := batchProcessor.Data.SetVersionKey(versionKey, &msg); err != nil {
 		return fmt.Errorf("set version key: %w", err)
 	}
@@ -416,7 +416,7 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	if err != nil {
 		return fmt.Errorf("failed to parse message sequence from key %s: %w", finalMessageKey, err)
 	}
-	versionKey := keys.GenVersionKey(finalMessageKey, entry.TS, messageSeq)
+	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
 	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
 		return fmt.Errorf("set version key: %w", err)
 	}

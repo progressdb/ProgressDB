@@ -111,5 +111,4 @@ ProgressDB.code-workspace
 
 
 /kms/kmsdb
-/uploads
-/service_0.1.2
+/migrations

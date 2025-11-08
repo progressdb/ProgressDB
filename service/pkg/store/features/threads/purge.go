@@ -79,10 +79,6 @@ func deleteAllMessagesInThread(threadKey string) error {
 			value := iter.Value()
 			var m models.Message
 			if err := json.Unmarshal(value, &m); err == nil && m.Key != "" {
-				// Delete version indexes for this message
-				if err := indexdb.DeleteVersionIndexes(threadKey, m.Key); err != nil {
-					logger.Error("delete_version_indexes_failed", "thread", threadKey, "message", m.Key, "error", err)
-				}
 
 				versionPrefix, err := keys.GenAllMessageVersionsPrefix(m.Key)
 				if err != nil {
