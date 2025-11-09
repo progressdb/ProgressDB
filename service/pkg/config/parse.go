@@ -95,19 +95,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"KMS_MASTER_KEY_HEX":  os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
 		"ENCRYPTION_ENABLED":  os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"),
 
-		// data retentioon feature
-		"RETENTION_ENABLED":        os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
-		"RETENTION_CRON":           os.Getenv("PROGRESSDB_RETENTION_CRON"),
-		"RETENTION_MTTL":           os.Getenv("PROGRESSDB_RETENTION_MTTL"),
-		"RETENTION_TTTL":           os.Getenv("PROGRESSDB_RETENTION_TTTL"),
-		"RETENTION_PERIOD":         os.Getenv("PROGRESSDB_RETENTION_PERIOD"),
-		"RETENTION_BATCH_SIZE":     os.Getenv("PROGRESSDB_RETENTION_BATCH_SIZE"),
-		"RETENTION_BATCH_SLEEP_MS": os.Getenv("PROGRESSDB_RETENTION_BATCH_SLEEP_MS"),
-		"RETENTION_DRY_RUN":        os.Getenv("PROGRESSDB_RETENTION_DRY_RUN"),
-		"RETENTION_MIN_PERIOD":     os.Getenv("PROGRESSDB_RETENTION_MIN_PERIOD"),
-
-		// retention lock TTL
-		"RETENTION_LOCK_TTL": os.Getenv("PROGRESSDB_RETENTION_LOCK_TTL"),
+		// data retention feature
+		"RETENTION_ENABLED": os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
+		"RETENTION_CRON":    os.Getenv("PROGRESSDB_RETENTION_CRON"),
+		"RETENTION_MTTL":    os.Getenv("PROGRESSDB_RETENTION_MTTL"),
+		"RETENTION_TTTL":    os.Getenv("PROGRESSDB_RETENTION_TTTL"),
 
 		// telemetry
 		"TELEMETRY_BUFFER_SIZE":    os.Getenv("PROGRESSDB_TELEMETRY_BUFFER_SIZE"),
@@ -126,7 +118,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
 
 		// intake
-		"INTAKE_BUFFER_CAPACITY":        os.Getenv("PROGRESSDB_INTAKE_BUFFER_CAPACITY"),
+		"INTAKE_QUEUE_CAPACITY":         os.Getenv("PROGRESSDB_INTAKE_QUEUE_CAPACITY"),
 		"INTAKE_SHUTDOWN_POLL_INTERVAL": os.Getenv("PROGRESSDB_INTAKE_SHUTDOWN_POLL_INTERVAL"),
 		"INTAKE_WAL_ENABLED":            os.Getenv("PROGRESSDB_INTAKE_WAL_ENABLED"),
 		"INTAKE_WAL_SEGMENT_SIZE":       os.Getenv("PROGRESSDB_INTAKE_WAL_SEGMENT_SIZE"),
@@ -281,7 +273,7 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["KMS_ENDPOINT"]; v != "" {
 		envCfg.Encryption.KMS.Endpoint = v
 	}
-	if v := envs["KMS_DB_PATH"]; v != "" {
+	if v := envs["KMS_DATA_DIR"]; v != "" {
 		envCfg.Encryption.KMS.DBPath = v
 	}
 	if v := envs["KMS_MASTER_KEY_FILE"]; v != "" {
