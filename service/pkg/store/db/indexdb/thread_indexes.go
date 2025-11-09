@@ -10,13 +10,10 @@ import (
 )
 
 type ThreadMessageIndexes struct {
-	Start         uint64   `json:"start"`
-	End           uint64   `json:"end"`
-	Cdeltas       []int64  `json:"cdeltas"`
-	Udeltas       []int64  `json:"udeltas"`
-	Skips         []string `json:"skips"`
-	LastCreatedAt int64    `json:"last_created_at"`
-	LastUpdatedAt int64    `json:"last_updated_at"`
+	Start         uint64 `json:"start"`
+	End           uint64 `json:"end"`
+	LastCreatedAt int64  `json:"last_created_at"`
+	LastUpdatedAt int64  `json:"last_updated_at"`
 }
 
 func InitThreadMessageIndexes(threadKey string) error {
@@ -26,9 +23,6 @@ func InitThreadMessageIndexes(threadKey string) error {
 	indexes := ThreadMessageIndexes{
 		Start:         0,
 		End:           0,
-		Cdeltas:       []int64{},
-		Udeltas:       []int64{},
-		Skips:         []string{},
 		LastCreatedAt: 0,
 		LastUpdatedAt: 0,
 	}
@@ -40,7 +34,7 @@ func DeleteThreadMessageIndexes(threadKey string) error {
 	tr := telemetry.Track("indexdb.delete_thread_message_indexes")
 	defer tr.Finish()
 
-	suffixes := []string{"start", "end", "cdeltas", "udeltas", "skips"}
+	suffixes := []string{"start", "end"}
 	for _, suffix := range suffixes {
 		var key string
 		switch suffix {
@@ -48,12 +42,6 @@ func DeleteThreadMessageIndexes(threadKey string) error {
 			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
 			key = keys.GenThreadMessageEnd(threadKey)
-		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadKey)
-		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadKey)
-		case "skips":
-			key = keys.GenThreadMessageSkips(threadKey)
 		}
 		if err := DeleteKey(key); err != nil {
 			logger.Error("delete_thread_message_index_failed", "key", key, "error", err)
@@ -70,12 +58,6 @@ func GetThreadIndexData(threadKey, suffix string) (string, error) {
 		key = keys.GenThreadMessageStart(threadKey)
 	case "end":
 		key = keys.GenThreadMessageEnd(threadKey)
-	case "cdeltas":
-		key = keys.GenThreadMessageCDeltas(threadKey)
-	case "udeltas":
-		key = keys.GenThreadMessageUDeltas(threadKey)
-	case "skips":
-		key = keys.GenThreadMessageSkips(threadKey)
 	case "last_created_at":
 		key = keys.GenThreadMessageLC(threadKey)
 	case "last_updated_at":
@@ -92,9 +74,6 @@ func GetThreadMessageIndexData(threadKey string) (ThreadMessageIndexes, error) {
 	fields := map[string]interface{}{
 		"start":           &indexes.Start,
 		"end":             &indexes.End,
-		"cdeltas":         &indexes.Cdeltas,
-		"udeltas":         &indexes.Udeltas,
-		"skips":           &indexes.Skips,
 		"last_created_at": &indexes.LastCreatedAt,
 		"last_updated_at": &indexes.LastUpdatedAt,
 	}
@@ -106,12 +85,6 @@ func GetThreadMessageIndexData(threadKey string) (ThreadMessageIndexes, error) {
 			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
 			key = keys.GenThreadMessageEnd(threadKey)
-		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadKey)
-		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadKey)
-		case "skips":
-			key = keys.GenThreadMessageSkips(threadKey)
 		case "last_created_at":
 			key = keys.GenThreadMessageLC(threadKey)
 		case "last_updated_at":
@@ -138,9 +111,6 @@ func saveIndexes(threadKey string, indexes ThreadMessageIndexes) error {
 	fields := map[string]interface{}{
 		"start":           indexes.Start,
 		"end":             indexes.End,
-		"cdeltas":         indexes.Cdeltas,
-		"udeltas":         indexes.Udeltas,
-		"skips":           indexes.Skips,
 		"last_created_at": indexes.LastCreatedAt,
 		"last_updated_at": indexes.LastUpdatedAt,
 	}
@@ -152,12 +122,6 @@ func saveIndexes(threadKey string, indexes ThreadMessageIndexes) error {
 			key = keys.GenThreadMessageStart(threadKey)
 		case "end":
 			key = keys.GenThreadMessageEnd(threadKey)
-		case "cdeltas":
-			key = keys.GenThreadMessageCDeltas(threadKey)
-		case "udeltas":
-			key = keys.GenThreadMessageUDeltas(threadKey)
-		case "skips":
-			key = keys.GenThreadMessageSkips(threadKey)
 		case "last_created_at":
 			key = keys.GenThreadMessageLC(threadKey)
 		case "last_updated_at":

@@ -24,13 +24,10 @@ const (
 	ThreadKey  = "t:%s"         // t:<threadTS> -> data
 
 	// thread → message indexes
-	ThreadMessageStart   = "idx:t:%s:ms:start"   // idx:t:<thread_key>:ms:start -> seq
-	ThreadMessageEnd     = "idx:t:%s:ms:end"     // idx:t:<thread_key>:ms:end -> seq
-	ThreadMessageCDeltas = "idx:t:%s:ms:cdeltas" // idx:t:<thread_key>:ms:cdeltas -> [deltas]
-	ThreadMessageUDeltas = "idx:t:%s:ms:udeltas" // idx:t:<thread_key>:ms:udeltas -> [deltas]
-	ThreadMessageSkips   = "idx:t:%s:ms:skips"   // idx:t:<thread_key>:ms:skips -> [identifiers]
-	ThreadMessageLC      = "idx:t:%s:ms:lc"      // idx:t:<thread_key>:ms:lc (last created at) -> ts
-	ThreadMessageLU      = "idx:t:%s:ms:lu"      // idx:t:<thread_key>:ms:lu (last updated at) -> ts
+	ThreadMessageStart = "idx:t:%s:ms:start" // idx:t:<thread_key>:ms:start -> seq
+	ThreadMessageEnd   = "idx:t:%s:ms:end"   // idx:t:<thread_key>:ms:end -> seq
+	ThreadMessageLC    = "idx:t:%s:ms:lc"    // idx:t:<thread_key>:ms:lc (last created at) -> ts
+	ThreadMessageLU    = "idx:t:%s:ms:lu"    // idx:t:<thread_key>:ms:lu (last updated at) -> ts
 
 	// soft delete markers
 	SoftDeleteMarker = "del:%s" // del:<original_key> -> key

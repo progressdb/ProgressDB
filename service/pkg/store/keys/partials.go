@@ -159,7 +159,6 @@ func IsIndexKey(key string) bool {
 	}
 	switch parsed.Type {
 	case KeyTypeThreadMessageStart, KeyTypeThreadMessageEnd, KeyTypeThreadMessageLC, KeyTypeThreadMessageLU,
-		KeyTypeThreadMessageCDeltas, KeyTypeThreadMessageUDeltas, KeyTypeThreadMessageSkips,
 		KeyTypeDeletedThreadsIndex, KeyTypeDeletedMessagesIndex:
 		return true
 	default:

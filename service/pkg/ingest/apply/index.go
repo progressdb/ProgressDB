@@ -1,7 +1,6 @@
 package apply
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -48,27 +47,6 @@ func (im *IndexManager) loadThreadIndex(threadKey string) (*indexdb.ThreadMessag
 		}
 	}
 
-	// Load Cdeltas
-	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageCDeltas(threadKey)); ok {
-		if err := json.Unmarshal(data, &idx.Cdeltas); err != nil {
-			logger.Error("failed to unmarshal cdeltas", "error", err)
-		}
-	}
-
-	// Load Udeltas
-	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageUDeltas(threadKey)); ok {
-		if err := json.Unmarshal(data, &idx.Udeltas); err != nil {
-			logger.Error("failed to unmarshal udeltas", "error", err)
-		}
-	}
-
-	// Load Skips
-	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageSkips(threadKey)); ok {
-		if err := json.Unmarshal(data, &idx.Skips); err != nil {
-			logger.Error("failed to unmarshal skips", "error", err)
-		}
-	}
-
 	// Load LastCreatedAt
 	if data, ok := im.kv.GetIndexKV(keys.GenThreadMessageLC(threadKey)); ok {
 		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
@@ -93,21 +71,6 @@ func (im *IndexManager) saveThreadIndex(threadKey string, idx *indexdb.ThreadMes
 	// Save End
 	im.kv.SetIndexKV(keys.GenThreadMessageEnd(threadKey), []byte(fmt.Sprintf("%d", idx.End)))
 
-	// Save Cdeltas
-	if data, err := json.Marshal(idx.Cdeltas); err == nil {
-		im.kv.SetIndexKV(keys.GenThreadMessageCDeltas(threadKey), data)
-	}
-
-	// Save Udeltas
-	if data, err := json.Marshal(idx.Udeltas); err == nil {
-		im.kv.SetIndexKV(keys.GenThreadMessageUDeltas(threadKey), data)
-	}
-
-	// Save Skips
-	if data, err := json.Marshal(idx.Skips); err == nil {
-		im.kv.SetIndexKV(keys.GenThreadMessageSkips(threadKey), data)
-	}
-
 	// Save LastCreatedAt
 	im.kv.SetIndexKV(keys.GenThreadMessageLC(threadKey), []byte(fmt.Sprintf("%d", idx.LastCreatedAt)))
 
@@ -130,20 +93,12 @@ func (im *IndexManager) UpdateThreadMessageIndexes(threadKey string, message *mo
 		return
 	}
 
-	msgKey := message.Key
 	createdAt := message.CreatedTS
 	updatedAt := message.UpdatedTS
 	isDelete := message.Deleted
 
-	// deletes mean not new
-	if isDelete {
-		idx.Skips = append(idx.Skips, msgKey)
-	} else {
-		createdDelta := createdAt - idx.LastCreatedAt
-		updatedDelta := updatedAt - idx.LastUpdatedAt
-		idx.Cdeltas = append(idx.Cdeltas, createdDelta)
-		idx.Udeltas = append(idx.Udeltas, updatedDelta)
-
+	// Update timestamp indexes
+	if !isDelete {
 		if idx.LastCreatedAt == 0 || createdAt < idx.LastCreatedAt {
 			idx.LastCreatedAt = createdAt
 		}
@@ -170,9 +125,6 @@ func (im *IndexManager) InitializeThreadSequencesFromDB(threadKeys []string) err
 				idx = indexdb.ThreadMessageIndexes{
 					Start:         0,
 					End:           0,
-					Cdeltas:       []int64{},
-					Udeltas:       []int64{},
-					Skips:         []string{},
 					LastCreatedAt: 0,
 					LastUpdatedAt: 0,
 				}

@@ -60,18 +60,6 @@ type ThreadMessageEndParts struct {
 	ThreadKey string
 }
 
-type ThreadMessageCDeltasParts struct {
-	ThreadKey string
-}
-
-type ThreadMessageUDeltasParts struct {
-	ThreadKey string
-}
-
-type ThreadMessageSkipsParts struct {
-	ThreadKey string
-}
-
 func parsePaddedInt(s string, width int) (int64, error) {
 	if len(s) == 0 || len(s) > width {
 		return 0, fmt.Errorf("length invalid: %s", s)
@@ -213,39 +201,6 @@ func ParseThreadMessageEnd(key string) (*ThreadMessageEndParts, error) {
 	return &ThreadMessageEndParts{ThreadKey: parsed.ThreadKey}, nil
 }
 
-func ParseThreadMessageCDeltas(key string) (*ThreadMessageCDeltasParts, error) {
-	parsed, err := ParseKey(key)
-	if err != nil {
-		return nil, err
-	}
-	if parsed.Type != KeyTypeThreadMessageCDeltas {
-		return nil, fmt.Errorf("expected thread message cdeltas key, got %s", parsed.Type)
-	}
-	return &ThreadMessageCDeltasParts{ThreadKey: parsed.ThreadKey}, nil
-}
-
-func ParseThreadMessageUDeltas(key string) (*ThreadMessageUDeltasParts, error) {
-	parsed, err := ParseKey(key)
-	if err != nil {
-		return nil, err
-	}
-	if parsed.Type != KeyTypeThreadMessageUDeltas {
-		return nil, fmt.Errorf("expected thread message udeltas key, got %s", parsed.Type)
-	}
-	return &ThreadMessageUDeltasParts{ThreadKey: parsed.ThreadKey}, nil
-}
-
-func ParseThreadMessageSkips(key string) (*ThreadMessageSkipsParts, error) {
-	parsed, err := ParseKey(key)
-	if err != nil {
-		return nil, err
-	}
-	if parsed.Type != KeyTypeThreadMessageSkips {
-		return nil, fmt.Errorf("expected thread message skips key, got %s", parsed.Type)
-	}
-	return &ThreadMessageSkipsParts{ThreadKey: parsed.ThreadKey}, nil
-}
-
 func ParseThreadMessageLC(key string) (*ThreadMessageLCIndexParts, error) {
 	parsed, err := ParseKey(key)
 	if err != nil {
@@ -335,19 +290,16 @@ func IsProvisionalMessageKey(key string) bool {
 type KeyType string
 
 const (
-	KeyTypeThread               KeyType = "thread"
-	KeyTypeMessage              KeyType = "message"
-	KeyTypeMessageProvisional   KeyType = "message_provisional"
-	KeyTypeVersion              KeyType = "version"
-	KeyTypeUserOwnsThread       KeyType = "user_owns_thread"
-	KeyTypeThreadHasUser        KeyType = "thread_has_user"
-	KeyTypeThreadMessageStart   KeyType = "thread_message_start"
-	KeyTypeThreadMessageEnd     KeyType = "thread_message_end"
-	KeyTypeThreadMessageLC      KeyType = "thread_message_lc"
-	KeyTypeThreadMessageLU      KeyType = "thread_message_lu"
-	KeyTypeThreadMessageCDeltas KeyType = "thread_message_cdeltas"
-	KeyTypeThreadMessageUDeltas KeyType = "thread_message_udeltas"
-	KeyTypeThreadMessageSkips   KeyType = "thread_message_skips"
+	KeyTypeThread             KeyType = "thread"
+	KeyTypeMessage            KeyType = "message"
+	KeyTypeMessageProvisional KeyType = "message_provisional"
+	KeyTypeVersion            KeyType = "version"
+	KeyTypeUserOwnsThread     KeyType = "user_owns_thread"
+	KeyTypeThreadHasUser      KeyType = "thread_has_user"
+	KeyTypeThreadMessageStart KeyType = "thread_message_start"
+	KeyTypeThreadMessageEnd   KeyType = "thread_message_end"
+	KeyTypeThreadMessageLC    KeyType = "thread_message_lc"
+	KeyTypeThreadMessageLU    KeyType = "thread_message_lu"
 
 	KeyTypeDeletedThreadsIndex  KeyType = "deleted_threads_index"
 	KeyTypeDeletedMessagesIndex KeyType = "deleted_messages_index"
@@ -521,12 +473,7 @@ func parseIndexKey(key string, parts []string) (*KeyParts, error) {
 			keyType = KeyTypeThreadMessageLC
 		case "lu":
 			keyType = KeyTypeThreadMessageLU
-		case "cdeltas":
-			keyType = KeyTypeThreadMessageCDeltas
-		case "udeltas":
-			keyType = KeyTypeThreadMessageUDeltas
-		case "skips":
-			keyType = KeyTypeThreadMessageSkips
+
 		default:
 			return nil, fmt.Errorf("unknown thread message index type: %s", indexType)
 		}

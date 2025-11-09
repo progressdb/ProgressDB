@@ -50,24 +50,7 @@ func GenThreadMessageEnd(threadTS string) string {
 	}
 	return fmt.Sprintf(ThreadMessageEnd, threadTS)
 }
-func GenThreadMessageCDeltas(threadTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadMessageCDeltas, threadTS)
-}
-func GenThreadMessageUDeltas(threadTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadMessageUDeltas, threadTS)
-}
-func GenThreadMessageSkips(threadTS string) string {
-	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
-		threadTS = parsed.ThreadTS
-	}
-	return fmt.Sprintf(ThreadMessageSkips, threadTS)
-}
+
 func GenThreadMessageLC(threadTS string) string {
 	if parsed, err := ParseKey(threadTS); err == nil && parsed.Type == KeyTypeThread {
 		threadTS = parsed.ThreadTS
