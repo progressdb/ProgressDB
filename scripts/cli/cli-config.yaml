@@ -1,0 +1,25 @@
+# ProgressDB CLI Migration Configuration Example
+# 
+# This file demonstrates the available configuration options for migration.
+# Copy this file and update the values for your specific migration.
+
+# Old encryption key from ProgressDB 0.1.2 (32-byte hex string)
+old_encryption_key: "your-32-byte-hex-encryption-key-here"
+
+# Path to the old ProgressDB 0.1.2 database
+from_database: "/path/to/old/progressdb"
+
+# Path where the new ProgressDB 0.5.0 database will be created
+to_database: "/path/to/new/progressdb"
+
+# Output format: "json" (default) or "pebble"
+output_format: "json"
+
+# Optional: Path to old service configuration file (0.1.2 format)
+# If provided, this will override from_database and old_encryption_key
+# old_config_path: "/path/to/old/service/config.yaml"
+
+# Optional: Old encryption fields configuration (auto-loaded from old_config_path)
+# old_encrypt_fields:
+#   - path: "data.secret"
+#     algorithm: "aes-gcm"

@@ -20,29 +20,45 @@ var migrateCmd = &cobra.Command{
 Currently supports migration from 0.1.2 to 0.5.0.
 
 Example usage:
+  progressdb migrate --old-config /old/config.yaml --to /new/db
+  progressdb migrate --old-db-path /old/db --old-encryption-key <key> --to /new/db
   progressdb migrate --from /old/db --to /new/db --config config.yaml
-  progressdb migrate --from /old/db --to /new/db  # will prompt for missing info`,
+  progressdb migrate --from /old/db --to /new/db  # will prompt for missing info
+
+Configuration options:
+  --old-config:        Load all settings from an existing 0.1.2 service config
+  --old-db-path:        Specify old database path directly
+  --old-encryption-key: Specify old encryption key directly (hex, 32 bytes)
+  --from:               Source database path (alternative to --old-db-path)
+  --to:                 Target database path (required)
+  --config:             Migration configuration file
+  --format:             Output format: json or pebble (default: json)`,
 	RunE: runMigrate,
 }
 
 var (
-	fromPath     string
-	toPath       string
-	configFile   string
-	interactive  bool
-	outputFormat string
+	fromPath         string
+	toPath           string
+	configFile       string
+	oldConfigFile    string
+	oldDBPath        string
+	oldEncryptionKey string
+	interactive      bool
+	outputFormat     string
 )
 
 func init() {
 	rootCmd.AddCommand(migrateCmd)
 
-	migrateCmd.Flags().StringVar(&fromPath, "from", "", "path to source database (required)")
+	migrateCmd.Flags().StringVar(&fromPath, "from", "", "path to source database (optional if --old-config or --old-db-path is provided)")
 	migrateCmd.Flags().StringVar(&toPath, "to", "", "path to target database (required)")
-	migrateCmd.Flags().StringVar(&configFile, "config", "", "configuration file path")
+	migrateCmd.Flags().StringVar(&configFile, "config", "", "migration configuration file path")
+	migrateCmd.Flags().StringVar(&oldConfigFile, "old-config", "", "old service configuration file path (0.1.2)")
+	migrateCmd.Flags().StringVar(&oldDBPath, "old-db-path", "", "old database path (alternative to --from)")
+	migrateCmd.Flags().StringVar(&oldEncryptionKey, "old-encryption-key", "", "old encryption key (hex, 32 bytes)")
 	migrateCmd.Flags().StringVar(&outputFormat, "format", "json", "output format: json or pebble (default: json)")
 	migrateCmd.Flags().BoolVar(&interactive, "interactive", true, "enable interactive prompts for missing values")
 
-	migrateCmd.MarkFlagRequired("from")
 	migrateCmd.MarkFlagRequired("to")
 }
 
@@ -94,9 +110,22 @@ func loadConfiguration() (*config.Config, error) {
 		cfg = &config.Config{}
 	}
 
+	// Load old configuration if provided
+	if oldConfigFile != "" {
+		if err := cfg.LoadOldConfig(oldConfigFile); err != nil {
+			return nil, fmt.Errorf("failed to load old config file: %w", err)
+		}
+	}
+
 	// Override with command line flags
 	if fromPath != "" {
 		cfg.FromDatabase = fromPath
+	}
+	if oldDBPath != "" {
+		cfg.FromDatabase = oldDBPath
+	}
+	if oldEncryptionKey != "" {
+		cfg.OldEncryptionKey = oldEncryptionKey
 	}
 	if toPath != "" {
 		cfg.ToDatabase = toPath
@@ -117,13 +146,13 @@ func loadConfiguration() (*config.Config, error) {
 
 func validateConfiguration(cfg *config.Config) error {
 	if cfg.FromDatabase == "" {
-		return fmt.Errorf("source database path is required")
+		return fmt.Errorf("source database path is required (provide --from or --old-config)")
 	}
 	if cfg.ToDatabase == "" {
 		return fmt.Errorf("target database path is required")
 	}
 	if cfg.OldEncryptionKey == "" {
-		return fmt.Errorf("old encryption key is required for migration")
+		return fmt.Errorf("old encryption key is required for migration (provide in config or --old-config)")
 	}
 
 	// Validate output format
@@ -170,8 +199,22 @@ func showMigrationSummary(cfg *config.Config, verbose bool) error {
 	fmt.Printf("  Format:      %s\n", cfg.OutputFormat)
 	fmt.Printf("  Encryption:  %s\n", maskKey(cfg.OldEncryptionKey))
 
+	if len(cfg.OldEncryptFields) > 0 {
+		fmt.Printf("  Encrypted Fields: %d\n", len(cfg.OldEncryptFields))
+		if verbose {
+			for _, field := range cfg.OldEncryptFields {
+				fmt.Printf("    - %s (%s)\n", field.Path, field.Algorithm)
+			}
+		}
+	}
+
 	if verbose {
-		fmt.Printf("  Config File: %s\n", configFile)
+		if configFile != "" {
+			fmt.Printf("  Config File: %s\n", configFile)
+		}
+		if oldConfigFile != "" {
+			fmt.Printf("  Old Config:  %s\n", oldConfigFile)
+		}
 	}
 
 	fmt.Println()

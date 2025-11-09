@@ -1,0 +1,10 @@
+server:
+  address: "localhost"
+  port: 8080
+storage:
+  db_path: "/tmp/test_old_db"
+security:
+  encryption_key: "a7e484d3f2ab9e1058c47dae6b9c1f2afb123b02c4de98ae7f615c099d5c621f"
+  fields:
+    - path: "data.secret"
+      algorithm: "aes-gcm"

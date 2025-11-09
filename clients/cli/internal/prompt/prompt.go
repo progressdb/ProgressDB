@@ -15,6 +15,31 @@ import (
 func FillMissing(cfg *config.Config) error {
 	reader := bufio.NewReader(os.Stdin)
 
+	// If we don't have any source info, ask if they have an old config file
+	if cfg.OldConfigPath == "" && cfg.FromDatabase == "" && cfg.OldEncryptionKey == "" {
+		useOldConfig, err := promptForOldConfig(reader)
+		if err != nil {
+			return fmt.Errorf("failed to ask about old config: %w", err)
+		}
+
+		if useOldConfig {
+			path, err := promptForPath(reader, "Old service configuration file path", true)
+			if err != nil {
+				return fmt.Errorf("failed to get old config path: %w", err)
+			}
+			if err := cfg.LoadOldConfig(path); err != nil {
+				return fmt.Errorf("failed to load old config: %w", err)
+			}
+			fmt.Printf("Loaded configuration from: %s\n", path)
+			fmt.Printf("  Database: %s\n", cfg.FromDatabase)
+			fmt.Printf("  Encryption: %s\n", maskKey(cfg.OldEncryptionKey))
+			if len(cfg.OldEncryptFields) > 0 {
+				fmt.Printf("  Encrypted Fields: %d\n", len(cfg.OldEncryptFields))
+			}
+			fmt.Println()
+		}
+	}
+
 	if cfg.OldEncryptionKey == "" {
 		key, err := promptForEncryptionKey(reader)
 		if err != nil {
@@ -121,6 +146,35 @@ func promptForPath(reader *bufio.Reader, label string, mustExist bool) (string, 
 
 		return path, nil
 	}
+}
+
+// promptForOldConfig asks if the user has an old config file
+func promptForOldConfig(reader *bufio.Reader) (bool, error) {
+	for {
+		fmt.Print("Do you have an old ProgressDB service configuration file (0.1.2)? [y/N]: ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return false, err
+		}
+
+		response := strings.TrimSpace(strings.ToLower(line))
+		switch response {
+		case "y", "yes":
+			return true, nil
+		case "n", "no", "":
+			return false, nil
+		default:
+			fmt.Println("Please enter 'y' or 'n'.")
+		}
+	}
+}
+
+// maskKey masks the encryption key for display
+func maskKey(key string) string {
+	if len(key) <= 8 {
+		return "***"
+	}
+	return key[:4] + "***" + key[len(key)-4:]
 }
 
 // Confirm prompts for a yes/no confirmation

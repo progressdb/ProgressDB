@@ -8,15 +8,21 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Config represents the migration configuration
 type Config struct {
-	OldEncryptionKey string `yaml:"old_encryption_key" json:"old_encryption_key"`
-	FromDatabase     string `yaml:"from_database" json:"from_database"`
-	ToDatabase       string `yaml:"to_database" json:"to_database"`
-	OutputFormat     string `yaml:"output_format" json:"output_format"`
+	OldEncryptionKey string            `yaml:"old_encryption_key" json:"old_encryption_key"`
+	FromDatabase     string            `yaml:"from_database" json:"from_database"`
+	ToDatabase       string            `yaml:"to_database" json:"to_database"`
+	OutputFormat     string            `yaml:"output_format" json:"output_format"`
+	OldConfigPath    string            `yaml:"old_config_path" json:"old_config_path"`
+	OldDBPath        string            `yaml:"old_db_path" json:"old_db_path"`
+	OldEncryptFields []OldEncryptField `yaml:"old_encrypt_fields" json:"old_encrypt_fields"`
 }
 
-// LoadFromFile loads configuration from a YAML file
+type OldEncryptField struct {
+	Path      string `yaml:"path" json:"path"`
+	Algorithm string `yaml:"algorithm" json:"algorithm"`
+}
+
 func LoadFromFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -31,7 +37,6 @@ func LoadFromFile(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// SaveToFile saves configuration to a YAML file
 func SaveToFile(cfg *Config, path string) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -45,13 +50,11 @@ func SaveToFile(cfg *Config, path string) error {
 	return nil
 }
 
-// ValidateEncryptionKey validates the format of the encryption key
 func ValidateEncryptionKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("encryption key cannot be empty")
 	}
 
-	// Try to decode as hex
 	decoded, err := hex.DecodeString(key)
 	if err != nil {
 		return fmt.Errorf("encryption key must be a valid hex string: %w", err)
@@ -64,14 +67,18 @@ func ValidateEncryptionKey(key string) error {
 	return nil
 }
 
-// IsComplete checks if all required configuration fields are present
 func (c *Config) IsComplete() bool {
+	if c.OldConfigPath != "" {
+		return true
+	}
 	return c.OldEncryptionKey != "" && c.FromDatabase != "" && c.ToDatabase != ""
 }
 
-// MissingFields returns a list of missing required fields
 func (c *Config) MissingFields() []string {
 	var missing []string
+	if c.OldConfigPath != "" {
+		return missing
+	}
 	if c.OldEncryptionKey == "" {
 		missing = append(missing, "old_encryption_key")
 	}
@@ -82,4 +89,34 @@ func (c *Config) MissingFields() []string {
 		missing = append(missing, "to_database")
 	}
 	return missing
+}
+
+func (c *Config) LoadOldConfig(oldConfigPath string) error {
+	data, err := os.ReadFile(oldConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read old config file: %w", err)
+	}
+	var oldCfg struct {
+		Storage struct {
+			DBPath string `yaml:"db_path"`
+		} `yaml:"storage"`
+		Security struct {
+			EncryptionKey string            `yaml:"encryption_key"`
+			Fields        []OldEncryptField `yaml:"fields"`
+		} `yaml:"security"`
+	}
+	if err := yaml.Unmarshal(data, &oldCfg); err != nil {
+		return fmt.Errorf("failed to parse old config file: %w", err)
+	}
+	if oldCfg.Storage.DBPath != "" {
+		c.FromDatabase = oldCfg.Storage.DBPath
+	}
+	if oldCfg.Security.EncryptionKey != "" {
+		c.OldEncryptionKey = oldCfg.Security.EncryptionKey
+	}
+	if len(oldCfg.Security.Fields) > 0 {
+		c.OldEncryptFields = oldCfg.Security.Fields
+	}
+	c.OldConfigPath = oldConfigPath
+	return nil
 }
