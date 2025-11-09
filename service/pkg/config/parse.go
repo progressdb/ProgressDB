@@ -73,8 +73,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 
 	// gather all relevant env variables
 	envs := map[string]string{
-		"SERVER_ADDR":         os.Getenv("PROGRESSDB_SERVER_ADDR"),
-		"ADDR":                os.Getenv("PROGRESSDB_ADDR"),
 		"SERVER_ADDRESS":      os.Getenv("PROGRESSDB_SERVER_ADDRESS"),
 		"SERVER_PORT":         os.Getenv("PROGRESSDB_SERVER_PORT"),
 		"SERVER_DB_PATH":      os.Getenv("PROGRESSDB_SERVER_DB_PATH"),
@@ -196,33 +194,13 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		return Duration(0)
 	}
 
-	// apply env vars, giving precedence for address variables as per the original logic
-	if v := envs["SERVER_ADDR"]; v != "" {
-		if h, p, err := net.SplitHostPort(v); err == nil {
-			envCfg.Server.Address = h
-			if pi, err := strconv.Atoi(p); err == nil {
-				envCfg.Server.Port = pi
-			}
-		} else {
-			envCfg.Server.Address = v
-		}
-	} else if v := envs["ADDR"]; v != "" {
-		if h, p, err := net.SplitHostPort(v); err == nil {
-			envCfg.Server.Address = h
-			if pi, err := strconv.Atoi(p); err == nil {
-				envCfg.Server.Port = pi
-			}
-		} else {
-			envCfg.Server.Address = v
-		}
-	} else {
-		if host := envs["SERVER_ADDRESS"]; host != "" {
-			envCfg.Server.Address = host
-		}
-		if port := envs["SERVER_PORT"]; port != "" {
-			if pi, err := strconv.Atoi(port); err == nil {
-				envCfg.Server.Port = pi
-			}
+	// apply env vars for server address and port
+	if host := envs["SERVER_ADDRESS"]; host != "" {
+		envCfg.Server.Address = host
+	}
+	if port := envs["SERVER_PORT"]; port != "" {
+		if pi, err := strconv.Atoi(port); err == nil {
+			envCfg.Server.Port = pi
 		}
 	}
 

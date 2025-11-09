@@ -1,0 +1,857 @@
+openapi: 3.0.3
+info:
+  title: ProgressDB API
+  version: "0.5.0"
+  description: |
+    Author semantics and signing flow:
+      - Protected endpoints require a cryptographically-verified author identity, supplied
+        via the headers `X-User-ID` and `X-User-Signature` (HMAC-SHA256).
+      - Backend callers holding a backend API key may request an HMAC signature for a user
+        by calling `POST /backend/v1/sign`. Clients attach the returned signature to subsequent
+        requests as `X-User-Signature` with `X-User-ID`.
+      - For user-scoped operations, the server uses the verified author derived from the
+        signature middleware (`X-User-ID` + `X-User-Signature`) as the canonical author.
+      - An explicit `author` query parameter is accepted only for trusted callers (role
+        `admin` or `backend`) and is rejected for regular/front-end callers to prevent
+        impersonation.
+      - Mutation operations (POST, PUT, DELETE) are enqueued and processed asynchronously.
+      - Read operations (GET) are synchronous and return current state.
+servers:
+  - url: /
+
+paths:
+  # Backend Authentication
+  /backend/v1/sign:
+    post:
+      summary: Issue an HMAC signature for a given user id
+      description: |
+        Backend callers holding a backend API key may request an HMAC signature
+        for a user id. The response contains the `signature` which clients attach
+        to subsequent requests as `X-User-Signature` with `X-User-ID`.
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+              required: [userId]
+      responses:
+        "200":
+          description: signature issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  signature:
+                    type: string
+
+  # Frontend Thread Operations
+  /frontend/v1/threads:
+    get:
+      summary: List threads
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - $ref: '#/components/parameters/AuthorQuery'
+        - in: query
+          name: title
+          schema:
+            type: string
+          description: Case-insensitive substring filter on thread title
+        - in: query
+          name: slug
+          schema:
+            type: string
+          description: Exact match on thread slug
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of threads to return
+        - in: query
+          name: cursor
+          schema:
+            type: string
+          description: Pagination cursor for next page
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadsListResponse'
+    post:
+      summary: Create a thread (async)
+      description: |
+        Creates a new thread. The operation is enqueued and processed asynchronously.
+        Returns immediately with thread metadata.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreadCreateRequest'
+      responses:
+        "200":
+          description: Thread enqueued for creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+
+  /frontend/v1/threads/{threadKey}:
+    get:
+      summary: Get thread metadata by key
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - $ref: '#/components/parameters/AuthorQuery'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+    put:
+      summary: Update thread metadata (async)
+      description: |
+        Updates thread metadata. The operation is enqueued and processed asynchronously.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreadUpdateRequest'
+      responses:
+        "200":
+          description: Thread enqueued for update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+    delete:
+      summary: Delete thread (async)
+      description: |
+        Soft-deletes a thread. The operation is enqueued and processed asynchronously.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - $ref: '#/components/parameters/AuthorQuery'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+      responses:
+        "204":
+          description: Thread enqueued for deletion
+
+  # Frontend Message Operations
+  /frontend/v1/threads/{threadKey}/messages:
+    get:
+      summary: List messages in a thread
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - $ref: '#/components/parameters/IncludeDeleted'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of messages to return
+        - in: query
+          name: cursor
+          schema:
+            type: string
+          description: Pagination cursor for next page
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesListResponse'
+    post:
+      summary: Create a message in a thread (async)
+      description: |
+        Creates a new message in a thread. The operation is enqueued and processed asynchronously.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+      responses:
+        "200":
+          description: Message enqueued for creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /frontend/v1/threads/{threadKey}/messages/{id}:
+    get:
+      summary: Get a specific message
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Message ID
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+    put:
+      summary: Update a message (async)
+      description: |
+        Updates a message content. The operation is enqueued and processed asynchronously.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Message ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageUpdateRequest'
+      responses:
+        "200":
+          description: Message enqueued for update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+    delete:
+      summary: Delete a message (async)
+      description: |
+        Soft-deletes a message. The operation is enqueued and processed asynchronously.
+      parameters:
+        - $ref: '#/components/parameters/XUserID'
+        - $ref: '#/components/parameters/XUserSignature'
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Message ID
+      responses:
+        "204":
+          description: Message enqueued for deletion
+
+  # Admin Operations
+  /admin/health:
+    get:
+      summary: Admin health check
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+
+  /admin/stats:
+    get:
+      summary: Get service statistics
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: integer
+                  messages:
+                    type: integer
+
+  /admin/keys:
+    get:
+      summary: List keys in the underlying store
+      description: Returns a JSON object with an array of matching key names. Use optional `prefix` query parameter to filter results.
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: query
+          name: prefix
+          schema:
+            type: string
+          description: Optional prefix to filter returned keys
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeysList'
+
+  /admin/keys/{key}:
+    get:
+      summary: Get the raw value for a given key
+      description: Returns the raw stored value for the provided key name. The key path parameter must be URL-escaped when calling this endpoint.
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+          description: URL-escaped key name
+      responses:
+        "200":
+          description: The raw key value
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+
+  /admin/users:
+    get:
+      summary: List users
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: string
+
+  /admin/users/{userId}/threads:
+    get:
+      summary: List threads for a user
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: User ID
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadsListResponse'
+
+  /admin/users/{userId}/threads/{threadKey}/messages:
+    get:
+      summary: List messages for a user's thread
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: User ID
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesListResponse'
+
+  /admin/users/{userId}/threads/{threadKey}/messages/{messageKey}:
+    get:
+      summary: Get a specific message for a user's thread
+      security:
+        - AdminApiKey: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: User ID
+        - in: path
+          name: threadKey
+          required: true
+          schema:
+            type: string
+          description: Thread key
+        - in: path
+          name: messageKey
+          required: true
+          schema:
+            type: string
+          description: Message key
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /admin/encryption/encrypt-threads:
+    post:
+      summary: Encrypt existing plaintext threads
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                thread_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Encryption job started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  job_id:
+                    type: string
+
+  /admin/jobs/purge:
+    post:
+      summary: Run retention cleanup job
+      security:
+        - AdminApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Job started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  job_id:
+                    type: string
+
+  # Debug endpoints
+  /admin/debug/prometheus:
+    get:
+      summary: Prometheus metrics
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    Thread:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Thread key (server-generated)
+        title:
+          type: string
+          description: Thread title
+        author:
+          type: string
+          description: Thread author
+        slug:
+          type: string
+          description: Human-friendly URL slug
+        created_ts:
+          type: integer
+          format: int64
+          description: Creation timestamp in nanoseconds
+        updated_ts:
+          type: integer
+          format: int64
+          description: Last update timestamp in nanoseconds
+        deleted:
+          type: boolean
+          description: Soft-delete flag
+        kms:
+          $ref: '#/components/schemas/KMSMeta'
+      example:
+        key: "t:00000170000000000000001"
+        title: "General Discussion"
+        author: "user123"
+        slug: "general-discussion-00000170000000000000001"
+        created_ts: 1700000000000000000
+        updated_ts: 1700000000000000000
+        deleted: false
+
+    Message:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Message key (server-generated)
+        thread:
+          type: string
+          description: Thread key
+        author:
+          type: string
+          description: Message author
+        role:
+          type: string
+          description: Author role
+        created_ts:
+          type: integer
+          format: int64
+          description: Creation timestamp in nanoseconds
+        updated_ts:
+          type: integer
+          format: int64
+          description: Last update timestamp in nanoseconds
+        body:
+          description: Freeform JSON payload
+          nullable: true
+          oneOf:
+            - type: object
+            - type: string
+            - type: number
+            - type: array
+        reply_to:
+          type: string
+          description: Message ID this message replies to
+        deleted:
+          type: boolean
+          description: Soft-delete flag
+      example:
+        key: "t:00000170000000000000001:m:00000170000000000000002:000000001"
+        thread: "t:00000170000000000000001"
+        author: "user123"
+        role: "user"
+        created_ts: 1700000000000000000
+        updated_ts: 1700000000000000000
+        body:
+          text: "Hello world"
+        reply_to: null
+        deleted: false
+
+    KMSMeta:
+      type: object
+      properties:
+        key_id:
+          type: string
+          description: KMS key identifier
+        wrapped_dek:
+          type: string
+          description: Wrapped data encryption key
+        kek_id:
+          type: string
+          description: Key encryption key identifier
+        kek_version:
+          type: string
+          description: KEK version
+      description: KMS metadata for encrypted threads
+
+    ThreadCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Thread title
+        slug:
+          type: string
+          description: Optional thread slug
+      required:
+        - title
+      example:
+        title: "New Discussion Thread"
+        slug: "custom-slug"
+
+    ThreadUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Updated thread title
+        slug:
+          type: string
+          description: Updated thread slug
+      example:
+        title: "Updated Thread Title"
+
+    MessageCreateRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Optional message ID (server-generated if missing)
+        body:
+          description: Message body content
+          oneOf:
+            - type: object
+            - type: string
+            - type: number
+            - type: array
+        reply_to:
+          type: string
+          description: Optional message ID this replies to
+      required:
+        - body
+      example:
+        body:
+          text: "This is a message"
+        reply_to: "msg-123"
+
+    MessageUpdateRequest:
+      type: object
+      properties:
+        body:
+          description: Updated message body content
+          oneOf:
+            - type: object
+            - type: string
+            - type: number
+            - type: array
+      required:
+        - body
+      example:
+        body:
+          text: "Updated message content"
+
+    ThreadsListResponse:
+      type: object
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: '#/components/schemas/Thread'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+
+    MessagesListResponse:
+      type: object
+      properties:
+        thread:
+          type: string
+          description: Thread key
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+
+    ThreadResponse:
+      type: object
+      properties:
+        thread:
+          $ref: '#/components/schemas/Thread'
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          $ref: '#/components/schemas/Message'
+
+    PaginationResponse:
+      type: object
+      properties:
+        cursor:
+          type: string
+          description: Next page cursor
+        has_more:
+          type: boolean
+          description: Whether more pages exist
+        limit:
+          type: integer
+          description: Page limit used
+      example:
+        cursor: "eyJ1c2VySWQiOiJ1c2VyMTIzIiwidGltZXN0YW1wIjoxNzAwMDAwMDAwMDAwMDAwMH0="
+        has_more: true
+        limit: 50
+
+    KeysList:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+      example:
+        error: "Invalid request"
+        code: "INVALID_REQUEST"
+
+  securitySchemes:
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Provide an admin or backend API key in the X-API-Key header
+
+  parameters:
+    XUserID:
+      name: X-User-ID
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Verified user ID. When present this header is used alongside `X-User-Signature`
+        for frontend-signed requests. Backend callers holding a backend/admin API key
+        may also supply `X-User-ID` without a signature to assert an author.
+
+    XUserSignature:
+      name: X-User-Signature
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        HMAC-SHA256 signature of the `X-User-ID` computed by a backend signer.
+        Required for frontend callers (who do not hold backend keys). Backend callers
+        that possess a backend/admin API key may omit this header and instead set
+        `X-User-ID`.
+
+    AuthorQuery:
+      name: author
+      in: query
+      required: false
+      schema:
+        type: string
+      description: |
+        Optional author override. Only allowed when the caller presents an admin or backend API key.
+        Regular (frontend) callers must use `X-User-ID`/`X-User-Signature` and cannot override author.
+
+    IncludeDeleted:
+      name: include_deleted
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: When true, include messages marked deleted (tombstones) in list responses.

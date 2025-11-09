@@ -91,7 +91,6 @@ func wrapHTTPHandler(h http.Handler) func(ctx *fasthttp.RequestCtx) {
 // RegisterRoutes wires all API routes onto the provided router.
 func RegisterRoutes(r *router.Router) {
 	// client auth endpoints
-	r.POST("/backend/sign", backendRoutes.Sign)
 	r.POST("/backend/v1/sign", backendRoutes.Sign)
 
 	// thread metadata operations
