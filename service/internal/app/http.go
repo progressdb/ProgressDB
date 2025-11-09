@@ -16,9 +16,6 @@ import (
 )
 
 func (a *App) printBanner() {
-	var srcs []string
-	// Note: config source tracking removed since we no longer pass EffectiveConfigResult
-	srcs = append(srcs, "config")
 	verStr := a.version
 	if a.commit != "none" {
 		verStr += " (" + a.commit + ")"
@@ -28,7 +25,13 @@ func (a *App) printBanner() {
 	}
 	// Use the global config to print richer startup info
 	cfg := config.GetConfig()
-	banner.Print(cfg.Addr(), cfg.Server.DBPath, "config", verStr)
+	eff := config.EffectiveConfigResult{
+		Config: cfg,
+		Addr:   cfg.Addr(),
+		DBPath: cfg.Server.DBPath,
+		Source: "config",
+	}
+	banner.PrintWithEff(eff, verStr)
 }
 
 func (a *App) readyzHandlerFast(ctx *fasthttp.RequestCtx) {

@@ -16,33 +16,6 @@ const banner = `
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝    ╚═════╝ ╚═════╝                                                                                 
 `
 
-func Print(addr, dbPath, sources, version string) {
-	// Deprecated: previous signature printed explicit fields. Newer callers
-	// pass an effective config so we can display runtime info (encryption,
-	// config sources) centrally.
-	fmt.Print(banner)
-	fmt.Println("== Config =====================================================")
-	fmt.Printf("Listen:   %s\n", addr)
-	fmt.Printf("DB Path:  %s\n", dbPath)
-	if version != "" {
-		fmt.Printf("Version:  %s\n", version)
-	}
-	if sources != "" {
-		fmt.Printf("Config sources: %s\n", sources)
-	}
-	fmt.Println("\n== Endpoints ==================================================")
-	fmt.Println("POST /v1/messages - Add a message (JSON: id, thread, author, ts, body)")
-	fmt.Println("GET  /v1/messages?thread=<id>&limit=<n> - List messages in a thread (JSON response)")
-	fmt.Println("GET  /admin/keys?prefix=<p>&limit=<n>&cursor=<c> - List database keys with pagination (admin only)")
-	fmt.Println("\n== Examples ===================================================")
-	fmt.Printf("curl -X POST 'http://localhost%s/v1/messages' -d '{body: {text: \"hello\"}}'\n", addr)
-	fmt.Printf("curl 'http://localhost%s/v1/messages?thread=t1&limit=10'\n", addr)
-	fmt.Printf("curl 'http://localhost%s/admin/keys?prefix=thread:&limit=10'\n", addr)
-	fmt.Println("\n== Production? =================================================")
-	fmt.Println("Set a proper storage path (--db)")
-	fmt.Println("Add API key or authentication for production use")
-}
-
 // PrintWithEff prints the banner using an EffectiveConfigResult which
 // provides richer context (config, addr, dbpath, source).
 func PrintWithEff(eff config.EffectiveConfigResult, version string) {
@@ -68,11 +41,7 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 	}
 	fmt.Printf("Config: %s\n", src)
 
-	fmt.Println("\n== Examples ===================================================")
-	fmt.Println("curl -X POST 'http://<host>:<port>/v1/messages' -d '{body: {text: \"hello\"}}'")
-	fmt.Println("curl 'http://<host>:<port>/v1/messages?thread=t1&limit=10'")
 	fmt.Println("\n== Production? =================================================")
-	// fmt.Println("Quick checks (recommended before production):")
 	// API keys
 	be := 0
 	fe := 0
@@ -166,6 +135,4 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 	}
 
 	fmt.Println("\nFor configuration guidance, visit: https://progressdb.dev/docs")
-
-	fmt.Println("\n== Logs: =================================================")
 }
