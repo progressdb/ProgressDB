@@ -67,17 +67,6 @@ func PrintWithEff(eff config.EffectiveConfigResult, version string) {
 		fmt.Println("- Admin API keys: MISSING (required for admin tooling)")
 	}
 
-	// TLS
-	tlsOK := false
-	if eff.Config != nil && eff.Config.Server.TLS.CertFile != "" && eff.Config.Server.TLS.KeyFile != "" {
-		tlsOK = true
-	}
-	if tlsOK {
-		fmt.Println("- TLS: configured")
-	} else {
-		fmt.Println("- TLS: unconfigured")
-	}
-
 	// DB path
 	if eff.DBPath != "" {
 		fmt.Printf("- DB Path: %s\n", eff.DBPath)

@@ -94,8 +94,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"KMS_MASTER_KEY_FILE": os.Getenv("PROGRESSDB_KMS_MASTER_KEY_FILE"),
 		"KMS_MASTER_KEY_HEX":  os.Getenv("PROGRESSDB_KMS_MASTER_KEY_HEX"),
 		"ENCRYPTION_ENABLED":  os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"),
-		"TLS_CERT":            os.Getenv("PROGRESSDB_TLS_CERT"),
-		"TLS_KEY":             os.Getenv("PROGRESSDB_TLS_KEY"),
 
 		// data retentioon feature
 		"RETENTION_ENABLED":        os.Getenv("PROGRESSDB_RETENTION_ENABLED"),
@@ -301,14 +299,6 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		default:
 			envCfg.Encryption.Enabled = false
 		}
-	}
-
-	// tls cert/key
-	if c := envs["TLS_CERT"]; c != "" {
-		envCfg.Server.TLS.CertFile = c
-	}
-	if k := envs["TLS_KEY"]; k != "" {
-		envCfg.Server.TLS.KeyFile = k
 	}
 
 	backendKeys := make(map[string]struct{})

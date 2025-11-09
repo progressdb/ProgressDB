@@ -29,13 +29,12 @@ type Config struct {
 	Encryption EncryptionConfig `yaml:"encryption"`
 }
 
-// ServerConfig holds http, tls, and security settings.
+// ServerConfig holds http and security settings.
 type ServerConfig struct {
 	Address        string       `yaml:"address,default=0.0.0.0"`
 	Port           int          `yaml:"port,default=8080"`
 	DBPath         string       `yaml:"db_path,default=./database"`
 	MaxPayloadSize SizeBytes    `yaml:"max_payload_size,default=100KB"`
-	TLS            TLSConfig    `yaml:"tls"`
 	CORS           CORSConfig   `yaml:"cors"`
 	RateLimit      RateConfig   `yaml:"rate_limit"`
 	IPWhitelist    []string     `yaml:"ip_whitelist"`
@@ -44,12 +43,6 @@ type ServerConfig struct {
 
 // StorageConfig holds database-specific settings.
 type StorageConfig struct {
-}
-
-// TLSConfig holds TLS certificate configuration.
-type TLSConfig struct {
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
 }
 
 // CORSConfig holds CORS settings.

@@ -24,21 +24,6 @@ func ValidateConfig(eff EffectiveConfigResult) error {
 		return fmt.Errorf("signing keys are required: set server.api_keys.signing in config or PROGRESSDB_API_SIGNING_KEYS env")
 	}
 
-	// TLS cert/key presence check if one is set
-	cert := cfg.Server.TLS.CertFile
-	key := cfg.Server.TLS.KeyFile
-	if (cert != "" && key == "") || (cert == "" && key != "") {
-		return fmt.Errorf("incomplete TLS configuration: both server.tls.cert_file and server.tls.key_file must be set")
-	}
-	if cert != "" {
-		if _, err := os.Stat(cert); err != nil {
-			return fmt.Errorf("tls cert file not accessible: %w", err)
-		}
-		if _, err := os.Stat(key); err != nil {
-			return fmt.Errorf("tls key file not accessible: %w", err)
-		}
-	}
-
 	// If encryption is enabled (either in config or via env), ensure a master key is provided
 	useEnc := cfg.Encryption.Enabled
 	if ev := os.Getenv("PROGRESSDB_ENCRYPTION_ENABLED"); ev != "" {
