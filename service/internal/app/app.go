@@ -85,7 +85,6 @@ func (a *App) Run(ctx context.Context) error {
 
 	// open database
 	cfg := config.GetConfig()
-	storageWalEnabled := cfg.Storage.WAL
 	intakeWALEnabled := cfg.Ingest.Intake.WAL.Enabled
 	logger.Info(
 		"opening_database",
@@ -94,7 +93,6 @@ func (a *App) Run(ctx context.Context) error {
 	)
 	logger.Info(
 		"wal_settings",
-		"storage_wal_enabled", storageWalEnabled,
 		"intake_wal_enabled", intakeWALEnabled,
 	)
 
@@ -104,21 +102,21 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// durability check
-	if !intakeWALEnabled && !storageWalEnabled {
+	if !intakeWALEnabled {
 		logger.Warn(
-			"no_durability_layers_enabled",
-			"No durability layers enabled (intake & storage) - data loss is possible",
+			"intake_wal_disabled",
+			"Intake WAL disabled - storage WAL always enabled for durability",
 		)
 	}
 
 	// open storedb
-	if err := storedb.Open(state.PathsVar.Store, storageWalEnabled, intakeWALEnabled); err != nil {
+	if err := storedb.Open(state.PathsVar.Store, intakeWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Store, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Store)
 
 	// open indexdb
-	if err := indexdb.Open(state.PathsVar.Index, storageWalEnabled, intakeWALEnabled); err != nil {
+	if err := indexdb.Open(state.PathsVar.Index, intakeWALEnabled); err != nil {
 		return fmt.Errorf("failed to open pebble at %s: %w", state.PathsVar.Index, err)
 	}
 	logger.Info("database_opened", "path", state.PathsVar.Index)

@@ -13,13 +13,12 @@ var Client *pebble.DB
 var StoreDBPath string
 var walDisabled bool
 
-func Open(path string, storageWalEnabled bool, intakeWALEnabled bool) error {
+func Open(path string, intakeWALEnabled bool) error {
 	if Client != nil {
 		return nil
 	}
 	var err error
 	// WAL is always enabled for data integrity
-	// storageWalEnabled parameter is kept for backward compatibility but ignored
 	opts := &pebble.Options{
 		DisableWAL: false, // Always enable WAL for durability
 	}
