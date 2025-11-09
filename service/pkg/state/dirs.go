@@ -19,8 +19,9 @@ func EnsureStateDirs(dbPath string) error {
 	telPath := filepath.Join(statePath, "telemetry")
 	logsPath := filepath.Join(statePath, "logs")
 	indexPath := filepath.Join(dbPath, "index")
+	backupsPath := filepath.Join(statePath, "backups")
 
-	paths := []string{storePath, walPath, kmsPath, auditPath, retentionPath, tmpPath, telPath, logsPath, indexPath}
+	paths := []string{storePath, walPath, kmsPath, auditPath, retentionPath, tmpPath, telPath, logsPath, indexPath, backupsPath}
 
 	for _, p := range paths {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {

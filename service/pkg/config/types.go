@@ -197,8 +197,6 @@ func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
 // TelemetryConfig controls telemetry collection and storage settings.
 type TelemetryConfig struct {
-	SampleRate    float64   `yaml:"sample_rate,default=0.001"`
-	SlowThreshold Duration  `yaml:"slow_threshold,default=200ms"`
 	BufferSize    SizeBytes `yaml:"buffer_size,default=60MB"`
 	FileMaxSize   SizeBytes `yaml:"file_max_size,default=40MB"`
 	FlushInterval Duration  `yaml:"flush_interval,default=2s"`
@@ -207,14 +205,11 @@ type TelemetryConfig struct {
 
 // SensorConfig holds sensor related tuning knobs.
 type SensorConfig struct {
-	Monitor struct {
-		PollInterval   Duration `yaml:"poll_interval,default=500ms"`
-		DiskHighPct    int      `yaml:"disk_high_pct,default=80"`
-		DiskLowPct     int      `yaml:"disk_low_pct,default=60"`
-		MemHighPct     int      `yaml:"mem_high_pct,default=80"`
-		CPUHighPct     int      `yaml:"cpu_high_pct,default=90"`
-		RecoveryWindow Duration `yaml:"recovery_window,default=5s"`
-	} `yaml:"monitor"`
+	PollInterval   Duration `yaml:"poll_interval,default=500ms"`
+	DiskHighPct    int      `yaml:"disk_high_pct,default=80"`
+	MemHighPct     int      `yaml:"mem_high_pct,default=80"`
+	CPUHighPct     int      `yaml:"cpu_high_pct,default=90"`
+	RecoveryWindow Duration `yaml:"recovery_window,default=5s"`
 }
 
 // EncryptionConfig holds encryption related settings.

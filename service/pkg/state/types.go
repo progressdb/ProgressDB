@@ -15,6 +15,7 @@ type Paths struct {
 	Logs      string
 	Index     string
 	Crash     string // failed compute operations for recovery
+	Backups   string // migration backups
 }
 
 func PathsFor(dbPath string) Paths {
@@ -37,6 +38,7 @@ func PathsFor(dbPath string) Paths {
 		Tel:       filepath.Join(statePath, "telemetry"),
 		Logs:      filepath.Join(statePath, "logs"),
 		Crash:     filepath.Join(statePath, "crash"),
+		Backups:   filepath.Join(statePath, "backups"),
 	}
 }
 
@@ -51,3 +53,4 @@ func TmpPath(dbPath string) string       { return PathsFor(dbPath).Tmp }
 func TelPath(dbPath string) string       { return PathsFor(dbPath).Tel }
 func IndexPath(dbPath string) string     { return PathsFor(dbPath).Index }
 func CrashPath(dbPath string) string     { return PathsFor(dbPath).Crash }
+func BackupsPath(dbPath string) string   { return PathsFor(dbPath).Backups }

@@ -30,7 +30,6 @@ type Sensor struct {
 type MonitorConfig struct {
 	PollInterval   time.Duration
 	DiskHighPct    int
-	DiskLowPct     int
 	MemHighPct     int
 	CPUHighPct     int
 	RecoveryWindow time.Duration
@@ -47,14 +46,13 @@ func NewSensor(config MonitorConfig) *Sensor {
 // new sensor from config
 func NewSensorFromConfig() *Sensor {
 	cfg := config.GetConfig()
-	monitorConfig := cfg.Sensor.Monitor
+	sensorConfig := cfg.Sensor
 	return NewSensor(MonitorConfig{
-		PollInterval:   monitorConfig.PollInterval.Duration(),
-		DiskHighPct:    monitorConfig.DiskHighPct,
-		DiskLowPct:     monitorConfig.DiskLowPct,
-		MemHighPct:     monitorConfig.MemHighPct,
-		CPUHighPct:     monitorConfig.CPUHighPct,
-		RecoveryWindow: monitorConfig.RecoveryWindow.Duration(),
+		PollInterval:   sensorConfig.PollInterval.Duration(),
+		DiskHighPct:    sensorConfig.DiskHighPct,
+		MemHighPct:     sensorConfig.MemHighPct,
+		CPUHighPct:     sensorConfig.CPUHighPct,
+		RecoveryWindow: sensorConfig.RecoveryWindow.Duration(),
 	})
 }
 
@@ -107,10 +105,10 @@ func (s *Sensor) checkHardware() {
 			s.diskAlert = true
 			s.lastDiskAlert = now
 		}
-	} else if usedPct < float64(s.config.DiskLowPct) && s.diskAlert {
+	} else if usedPct < float64(s.config.DiskHighPct-10) && s.diskAlert {
 		// Check if we've been below threshold for the recovery window
 		if now.Sub(s.lastDiskAlert) >= s.config.RecoveryWindow {
-			logger.Info("disk usage recovered", "usage_pct", usedPct, "threshold", s.config.DiskLowPct, "recovery_window", s.config.RecoveryWindow)
+			logger.Info("disk usage recovered", "usage_pct", usedPct, "threshold", s.config.DiskHighPct-10, "recovery_window", s.config.RecoveryWindow)
 			s.diskAlert = false
 		}
 	}

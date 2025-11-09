@@ -18,14 +18,11 @@ server:
     admin: ["admin_example"]
     signing: ["sign_example"]
 
-logging:
-  level: "debug"
-
 retention:
   enabled: true
-  cron: "0 2 28-31 * *"  # Run at 2am on possible end-of-month days
-  mttl: 720h  # Messages deleted after 720 hours (30 days) - since their delete
-  tttl: 720h  # Threads deleted after 720 hours (30 days) - since their delete
+  cron: "0 2 28-31 * *"
+  mttl: 720h
+  tttl: 720h
 
 ingest:
   intake:
@@ -43,21 +40,21 @@ ingest:
      batch_count: 1_000
      batch_timeout: 1s
 
+sensor:
+  poll_interval: 60s
+  disk_high_pct: 80
+  mem_high_pct: 80
+  cpu_high_pct: 90
+  recovery_window: 5s
+
+logging:
+  level: "debug"
+
 telemetry:
-  sample_rate: 0.001
-  slow_threshold: 200ms
   buffer_size: 60MB
   file_max_size: 40MB
   flush_interval: 2ms
   queue_capacity: 2048
-
-sensor:
-  monitor:
-    poll_interval: 60s
-    disk_high_pct: 80
-    # disk_low_pct: 60
-    mem_high_pct: 80
-    recovery_window: 5s
 
 encryption:
   enabled: true

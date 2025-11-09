@@ -112,20 +112,17 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 		"RETENTION_LOCK_TTL": os.Getenv("PROGRESSDB_RETENTION_LOCK_TTL"),
 
 		// telemetry
-		"TELEMETRY_SAMPLE_RATE":    os.Getenv("PROGRESSDB_TELEMETRY_SAMPLE_RATE"),
-		"TELEMETRY_SLOW_THRESHOLD": os.Getenv("PROGRESSDB_TELEMETRY_SLOW_THRESHOLD"),
 		"TELEMETRY_BUFFER_SIZE":    os.Getenv("PROGRESSDB_TELEMETRY_BUFFER_SIZE"),
 		"TELEMETRY_FILE_MAX_SIZE":  os.Getenv("PROGRESSDB_TELEMETRY_FILE_MAX_SIZE"),
 		"TELEMETRY_FLUSH_INTERVAL": os.Getenv("PROGRESSDB_TELEMETRY_FLUSH_INTERVAL"),
 		"TELEMETRY_QUEUE_CAPACITY": os.Getenv("PROGRESSDB_TELEMETRY_QUEUE_CAPACITY"),
 
-		// sensor.monitor
-		"SENSOR_MONITOR_POLL_INTERVAL":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_POLL_INTERVAL"),
-		"SENSOR_MONITOR_DISK_HIGH_PCT":   os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_HIGH_PCT"),
-		"SENSOR_MONITOR_DISK_LOW_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_DISK_LOW_PCT"),
-		"SENSOR_MONITOR_MEM_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_MEM_HIGH_PCT"),
-		"SENSOR_MONITOR_CPU_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MONITOR_CPU_HIGH_PCT"),
-		"SENSOR_MONITOR_RECOVERY_WINDOW": os.Getenv("PROGRESSDB_SENSOR_MONITOR_RECOVERY_WINDOW"),
+		// sensor
+		"SENSOR_POLL_INTERVAL":   os.Getenv("PROGRESSDB_SENSOR_POLL_INTERVAL"),
+		"SENSOR_DISK_HIGH_PCT":   os.Getenv("PROGRESSDB_SENSOR_DISK_HIGH_PCT"),
+		"SENSOR_MEM_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_MEM_HIGH_PCT"),
+		"SENSOR_CPU_HIGH_PCT":    os.Getenv("PROGRESSDB_SENSOR_CPU_HIGH_PCT"),
+		"SENSOR_RECOVERY_WINDOW": os.Getenv("PROGRESSDB_SENSOR_RECOVERY_WINDOW"),
 
 		// logging
 		"LOG_LEVEL": os.Getenv("PROGRESSDB_LOG_LEVEL"),
@@ -347,36 +344,42 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	}
 
 	// telemetry env overrides
-	if v := envs["TELEMETRY_SAMPLE_RATE"]; v != "" {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			envCfg.Telemetry.SampleRate = f
-		}
+	if v := envs["TELEMETRY_BUFFER_SIZE"]; v != "" {
+		envCfg.Telemetry.BufferSize = parseSizeBytes(v)
 	}
-	if v := envs["TELEMETRY_SLOW_THRESHOLD"]; v != "" {
-		envCfg.Telemetry.SlowThreshold = parseDuration(v)
+	if v := envs["TELEMETRY_FILE_MAX_SIZE"]; v != "" {
+		envCfg.Telemetry.FileMaxSize = parseSizeBytes(v)
+	}
+	if v := envs["TELEMETRY_FLUSH_INTERVAL"]; v != "" {
+		envCfg.Telemetry.FlushInterval = parseDuration(v)
+	}
+	if v := envs["TELEMETRY_QUEUE_CAPACITY"]; v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			envCfg.Telemetry.QueueCapacity = n
+		}
 	}
 
-	// sensor.monitor env overrides
-	if v := envs["SENSOR_MONITOR_POLL_INTERVAL"]; v != "" {
-		envCfg.Sensor.Monitor.PollInterval = parseDuration(v)
+	// sensor env overrides
+	if v := envs["SENSOR_POLL_INTERVAL"]; v != "" {
+		envCfg.Sensor.PollInterval = parseDuration(v)
 	}
-	if v := envs["SENSOR_MONITOR_DISK_HIGH_PCT"]; v != "" {
+	if v := envs["SENSOR_DISK_HIGH_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Sensor.Monitor.DiskHighPct = n
+			envCfg.Sensor.DiskHighPct = n
 		}
 	}
-	if v := envs["SENSOR_MONITOR_DISK_LOW_PCT"]; v != "" {
+	if v := envs["SENSOR_MEM_HIGH_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Sensor.Monitor.DiskLowPct = n
+			envCfg.Sensor.MemHighPct = n
 		}
 	}
-	if v := envs["SENSOR_MONITOR_MEM_HIGH_PCT"]; v != "" {
+	if v := envs["SENSOR_CPU_HIGH_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Sensor.Monitor.MemHighPct = n
+			envCfg.Sensor.CPUHighPct = n
 		}
 	}
-	if v := envs["SENSOR_MONITOR_RECOVERY_WINDOW"]; v != "" {
-		envCfg.Sensor.Monitor.RecoveryWindow = parseDuration(v)
+	if v := envs["SENSOR_RECOVERY_WINDOW"]; v != "" {
+		envCfg.Sensor.RecoveryWindow = parseDuration(v)
 	}
 
 	// logging env overrides
