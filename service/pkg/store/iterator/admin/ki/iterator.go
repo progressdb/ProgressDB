@@ -121,7 +121,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	// Use keys as-is from iterator (no sorting needed for admin keys)
 	sortedKeys := keys
 
-	// Set navigation anchors based on query type
+	// Set navigation anchors based on query type (preserve HasBefore/HasAfter from fetch functions)
 	if len(keys) > 0 {
 		switch {
 		case req.Before != "":
@@ -134,8 +134,9 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 			response.AfterAnchor = keys[len(keys)-1] // Last item (newest) to get next page
 		default:
 			// Initial load: keys are newest→oldest
-			response.BeforeAnchor = keys[len(keys)-1] // Last item (oldest) to get previous page
-			response.AfterAnchor = keys[0]            // First item (newest) to get next page
+			response.BeforeAnchor = keys[0]          // First item (newest) - for going to newer items
+			response.AfterAnchor = keys[len(keys)-1] // Last item (oldest) - for going to older items
+			// HasBefore/HasAfter already correctly set by fetchInitialLoad
 		}
 	}
 	// Only print anchors if there are results (this is helpful for anchor debugging)
@@ -154,25 +155,45 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 }
 
 func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
-	var items []string
-	valid := iter.Last() // Start from last (newest)
+	var reverseItems []string
 
-	for valid && len(items) < req.Limit {
-		key := string(iter.Key())
-		items = append(items, key)
-		valid = iter.Prev()
+	ok := iter.Last() // Start from newest key (lexicographically greatest)
+
+	if ok {
+		logger.Debug("[KeyIterator] fetchInitialLoad start", "first_key", string(iter.Key()), "limit", req.Limit)
+	} else {
+		logger.Debug("[KeyIterator] fetchInitialLoad", "no_keys_found", true)
 	}
 
-	hasMore := valid
+	// Collect keys from newest → oldest
+	for ok && len(reverseItems) < req.Limit {
+		key := string(iter.Key())
+		reverseItems = append(reverseItems, key)
+		ok = iter.Prev() // move backward (older)
+	}
+
+	// If Prev() succeeded and we still had valid key after reaching limit → more "before" keys exist
+	hasBefore := ok && len(reverseItems) >= req.Limit
+
+	// Reverse slice so output is [oldest...newest]
+	items := make([]string, len(reverseItems))
+	for i := range reverseItems {
+		items[i] = reverseItems[len(reverseItems)-1-i]
+	}
+
+	if len(items) > 0 {
+		logger.Debug("[KeyIterator] fetchInitialLoad complete",
+			"oldest_key", items[0],
+			"newest_key", items[len(items)-1],
+			"count", len(items))
+	}
 
 	response := pagination.PaginationResponse{
-		HasBefore: hasMore,
-		HasAfter:  false,
+		HasBefore: hasBefore, // There are older (before) items
+		HasAfter:  false,     // Nothing newer; we're at the newest end
 		Count:     len(items),
 		Total:     ki.getTotalCount(iter),
 	}
-
-	// Anchors will be set by main logic
 
 	return items, response, nil
 }
@@ -181,15 +202,15 @@ func (ki *KeyIterator) fetchBefore(iter *pebble.Iterator, reference string, limi
 	var items []string
 	referenceKey := []byte(reference)
 
-	valid := iter.SeekLT(referenceKey)
+	keyIter := iter.SeekLT(referenceKey)
 
-	for valid && len(items) < limit {
+	for keyIter && len(items) < limit {
 		key := string(iter.Key())
 		items = append(items, key)
-		valid = iter.Prev()
+		keyIter = iter.Prev()
 	}
 
-	hasMore := valid && len(items) >= limit
+	hasMore := keyIter
 
 	return items, hasMore, iter.Error()
 }
@@ -197,42 +218,42 @@ func (ki *KeyIterator) fetchBefore(iter *pebble.Iterator, reference string, limi
 func (ki *KeyIterator) fetchAfter(iter *pebble.Iterator, reference string, limit int) ([]string, bool, error) {
 	var items []string
 
-	valid := iter.SeekGE([]byte(reference))
-	if valid && string(iter.Key()) == reference {
-		valid = iter.Next()
+	keyIter := iter.SeekGE([]byte(reference))
+	if keyIter && string(iter.Key()) == reference {
+		keyIter = iter.Next()
 	}
 
-	for valid && len(items) < limit {
+	for keyIter && len(items) < limit {
 		key := string(iter.Key())
 		items = append(items, key)
-		valid = iter.Next()
+		keyIter = iter.Next()
 	}
 
-	hasMore := valid && len(items) >= limit
+	hasMore := keyIter
 
 	return items, hasMore, iter.Error()
 }
 
 func (ki *KeyIterator) checkHasBefore(iter *pebble.Iterator, reference string) (bool, error) {
 	referenceKey := []byte(reference)
-	valid := iter.SeekLT(referenceKey)
-	return valid, iter.Error()
+	keyIter := iter.SeekLT(referenceKey)
+	return keyIter, iter.Error()
 }
 
 func (ki *KeyIterator) checkHasAfter(iter *pebble.Iterator, reference string) (bool, error) {
-	valid := iter.SeekGE([]byte(reference))
-	if valid && string(iter.Key()) == reference {
-		valid = iter.Next()
+	keyIter := iter.SeekGE([]byte(reference))
+	if keyIter && string(iter.Key()) == reference {
+		keyIter = iter.Next()
 	}
-	return valid, iter.Error()
+	return keyIter, iter.Error()
 }
 
 func (ki *KeyIterator) getTotalCount(iter *pebble.Iterator) int {
 	count := 0
-	valid := iter.First()
-	for valid {
+	keyIter := iter.First()
+	for keyIter {
 		count++
-		valid = iter.Next()
+		keyIter = iter.Next()
 	}
 	return count
 }

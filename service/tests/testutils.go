@@ -31,6 +31,7 @@ var (
 	EndpointBackendSign     string
 	EndpointFrontendThreads string
 	EndpointAdminHealth     string
+	EndpointAdminKeys       string
 )
 
 // Options for test server process.
@@ -469,6 +470,7 @@ sensor:
 	EndpointBackendSign = baseURL + "/backend/v1/sign"
 	EndpointFrontendThreads = baseURL + "/frontend/v1/threads"
 	EndpointAdminHealth = baseURL + "/admin/health"
+	EndpointAdminKeys = baseURL + "/admin/keys"
 
 	return &TestServer{ServerProcess: process}
 }
