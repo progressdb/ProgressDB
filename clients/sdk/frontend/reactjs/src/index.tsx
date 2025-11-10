@@ -6,7 +6,11 @@ import React, { createContext, useContext, useEffect, useState, useMemo } from '
 // Use the local TypeScript SDK types so the React package and TS SDK
 // share the same type definitions during development. This ensures
 // `removeReaction` and other APIs have consistent signatures.
-import ProgressDBClient, { SDKOptions, Message, Thread, ReactionInput } from '@progressdb/js';
+// Import from local TypeScript SDK during development
+// In production, this should import from @progressdb/js
+// Import from local TypeScript SDK during development
+// In production, this should import from @progressdb/js
+import ProgressDBClient, { SDKOptions, Message, Thread, ThreadsListResponse, MessagesListResponse, ThreadResponse, MessageResponse, PaginationRequest, PaginationResponse } from '../../../typescript/src/index';
 
 // Provider + context
 export type UserSignature = { userId: string; signature: string };
@@ -192,22 +196,25 @@ export function useUserSignature() {
 // Basic hook: list messages for a thread
 /**
  * Hook: list messages for a given thread.
- * @param threadId thread id to list messages for
+ * @param threadKey thread key to list messages for
+ * @param query optional pagination query parameters
  * @param deps optional dependency array to re-run fetch
  */
-export function useMessages(threadId?: string, deps: any[] = []) {
+export function useMessages(threadKey?: string, query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string; include_deleted?: boolean } = {}, deps: any[] = []) {
   const client = useProgressClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
+  const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
   const fetchMessages = async () => {
-    if (!threadId) return;
+    if (!threadKey) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await client.listMessages({ thread: threadId });
+      const res: MessagesListResponse = await client.listThreadMessages(threadKey, query);
       setMessages(res.messages || []);
+      setPagination(res.pagination || null);
     } catch (err) {
       setError(err);
     } finally {
@@ -216,39 +223,39 @@ export function useMessages(threadId?: string, deps: any[] = []) {
   };
 
   useEffect(() => {
-    if (threadId) fetchMessages();
+    if (threadKey) fetchMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, ...deps]);
+  }, [threadKey, ...deps]);
 
   const create = async (msg: Message) => {
-    const created = await client.createThreadMessage(threadId || '', msg);
+    const created: MessageResponse = await client.createThreadMessage(threadKey || '', msg);
     // naive refresh
     await fetchMessages();
-    return created;
+    return created.message;
   };
 
-  return { messages, loading, error, refresh: fetchMessages, create };
+  return { messages, pagination, loading, error, refresh: fetchMessages, create };
 }
 
 // Hook for a single message
 /**
  * Hook: fetch/operate on a single message within a thread.
- * @param threadId id of the thread containing the message
+ * @param threadKey key of the thread containing the message
  * @param id message id
  */
-export function useMessage(threadId?: string, id?: string) {
+export function useMessage(threadKey?: string, id?: string) {
   const client = useProgressClient();
   const [message, setMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
   const fetchMessage = async () => {
-    if (!id || !threadId) return;
+    if (!id || !threadKey) return;
     setLoading(true);
     setError(null);
     try {
-      const m = await client.getThreadMessage(threadId, id);
-      setMessage(m);
+      const res: MessageResponse = await client.getThreadMessage(threadKey, id);
+      setMessage(res.message);
     } catch (err) {
       setError(err);
     } finally {
@@ -257,20 +264,20 @@ export function useMessage(threadId?: string, id?: string) {
   };
 
   useEffect(() => {
-    if (id && threadId) fetchMessage();
+    if (id && threadKey) fetchMessage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, threadId]);
+  }, [id, threadKey]);
 
   const update = async (msg: Message) => {
-    if (!id || !threadId) throw new Error('threadId and id required');
-    const updated = await client.updateThreadMessage(threadId, id, msg);
-    setMessage(updated);
-    return updated;
+    if (!id || !threadKey) throw new Error('threadKey and id required');
+    const res: MessageResponse = await client.updateThreadMessage(threadKey, id, msg);
+    setMessage(res.message);
+    return res.message;
   };
 
   const remove = async () => {
-    if (!id || !threadId) throw new Error('threadId and id required');
-    await client.deleteThreadMessage(threadId, id);
+    if (!id || !threadKey) throw new Error('threadKey and id required');
+    await client.deleteThreadMessage(threadKey, id);
     setMessage(null);
   };
 
@@ -280,11 +287,13 @@ export function useMessage(threadId?: string, id?: string) {
 // Simple thread hooks
 /**
  * Hook: list threads.
+ * @param query optional query parameters
  * @param deps optional dependency array
  */
-export function useThreads(deps: any[] = []) {
+export function useThreads(query: { title?: string; slug?: string; limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string; author?: string } = {}, deps: any[] = []) {
   const client = useProgressClient();
   const [threads, setThreads] = useState<Thread[] | null>(null);
+  const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
@@ -292,8 +301,9 @@ export function useThreads(deps: any[] = []) {
     setLoading(true);
     setError(null);
     try {
-      const res = await client.listThreads();
+      const res: ThreadsListResponse = await client.listThreads(query);
       setThreads(res.threads || []);
+      setPagination(res.pagination || null);
     } catch (err) {
       setError(err);
     } finally {
@@ -306,72 +316,28 @@ export function useThreads(deps: any[] = []) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const create = async (t: Partial<Thread>) => {
-    const created = await client.createThread(t as Thread);
+  const create = async (t: { title: string; slug?: string }) => {
+    const res: ThreadResponse = await client.createThread(t);
     await fetchThreads();
-    return created;
+    return res.thread;
   };
 
-  const update = async (id: string, patch: Partial<Thread>) => {
-    const updated = await client.updateThread(id, patch as Thread);
+  const update = async (threadKey: string, patch: { title?: string; slug?: string }) => {
+    const res: ThreadResponse = await client.updateThread(threadKey, patch);
     await fetchThreads();
-    return updated;
+    return res.thread;
   };
 
-  const remove = async (id: string) => {
-    await client.deleteThread(id);
+  const remove = async (threadKey: string) => {
+    await client.deleteThread(threadKey);
     await fetchThreads();
   };
 
-  return { threads, loading, error, refresh: fetchThreads, create, update, remove };
+  return { threads, pagination, loading, error, refresh: fetchThreads, create, update, remove };
 }
 
-// Reactions
-/**
- * Hook: list/add/remove reactions for a message in a thread.
- * @param threadId thread id
- * @param messageId message id
- */
-export function useReactions(threadId?: string, messageId?: string) {
-  const client = useProgressClient();
-  const [reactions, setReactions] = useState<Array<{ id: string; reaction: string }> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
-
-  const fetchReactions = async () => {
-    if (!messageId || !threadId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await client.listReactions(threadId, messageId);
-      setReactions(res.reactions || []);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (messageId && threadId) fetchReactions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, threadId]);
-
-  const add = async (input: ReactionInput) => {
-    if (!messageId || !threadId) throw new Error('threadId and messageId required');
-    const res = await client.addOrUpdateReaction(threadId, messageId, input);
-    await fetchReactions();
-    return res;
-  };
-
-  const remove = async (identity: string) => {
-    if (!messageId || !threadId) throw new Error('threadId and messageId required');
-    await client.removeReaction(threadId, messageId, identity);
-    await fetchReactions();
-  };
-
-  return { reactions, loading, error, refresh: fetchReactions, add, remove };
-}
+// Reactions are not in the OpenAPI spec - removing this hook
+// If reactions are needed, they should be added to the OpenAPI spec first
 
 export type { Message, Thread };
 

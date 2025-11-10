@@ -45,22 +45,20 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	}
 	response.Total = total
 
-	// Convert relationship keys to thread keys
+	// Convert relationship keys to thread keys (no sorting needed)
 	threadKeys := make([]string, 0, len(relationshipKeys))
+
 	for _, relKey := range relationshipKeys {
 		parsed, err := keys.ParseUserOwnsThread(relKey)
 		if err != nil {
-			continue // Skip invalid keys
+			continue
 		}
+
 		threadKeys = append(threadKeys, parsed.ThreadKey)
 	}
 
-	// Update response anchors to use thread keys
-	if len(threadKeys) > 0 {
-		response.StartAnchor = threadKeys[0]
-		response.EndAnchor = threadKeys[len(threadKeys)-1]
-	}
-
+	// Return keys as-is from KeyIterator (already in lexicographical order)
+	// Anchors will be set by main KeyIterator logic
 	return threadKeys, response, nil
 }
 

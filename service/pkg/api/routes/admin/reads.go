@@ -307,82 +307,24 @@ func ListThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Use working key iterator for messages (message iterator has issues)
-	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
-		return
-	}
-
-	keyIter := ki.NewKeyIterator(storedb.Client)
+	// Use admin message iterator for proper chronological sorting
 	paginationReq := utils.ParsePaginationRequest(ctx)
 	if paginationReq.Limit == 0 {
 		paginationReq.Limit = pagination.AdminDefaultLimit // admin default
 	}
 
-	// Get message keys using working key iterator
-	msgKeys, paginationResp, err := keyIter.ExecuteKeyQuery(messagePrefix, paginationReq)
+	msgIter := mi.NewMessageIterator(storedb.Client)
+	msgKeys, paginationResp, err := msgIter.ExecuteMessageQuery(threadKey, paginationReq)
 	if err != nil {
-		logger.Error("ListThreadMessages: key iterator failed:", err)
+		logger.Error("ListThreadMessages: message iterator failed:", err)
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Get total count using message iterator (this part works)
-	msgIter := mi.NewMessageIterator(storedb.Client)
-	total, err := msgIter.GetMessageCount(threadKey)
-	if err != nil {
-		total = 0 // fallback
-	}
-	paginationResp.Total = total
-
-	// Sort message keys according to order_by parameter
-	sorter := mi.NewMessageSorter()
-
-	// Convert string keys to Message objects for sorting
-	var messages []models.Message
-	for _, key := range msgKeys {
-		// Parse the key to extract timestamp for sorting
-		parsed, err := keys.ParseKey(key)
-		if err != nil {
-			logger.Warn("ListThreadMessages: failed to parse key", "key", key, "error", err)
-			continue
-		}
-
-		// Convert timestamp string to int64
-		timestamp, err := keys.ParseKeyTimestamp(parsed.MessageTS)
-		if err != nil {
-			logger.Warn("ListThreadMessages: failed to parse timestamp", "key", key, "timestamp", parsed.MessageTS, "error", err)
-			continue
-		}
-
-		// Create a minimal Message object for sorting
-		messages = append(messages, models.Message{
-			Key:       key,
-			CreatedTS: timestamp,
-			UpdatedTS: timestamp, // Use same timestamp for both
-		})
-	}
-
-	// Sort the messages
-	sortedMessages := sorter.SortMessages(messages, paginationReq.SortBy, paginationReq.OrderBy)
-
-	// Extract sorted keys back
-	var sortedKeys []string
-	for _, msg := range sortedMessages {
-		sortedKeys = append(sortedKeys, msg.Key)
-	}
-
-	logger.Info("ListThreadMessages: found", "count", len(sortedKeys), "thread", threadKey)
-
-	// Update anchors to reflect sorted order
-	if len(sortedKeys) > 0 {
-		paginationResp.StartAnchor = sortedKeys[0]
-		paginationResp.EndAnchor = sortedKeys[len(sortedKeys)-1]
-	}
+	logger.Info("ListThreadMessages: found", "count", len(msgKeys), "thread", threadKey)
 
 	result := &DashboardMessagesResult{
-		Messages:   sortedKeys,
+		Messages:   msgKeys,
 		Pagination: paginationResp,
 	}
 	_ = router.WriteJSON(ctx, result)

@@ -26,7 +26,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		"anchor", req.Anchor,
 		"limit", req.Limit,
 		"sort_by", req.SortBy,
-		"order_by", req.OrderBy,
 	)
 
 	var iter *pebble.Iterator
@@ -68,10 +67,13 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response = pagination.PaginationResponse{
 			HasBefore: hasMoreBefore,
 			HasAfter:  hasMoreAfter,
-			OrderBy:   req.OrderBy,
 			Count:     len(keys),
 			Total:     ki.getTotalCount(iter),
 		}
+
+		// Sort entire combined array to oldest→newest for chat display (newest at bottom)
+		sorter := NewKeySorter()
+		keys = sorter.SortKeys(keys, req.SortBy, &response)
 
 	case req.Before != "" && req.After != "":
 		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Before, req.Limit/2)
@@ -88,10 +90,13 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response = pagination.PaginationResponse{
 			HasBefore: hasMoreBefore,
 			HasAfter:  hasMoreAfter,
-			OrderBy:   req.OrderBy,
 			Count:     len(keys),
 			Total:     ki.getTotalCount(iter),
 		}
+
+		// Sort entire combined array to oldest→newest for chat display (newest at bottom)
+		sorter := NewKeySorter()
+		keys = sorter.SortKeys(keys, req.SortBy, &response)
 
 	case req.Before != "":
 		keys, response.HasBefore, err = ki.fetchBefore(iter, req.Before, req.Limit)
@@ -100,9 +105,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasAfter, _ = ki.checkHasAfter(iter, req.Before)
-		response.OrderBy = req.OrderBy
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
+
+		// Sort to oldest→newest for chat display (newest at bottom)
+		sorter := NewKeySorter()
+		keys = sorter.SortKeys(keys, req.SortBy, &response)
 
 	case req.After != "":
 		keys, response.HasAfter, err = ki.fetchAfter(iter, req.After, req.Limit)
@@ -111,9 +119,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasBefore, _ = ki.checkHasBefore(iter, req.After)
-		response.OrderBy = req.OrderBy
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
+
+		// Sort to oldest→newest for chat display (newest at bottom)
+		sorter := NewKeySorter()
+		keys = sorter.SortKeys(keys, req.SortBy, &response)
 
 	default:
 		// Only keep this log for initial load
@@ -126,13 +137,26 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		}
 	}
 
-	sorter := NewKeySorter()
-	sortedKeys := sorter.SortKeys(keys, req.SortBy, req.OrderBy, &response)
+	// All cases now handle their own sorting, keys are always in oldest→newest order
+	sortedKeys := keys
+
+	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
+	if len(sortedKeys) > 0 {
+		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
+		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
+	}
+
+	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
+	if len(sortedKeys) > 0 {
+		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
+		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
+	}
+
 	// Only print anchors if there are results (this is helpful for anchor debugging)
 	if len(sortedKeys) > 0 {
 		logger.Debug("[FrontendKeyIterator] Result anchors",
-			"start_anchor", response.StartAnchor,
-			"end_anchor", response.EndAnchor,
+			"before_anchor", response.BeforeAnchor,
+			"after_anchor", response.AfterAnchor,
 			"count", response.Count,
 			"has_before", response.HasBefore,
 			"has_after", response.HasAfter)
@@ -159,15 +183,11 @@ func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.Pa
 	response := pagination.PaginationResponse{
 		HasBefore: hasMore,
 		HasAfter:  false,
-		OrderBy:   req.OrderBy,
 		Count:     len(items),
 		Total:     ki.getTotalCount(iter),
 	}
 
-	if len(items) > 0 {
-		response.StartAnchor = items[0]
-		response.EndAnchor = items[len(items)-1]
-	}
+	// Anchors will be set by main logic after sorting
 
 	return items, response, nil
 }

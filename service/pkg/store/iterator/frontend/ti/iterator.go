@@ -39,9 +39,17 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	}
 	response.Total = total
 
-	// Use thread sorter for final sorting (maintains frontend-specific sorting)
-	sorter := NewThreadSorter()
-	sortedKeys := sorter.SortKeys(relationshipKeys, req.SortBy, req.OrderBy, &response)
+	var sortedKeys []string
+
+	// Only sort for initial load - before/after are already in correct order from ki
+	if req.Before == "" && req.After == "" && req.Anchor == "" {
+		sorter := NewThreadSorter()
+		sortedKeys = sorter.SortKeys(relationshipKeys, req.SortBy, &response)
+	} else {
+		// Use keys as-is from ki (already in correct order)
+		sortedKeys = relationshipKeys
+
+	}
 
 	// Convert relationship keys to thread keys
 	threadKeys := make([]string, 0, len(sortedKeys))
@@ -53,10 +61,10 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		threadKeys = append(threadKeys, parsed.ThreadKey)
 	}
 
-	// Update anchors to use thread keys instead of relationship keys
+	// Set navigation anchors based on final threadKeys order (oldest→newest for chat)
 	if len(threadKeys) > 0 {
-		response.StartAnchor = threadKeys[0]
-		response.EndAnchor = threadKeys[len(threadKeys)-1]
+		response.BeforeAnchor = threadKeys[0]                // Oldest (first) for previous page
+		response.AfterAnchor = threadKeys[len(threadKeys)-1] // Newest (last) for next page
 	}
 
 	return threadKeys, response, nil

@@ -14,58 +14,43 @@ func NewThreadSorter() *ThreadSorter {
 	return &ThreadSorter{}
 }
 
-func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy, orderBy string) []models.Thread {
+func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy string) []models.Thread {
 	if len(threads) == 0 {
 		return threads
 	}
 
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "desc"
+		sortBy = "created_ts"
 	}
 
 	switch sortBy {
-	case "created_at", "created_ts":
-		ts.sortByCreatedTS(threads, orderBy)
-	case "updated_at", "updated_ts":
-		ts.sortByUpdatedTS(threads, orderBy)
+	case "created_ts":
+		ts.sortByCreatedTS(threads)
+	case "updated_ts":
+		ts.sortByUpdatedTS(threads)
 	default:
-		ts.sortByCreatedTS(threads, orderBy)
+		ts.sortByCreatedTS(threads)
 	}
 
 	return threads
 }
 
-func (ts *ThreadSorter) SortKeys(keys []string, sortBy, orderBy string, response *pagination.PaginationResponse) []string {
+func (ts *ThreadSorter) SortKeys(keys []string, sortBy string, response *pagination.PaginationResponse) []string {
 	if len(keys) == 0 {
 		return keys
 	}
 
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "desc"
+		sortBy = "created_ts"
 	}
 
 	sort.Slice(keys, func(i, j int) bool {
 		tsI := ts.extractTimestampFromKey(keys[i], sortBy)
 		tsJ := ts.extractTimestampFromKey(keys[j], sortBy)
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Ascending order for key iteration
 	})
 
-	response.OrderBy = orderBy
-
-	if len(keys) > 0 {
-		response.StartAnchor = keys[0]
-		response.EndAnchor = keys[len(keys)-1]
-	}
+	// Anchors will be set by main iterator logic
 
 	return keys
 }
@@ -99,26 +84,18 @@ func (ts *ThreadSorter) extractTimestampFromKey(key string, sortBy string) int64
 	return 0
 }
 
-func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread, orderBy string) {
+func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread) {
 	sort.Slice(threads, func(i, j int) bool {
 		tsI := threads[i].CreatedTS
 		tsJ := threads[j].CreatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Ascending order
 	})
 }
 
-func (ts *ThreadSorter) sortByUpdatedTS(threads []models.Thread, orderBy string) {
+func (ts *ThreadSorter) sortByUpdatedTS(threads []models.Thread) {
 	sort.Slice(threads, func(i, j int) bool {
 		tsI := threads[i].UpdatedTS
 		tsJ := threads[j].UpdatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Ascending order
 	})
 }

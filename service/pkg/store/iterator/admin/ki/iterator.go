@@ -26,7 +26,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		"anchor", req.Anchor,
 		"limit", req.Limit,
 		"sort_by", req.SortBy,
-		"order_by", req.OrderBy,
 	)
 
 	var iter *pebble.Iterator
@@ -69,7 +68,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response = pagination.PaginationResponse{
 			HasBefore: hasMoreBefore,
 			HasAfter:  hasMoreAfter,
-			OrderBy:   req.OrderBy,
 			Count:     len(keys),
 			Total:     ki.getTotalCount(iter),
 		}
@@ -88,7 +86,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response = pagination.PaginationResponse{
 			HasBefore: hasMoreBefore,
 			HasAfter:  hasMoreAfter,
-			OrderBy:   req.OrderBy,
 			Count:     len(keys),
 			Total:     ki.getTotalCount(iter),
 		}
@@ -99,7 +96,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasAfter, _ = ki.checkHasAfter(iter, req.Before)
-		response.OrderBy = req.OrderBy
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
 	case req.After != "":
@@ -109,7 +105,6 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 			return nil, pagination.PaginationResponse{}, err
 		}
 		response.HasBefore, _ = ki.checkHasBefore(iter, req.After)
-		response.OrderBy = req.OrderBy
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
 	default:
@@ -123,13 +118,31 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		}
 	}
 
-	sorter := NewKeySorter()
-	sortedKeys := sorter.SortKeys(keys, req.SortBy, req.OrderBy, &response)
+	// Use keys as-is from iterator (no sorting needed for admin keys)
+	sortedKeys := keys
+
+	// Set navigation anchors based on query type
+	if len(keys) > 0 {
+		switch {
+		case req.Before != "":
+			// Before query: keys are newest→oldest
+			response.BeforeAnchor = keys[len(keys)-1] // Last item (oldest) to get previous page
+			response.AfterAnchor = keys[0]            // First item (newest) to get next page
+		case req.After != "":
+			// After query: keys are oldest→newest
+			response.BeforeAnchor = keys[0]          // First item (oldest) to get previous page
+			response.AfterAnchor = keys[len(keys)-1] // Last item (newest) to get next page
+		default:
+			// Initial load: keys are newest→oldest
+			response.BeforeAnchor = keys[len(keys)-1] // Last item (oldest) to get previous page
+			response.AfterAnchor = keys[0]            // First item (newest) to get next page
+		}
+	}
 	// Only print anchors if there are results (this is helpful for anchor debugging)
 	if len(sortedKeys) > 0 {
 		logger.Debug("[KeyIterator] Result anchors",
-			"start_anchor", response.StartAnchor,
-			"end_anchor", response.EndAnchor,
+			"before_anchor", response.BeforeAnchor,
+			"after_anchor", response.AfterAnchor,
 			"count", response.Count,
 			"has_before", response.HasBefore,
 			"has_after", response.HasAfter)
@@ -155,15 +168,11 @@ func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.Pa
 	response := pagination.PaginationResponse{
 		HasBefore: hasMore,
 		HasAfter:  false,
-		OrderBy:   "asc",
 		Count:     len(items),
 		Total:     ki.getTotalCount(iter),
 	}
 
-	if len(items) > 0 {
-		response.StartAnchor = items[0]
-		response.EndAnchor = items[len(items)-1]
-	}
+	// Anchors will be set by main logic
 
 	return items, response, nil
 }

@@ -87,40 +87,24 @@ func (ks *KeySorter) extractThreadTimestamp(parsed *keys.KeyParts, sortBy string
 	return 0
 }
 
-func (ks *KeySorter) SortKeys(keys []string, sortBy, orderBy string, response *pagination.PaginationResponse) []string {
+func (ks *KeySorter) SortKeys(keys []string, sortBy string, response *pagination.PaginationResponse) []string {
 	if len(keys) == 0 {
 		return keys
 	}
 
-	// Default values
+	// Default value
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "asc"
+		sortBy = "created_ts"
 	}
 
-	// Sort by timestamp first
+	// Sort by timestamp in ascending order (oldest first for chat-style pagination)
 	sort.Slice(keys, func(i, j int) bool {
 		tsI := ks.extractTimestampFromKey(keys[i], sortBy)
 		tsJ := ks.extractTimestampFromKey(keys[j], sortBy)
-
-		if orderBy == "desc" {
-			// Reverse order: newest first → oldest last
-			return tsI > tsJ
-		}
-		// Chat-style: oldest first → newest last
 		return tsI < tsJ
 	})
 
-	// Update response
-	response.OrderBy = orderBy
-
-	// Update anchors based on sorted order
-	if len(keys) > 0 {
-		response.StartAnchor = keys[0]
-		response.EndAnchor = keys[len(keys)-1]
-	}
+	// Anchors will be set by main iterator logic
 
 	return keys
 }

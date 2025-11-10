@@ -281,7 +281,7 @@ func convertToRecords(threadDataMap map[int64]*ThreadData) *MigrationRecords {
 			lastMsgTS := threadData.Messages[len(threadData.Messages)-1].TS
 
 			records.Indexes = append(records.Indexes,
-				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:start", threadTSStr), Value: "1"},
+				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:start", threadTSStr), Value: "0"},
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:end", threadTSStr), Value: fmt.Sprintf("%d", len(threadData.Messages))},
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:lc", threadTSStr), Value: fmt.Sprintf("%d", firstMsgTS)},
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:lu", threadTSStr), Value: fmt.Sprintf("%d", lastMsgTS)},

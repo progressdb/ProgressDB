@@ -69,9 +69,23 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	}
 	response.Total = total
 
-	// Use message sorter for final sorting (maintains frontend-specific sorting)
-	sorter := NewMessageSorter()
-	sortedKeys := sorter.SortKeys(messageKeys, req.SortBy, req.OrderBy, &response)
+	var sortedKeys []string
+
+	// Only sort for initial load - before/after are already in correct order from ki
+	if req.Before == "" && req.After == "" && req.Anchor == "" {
+		sorter := NewMessageSorter()
+		sortedKeys = sorter.SortKeys(messageKeys, req.SortBy, &response)
+	} else {
+		// Use keys as-is from ki (already in correct order)
+		sortedKeys = messageKeys
+
+	}
+
+	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
+	if len(sortedKeys) > 0 {
+		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
+		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
+	}
 
 	return sortedKeys, response, nil
 }

@@ -63,4 +63,4 @@ encryption:
     mode: "embedded"
     endpoint: "127.0.0.1:6820"
     master_key_file: ""
-    master_key_hex: "f3c9a7df8b0e52c4a14ea2d0b38ef615f739482decdb0e8c7701435a4bfd98c2"
+    master_key_hex: "b748dbd094c8da033bb830f52963c051f2c41387c27c89bcf507736da944f337"

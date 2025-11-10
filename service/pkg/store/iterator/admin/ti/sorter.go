@@ -14,55 +14,36 @@ func NewThreadSorter() *ThreadSorter {
 	return &ThreadSorter{}
 }
 
-// SortThreads sorts threads by specified field and order
-func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy, orderBy string) []models.Thread {
+// SortThreads sorts threads by specified field
+func (ts *ThreadSorter) SortThreads(threads []models.Thread, sortBy string) []models.Thread {
 	if len(threads) == 0 {
 		return threads
 	}
 
-	// Default sort field and order
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "desc"
+		sortBy = "created_ts"
 	}
 
 	switch sortBy {
-	case "created_at", "created_ts":
-		ts.sortByCreatedTS(threads, orderBy)
-	case "updated_at", "updated_ts":
-		ts.sortByUpdatedTS(threads, orderBy)
+	case "created_ts":
+		ts.sortByCreatedTS(threads)
+	case "updated_ts":
+		ts.sortByUpdatedTS(threads)
 	default:
-		// Default to created_ts if unknown field
-		ts.sortByCreatedTS(threads, orderBy)
+		ts.sortByCreatedTS(threads)
 	}
 
 	return threads
 }
 
-// sortByCreatedTS sorts threads by creation timestamp
-func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread, orderBy string) {
+func (ts *ThreadSorter) sortByCreatedTS(threads []models.Thread) {
 	sort.Slice(threads, func(i, j int) bool {
-		tsI := threads[i].CreatedTS
-		tsJ := threads[j].CreatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return threads[i].CreatedTS < threads[j].CreatedTS
 	})
 }
 
-// sortByUpdatedTS sorts threads by update timestamp
-func (ts *ThreadSorter) sortByUpdatedTS(threads []models.Thread, orderBy string) {
+func (ts *ThreadSorter) sortByUpdatedTS(threads []models.Thread) {
 	sort.Slice(threads, func(i, j int) bool {
-		tsI := threads[i].UpdatedTS
-		tsJ := threads[j].UpdatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return threads[i].UpdatedTS < threads[j].UpdatedTS
 	})
 }

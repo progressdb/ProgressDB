@@ -14,58 +14,43 @@ func NewMessageSorter() *MessageSorter {
 	return &MessageSorter{}
 }
 
-func (ms *MessageSorter) SortMessages(messages []models.Message, sortBy, orderBy string) []models.Message {
+func (ms *MessageSorter) SortMessages(messages []models.Message, sortBy string) []models.Message {
 	if len(messages) == 0 {
 		return messages
 	}
 
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "asc"
+		sortBy = "created_ts"
 	}
 
 	switch sortBy {
-	case "created_at", "created_ts":
-		ms.sortByCreatedTS(messages, orderBy)
-	case "updated_at", "updated_ts":
-		ms.sortByUpdatedTS(messages, orderBy)
+	case "created_ts":
+		ms.sortByCreatedTS(messages)
+	case "updated_ts":
+		ms.sortByUpdatedTS(messages)
 	default:
-		ms.sortByCreatedTS(messages, orderBy)
+		ms.sortByCreatedTS(messages)
 	}
 
 	return messages
 }
 
-func (ms *MessageSorter) SortKeys(keys []string, sortBy, orderBy string, response *pagination.PaginationResponse) []string {
+func (ms *MessageSorter) SortKeys(keys []string, sortBy string, response *pagination.PaginationResponse) []string {
 	if len(keys) == 0 {
 		return keys
 	}
 
 	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "asc"
+		sortBy = "created_ts"
 	}
 
 	sort.Slice(keys, func(i, j int) bool {
 		tsI := ms.extractTimestampFromKey(keys[i], sortBy)
 		tsJ := ms.extractTimestampFromKey(keys[j], sortBy)
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Ascending order for key iteration
 	})
 
-	response.OrderBy = orderBy
-
-	if len(keys) > 0 {
-		response.StartAnchor = keys[0]
-		response.EndAnchor = keys[len(keys)-1]
-	}
+	// Anchors will be set by main iterator logic
 
 	return keys
 }
@@ -128,26 +113,18 @@ func (ms *MessageSorter) extractThreadTimestamp(parsed *keys.KeyParts, sortBy st
 	return 0
 }
 
-func (ms *MessageSorter) sortByCreatedTS(messages []models.Message, orderBy string) {
+func (ms *MessageSorter) sortByCreatedTS(messages []models.Message) {
 	sort.Slice(messages, func(i, j int) bool {
 		tsI := messages[i].CreatedTS
 		tsJ := messages[j].CreatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Always ascending for reference-based pagination
 	})
 }
 
-func (ms *MessageSorter) sortByUpdatedTS(messages []models.Message, orderBy string) {
+func (ms *MessageSorter) sortByUpdatedTS(messages []models.Message) {
 	sort.Slice(messages, func(i, j int) bool {
 		tsI := messages[i].UpdatedTS
 		tsJ := messages[j].UpdatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
-		}
-		return tsI < tsJ
+		return tsI < tsJ // Always ascending for reference-based pagination
 	})
 }

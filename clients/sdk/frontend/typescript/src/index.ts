@@ -7,28 +7,72 @@
 */
 
 export type Message = {
-  id?: string;
+  key?: string;
   thread?: string;
   author?: string;
   role?: string; // e.g. "user" | "system"; defaults to "user" when omitted
-  ts?: number;
+  created_ts?: number;
+  updated_ts?: number;
   body?: any;
   reply_to?: string;
   deleted?: boolean;
-  reactions?: Record<string, string>;
 };
 
 export type Thread = {
-  id: string;
+  key: string;
   title?: string;
   slug?: string;
   created_ts?: number;
   updated_ts?: number;
   author?: string;
-  metadata?: Record<string, any>;
+  deleted?: boolean;
+  kms?: KMSMeta;
+};
+
+export type KMSMeta = {
+  key_id?: string;
+  wrapped_dek?: string;
+  kek_id?: string;
+  kek_version?: string;
 };
 
 export type ReactionInput = { id: string; reaction: string };
+
+export type PaginationRequest = {
+  before?: string;   // Fetch items older than this reference ID
+  after?: string;    // Fetch items newer than this reference ID
+  anchor?: string;   // Fetch items around this anchor (takes precedence if set)
+  limit?: number;    // Max number to return
+  sort_by?: string;  // Sort by field: "created_ts" or "updated_ts"
+};
+
+export type PaginationResponse = {
+  before_anchor: string; // Use this to get previous page
+  after_anchor: string;  // Use this to get next page
+  has_before: boolean;   // True if there are items before BeforeAnchor (previous page exists)
+  has_after: boolean;    // True if there are items after AfterAnchor (next page exists)
+  count: number;        // Number of items returned in this page
+  total: number;        // Total number of items available
+};
+
+export type ThreadsListResponse = {
+  threads: Thread[];
+  pagination?: PaginationResponse;
+};
+
+export type MessagesListResponse = {
+  thread?: string;
+  messages: Message[];
+  pagination?: PaginationResponse;
+};
+
+export type ThreadResponse = {
+  thread: Thread;
+};
+
+export type MessageResponse = {
+  message: Message;
+};
 
 export type SDKOptions = {
   baseUrl?: string;
@@ -112,186 +156,154 @@ export class ProgressDBClient {
   // Health
   /**
    * Health check.
-   * @returns parsed JSON health object from GET /healthz
+   * @returns parsed JSON health object from GET /admin/health
    */
   health(): Promise<any> {
-    return this.request('/healthz', 'GET');
+    return this.request('/admin/health', 'GET');
   }
 
-  // Messages
+  // Messages - thread-scoped only per OpenAPI spec
   /**
-   * List messages (optionally scoped to a thread via the `thread` query param).
-   * @param query optional query parameters { thread, limit }
+   * List messages for a thread.
+   * @param threadKey thread key
+   * @param query optional query parameters (limit, before, after, anchor, sort_by, include_deleted)
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  listMessages(query: { thread?: string; limit?: number } = {}, userId?: string, userSignature?: string): Promise<{ thread?: string; messages: Message[] }> {
+  listThreadMessages(threadKey: string, query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string; include_deleted?: boolean } = {}, userId?: string, userSignature?: string): Promise<MessagesListResponse> {
     const qs = new URLSearchParams();
-    if (query.thread) qs.set('thread', query.thread);
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
-    return this.request('/v1/messages' + (qs.toString() ? `?${qs.toString()}` : ''), 'GET', undefined, userId, userSignature) as Promise<{ thread?: string; messages: Message[] }>;
+    if (query.before) qs.set('before', query.before);
+    if (query.after) qs.set('after', query.after);
+    if (query.anchor) qs.set('anchor', query.anchor);
+    if (query.sort_by) qs.set('sort_by', query.sort_by);
+    if (query.include_deleted !== undefined) qs.set('include_deleted', String(query.include_deleted));
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<MessagesListResponse>;
   }
 
   /**
-   * Create a message. If `msg.thread` is omitted a new thread is created.
+   * Create a message within a thread.
+   * @param threadKey thread key
    * @param msg message payload
    * @param userId optional user id to send as X-User-ID
    * @param userSignature optional signature to send as X-User-Signature
    */
-  createMessage(msg: Message, userId?: string, userSignature?: string): Promise<Message> {
-    return this.request('/v1/messages', 'POST', msg, userId, userSignature) as Promise<Message>;
-  }
-
-  // message-level get/update/delete removed; use thread-scoped APIs instead
-
-  /**
-   * List stored versions for a message under a thread.
-   * GET /v1/threads/{threadID}/messages/{id}/versions
-   */
-  listMessageVersions(threadID: string, id: string, userId?: string, userSignature?: string): Promise<{ id: string; versions: Message[] }> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/versions`, 'GET', undefined, userId, userSignature) as Promise<{ id: string; versions: Message[] }>;
-  }
-
-  // Reactions (thread-scoped)
-  /**
-   * List reactions for a message in a thread.
-   */
-  listReactions(threadID: string, id: string, userId?: string, userSignature?: string): Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, 'GET', undefined, userId, userSignature) as Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }>;
-  }
-
-  /**
-   * Add or update a reaction for a message in a thread.
-   */
-  addOrUpdateReaction(threadID: string, id: string, input: ReactionInput, userId?: string, userSignature?: string): Promise<Message> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, 'POST', input, userId, userSignature) as Promise<Message>;
-  }
-
-  /**
-   * Remove a reaction by identity for a message within a thread.
-   */
-  removeReaction(threadID: string, id: string, identity: string, userId?: string, userSignature?: string): Promise<any> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(identity)}`, 'DELETE', undefined, userId, userSignature);
-  }
-
-  // Threads
-  /**
-   * Create a new thread.
-   * @param thread partial thread payload
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  createThread(thread: Partial<Thread>, userId?: string, userSignature?: string): Promise<Thread> {
-    return this.request('/v1/threads', 'POST', thread, userId, userSignature) as Promise<Thread>;
-  }
-
-  /**
-   * List threads visible to the current user.
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  listThreads(userId?: string, userSignature?: string): Promise<{ threads: Thread[] }> {
-    return this.request('/v1/threads', 'GET', undefined, userId, userSignature) as Promise<{ threads: Thread[] }>;
-  }
-
-  /**
-   * Retrieve thread metadata by id.
-   * @param id thread id
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  getThread(id: string, userId?: string, userSignature?: string): Promise<Thread> {
-    return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<Thread>;
-  }
-
-  /**
-   * Soft-delete a thread by id.
-   * @param id thread id
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  deleteThread(id: string, userId?: string, userSignature?: string): Promise<any> {
-    return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
-  }
-
-  /**
-   * Update thread metadata.
-   * @param id thread id
-   * @param thread partial thread payload
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  updateThread(id: string, thread: Partial<Thread>, userId?: string, userSignature?: string): Promise<Thread> {
-    return this.request(`/v1/threads/${encodeURIComponent(id)}`, 'PUT', thread, userId, userSignature) as Promise<Thread>;
-  }
-
-  // Thread messages
-  /**
-   * Create a message within a thread.
-   * @param threadID thread id
-   * @param msg message payload
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  createThreadMessage(threadID: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages`, 'POST', msg, userId, userSignature) as Promise<Message>;
-  }
-
-  /**
-   * List messages for a thread.
-   * @param threadID thread id
-   * @param query optional query parameters (limit)
-   * @param userId optional user id
-   * @param userSignature optional signature
-   */
-  listThreadMessages(threadID: string, query: { limit?: number } = {}, userId?: string, userSignature?: string): Promise<{ thread?: string; messages: Message[] }> {
-    const qs = new URLSearchParams();
-    if (query.limit !== undefined) qs.set('limit', String(query.limit));
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<{ thread?: string; messages: Message[] }>;
+  createThreadMessage(threadKey: string, msg: Message, userId?: string, userSignature?: string): Promise<MessageResponse> {
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages`, 'POST', msg, userId, userSignature) as Promise<MessageResponse>;
   }
 
   /**
    * Retrieve a message by id within a thread.
-   * @param threadID thread id
+   * @param threadKey thread key
    * @param id message id
-   * @param userId optional user id
-   * @param userSignature optional signature
+   * @param userId optional user id to attach as X-User-ID
+   * @param userSignature optional signature to attach as X-User-Signature
    */
-  getThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string): Promise<Message> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<Message>;
+  getThreadMessage(threadKey: string, id: string, userId?: string, userSignature?: string): Promise<MessageResponse> {
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<MessageResponse>;
   }
 
   /**
-   * Update (append new version) a message within a thread.
-   * @param threadID thread id
+   * Update a message within a thread.
+   * @param threadKey thread key
    * @param id message id
    * @param msg message payload
-   * @param userId optional user id
-   * @param userSignature optional signature
+   * @param userId optional user id to attach as X-User-ID
+   * @param userSignature optional signature to attach as X-User-Signature
    */
-  updateThreadMessage(threadID: string, id: string, msg: Message, userId?: string, userSignature?: string): Promise<Message> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'PUT', msg, userId, userSignature) as Promise<Message>;
+  updateThreadMessage(threadKey: string, id: string, msg: Message, userId?: string, userSignature?: string): Promise<MessageResponse> {
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'PUT', msg, userId, userSignature) as Promise<MessageResponse>;
   }
 
   /**
    * Soft-delete a message within a thread.
-   * @param threadID thread id
+   * @param threadKey thread key
    * @param id message id
+   * @param userId optional user id to attach as X-User-ID
+   * @param userSignature optional signature to attach as X-User-Signature
+   */
+  deleteThreadMessage(threadKey: string, id: string, userId?: string, userSignature?: string): Promise<any> {
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
+  }
+
+  // Reactions are not in the OpenAPI spec - removing these methods
+  // If reactions are needed, they should be added to the OpenAPI spec first
+
+  // Threads
+  /**
+   * Create a new thread.
+   * @param thread thread payload with required title
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  deleteThreadMessage(threadID: string, id: string, userId?: string, userSignature?: string): Promise<any> {
-    return this.request(`/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature);
+  createThread(thread: { title: string; slug?: string }, userId?: string, userSignature?: string): Promise<ThreadResponse> {
+    return this.request('/frontend/v1/threads', 'POST', thread, userId, userSignature) as Promise<ThreadResponse>;
   }
 
-  // Signing is admin-only; SDK exposes the call but it requires an admin key.
   /**
-   * Create an HMAC signature for a user id using the server-side signing endpoint.
-   * This is admin-only and requires an admin API key.
+   * List threads visible to the current user.
+   * @param query optional query parameters (title, slug, limit, before, after, anchor, sort_by, author)
+   * @param userId optional user id
+   * @param userSignature optional signature
+   */
+  listThreads(query: { title?: string; slug?: string; limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string; author?: string } = {}, userId?: string, userSignature?: string): Promise<ThreadsListResponse> {
+    const qs = new URLSearchParams();
+    if (query.title) qs.set('title', query.title);
+    if (query.slug) qs.set('slug', query.slug);
+    if (query.limit !== undefined) qs.set('limit', String(query.limit));
+    if (query.before) qs.set('before', query.before);
+    if (query.after) qs.set('after', query.after);
+    if (query.anchor) qs.set('anchor', query.anchor);
+    if (query.sort_by) qs.set('sort_by', query.sort_by);
+    if (query.author) qs.set('author', query.author);
+    return this.request(`/frontend/v1/threads${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<ThreadsListResponse>;
+  }
+
+  /**
+   * Retrieve thread metadata by key.
+   * @param threadKey thread key
+   * @param query optional query parameters (author)
+   * @param userId optional user id
+   * @param userSignature optional signature
+   */
+  getThread(threadKey: string, query: { author?: string } = {}, userId?: string, userSignature?: string): Promise<ThreadResponse> {
+    const qs = new URLSearchParams();
+    if (query.author) qs.set('author', query.author);
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<ThreadResponse>;
+  }
+
+  /**
+   * Soft-delete a thread by key.
+   * @param threadKey thread key
+   * @param query optional query parameters (author)
+   * @param userId optional user id
+   * @param userSignature optional signature
+   */
+  deleteThread(threadKey: string, query: { author?: string } = {}, userId?: string, userSignature?: string): Promise<any> {
+    const qs = new URLSearchParams();
+    if (query.author) qs.set('author', query.author);
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}${qs.toString() ? `?${qs.toString()}` : ''}`, 'DELETE', undefined, userId, userSignature);
+  }
+
+  /**
+   * Update thread metadata.
+   * @param threadKey thread key
+   * @param thread partial thread payload (title, slug)
+   * @param userId optional user id
+   * @param userSignature optional signature
+   */
+  updateThread(threadKey: string, thread: { title?: string; slug?: string }, userId?: string, userSignature?: string): Promise<ThreadResponse> {
+    return this.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'PUT', thread, userId, userSignature) as Promise<ThreadResponse>;
+  }
+
+  // Backend signing endpoint - requires backend API key
+  /**
+   * Create an HMAC signature for a user id using the backend signing endpoint.
+   * This requires a backend API key.
    * @param userIdToSign user id to sign
    */
   signUser(userIdToSign: string): Promise<{ userId: string; signature: string }> {
-    return this.request('/v1/_sign', 'POST', { userId: userIdToSign }) as Promise<{ userId: string; signature: string }>;
+    return this.request('/backend/v1/sign', 'POST', { userId: userIdToSign }) as Promise<{ userId: string; signature: string }>;
   }
 }
 

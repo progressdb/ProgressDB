@@ -78,17 +78,33 @@ paths:
             default: 50
           description: Maximum number of threads to return
         - in: query
-          name: cursor
+          name: before
           schema:
             type: string
-          description: Pagination cursor for next page
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ThreadsListResponse'
+          description: Fetch items older than this reference ID
+        - in: query
+          name: after
+          schema:
+            type: string
+          description: Fetch items newer than this reference ID
+        - in: query
+          name: anchor
+          schema:
+            type: string
+          description: Fetch items around this anchor (takes precedence if set)
+        - in: query
+          name: sort_by
+          schema:
+            type: string
+            enum: ["created_ts", "updated_ts"]
+          description: Sort by field: "created_ts" or "updated_ts"
+       responses:
+         "200":
+           description: OK
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ThreadsListResponse'
     post:
       summary: Create a thread (async)
       description: |
@@ -196,17 +212,33 @@ paths:
             default: 50
           description: Maximum number of messages to return
         - in: query
-          name: cursor
+          name: before
           schema:
             type: string
-          description: Pagination cursor for next page
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessagesListResponse'
+          description: Fetch items older than this reference ID
+        - in: query
+          name: after
+          schema:
+            type: string
+          description: Fetch items newer than this reference ID
+        - in: query
+          name: anchor
+          schema:
+            type: string
+          description: Fetch items around this anchor (takes precedence if set)
+        - in: query
+          name: sort_by
+          schema:
+            type: string
+            enum: ["created_ts", "updated_ts"]
+          description: Sort by field: "created_ts" or "updated_ts"
+       responses:
+         "200":
+           description: OK
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/MessagesListResponse'
     post:
       summary: Create a message in a thread (async)
       description: |
@@ -771,19 +803,31 @@ components:
     PaginationResponse:
       type: object
       properties:
-        cursor:
+        start_anchor:
           type: string
-          description: Next page cursor
-        has_more:
+          description: First item in the current page
+        end_anchor:
+          type: string
+          description: Last item in the current page
+        has_before:
           type: boolean
-          description: Whether more pages exist
-        limit:
+          description: True if there are items before StartAnchor (previous page exists)
+        has_after:
+          type: boolean
+          description: True if there are items after EndAnchor (next page exists)
+        count:
           type: integer
-          description: Page limit used
+          description: Number of items returned in this page
+        total:
+          type: integer
+          description: Total number of items available
       example:
-        cursor: "eyJ1c2VySWQiOiJ1c2VyMTIzIiwidGltZXN0YW1wIjoxNzAwMDAwMDAwMDAwMDAwMH0="
-        has_more: true
-        limit: 50
+        start_anchor: "t:00000170000000000000001"
+        end_anchor: "t:00000170000000000000050"
+        has_before: false
+        has_after: true
+        count: 50
+        total: 125
 
     KeysList:
       type: object

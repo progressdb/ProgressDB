@@ -43,7 +43,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 	}
 
 	sorter := ti.NewThreadSorter()
-	threads = sorter.SortThreads(threads, req.SortBy, req.OrderBy)
+	threads = sorter.SortThreads(threads, req.SortBy)
 
 	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: threads, Pagination: &paginationResp})
 }
@@ -149,7 +149,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	sorter := mi.NewMessageSorter()
-	messages = sorter.SortMessages(messages, req.SortBy, req.OrderBy)
+	messages = sorter.SortMessages(messages, req.SortBy)
 
 	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Pagination: &paginationResp})
 }

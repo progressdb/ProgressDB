@@ -18,55 +18,48 @@ func TestPaginationParsing(t *testing.T) {
 		{
 			name: "anchor query",
 			input: map[string]string{
-				"anchor":   "thread123",
-				"limit":    "40",
-				"sort_by":  "created_at",
-				"order_by": "asc",
+				"anchor":  "thread123",
+				"limit":   "40",
+				"sort_by": "created_ts",
 			},
 			expected: pagination.PaginationRequest{
-				Anchor:  "thread123",
-				Limit:   40,
-				SortBy:  "created_at",
-				OrderBy: "asc",
+				Anchor: "thread123",
+				Limit:  40,
+				SortBy: "created_ts",
 			},
 		},
 		{
 			name: "before query",
 			input: map[string]string{
-				"before":   "thread456",
-				"limit":    "20",
-				"sort_by":  "updated_at",
-				"order_by": "desc",
+				"before":  "thread456",
+				"limit":   "20",
+				"sort_by": "updated_ts",
 			},
 			expected: pagination.PaginationRequest{
-				Before:  "thread456",
-				Limit:   20,
-				SortBy:  "updated_at",
-				OrderBy: "desc",
+				Before: "thread456",
+				Limit:  20,
+				SortBy: "updated_ts",
 			},
 		},
 		{
 			name: "after query",
 			input: map[string]string{
-				"after":    "thread789",
-				"limit":    "100",
-				"sort_by":  "created_at",
-				"order_by": "desc",
+				"after":   "thread789",
+				"limit":   "100",
+				"sort_by": "created_ts",
 			},
 			expected: pagination.PaginationRequest{
-				After:   "thread789",
-				Limit:   100,
-				SortBy:  "created_at",
-				OrderBy: "desc",
+				After:  "thread789",
+				Limit:  100,
+				SortBy: "created_ts",
 			},
 		},
 		{
 			name:  "defaults",
 			input: map[string]string{},
 			expected: pagination.PaginationRequest{
-				Limit:   50,
-				SortBy:  "updated_at",
-				OrderBy: "desc",
+				Limit:  50,
+				SortBy: "created_ts",
 			},
 		},
 	}
@@ -95,9 +88,6 @@ func TestPaginationParsing(t *testing.T) {
 			if req.SortBy != tt.expected.SortBy {
 				t.Errorf("SortBy = %v, want %v", req.SortBy, tt.expected.SortBy)
 			}
-			if req.OrderBy != tt.expected.OrderBy {
-				t.Errorf("OrderBy = %v, want %v", req.OrderBy, tt.expected.OrderBy)
-			}
 		})
 	}
 }
@@ -113,10 +103,9 @@ func TestPaginationValidation(t *testing.T) {
 		{
 			name: "valid anchor query",
 			req: pagination.PaginationRequest{
-				Anchor:  "thread123",
-				Limit:   50,
-				SortBy:  "created_at",
-				OrderBy: "asc",
+				Anchor: "thread123",
+				Limit:  50,
+				SortBy: "created_ts",
 			},
 			expectError: false,
 		},
@@ -137,17 +126,9 @@ func TestPaginationValidation(t *testing.T) {
 				SortBy: "invalid_field",
 			},
 			expectError: true,
-			errorMsg:    "sort_by must be 'created_at' or 'updated_at'",
+			errorMsg:    "sort_by must be 'created_ts' or 'updated_ts'",
 		},
-		{
-			name: "invalid order_by",
-			req: pagination.PaginationRequest{
-				Limit:   50,
-				OrderBy: "invalid_order",
-			},
-			expectError: true,
-			errorMsg:    "order_by must be 'asc' or 'desc'",
-		},
+
 		{
 			name: "limit too small",
 			req: pagination.PaginationRequest{
@@ -218,11 +199,10 @@ func (m *mockQueryArgs) Has(key string) bool {
 // Test helper functions that mirror utils functions but work with our interface
 func parsePaginationRequestTest(ctx PaginationContext) pagination.PaginationRequest {
 	req := pagination.PaginationRequest{
-		Before:  string(ctx.QueryArgs().Peek("before")),
-		After:   string(ctx.QueryArgs().Peek("after")),
-		Anchor:  string(ctx.QueryArgs().Peek("anchor")),
-		SortBy:  string(ctx.QueryArgs().Peek("sort_by")),
-		OrderBy: string(ctx.QueryArgs().Peek("order_by")),
+		Before: string(ctx.QueryArgs().Peek("before")),
+		After:  string(ctx.QueryArgs().Peek("after")),
+		Anchor: string(ctx.QueryArgs().Peek("anchor")),
+		SortBy: string(ctx.QueryArgs().Peek("sort_by")),
 	}
 
 	// Parse limit with default
@@ -236,11 +216,8 @@ func parsePaginationRequestTest(ctx PaginationContext) pagination.PaginationRequ
 	if req.Limit == 0 {
 		req.Limit = 50
 	}
-	if req.OrderBy == "" {
-		req.OrderBy = "desc" // Default to descending for threads
-	}
 	if req.SortBy == "" {
-		req.SortBy = "updated_at" // Default to updated_at for threads
+		req.SortBy = "created_ts" // Default to created_ts
 	}
 
 	return req
@@ -264,13 +241,8 @@ func validatePaginationRequestTest(req pagination.PaginationRequest) error {
 	}
 
 	// Validate sort_by
-	if req.SortBy != "" && req.SortBy != "created_at" && req.SortBy != "updated_at" {
-		return fmt.Errorf("sort_by must be 'created_at' or 'updated_at'")
-	}
-
-	// Validate order_by
-	if req.OrderBy != "" && req.OrderBy != "asc" && req.OrderBy != "desc" {
-		return fmt.Errorf("order_by must be 'asc' or 'desc'")
+	if req.SortBy != "" && req.SortBy != "created_ts" && req.SortBy != "updated_ts" {
+		return fmt.Errorf("sort_by must be 'created_ts' or 'updated_ts'")
 	}
 
 	// Validate limit

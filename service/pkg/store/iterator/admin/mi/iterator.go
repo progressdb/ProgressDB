@@ -6,6 +6,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/iterator/admin/ki"
+	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 )
 
@@ -39,7 +40,10 @@ func (mi *MessageIterator) GetMessageCount(threadKey string) (int, error) {
 // ExecuteMessageQuery executes message pagination for a specific thread
 func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
 	// Generate message key prefix for this thread
-	messagePrefix := fmt.Sprintf("t:%s:m:", threadKey)
+	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate message prefix: %w", err)
+	}
 
 	// Use the key iterator for pure key-based pagination
 	keys, response, err := mi.keyIter.ExecuteKeyQuery(messagePrefix, req)
@@ -55,5 +59,6 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	}
 	response.Total = total
 
+	// Return keys as-is from KeyIterator (already in lexicographical order)
 	return keys, response, nil
 }

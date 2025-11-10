@@ -2,11 +2,14 @@ package mi
 
 import (
 	"sort"
+	"strconv"
+	"strings"
 
-	"progressdb/pkg/models"
+	"progressdb/pkg/store/keys"
+	"progressdb/pkg/store/pagination"
 )
 
-// MessageSorter handles sorting messages by different fields
+// MessageSorter handles sorting message keys by timestamp
 type MessageSorter struct{}
 
 // NewMessageSorter creates a new message sorter
@@ -14,55 +17,100 @@ func NewMessageSorter() *MessageSorter {
 	return &MessageSorter{}
 }
 
-// SortMessages sorts messages by specified field and order
-func (ms *MessageSorter) SortMessages(messages []models.Message, sortBy, orderBy string) []models.Message {
-	if len(messages) == 0 {
-		return messages
+// extractTimestampFromKey extracts timestamp from message key
+func (ms *MessageSorter) extractTimestampFromKey(key string) int64 {
+	parsed, err := keys.ParseKey(key)
+	if err != nil {
+		return 0
 	}
 
-	// Default sort field and order
-	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if orderBy == "" {
-		orderBy = "asc"
-	}
-
-	switch sortBy {
-	case "created_at", "created_ts":
-		ms.sortByCreatedTS(messages, orderBy)
-	case "updated_at", "updated_ts":
-		ms.sortByUpdatedTS(messages, orderBy)
+	switch parsed.Type {
+	case keys.KeyTypeMessage:
+		return ms.extractMessageTimestamp(parsed, "created_ts")
 	default:
-		// Default to created_ts if unknown field
-		ms.sortByCreatedTS(messages, orderBy)
+		// For other key types, try to extract from thread timestamp as fallback
+		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+			return ts
+		}
 	}
 
-	return messages
+	return 0
 }
 
-// sortByCreatedTS sorts messages by creation timestamp
-func (ms *MessageSorter) sortByCreatedTS(messages []models.Message, orderBy string) {
-	sort.Slice(messages, func(i, j int) bool {
-		tsI := messages[i].CreatedTS
-		tsJ := messages[j].CreatedTS
+// extractSequenceFromKey extracts sequence number from message key
+func (ms *MessageSorter) extractSequenceFromKey(key string) int64 {
+	parsed, err := keys.ParseKey(key)
+	if err != nil {
+		return 0
+	}
 
-		if orderBy == "desc" {
-			return tsI > tsJ
+	switch parsed.Type {
+	case keys.KeyTypeMessage:
+		// Parse sequence from MessageKey (the last part after the final colon)
+		if parsed.MessageKey != "" {
+			// Extract sequence from the full message key
+			parts := strings.Split(parsed.MessageKey, ":")
+			if len(parts) >= 3 {
+				if seq, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+					return seq
+				}
+			}
 		}
-		return tsI < tsJ
-	})
+	}
+
+	return 0
 }
 
-// sortByUpdatedTS sorts messages by update timestamp
-func (ms *MessageSorter) sortByUpdatedTS(messages []models.Message, orderBy string) {
-	sort.Slice(messages, func(i, j int) bool {
-		tsI := messages[i].UpdatedTS
-		tsJ := messages[j].UpdatedTS
-
-		if orderBy == "desc" {
-			return tsI > tsJ
+// extractMessageTimestamp extracts timestamp from message key parts
+func (ms *MessageSorter) extractMessageTimestamp(parsed *keys.KeyParts, sortBy string) int64 {
+	// Extract timestamp based on sort field
+	switch sortBy {
+	case "created_ts", "created_at":
+		// Parse message timestamp from MessageKey
+		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+			return ts
 		}
-		return tsI < tsJ
+	case "updated_ts", "updated_at":
+		// For messages, updated_ts is same as created_ts in the key
+		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+			return ts
+		}
+	default:
+		// Default to created_ts
+		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+			return ts
+		}
+	}
+
+	return 0
+}
+
+// SortKeys sorts message keys by timestamp then sequence in ascending order (oldest→newest)
+func (ms *MessageSorter) SortKeys(keys []string, sortBy string, response *pagination.PaginationResponse) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+
+	// Sort by timestamp first, then sequence (oldest first for chat-style display)
+	sort.Slice(keys, func(i, j int) bool {
+		tsI := ms.extractTimestampFromKey(keys[i])
+		tsJ := ms.extractTimestampFromKey(keys[j])
+
+		if tsI != tsJ {
+			return tsI < tsJ // Primary sort by timestamp
+		}
+
+		// If timestamps are equal, sort by sequence
+		seqI := ms.extractSequenceFromKey(keys[i])
+		seqJ := ms.extractSequenceFromKey(keys[j])
+		return seqI < seqJ // Secondary sort by sequence
 	})
+
+	// Update response anchors based on sorted order (oldest→newest)
+	if len(keys) > 0 {
+		response.BeforeAnchor = keys[0]          // oldest
+		response.AfterAnchor = keys[len(keys)-1] // newest
+	}
+
+	return keys
 }
