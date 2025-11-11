@@ -49,9 +49,7 @@ func ValidateAllFieldsNonEmpty(p interface{}) error {
 			if v.Title == "" {
 				errors = append(errors, "title: cannot be empty")
 			}
-			if v.Slug == "" {
-				errors = append(errors, "slug: cannot be empty")
-			}
+
 		}
 	case *models.MessageUpdatePartial:
 		if v == nil {

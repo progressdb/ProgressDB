@@ -133,19 +133,26 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		}
 	}
 
-	// All cases now handle their own sorting, keys are always in oldest→newest order
+	// Use keys as-is from iterator (no sorting needed for admin keys)
 	sortedKeys := keys
 
-	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
-	if len(sortedKeys) > 0 {
-		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
-		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
-	}
-
-	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
-	if len(sortedKeys) > 0 {
-		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
-		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
+	// Set navigation anchors based on query type (preserve HasBefore/HasAfter from fetch functions)
+	if len(keys) > 0 {
+		switch {
+		case req.Before != "":
+			// Before query: keys are newest→oldest
+			response.BeforeAnchor = keys[len(keys)-1] // Last item (oldest) to get previous page
+			response.AfterAnchor = keys[0]            // First item (newest) to get next page
+		case req.After != "":
+			// After query: keys are oldest→newest
+			response.BeforeAnchor = keys[0]          // First item (oldest) to get previous page
+			response.AfterAnchor = keys[len(keys)-1] // Last item (newest) to get next page
+		default:
+			// Initial load: keys are newest→oldest
+			response.BeforeAnchor = keys[0]          // First item (newest) - for going to newer items
+			response.AfterAnchor = keys[len(keys)-1] // Last item (oldest) - for going to older items
+			// HasBefore/HasAfter already correctly set by fetchInitialLoad
+		}
 	}
 
 	// Only print anchors if there are results (this is helpful for anchor debugging)
