@@ -12,9 +12,8 @@ func GetThreadData(threadKey string) (string, error) {
 	if storedb.Client == nil {
 		return "", fmt.Errorf("pebble not opened; call storedb.Open first")
 	}
-	tk := keys.GenThreadKey(threadKey)
 
-	v, closer, err := storedb.Client.Get([]byte(tk))
+	v, closer, err := storedb.Client.Get([]byte(threadKey))
 	if err != nil {
 		return "", err
 	}

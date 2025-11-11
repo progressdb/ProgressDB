@@ -37,8 +37,7 @@ const (
 	RelThreadHasUser  = "rel:t:%s:u:%s" // rel:t:<thread_key>:u:<user_id>
 
 	// padding widths (fixed for lexicographic ordering)
-	TSPadWidth  = 20 // e.g. %020d
-	SeqPadWidth = 9  // e.g. %09d
+	SeqPadWidth = 9 // e.g. %09d
 
 	// system keys
 	SystemVersionKey    = "system:version"

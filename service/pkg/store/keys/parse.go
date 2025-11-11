@@ -60,30 +60,22 @@ type ThreadMessageEndParts struct {
 	ThreadKey string
 }
 
-func parsePaddedInt(s string, width int) (int64, error) {
-	if len(s) == 0 || len(s) > width {
-		return 0, fmt.Errorf("length invalid: %s", s)
-	}
-	trimmed := strings.TrimLeft(s, "0")
-	if trimmed == "" {
+func parseInt(s string) (int64, error) {
+	if s == "" {
 		return 0, nil
 	}
-	v, err := strconv.ParseInt(trimmed, 10, 64)
+	v, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0, err
 	}
 	return v, nil
 }
 
-func parsePaddedUint(s string, width int) (uint64, error) {
-	if len(s) == 0 || len(s) > width {
-		return 0, fmt.Errorf("length invalid: %s", s)
-	}
-	trimmed := strings.TrimLeft(s, "0")
-	if trimmed == "" {
+func parseUint(s string) (uint64, error) {
+	if s == "" {
 		return 0, nil
 	}
-	v, err := strconv.ParseUint(trimmed, 10, 64)
+	v, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0, err
 	}
@@ -268,11 +260,11 @@ func ParseSoftDeleteMarker(key string) (*SoftDeleteMarkerParts, error) {
 }
 
 func ParseKeyTimestamp(s string) (int64, error) {
-	return parsePaddedInt(s, TSPadWidth)
+	return parseInt(s)
 }
 
 func ParseKeySequence(s string) (uint64, error) {
-	return parsePaddedUint(s, SeqPadWidth)
+	return parseUint(s)
 }
 
 // IsProvisionalMessageKey checks if a key is a provisional message key

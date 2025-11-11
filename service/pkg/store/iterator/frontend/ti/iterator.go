@@ -2,6 +2,7 @@ package ti
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/iterator/frontend/ki"
@@ -21,6 +22,20 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate user thread prefix: %w", err)
+	}
+
+	// Transform thread keys to relationship keys for pagination
+	if req.Before != "" {
+		threadTS := strings.TrimPrefix(req.Before, "t:")
+		req.Before = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
+	}
+	if req.After != "" {
+		threadTS := strings.TrimPrefix(req.After, "t:")
+		req.After = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
+	}
+	if req.Anchor != "" {
+		threadTS := strings.TrimPrefix(req.Anchor, "t:")
+		req.Anchor = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
 	}
 
 	// Use the frontend key iterator for robust key iteration

@@ -189,7 +189,7 @@ func (m *IndexManager) generateNewSequencedKey(messageKey string) (string, error
 		return "", fmt.Errorf("get next message sequence: %w", err)
 	}
 
-	finalKey := keys.GenMessageKey(threadKey, parsed.MessageTS, sequence)
+	finalKey := keys.GenMessageKey(parsed.ThreadTS, parsed.MessageTS, sequence)
 
 	// set state
 	m.kv.SetStateKV(messageKey, finalKey)

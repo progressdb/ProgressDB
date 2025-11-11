@@ -42,9 +42,9 @@ func ParseThreadKey(key string) (*KeyMapping, error) {
 		OldKey:    key,
 		ThreadID:  threadID,
 		ThreadSeq: threadSeq,
-		Timestamp: threadTS,                         // Use thread timestamp as base
-		MsgSeq:    0,                                // Threads don't have message sequences
-		NewKey:    fmt.Sprintf("t:%020d", threadTS), // New format: t:<threadTS>
+		Timestamp: threadTS,                      // Use thread timestamp as base
+		MsgSeq:    0,                             // Threads don't have message sequences
+		NewKey:    fmt.Sprintf("t:%d", threadTS), // New format: t:<threadTS>
 	}, nil
 }
 
@@ -121,7 +121,7 @@ func ConvertKeys(keys []string) ([]*KeyMapping, error) {
 		// Renumber sequences zero-based within each thread
 		for i, mapping := range group {
 			mapping.NewSeq = i
-			mapping.TSPadded = fmt.Sprintf("%020d", mapping.Timestamp)
+			mapping.TSPadded = fmt.Sprintf("%d", mapping.Timestamp)
 			mapping.SeqPadded = fmt.Sprintf("%09d", i)
 
 			// Build new key format: t:<thread_ts>:m:<message_ts>:<seq>

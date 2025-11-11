@@ -52,12 +52,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 
 	switch {
 	case req.Anchor != "":
-		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Anchor, req.Limit/2)
+		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Anchor, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchBefore error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.Anchor, req.Limit-len(beforeKeys))
+		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.Anchor, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchAfter error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
@@ -76,12 +76,12 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		keys = sorter.SortKeys(keys, req.SortBy, &response)
 
 	case req.Before != "" && req.After != "":
-		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Before, req.Limit/2)
+		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Before, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchBefore error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.After, req.Limit-len(beforeKeys))
+		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.After, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchAfter error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err

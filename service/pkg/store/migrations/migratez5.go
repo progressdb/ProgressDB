@@ -20,32 +20,27 @@ import (
 )
 
 const (
-	TSPadWidth  = 20
-	SeqPadWidth = 9
+	SeqPadWidth = 9 // e.g. %09d
 )
-
-func PadTS(ts int64) string {
-	return fmt.Sprintf("%0*d", TSPadWidth, ts)
-}
 
 func PadSeq(seq uint64) string {
 	return fmt.Sprintf("%0*d", SeqPadWidth, seq)
 }
 
 func GenThreadKey(threadTS int64) string {
-	return fmt.Sprintf("t:%s", PadTS(threadTS))
+	return fmt.Sprintf("t:%d", threadTS)
 }
 
 func GenMessageKey(threadTS, messageTS int64, seq uint64) string {
-	return fmt.Sprintf("t:%s:m:%s:%s", PadTS(threadTS), PadTS(messageTS), PadSeq(seq))
+	return fmt.Sprintf("t:%d:m:%d:%s", threadTS, messageTS, PadSeq(seq))
 }
 
 func GenUserOwnsThread(userID string, threadTS int64) string {
-	return fmt.Sprintf("rel:u:%s:t:%s", userID, PadTS(threadTS))
+	return fmt.Sprintf("rel:u:%s:t:%d", userID, threadTS)
 }
 
 func GenThreadHasUser(threadTS int64, userID string) string {
-	return fmt.Sprintf("rel:t:%s:u:%s", PadTS(threadTS), userID)
+	return fmt.Sprintf("rel:t:%d:u:%s", threadTS, userID)
 }
 
 type OldThread struct {
@@ -501,10 +496,10 @@ func convertToRecordsWithMappings(threadDataMap map[int64]*ThreadData, keyMappin
 		// Generate message records using clean sequences
 		for i, oldMessage := range threadData.Messages {
 			// Use the correct new key format: t:<thread_ts>:m:<message_ts>:<seq>
-			newKey := fmt.Sprintf("t:%s:m:%s:%s",
-				PadTS(threadTS),      // thread timestamp
-				PadTS(oldMessage.TS), // message timestamp
-				PadSeq(uint64(i)))    // sequence
+			newKey := fmt.Sprintf("t:%d:m:%d:%s",
+				threadTS,          // thread timestamp
+				oldMessage.TS,     // message timestamp
+				PadSeq(uint64(i))) // sequence
 
 			messageRecord := MessageRecord{
 				Key:       newKey,
@@ -522,7 +517,7 @@ func convertToRecordsWithMappings(threadDataMap map[int64]*ThreadData, keyMappin
 
 		// Generate indexes using clean keys
 		if len(threadData.Messages) > 0 {
-			threadTSStr := PadTS(threadTS)
+			threadTSStr := fmt.Sprintf("%d", threadTS)
 			firstMsgTS := threadData.Messages[0].TS
 			lastMsgTS := threadData.Messages[len(threadData.Messages)-1].TS
 
@@ -533,7 +528,7 @@ func convertToRecordsWithMappings(threadDataMap map[int64]*ThreadData, keyMappin
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:lu", threadTSStr), Value: fmt.Sprintf("%d", lastMsgTS)},
 			)
 		} else {
-			threadTSStr := PadTS(threadTS)
+			threadTSStr := fmt.Sprintf("%d", threadTS)
 			records.Indexes = append(records.Indexes,
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:start", threadTSStr), Value: "0"},
 				IndexRecord{Key: fmt.Sprintf("idx:t:%s:ms:end", threadTSStr), Value: "0"},

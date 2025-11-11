@@ -27,7 +27,7 @@ func GenMessageKey(threadTS, messageTS string, seq uint64) string {
 }
 
 func GenMessageVersionKey(messageKey string, ts int64, versionSeq uint64) string {
-	return fmt.Sprintf(VersionKey, messageKey, PadTS(ts), PadSeq(versionSeq))
+	return fmt.Sprintf(VersionKey, messageKey, ts, PadSeq(versionSeq))
 }
 
 func GenThreadKey(threadTS string) string {
@@ -85,10 +85,6 @@ func GenThreadHasUserKey(threadTS, userID string) string {
 }
 
 // helpers
-func PadTS(ts int64) string {
-	return fmt.Sprintf("%0*d", TSPadWidth, ts)
-}
-
 func PadSeq(seq uint64) string {
 	return fmt.Sprintf("%0*d", SeqPadWidth, seq)
 }
