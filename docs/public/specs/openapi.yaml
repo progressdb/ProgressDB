@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: ProgressDB API
   version: "0.5.0"
@@ -20,7 +20,6 @@ servers:
   - url: /
 
 paths:
-  # Backend Authentication
   /backend/v1/sign:
     post:
       summary: Issue an HMAC signature for a given user id
@@ -39,7 +38,8 @@ paths:
               properties:
                 userId:
                   type: string
-              required: [userId]
+              required:
+                - userId
       responses:
         "200":
           description: signature issued
@@ -53,7 +53,6 @@ paths:
                   signature:
                     type: string
 
-  # Frontend Thread Operations
   /frontend/v1/threads:
     get:
       summary: List threads
@@ -61,50 +60,52 @@ paths:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
-        - in: query
-          name: title
+        - name: title
+          in: query
           schema:
             type: string
           description: Case-insensitive substring filter on thread title
-        - in: query
-          name: slug
+        - name: slug
+          in: query
           schema:
             type: string
           description: Exact match on thread slug
-        - in: query
-          name: limit
+        - name: limit
+          in: query
           schema:
             type: integer
             default: 50
           description: Maximum number of threads to return
-        - in: query
-          name: before
+        - name: before
+          in: query
           schema:
             type: string
           description: Fetch items older than this reference ID
-        - in: query
-          name: after
+        - name: after
+          in: query
           schema:
             type: string
           description: Fetch items newer than this reference ID
-        - in: query
-          name: anchor
+        - name: anchor
+          in: query
           schema:
             type: string
           description: Fetch items around this anchor (takes precedence if set)
-        - in: query
-          name: sort_by
+        - name: sort_by
+          in: query
           schema:
             type: string
-            enum: ["created_ts", "updated_ts"]
-          description: Sort by field: "created_ts" or "updated_ts"
-       responses:
-         "200":
-           description: OK
-           content:
-             application/json:
-               schema:
-                 $ref: '#/components/schemas/ThreadsListResponse'
+            enum:
+              - created_ts
+              - updated_ts
+          description: Sort by field "created_ts" or "updated_ts"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadsListResponse'
     post:
       summary: Create a thread (async)
       description: |
@@ -120,12 +121,16 @@ paths:
             schema:
               $ref: '#/components/schemas/ThreadCreateRequest'
       responses:
-        "200":
+        "202":
           description: Thread enqueued for creation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ThreadResponse'
+                type: object
+                properties:
+                  key:
+                    type: string
+                    description: Thread key
 
   /frontend/v1/threads/{threadKey}:
     get:
@@ -134,8 +139,8 @@ paths:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
@@ -154,8 +159,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
@@ -181,8 +186,8 @@ paths:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
@@ -191,7 +196,6 @@ paths:
         "204":
           description: Thread enqueued for deletion
 
-  # Frontend Message Operations
   /frontend/v1/threads/{threadKey}/messages:
     get:
       summary: List messages in a thread
@@ -199,46 +203,48 @@ paths:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/IncludeDeleted'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
           description: Thread key
-        - in: query
-          name: limit
+        - name: limit
+          in: query
           schema:
             type: integer
             default: 50
           description: Maximum number of messages to return
-        - in: query
-          name: before
+        - name: before
+          in: query
           schema:
             type: string
           description: Fetch items older than this reference ID
-        - in: query
-          name: after
+        - name: after
+          in: query
           schema:
             type: string
           description: Fetch items newer than this reference ID
-        - in: query
-          name: anchor
+        - name: anchor
+          in: query
           schema:
             type: string
           description: Fetch items around this anchor (takes precedence if set)
-        - in: query
-          name: sort_by
+        - name: sort_by
+          in: query
           schema:
             type: string
-            enum: ["created_ts", "updated_ts"]
-          description: Sort by field: "created_ts" or "updated_ts"
-       responses:
-         "200":
-           description: OK
-           content:
-             application/json:
-               schema:
-                 $ref: '#/components/schemas/MessagesListResponse'
+            enum:
+              - created_ts
+              - updated_ts
+          description: Sort by field "created_ts" or "updated_ts"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesListResponse'
     post:
       summary: Create a message in a thread (async)
       description: |
@@ -246,8 +252,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
@@ -259,7 +265,7 @@ paths:
             schema:
               $ref: '#/components/schemas/MessageCreateRequest'
       responses:
-        "200":
+        "202":
           description: Message enqueued for creation
           content:
             application/json:
@@ -272,14 +278,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
           description: Thread key
-        - in: path
-          name: id
+        - name: id
+          in: path
           required: true
           schema:
             type: string
@@ -298,14 +304,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
           description: Thread key
-        - in: path
-          name: id
+        - name: id
+          in: path
           required: true
           schema:
             type: string
@@ -330,14 +336,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
           description: Thread key
-        - in: path
-          name: id
+        - name: id
+          in: path
           required: true
           schema:
             type: string
@@ -346,7 +352,6 @@ paths:
         "204":
           description: Message enqueued for deletion
 
-  # Admin Operations
   /admin/health:
     get:
       summary: Admin health check
@@ -390,8 +395,8 @@ paths:
       security:
         - AdminApiKey: []
       parameters:
-        - in: query
-          name: prefix
+        - name: prefix
+          in: query
           schema:
             type: string
           description: Optional prefix to filter returned keys
@@ -410,8 +415,8 @@ paths:
       security:
         - AdminApiKey: []
       parameters:
-        - in: path
-          name: key
+        - name: key
+          in: path
           required: true
           schema:
             type: string
@@ -438,12 +443,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  users:
-                    type: array
-                    items:
-                      type: string
+                $ref: '#/components/schemas/DashboardUsersResult'
 
   /admin/users/{userId}/threads:
     get:
@@ -451,8 +451,8 @@ paths:
       security:
         - AdminApiKey: []
       parameters:
-        - in: path
-          name: userId
+        - name: userId
+          in: path
           required: true
           schema:
             type: string
@@ -471,14 +471,14 @@ paths:
       security:
         - AdminApiKey: []
       parameters:
-        - in: path
-          name: userId
+        - name: userId
+          in: path
           required: true
           schema:
             type: string
           description: User ID
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
@@ -497,20 +497,20 @@ paths:
       security:
         - AdminApiKey: []
       parameters:
-        - in: path
-          name: userId
+        - name: userId
+          in: path
           required: true
           schema:
             type: string
           description: User ID
-        - in: path
-          name: threadKey
+        - name: threadKey
+          in: path
           required: true
           schema:
             type: string
           description: Thread key
-        - in: path
-          name: messageKey
+        - name: messageKey
+          in: path
           required: true
           schema:
             type: string
@@ -534,23 +534,30 @@ paths:
           application/json:
             schema:
               type: object
-              properties:
-                thread_ids:
-                  type: array
-                  items:
-                    type: string
+              properties: {}
       responses:
         "200":
-          description: Encryption job started
+          description: Encryption job completed
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                  job_id:
-                    type: string
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      success:
+                        type: integer
+                      skipped:
+                        type: integer
+                      errors:
+                        type: integer
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EncryptThreadsResult'
 
   /admin/jobs/purge:
     post:
@@ -569,7 +576,7 @@ paths:
                   default: false
       responses:
         "200":
-          description: Job started
+          description: Job completed
           content:
             application/json:
               schema:
@@ -577,10 +584,9 @@ paths:
                 properties:
                   status:
                     type: string
-                  job_id:
+                  message:
                     type: string
 
-  # Debug endpoints
   /admin/debug/prometheus:
     get:
       summary: Prometheus metrics
@@ -593,6 +599,73 @@ paths:
             text/plain:
               schema:
                 type: string
+
+  /admin/debug/pprof/:
+    get:
+      summary: pprof index
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: pprof index page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /admin/debug/pprof/cmdline:
+    get:
+      summary: pprof cmdline
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: pprof cmdline
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/debug/pprof/profile:
+    get:
+      summary: pprof profile
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: pprof profile
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /admin/debug/pprof/symbol:
+    get:
+      summary: pprof symbol
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: pprof symbol
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/debug/pprof/trace:
+    get:
+      summary: pprof trace
+      security:
+        - AdminApiKey: []
+      responses:
+        "200":
+          description: pprof trace
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
 
 components:
   schemas:
@@ -803,18 +876,15 @@ components:
     PaginationResponse:
       type: object
       properties:
-        start_anchor:
-          type: string
-          description: First item in the current page
-        end_anchor:
-          type: string
-          description: Last item in the current page
-        has_before:
+        limit:
+          type: integer
+          description: Page limit
+        has_more:
           type: boolean
-          description: True if there are items before StartAnchor (previous page exists)
-        has_after:
-          type: boolean
-          description: True if there are items after EndAnchor (next page exists)
+          description: True if there are more items
+        next_cursor:
+          type: string
+          description: Cursor for next page
         count:
           type: integer
           description: Number of items returned in this page
@@ -822,10 +892,9 @@ components:
           type: integer
           description: Total number of items available
       example:
-        start_anchor: "t:00000170000000000000001"
-        end_anchor: "t:00000170000000000000050"
-        has_before: false
-        has_after: true
+        limit: 50
+        has_more: true
+        next_cursor: "next_cursor_value"
         count: 50
         total: 125
 
@@ -836,6 +905,36 @@ components:
           type: array
           items:
             type: string
+
+    DashboardUsersResult:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+
+    EncryptThreadsResult:
+      type: object
+      properties:
+        thread_key:
+          type: string
+          description: Thread key
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+            - skipped
+          description: Status of encryption operation
+        error:
+          type: string
+          description: Error message if status is "error"
+        dek_key_id:
+          type: string
+          description: DEK key ID if encryption succeeded
 
     ErrorResponse:
       type: object
