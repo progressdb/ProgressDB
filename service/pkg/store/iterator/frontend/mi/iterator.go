@@ -81,11 +81,5 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 
 	}
 
-	// Set navigation anchors based on final sortedKeys order (oldest→newest for chat)
-	if len(sortedKeys) > 0 {
-		response.BeforeAnchor = sortedKeys[0]                // Oldest (first) for previous page
-		response.AfterAnchor = sortedKeys[len(sortedKeys)-1] // Newest (last) for next page
-	}
-
 	return sortedKeys, response, nil
 }

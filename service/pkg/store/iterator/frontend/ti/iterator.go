@@ -76,12 +76,6 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		threadKeys = append(threadKeys, parsed.ThreadKey)
 	}
 
-	// Set navigation anchors based on final threadKeys order (oldest→newest for chat)
-	if len(threadKeys) > 0 {
-		response.BeforeAnchor = threadKeys[0]                // Oldest (first) for previous page
-		response.AfterAnchor = threadKeys[len(threadKeys)-1] // Newest (last) for next page
-	}
-
 	return threadKeys, response, nil
 }
 

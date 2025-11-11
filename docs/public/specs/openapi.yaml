@@ -57,6 +57,7 @@ paths:
     get:
       summary: List threads
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
@@ -112,6 +113,7 @@ paths:
         Creates a new thread. The operation is enqueued and processed asynchronously.
         Returns immediately with thread metadata.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
       requestBody:
@@ -136,6 +138,7 @@ paths:
     get:
       summary: Get thread metadata by key
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
@@ -157,6 +160,7 @@ paths:
       description: |
         Updates thread metadata. The operation is enqueued and processed asynchronously.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - name: threadKey
@@ -183,6 +187,7 @@ paths:
       description: |
         Soft-deletes a thread. The operation is enqueued and processed asynchronously.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/AuthorQuery'
@@ -200,6 +205,7 @@ paths:
     get:
       summary: List messages in a thread
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - $ref: '#/components/parameters/IncludeDeleted'
@@ -250,6 +256,7 @@ paths:
       description: |
         Creates a new message in a thread. The operation is enqueued and processed asynchronously.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - name: threadKey
@@ -276,6 +283,7 @@ paths:
     get:
       summary: Get a specific message
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - name: threadKey
@@ -302,6 +310,7 @@ paths:
       description: |
         Updates a message content. The operation is enqueued and processed asynchronously.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - name: threadKey
@@ -334,6 +343,7 @@ paths:
       description: |
         Soft-deletes a message. The operation is enqueued and processed asynchronously.
       parameters:
+        - $ref: '#/components/parameters/XAPIKey'
         - $ref: '#/components/parameters/XUserID'
         - $ref: '#/components/parameters/XUserSignature'
         - name: threadKey
@@ -957,6 +967,16 @@ components:
       description: Provide an admin or backend API key in the X-API-Key header
 
   parameters:
+    XAPIKey:
+      name: X-API-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        API key for authentication. Frontend callers must provide a frontend API key.
+        Backend and admin callers must provide their respective backend or admin API keys.
+
     XUserID:
       name: X-User-ID
       in: header
