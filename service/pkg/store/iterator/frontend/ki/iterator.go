@@ -108,9 +108,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
 
-		// Sort to oldest→newest for chat display (newest at bottom)
-		sorter := NewKeySorter()
-		keys = sorter.SortKeys(keys, req.SortBy, &response)
+		// Don't sort - fetchBefore returns keys in correct order already
 
 	case req.After != "":
 		keys, response.HasAfter, err = ki.fetchAfter(iter, req.After, req.Limit)
@@ -122,9 +120,7 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 		response.Count = len(keys)
 		response.Total = ki.getTotalCount(iter)
 
-		// Sort to oldest→newest for chat display (newest at bottom)
-		sorter := NewKeySorter()
-		keys = sorter.SortKeys(keys, req.SortBy, &response)
+		// Don't sort - fetchAfter returns keys in correct order already
 
 	default:
 		// Only keep this log for initial load
@@ -201,6 +197,7 @@ func (ki *KeyIterator) fetchBefore(iter *pebble.Iterator, reference string, limi
 	for valid && len(items) < limit {
 		key := string(iter.Key())
 		items = append(items, key)
+		logger.Debug("[fetchBefore] Key found", "key", key)
 		valid = iter.Prev()
 	}
 
