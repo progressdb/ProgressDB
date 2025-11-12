@@ -1,13 +1,11 @@
 package ti
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
-	"progressdb/pkg/models"
-	thread_store "progressdb/pkg/store/features/threads"
+	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/iterator/frontend/ki"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
@@ -182,21 +180,22 @@ func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	return count, nil
 }
 
-// isThreadDeleted checks if a thread is marked as deleted by fetching its data
+// isThreadDeleted checks if a thread is marked as deleted using soft delete markers
 func (ti *ThreadIterator) isThreadDeleted(threadKey string) (bool, error) {
-	threadData, err := thread_store.GetThreadData(threadKey)
+	// Generate soft delete marker key
+	deleteMarkerKey := keys.GenSoftDeleteMarkerKey(threadKey)
+
+	// Check if soft delete marker exists
+	_, err := indexdb.GetKey(deleteMarkerKey)
 	if err != nil {
-		// If thread data doesn't exist or can't be fetched, consider it not deleted
-		// This handles cases where thread metadata is missing but relationship keys exist
+		if indexdb.IsNotFound(err) {
+			// No soft delete marker found = not deleted
+			return false, nil
+		}
+		// Error checking for marker = fail-safe, consider not deleted
 		return false, nil
 	}
 
-	// Parse thread JSON to check deleted status
-	var thread models.Thread
-	if err := json.Unmarshal([]byte(threadData), &thread); err != nil {
-		// If JSON is invalid, consider it not deleted (fail-safe)
-		return false, nil
-	}
-
-	return thread.Deleted, nil
+	// Soft delete marker found = thread is deleted
+	return true, nil
 }

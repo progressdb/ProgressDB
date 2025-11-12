@@ -189,7 +189,6 @@ func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.Pa
 	}
 
 	// Anchors will be set by main logic after sorting
-
 	return keys, response, nil
 }
 
@@ -256,7 +255,6 @@ func (ki *KeyIterator) getTotalCount(iter *pebble.Iterator) int {
 	return count
 }
 
-// nextPrefix returns the next prefix for range scanning
 func nextPrefix(prefix []byte) []byte {
 	next := make([]byte, len(prefix))
 	copy(next, prefix)

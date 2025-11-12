@@ -1,13 +1,10 @@
 package mi
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/indexdb"
-	message_store "progressdb/pkg/store/features/messages"
 	"progressdb/pkg/store/iterator/frontend/ki"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
@@ -127,22 +124,24 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	return sortedKeys, response, nil
 }
 
-// isMessageDeleted checks if a message is marked as deleted by fetching its data
+// isMessageDeleted checks if a message is marked as deleted using soft delete markers
 func (mi *MessageIterator) isMessageDeleted(messageKey string) (bool, error) {
-	messageData, err := message_store.GetMessageData(messageKey)
+	// Generate soft delete marker key
+	deleteMarkerKey := keys.GenSoftDeleteMarkerKey(messageKey)
+
+	// Check if soft delete marker exists
+	_, err := indexdb.GetKey(deleteMarkerKey)
 	if err != nil {
-		// If message data doesn't exist or can't be fetched, consider it not deleted
+		if indexdb.IsNotFound(err) {
+			// No soft delete marker found = not deleted
+			return false, nil
+		}
+		// Error checking for marker = fail-safe, consider not deleted
 		return false, nil
 	}
 
-	// Parse message JSON to check deleted status
-	var message models.Message
-	if err := json.Unmarshal([]byte(messageData), &message); err != nil {
-		// If JSON is invalid, consider it not deleted (fail-safe)
-		return false, nil
-	}
-
-	return message.Deleted, nil
+	// Soft delete marker found = message is deleted
+	return true, nil
 }
 
 // GetMessageCountExcludingDeleted returns the count of non-deleted messages in a thread
