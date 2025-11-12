@@ -171,71 +171,69 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 }
 
 func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
-	var items []string
+	var keys []string
 
 	valid := iter.Last()
 
-	for valid && len(items) < req.Limit {
+	for valid && len(keys) < req.Limit {
 		key := string(iter.Key())
-		items = append(items, key)
+		keys = append(keys, key)
 		valid = iter.Prev()
 	}
 
-	hasMore := valid
-
 	response := pagination.PaginationResponse{
-		HasBefore: hasMore,
+		HasBefore: valid,
 		HasAfter:  false,
-		Count:     len(items),
+		Count:     len(keys),
 		Total:     ki.getTotalCount(iter),
 	}
 
 	// Anchors will be set by main logic after sorting
 
-	return items, response, nil
+	return keys, response, nil
 }
 
 func (ki *KeyIterator) fetchBefore(iter *pebble.Iterator, reference string, limit int) ([]string, bool, error) {
-	var items []string
+	var keys []string
 	referenceKey := []byte(reference)
 
 	valid := iter.SeekLT(referenceKey)
 
-	for valid && len(items) < limit {
+	for valid && len(keys) < limit {
 		key := string(iter.Key())
-		items = append(items, key)
+		keys = append(keys, key)
 		logger.Debug("[fetchBefore] Key found", "key", key)
 		valid = iter.Prev()
 	}
 
-	hasMore := valid && len(items) >= limit
+	hasMore := valid && len(keys) >= limit
 
-	return items, hasMore, iter.Error()
+	return keys, hasMore, iter.Error()
 }
 
 func (ki *KeyIterator) fetchAfter(iter *pebble.Iterator, reference string, limit int) ([]string, bool, error) {
-	var items []string
+	var keys []string
 
 	valid := iter.SeekGE([]byte(reference))
 	if valid && string(iter.Key()) == reference {
 		valid = iter.Next()
 	}
 
-	for valid && len(items) < limit {
+	for valid && len(keys) < limit {
 		key := string(iter.Key())
-		items = append(items, key)
+		keys = append(keys, key)
 		valid = iter.Next()
 	}
 
-	hasMore := valid && len(items) >= limit
+	hasMore := valid && len(keys) >= limit
 
-	return items, hasMore, iter.Error()
+	return keys, hasMore, iter.Error()
 }
 
 func (ki *KeyIterator) checkHasBefore(iter *pebble.Iterator, reference string) (bool, error) {
 	referenceKey := []byte(reference)
 	valid := iter.SeekLT(referenceKey)
-	return valid, iter.Error()
+	return valid, nil
 }
 
 func (ki *KeyIterator) checkHasAfter(iter *pebble.Iterator, reference string) (bool, error) {
@@ -243,7 +241,7 @@ func (ki *KeyIterator) checkHasAfter(iter *pebble.Iterator, reference string) (b
 	if valid && string(iter.Key()) == reference {
 		valid = iter.Next()
 	}
-	return valid, iter.Error()
+	return valid, nil
 }
 
 func (ki *KeyIterator) getTotalCount(iter *pebble.Iterator) int {
@@ -258,14 +256,15 @@ func (ki *KeyIterator) getTotalCount(iter *pebble.Iterator) int {
 	return count
 }
 
+// nextPrefix returns the next prefix for range scanning
 func nextPrefix(prefix []byte) []byte {
-	out := make([]byte, len(prefix))
-	copy(out, prefix)
-	for i := len(out) - 1; i >= 0; i-- {
-		if out[i] < 0xFF {
-			out[i]++
-			return out[:i+1]
+	next := make([]byte, len(prefix))
+	copy(next, prefix)
+	for i := len(next) - 1; i >= 0; i-- {
+		if next[i] < 0xff {
+			next[i]++
+			return next[:i+1]
 		}
 	}
-	return nil
+	return append(next, 0x00)
 }
