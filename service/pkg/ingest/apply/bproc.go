@@ -435,31 +435,6 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("set deleted message data: %w", err)
 	}
 
-	logger.Debug("parsing_message_sequence", "finalMessageKey", finalMessageKey)
-
-	// Parse the message key to extract the sequence part
-	messageKeyParts, err := keys.ParseMessageKey(finalMessageKey)
-	if err != nil {
-		logger.Error("failed_to_parse_message_key", "error", err, "finalMessageKey", finalMessageKey)
-		return fmt.Errorf("failed to parse message key %s: %w", finalMessageKey, err)
-	}
-
-	// Convert the sequence string to uint64
-	messageSeq, err := keys.KeySequenceNumbered(messageKeyParts.Seq)
-	if err != nil {
-		logger.Error("failed_to_convert_sequence", "error", err, "sequence", messageKeyParts.Seq)
-		return fmt.Errorf("failed to convert sequence %s to uint64: %w", messageKeyParts.Seq, err)
-	}
-	logger.Debug("parsed_message_sequence", "messageSeq", messageSeq, "sequenceString", messageKeyParts.Seq)
-
-	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
-	logger.Debug("generated_version_key", "versionKey", versionKey)
-	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
-		logger.Error("failed_to_set_version_key", "error", err, "versionKey", versionKey)
-		return fmt.Errorf("set version key: %w", err)
-	}
-	logger.Debug("set_version_key_complete", "versionKey", versionKey)
-
 	// update indexes
 	logger.Debug("updating_thread_indexes", "finalThreadKey", finalThreadKey, "messageDeleted", existingMessage.Deleted)
 	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadKey, &existingMessage)

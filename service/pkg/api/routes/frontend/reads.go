@@ -9,6 +9,7 @@ import (
 	"progressdb/pkg/api/utils"
 	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/db/storedb"
+	"progressdb/pkg/store/encryption"
 	"progressdb/pkg/store/iterator/frontend/mi"
 	"progressdb/pkg/store/iterator/frontend/ti"
 )
@@ -194,6 +195,24 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	if relErr := router.ValidateMessageThreadRelationship(message, threadKey); relErr != nil {
 		router.WriteValidationError(ctx, relErr)
 		return
+	}
+
+	// Decrypt message body if encryption is enabled
+	if message.Body != nil {
+		kmsMeta, err := encryption.GetThreadKMS(threadKey)
+		if err != nil {
+			router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to get KMS metadata: %v", err))
+			return
+		}
+
+		if kmsMeta != nil {
+			decryptedBody, err := encryption.DecryptMessageBody(message, kmsMeta.KeyID)
+			if err != nil {
+				router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to decrypt message: %v", err))
+				return
+			}
+			message.Body = decryptedBody
+		}
 	}
 
 	_ = router.WriteJSON(ctx, MessageResponse{Message: *message})
