@@ -68,15 +68,15 @@ func (ts *ThreadSorter) extractTimestampFromKey(key string, sortBy string) int64
 
 	switch sortBy {
 	case "created_at", "created_ts":
-		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(threadParsed.ThreadTS); err == nil {
 			return ts
 		}
 	case "updated_at", "updated_ts":
-		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(threadParsed.ThreadTS); err == nil {
 			return ts
 		}
 	default:
-		if ts, err := keys.ParseKeyTimestamp(threadParsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(threadParsed.ThreadTS); err == nil {
 			return ts
 		}
 	}

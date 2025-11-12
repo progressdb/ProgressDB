@@ -151,12 +151,8 @@ func ComputeMessageDelete(ctx context.Context, op *types.QueueOp) ([]types.Batch
 		return nil, fmt.Errorf("invalid payload type for message delete")
 	}
 
-	// encode a tomb payload (minimal) so versions apply logic works
-	tomb := models.Message{Key: del.Key, Deleted: true, UpdatedTS: del.UpdatedTS, Thread: del.Thread, Author: del.Author}
-	op.Payload = &tomb
-
 	// validate
-	if err := ValidateReadyForBatchEntry(&tomb); err != nil {
+	if err := ValidateReadyForBatchEntry(del); err != nil {
 		return nil, fmt.Errorf("message delete validation failed: %w", err)
 	}
 

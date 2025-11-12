@@ -250,6 +250,7 @@ func (im *IndexManager) SetSoftDeletedThreads(userID, threadKey string, value in
 
 func (im *IndexManager) SetSoftDeletedMessages(userID, messageKey string, value int) {
 	key := keys.GenSoftDeleteMarkerKey(messageKey)
+	logger.Debug("set_soft_deleted_messages", "userID", userID, "messageKey", messageKey, "deleteMarkerKey", key, "value", value)
 	im.kv.SetIndexKV(key, []byte(strconv.Itoa(value)))
 }
 

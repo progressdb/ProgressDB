@@ -344,9 +344,16 @@ func BProcMessageUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("set message data: %w", err)
 	}
 
-	messageSeq, err := keys.ParseKeySequence(finalMessageKey)
+	// Parse the message key to extract the sequence part
+	messageKeyParts, err := keys.ParseMessageKey(finalMessageKey)
 	if err != nil {
-		return fmt.Errorf("failed to parse message sequence from key %s: %w", finalMessageKey, err)
+		return fmt.Errorf("failed to parse message key %s: %w", finalMessageKey, err)
+	}
+
+	// Convert the sequence string to uint64
+	messageSeq, err := keys.KeySequenceNumbered(messageKeyParts.Seq)
+	if err != nil {
+		return fmt.Errorf("failed to convert sequence %s to uint64: %w", messageKeyParts.Seq, err)
 	}
 
 	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
@@ -388,17 +395,20 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 		return fmt.Errorf("access denied: user %s does not have access to thread %s", author, finalThreadKey)
 	}
 
-	var msg models.Message
+	var msgKey string
 	if entry.Payload != nil {
-		if m, ok := entry.Payload.(*models.Message); ok {
-			msg = *m
+		switch p := entry.Payload.(type) {
+		case *models.Message:
+			msgKey = p.Key
+		case *models.MessageDeletePartial:
+			msgKey = p.Key
 		}
 	}
 
 	// resolve message key
-	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msg.Key)
+	finalMessageKey, err := batchProcessor.Index.ResolveMessageKey(msgKey)
 	if err != nil {
-		return fmt.Errorf("resolve message key %s: %w", msg.Key, err)
+		return fmt.Errorf("resolve message key %s: %w", msgKey, err)
 	}
 
 	// fetch existing
@@ -417,22 +427,51 @@ func BProcMessageDelete(entry types.BatchEntry, batchProcessor *BatchProcessor) 
 	existingMessage.Deleted = true
 	existingMessage.UpdatedTS = entry.TS
 
+	// DEBUG: Log what we're storing
+	logger.Debug("message_delete_storing", "key", finalMessageKey, "deleted", existingMessage.Deleted, "updatedTS", existingMessage.UpdatedTS)
+
 	// store
 	if err := batchProcessor.Data.SetMessageData(finalMessageKey, existingMessage, entry.TS); err != nil {
 		return fmt.Errorf("set deleted message data: %w", err)
 	}
 
-	messageSeq, err := keys.ParseKeySequence(finalMessageKey)
+	logger.Debug("parsing_message_sequence", "finalMessageKey", finalMessageKey)
+
+	// Parse the message key to extract the sequence part
+	messageKeyParts, err := keys.ParseMessageKey(finalMessageKey)
 	if err != nil {
-		return fmt.Errorf("failed to parse message sequence from key %s: %w", finalMessageKey, err)
-	}
-	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
-	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
-		return fmt.Errorf("set version key: %w", err)
+		logger.Error("failed_to_parse_message_key", "error", err, "finalMessageKey", finalMessageKey)
+		return fmt.Errorf("failed to parse message key %s: %w", finalMessageKey, err)
 	}
 
+	// Convert the sequence string to uint64
+	messageSeq, err := keys.KeySequenceNumbered(messageKeyParts.Seq)
+	if err != nil {
+		logger.Error("failed_to_convert_sequence", "error", err, "sequence", messageKeyParts.Seq)
+		return fmt.Errorf("failed to convert sequence %s to uint64: %w", messageKeyParts.Seq, err)
+	}
+	logger.Debug("parsed_message_sequence", "messageSeq", messageSeq, "sequenceString", messageKeyParts.Seq)
+
+	versionKey := keys.GenMessageVersionKey(finalMessageKey, entry.TS, messageSeq)
+	logger.Debug("generated_version_key", "versionKey", versionKey)
+	if err := batchProcessor.Data.SetVersionKey(versionKey, existingMessage); err != nil {
+		logger.Error("failed_to_set_version_key", "error", err, "versionKey", versionKey)
+		return fmt.Errorf("set version key: %w", err)
+	}
+	logger.Debug("set_version_key_complete", "versionKey", versionKey)
+
 	// update indexes
+	logger.Debug("updating_thread_indexes", "finalThreadKey", finalThreadKey, "messageDeleted", existingMessage.Deleted)
 	batchProcessor.Index.UpdateThreadMessageIndexes(finalThreadKey, &existingMessage)
+	logger.Debug("updated_thread_indexes_complete", "finalThreadKey", finalThreadKey)
+
+	// DEBUG: Log before setting soft delete marker
+	logger.Debug("about_to_set_soft_delete", "author", author, "finalMessageKey", finalMessageKey)
+
 	batchProcessor.Index.SetSoftDeletedMessages(author, finalMessageKey, 1) // user, message, 1
+
+	// DEBUG: Log after setting soft delete marker
+	logger.Debug("completed_soft_delete", "author", author, "finalMessageKey", finalMessageKey)
+
 	return nil
 }

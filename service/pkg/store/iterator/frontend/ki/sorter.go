@@ -31,7 +31,7 @@ func (ks *KeySorter) extractTimestampFromKey(key string, sortBy string) int64 {
 		return ks.extractThreadTimestamp(parsed, sortBy)
 	default:
 		// For other key types, try to extract from thread timestamp as fallback
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	}
@@ -45,17 +45,17 @@ func (ks *KeySorter) extractMessageTimestamp(parsed *keys.KeyParts, sortBy strin
 	switch sortBy {
 	case "created_at", "created_ts":
 		// Parse message timestamp from MessageKey
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	case "updated_at", "updated_ts":
 		// For messages, updated_ts is same as created_ts in the key
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	default:
 		// Default to created_ts
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	}
@@ -69,17 +69,17 @@ func (ks *KeySorter) extractThreadTimestamp(parsed *keys.KeyParts, sortBy string
 	switch sortBy {
 	case "created_at", "created_ts":
 		// Parse thread timestamp
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	case "updated_at", "updated_ts":
 		// For threads, updated_ts is same as created_ts in the key
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	default:
 		// Default to created_ts
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	}

@@ -27,7 +27,7 @@ func GenMessageKey(threadTS, messageTS string, seq uint64) string {
 }
 
 func GenMessageVersionKey(messageKey string, ts int64, versionSeq uint64) string {
-	return fmt.Sprintf(VersionKey, messageKey, ts, PadSeq(versionSeq))
+	return fmt.Sprintf(VersionKey, messageKey, fmt.Sprintf("%d", ts), PadSeq(versionSeq))
 }
 
 func GenThreadKey(threadTS string) string {

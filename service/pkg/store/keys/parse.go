@@ -60,6 +60,7 @@ type ThreadMessageEndParts struct {
 	ThreadKey string
 }
 
+// parseInt converts a string to int64
 func parseInt(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
@@ -71,6 +72,7 @@ func parseInt(s string) (int64, error) {
 	return v, nil
 }
 
+// parseUint converts a string to uint64
 func parseUint(s string) (uint64, error) {
 	if s == "" {
 		return 0, nil
@@ -146,7 +148,7 @@ func ParseVersionKeySequence(key string) (uint64, error) {
 	if parsed.Type != KeyTypeVersion {
 		return 0, fmt.Errorf("expected version key, got %s", parsed.Type)
 	}
-	return ParseKeySequence(parsed.Seq)
+	return KeySequenceNumbered(parsed.Seq)
 }
 
 func ParseDeletedThreadsIndex(key string) (*DeletedThreadsIndexParts, error) {
@@ -259,11 +261,11 @@ func ParseSoftDeleteMarker(key string) (*SoftDeleteMarkerParts, error) {
 	}, nil
 }
 
-func ParseKeyTimestamp(s string) (int64, error) {
+func KeyTimestampNumbered(s string) (int64, error) {
 	return parseInt(s)
 }
 
-func ParseKeySequence(s string) (uint64, error) {
+func KeySequenceNumbered(s string) (uint64, error) {
 	return parseUint(s)
 }
 

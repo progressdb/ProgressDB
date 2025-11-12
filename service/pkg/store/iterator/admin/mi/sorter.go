@@ -29,7 +29,7 @@ func (ms *MessageSorter) extractTimestampFromKey(key string) int64 {
 		return ms.extractMessageTimestamp(parsed, "created_ts")
 	default:
 		// For other key types, try to extract from thread timestamp as fallback
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	}
@@ -67,17 +67,17 @@ func (ms *MessageSorter) extractMessageTimestamp(parsed *keys.KeyParts, sortBy s
 	switch sortBy {
 	case "created_ts", "created_at":
 		// Parse message timestamp from MessageKey
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	case "updated_ts", "updated_at":
 		// For messages, updated_ts is same as created_ts in the key
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	default:
 		// Default to created_ts
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	}

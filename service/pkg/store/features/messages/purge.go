@@ -42,7 +42,7 @@ func PurgeMessagePermanently(messageKey string) error {
 		if !found {
 			parsed, err := keys.ParseKey(string(vi.Key()))
 			if err == nil && parsed.Type == keys.KeyTypeVersion {
-				if s, err := keys.ParseKeySequence(parsed.Seq); err == nil {
+				if s, err := keys.KeySequenceNumbered(parsed.Seq); err == nil {
 					seq = int64(s)
 				}
 			}

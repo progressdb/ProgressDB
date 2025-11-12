@@ -67,7 +67,7 @@ func (ms *MessageSorter) extractTimestampFromKey(key string, sortBy string) int6
 	case keys.KeyTypeThread:
 		return ms.extractThreadTimestamp(parsed, sortBy)
 	default:
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	}
@@ -78,15 +78,15 @@ func (ms *MessageSorter) extractTimestampFromKey(key string, sortBy string) int6
 func (ms *MessageSorter) extractMessageTimestamp(parsed *keys.KeyParts, sortBy string) int64 {
 	switch sortBy {
 	case "created_at", "created_ts":
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	case "updated_at", "updated_ts":
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	default:
-		if ts, err := keys.ParseKeyTimestamp(parsed.MessageTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.MessageTS); err == nil {
 			return ts
 		}
 	}
@@ -100,7 +100,7 @@ func (ms *MessageSorter) extractSequenceFromKey(key string) uint64 {
 		return 0
 	}
 	if parsed.Type == keys.KeyTypeMessage {
-		if seq, err := keys.ParseKeySequence(parsed.Seq); err == nil {
+		if seq, err := keys.KeySequenceNumbered(parsed.Seq); err == nil {
 			return seq
 		}
 	}
@@ -110,15 +110,15 @@ func (ms *MessageSorter) extractSequenceFromKey(key string) uint64 {
 func (ms *MessageSorter) extractThreadTimestamp(parsed *keys.KeyParts, sortBy string) int64 {
 	switch sortBy {
 	case "created_at", "created_ts":
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	case "updated_at", "updated_ts":
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	default:
-		if ts, err := keys.ParseKeyTimestamp(parsed.ThreadTS); err == nil {
+		if ts, err := keys.KeyTimestampNumbered(parsed.ThreadTS); err == nil {
 			return ts
 		}
 	}
