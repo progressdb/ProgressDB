@@ -43,29 +43,50 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	keyIter := ki.NewKeyIterator(ti.db)
 
 	// Execute key query using the proven ki logic
-	relationshipKeys, kiResponse, err := keyIter.ExecuteKeyQuery(userThreadPrefix, req)
+	relationshipKeys, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, req)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to execute key query: %w", err)
 	}
 
-	// Filter out deleted threads BEFORE setting pagination metadata
-	filteredRelKeys := make([]string, 0, len(relationshipKeys))
+	// Extract thread keys from relationship keys for batch delete marker lookup
+	threadKeys := make([]string, 0, len(relationshipKeys))
+	relKeyToThreadKeyMap := make(map[string]string) // relKey -> threadKey
+
 	for _, relKey := range relationshipKeys {
 		parsed, err := keys.ParseUserOwnsThread(relKey)
 		if err != nil {
 			continue
 		}
+		threadKeys = append(threadKeys, parsed.ThreadKey)
+		relKeyToThreadKeyMap[relKey] = parsed.ThreadKey
+	}
 
-		// Check if thread is deleted by fetching thread data
-		threadDeleted, err := ti.isThreadDeleted(parsed.ThreadKey)
-		if err != nil {
-			// If we can't determine deletion status, include the thread (fail-safe)
-			filteredRelKeys = append(filteredRelKeys, relKey)
+	// Batch lookup delete markers for all thread keys
+	deleteMarkers, batchErr := ti.batchGetDeleteMarkers(threadKeys)
+	if batchErr != nil {
+		// If batch lookup fails, fall back to individual checks
+		deleteMarkers = make(map[string]bool)
+		for _, threadKey := range threadKeys {
+			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
+			if checkErr != nil {
+				// If we can't determine deletion status, include thread (fail-safe)
+				deleteMarkers[threadKey] = false
+			} else {
+				deleteMarkers[threadKey] = threadDeleted
+			}
+		}
+	}
+
+	// Filter out deleted threads BEFORE setting pagination metadata
+	filteredRelKeys := make([]string, 0, len(relationshipKeys))
+	for _, relKey := range relationshipKeys {
+		threadKey := relKeyToThreadKeyMap[relKey]
+		if threadKey == "" {
 			continue
 		}
 
 		// Only include non-deleted threads
-		if !threadDeleted {
+		if !deleteMarkers[threadKey] {
 			filteredRelKeys = append(filteredRelKeys, relKey)
 		}
 	}
@@ -76,12 +97,34 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		total = 0
 	}
 
-	// Create new response with correct counts and anchors based on filtered data
+	// Create new response with correct counts based on filtered data
 	response := pagination.PaginationResponse{
-		HasBefore: kiResponse.HasBefore,
-		HasAfter:  kiResponse.HasAfter,
-		Count:     len(filteredRelKeys),
-		Total:     total,
+		Count: len(filteredRelKeys),
+		Total: total,
+	}
+
+	// Use helper functions for accurate pagination based on filtered data
+	if len(filteredRelKeys) == 0 {
+		response.HasBefore = false
+		response.HasAfter = false
+	} else {
+		// For initial loads (no before/after params)
+		if req.Before == "" && req.After == "" && req.Anchor == "" {
+			response.HasBefore = false // We're starting from newest
+			response.HasAfter = len(filteredRelKeys) < total
+		} else if req.Before != "" {
+			// Before query: check if there are newer non-deleted threads
+			newestRelKey := filteredRelKeys[0]
+			hasNewer, _ := ti.checkHasNewerThreads(userID, newestRelKey)
+			response.HasBefore = hasNewer
+			response.HasAfter = true // There are older threads than what we're showing
+		} else if req.After != "" {
+			// After query: check if there are older non-deleted threads
+			response.HasBefore = true // There are newer threads than what we're showing
+			oldestRelKey := filteredRelKeys[len(filteredRelKeys)-1]
+			hasOlder, _ := ti.checkHasOlderThreads(userID, oldestRelKey)
+			response.HasAfter = hasOlder
+		}
 	}
 
 	// Set anchors based on filtered relationship keys, but convert to thread keys
@@ -131,16 +174,16 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	}
 
 	// Convert filtered relationship keys to thread keys
-	threadKeys := make([]string, 0, len(sortedKeys))
+	finalThreadKeys := make([]string, 0, len(sortedKeys))
 	for _, relKey := range sortedKeys {
 		parsed, err := keys.ParseUserOwnsThread(relKey)
 		if err != nil {
 			continue
 		}
-		threadKeys = append(threadKeys, parsed.ThreadKey)
+		finalThreadKeys = append(finalThreadKeys, parsed.ThreadKey)
 	}
 
-	return threadKeys, response, nil
+	return finalThreadKeys, response, nil
 }
 
 func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
@@ -156,28 +199,197 @@ func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 		return 0, err
 	}
 
-	// Filter out deleted threads
-	count := 0
+	// Extract thread keys from relationship keys for batch delete marker lookup
+	threadKeys := make([]string, 0, len(relationshipKeys))
 	for _, relKey := range relationshipKeys {
 		parsed, err := keys.ParseUserOwnsThread(relKey)
 		if err != nil {
 			continue
 		}
+		threadKeys = append(threadKeys, parsed.ThreadKey)
+	}
 
-		threadDeleted, err := ti.isThreadDeleted(parsed.ThreadKey)
-		if err != nil {
-			// If we can't determine deletion status, count it (fail-safe)
-			count++
-			continue
+	// Batch lookup delete markers for all thread keys
+	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
+	if err != nil {
+		// If batch lookup fails, fall back to individual checks
+		deleteMarkers = make(map[string]bool)
+		for _, threadKey := range threadKeys {
+			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
+			if checkErr != nil {
+				// If we can't determine deletion status, count it (fail-safe)
+				deleteMarkers[threadKey] = false
+			} else {
+				deleteMarkers[threadKey] = threadDeleted
+			}
 		}
+	}
 
+	// Filter out deleted threads
+	count := 0
+	for _, threadKey := range threadKeys {
 		// Only count non-deleted threads
-		if !threadDeleted {
+		if !deleteMarkers[threadKey] {
 			count++
 		}
 	}
 
 	return count, nil
+}
+
+// checkHasNewerThreads checks if there are newer non-deleted threads after the newest filtered key
+func (ti *ThreadIterator) checkHasNewerThreads(userID, newestKey string) (bool, error) {
+	// Convert thread key to relationship key for KI query
+	_, err := keys.ParseUserOwnsThread(newestKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse thread key: %w", err)
+	}
+
+	// Use KI to get relationship keys after the newest relationship key
+	keyIter := ki.NewKeyIterator(ti.db)
+
+	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to generate user thread prefix: %w", err)
+	}
+
+	// Get a small batch of relationship keys after newestKey to check for non-deleted threads
+	relKeysAfter, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, pagination.PaginationRequest{
+		After: newestKey,
+		Limit: 10, // Small batch to check for newer threads
+	})
+	if err != nil {
+		return false, err
+	}
+
+	// Extract thread keys from relationship keys
+	threadKeys := make([]string, 0, len(relKeysAfter))
+	for _, relKey := range relKeysAfter {
+		if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
+			threadKeys = append(threadKeys, parsed.ThreadKey)
+		}
+	}
+
+	// Batch lookup delete markers for thread keys
+	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
+	if err != nil {
+		// If batch lookup fails, fall back to individual checks
+		deleteMarkers = make(map[string]bool)
+		for _, threadKey := range threadKeys {
+			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
+			if checkErr != nil {
+				deleteMarkers[threadKey] = false // fail-safe
+			} else {
+				deleteMarkers[threadKey] = threadDeleted
+			}
+		}
+	}
+
+	// Check if any of the threads after are non-deleted
+	for _, threadKey := range threadKeys {
+		if !deleteMarkers[threadKey] {
+			return true, nil // Found newer non-deleted thread
+		}
+	}
+
+	return false, nil // No newer non-deleted threads found
+}
+
+// checkHasOlderThreads checks if there are older non-deleted threads before the oldest filtered key
+func (ti *ThreadIterator) checkHasOlderThreads(userID, oldestKey string) (bool, error) {
+	// Convert thread key to relationship key for KI query
+	parsed, err := keys.ParseUserOwnsThread(oldestKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse thread key: %w", err)
+	}
+
+	// Use KI to get relationship keys before the oldest relationship key
+	keyIter := ki.NewKeyIterator(ti.db)
+
+	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to generate user thread prefix: %w", err)
+	}
+
+	// Get a small batch of relationship keys before oldestKey to check for non-deleted threads
+	relKeysBefore, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, pagination.PaginationRequest{
+		Before: oldestKey,
+		Limit:  10, // Small batch to check for older threads
+	})
+	if err != nil {
+		return false, err
+	}
+
+	// Extract thread keys from relationship keys
+	threadKeys := make([]string, 0, len(relKeysBefore))
+	for _, relKey := range relKeysBefore {
+		if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
+			threadKeys = append(threadKeys, parsed.ThreadKey)
+		}
+		_ = parsed // avoid unused variable warning
+	}
+
+	// Batch lookup delete markers for thread keys
+	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
+	if err != nil {
+		// If batch lookup fails, fall back to individual checks
+		deleteMarkers = make(map[string]bool)
+		for _, threadKey := range threadKeys {
+			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
+			if checkErr != nil {
+				deleteMarkers[threadKey] = false // fail-safe
+			} else {
+				deleteMarkers[threadKey] = threadDeleted
+			}
+		}
+	}
+
+	// Check if any of the threads before are non-deleted
+	for _, threadKey := range threadKeys {
+		if !deleteMarkers[threadKey] {
+			return true, nil // Found older non-deleted thread
+		}
+	}
+
+	return false, nil // No older non-deleted threads found
+}
+
+// batchGetDeleteMarkers performs efficient batch lookup of delete markers for multiple thread keys
+func (ti *ThreadIterator) batchGetDeleteMarkers(threadKeys []string) (map[string]bool, error) {
+	deleteMarkers := make(map[string]bool)
+
+	if len(threadKeys) == 0 {
+		return deleteMarkers, nil
+	}
+
+	// Generate delete marker keys for all thread keys
+	deleteMarkerKeys := make([]string, 0, len(threadKeys))
+	keyToOriginalMap := make(map[string]string) // deleteMarkerKey -> originalKey
+
+	for _, threadKey := range threadKeys {
+		deleteMarkerKey := keys.GenSoftDeleteMarkerKey(threadKey)
+		deleteMarkerKeys = append(deleteMarkerKeys, deleteMarkerKey)
+		keyToOriginalMap[deleteMarkerKey] = threadKey
+	}
+
+	// Batch lookup all delete markers
+	for _, deleteMarkerKey := range deleteMarkerKeys {
+		_, err := indexdb.GetKey(deleteMarkerKey)
+		if err != nil {
+			if indexdb.IsNotFound(err) {
+				// No soft delete marker found = not deleted
+				deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = false
+			} else {
+				// Error checking for marker = fail-safe, consider not deleted
+				deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = false
+			}
+		} else {
+			// Soft delete marker found = thread is deleted
+			deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = true
+		}
+	}
+
+	return deleteMarkers, nil
 }
 
 // isThreadDeleted checks if a thread is marked as deleted using soft delete markers

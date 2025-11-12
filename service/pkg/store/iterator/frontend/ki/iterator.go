@@ -48,126 +48,83 @@ func (ki *KeyIterator) ExecuteKeyQuery(prefix string, req pagination.PaginationR
 	defer iter.Close()
 
 	var keys []string
-	var response pagination.PaginationResponse
 
 	switch {
 	case req.Anchor != "":
-		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Anchor, req.Limit)
+		beforeKeys, _, err := ki.fetchBefore(iter, req.Anchor, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchBefore error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.Anchor, req.Limit)
+		afterKeys, _, err := ki.fetchAfter(iter, req.Anchor, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchAfter error (anchor)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		keys = append(beforeKeys, req.Anchor)
 		keys = append(keys, afterKeys...)
-		response = pagination.PaginationResponse{
-			HasBefore: hasMoreBefore,
-			HasAfter:  hasMoreAfter,
-			Count:     len(keys),
-			Total:     ki.getTotalCount(iter),
-		}
 
 		// Sort entire combined array to oldest→newest for chat display (newest at bottom)
 		sorter := NewKeySorter()
-		keys = sorter.SortKeys(keys, req.SortBy, &response)
+		keys = sorter.SortKeys(keys, req.SortBy, &pagination.PaginationResponse{})
 
 	case req.Before != "" && req.After != "":
-		beforeKeys, hasMoreBefore, err := ki.fetchBefore(iter, req.Before, req.Limit)
+		beforeKeys, _, err := ki.fetchBefore(iter, req.Before, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchBefore error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		afterKeys, hasMoreAfter, err := ki.fetchAfter(iter, req.After, req.Limit)
+		afterKeys, _, err := ki.fetchAfter(iter, req.After, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchAfter error (before+after)", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 		keys = append(beforeKeys, afterKeys...)
-		response = pagination.PaginationResponse{
-			HasBefore: hasMoreBefore,
-			HasAfter:  hasMoreAfter,
-			Count:     len(keys),
-			Total:     ki.getTotalCount(iter),
-		}
 
 		// Sort entire combined array to oldest→newest for chat display (newest at bottom)
 		sorter := NewKeySorter()
-		keys = sorter.SortKeys(keys, req.SortBy, &response)
+		keys = sorter.SortKeys(keys, req.SortBy, &pagination.PaginationResponse{})
 
 	case req.Before != "":
-		keys, response.HasBefore, err = ki.fetchBefore(iter, req.Before, req.Limit)
+		keys, _, err = ki.fetchBefore(iter, req.Before, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchBefore error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		response.HasAfter, _ = ki.checkHasAfter(iter, req.Before)
-		response.Count = len(keys)
-		response.Total = ki.getTotalCount(iter)
-
 		// Don't sort - fetchBefore returns keys in correct order already
 
 	case req.After != "":
-		keys, response.HasAfter, err = ki.fetchAfter(iter, req.After, req.Limit)
+		keys, _, err = ki.fetchAfter(iter, req.After, req.Limit)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchAfter error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
-		response.HasBefore, _ = ki.checkHasBefore(iter, req.After)
-		response.Count = len(keys)
-		response.Total = ki.getTotalCount(iter)
-
 		// Don't sort - fetchAfter returns keys in correct order already
 
 	default:
 		// Only keep this log for initial load
 		// (Can be useful for debugging first pagination experience)
 		logger.Debug("[FrontendKeyIterator] Initial load", "limit", req.Limit)
-		keys, response, err = ki.fetchInitialLoad(iter, req)
+		keys, _, err = ki.fetchInitialLoad(iter, req)
 		if err != nil {
 			logger.Error("[FrontendKeyIterator] fetchInitialLoad error", "error", err)
 			return nil, pagination.PaginationResponse{}, err
 		}
 	}
 
-	// Use keys as-is from iterator (no sorting needed for admin keys)
-	sortedKeys := keys
-
-	// Set navigation anchors based on query type (preserve HasBefore/HasAfter from fetch functions)
-	if len(keys) > 0 {
-		switch {
-		case req.Before != "":
-			// Before query: keys are newest→oldest
-			response.BeforeAnchor = keys[len(keys)-1] // Last item (oldest) to get previous page
-			response.AfterAnchor = keys[0]            // First item (newest) to get next page
-		case req.After != "":
-			// After query: keys are oldest→newest
-			response.BeforeAnchor = keys[0]          // First item (oldest) to get previous page
-			response.AfterAnchor = keys[len(keys)-1] // Last item (newest) to get next page
-		default:
-			// Initial load: keys are newest→oldest
-			response.BeforeAnchor = keys[0]          // First item (newest) - for going to newer items
-			response.AfterAnchor = keys[len(keys)-1] // Last item (oldest) - for going to older items
-			// HasBefore/HasAfter already correctly set by fetchInitialLoad
-		}
+	// Return empty pagination response - business iterators will handle pagination
+	response := pagination.PaginationResponse{
+		HasBefore: false,
+		HasAfter:  false,
+		Count:     len(keys),
+		Total:     0, // Business iterators will calculate total
 	}
 
-	// Only print anchors if there are results (this is helpful for anchor debugging)
-	if len(sortedKeys) > 0 {
-		logger.Debug("[FrontendKeyIterator] Result anchors",
-			"before_anchor", response.BeforeAnchor,
-			"after_anchor", response.AfterAnchor,
-			"count", response.Count,
-			"has_before", response.HasBefore,
-			"has_after", response.HasAfter)
-	} else {
-		logger.Debug("[FrontendKeyIterator] No keys returned from query")
-	}
+	logger.Debug("[FrontendKeyIterator] Raw keys returned",
+		"count", len(keys),
+		"prefix", prefix)
 
-	return sortedKeys, response, nil
+	return keys, response, nil
 }
 
 func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
@@ -181,14 +138,14 @@ func (ki *KeyIterator) fetchInitialLoad(iter *pebble.Iterator, req pagination.Pa
 		valid = iter.Prev()
 	}
 
+	// Return empty pagination response - business iterators will handle pagination
 	response := pagination.PaginationResponse{
-		HasBefore: valid,
+		HasBefore: false,
 		HasAfter:  false,
 		Count:     len(keys),
-		Total:     ki.getTotalCount(iter),
+		Total:     0, // Business iterators will calculate total
 	}
 
-	// Anchors will be set by main logic after sorting
 	return keys, response, nil
 }
 
@@ -227,32 +184,6 @@ func (ki *KeyIterator) fetchAfter(iter *pebble.Iterator, reference string, limit
 	hasMore := valid && len(keys) >= limit
 
 	return keys, hasMore, iter.Error()
-}
-
-func (ki *KeyIterator) checkHasBefore(iter *pebble.Iterator, reference string) (bool, error) {
-	referenceKey := []byte(reference)
-	valid := iter.SeekLT(referenceKey)
-	return valid, nil
-}
-
-func (ki *KeyIterator) checkHasAfter(iter *pebble.Iterator, reference string) (bool, error) {
-	valid := iter.SeekGE([]byte(reference))
-	if valid && string(iter.Key()) == reference {
-		valid = iter.Next()
-	}
-	return valid, nil
-}
-
-func (ki *KeyIterator) getTotalCount(iter *pebble.Iterator) int {
-	count := 0
-	valid := iter.First()
-
-	for valid {
-		count++
-		valid = iter.Next()
-	}
-
-	return count
 }
 
 func nextPrefix(prefix []byte) []byte {
