@@ -18,17 +18,12 @@ func NewMessageIterator(db *pebble.DB) *MessageIterator {
 	return &MessageIterator{db: db}
 }
 
-func (mi *MessageIterator) GetMessageCount(threadKey string) (int, error) {
-	// Always use the filtered count to exclude deleted messages
-	return mi.GetMessageCountExcludingDeleted(threadKey)
-}
-
 func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
 	if !keys.IsThreadKey(threadKey) {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("invalid thread key: %s", threadKey)
 	}
 
-	// Use the frontend key iterator for robust key iteration
+	// Cache KI instance to avoid multiple database connections
 	keyIter := ki.NewKeyIterator(mi.db)
 
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
@@ -43,20 +38,7 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	}
 
 	// Batch lookup delete markers for all message keys
-	deleteMarkers, err := mi.batchGetDeleteMarkers(messageKeys)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, messageKey := range messageKeys {
-			messageDeleted, checkErr := mi.isMessageDeleted(messageKey)
-			if checkErr != nil {
-				// If we can't determine deletion status, include message (fail-safe)
-				deleteMarkers[messageKey] = false
-			} else {
-				deleteMarkers[messageKey] = messageDeleted
-			}
-		}
-	}
+	deleteMarkers := mi.getDeleteMarkersWithFallback(messageKeys)
 
 	// Filter out deleted messages BEFORE setting pagination metadata
 	filteredMessageKeys := make([]string, 0, len(messageKeys))
@@ -90,45 +72,27 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 			response.HasAfter = len(filteredMessageKeys) < total
 		} else if req.Before != "" {
 			// Before query: check if there are newer non-deleted messages between newest result and reference point
-			hasNewer, _ := mi.checkHasBeforeWithBoundary(threadKey, filteredMessageKeys[0], req.Before)
+			hasNewer, _ := mi.checkHasMessages(threadKey, filteredMessageKeys[0], "before", req.Before)
 			response.HasBefore = hasNewer
 			// Check if there are older messages between oldest result and reference point
-			hasOlder, _ := mi.checkHasAfterWithBoundary(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1], req.Before)
+			hasOlder, _ := mi.checkHasMessages(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1], "after", req.Before)
 			response.HasAfter = hasOlder
 		} else if req.After != "" {
 			// After query: check if there are older non-deleted messages
 			response.HasBefore = true // There are newer messages than what we're showing
-			hasOlder, _ := mi.checkHasAfter(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1])
+			hasOlder, _ := mi.checkHasMessages(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1], "after")
 			response.HasAfter = hasOlder
 		} else if req.Anchor != "" {
 			// Anchor query: check both sides
-			hasNewer, _ := mi.checkHasBefore(threadKey, filteredMessageKeys[0])
-			hasOlder, _ := mi.checkHasAfter(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1])
+			hasNewer, _ := mi.checkHasMessages(threadKey, filteredMessageKeys[0], "before")
+			hasOlder, _ := mi.checkHasMessages(threadKey, filteredMessageKeys[len(filteredMessageKeys)-1], "after")
 			response.HasBefore = hasNewer
 			response.HasAfter = hasOlder
 		}
 	}
 
 	// Set anchors based on filtered message keys
-	if len(filteredMessageKeys) > 0 {
-		if req.Before != "" {
-			// Before query: keys are newest→oldest
-			response.AfterAnchor = filteredMessageKeys[0]
-			response.BeforeAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
-		} else if req.After != "" {
-			// After query: keys are oldest→newest
-			response.BeforeAnchor = filteredMessageKeys[0]
-			response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
-		} else if req.Anchor != "" {
-			// Anchor query: keys are oldest→newest (sorted by sorter)
-			response.BeforeAnchor = filteredMessageKeys[0]
-			response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
-		} else {
-			// Initial load: keys are newest→oldest
-			response.BeforeAnchor = filteredMessageKeys[0]
-			response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
-		}
-	}
+	mi.setAnchors(&response, filteredMessageKeys, req)
 
 	var sortedKeys []string
 
@@ -142,6 +106,24 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	}
 
 	return sortedKeys, response, nil
+}
+
+// getDeleteMarkersWithFallback performs delete marker lookup with individual fallback
+func (mi *MessageIterator) getDeleteMarkersWithFallback(messageKeys []string) map[string]bool {
+	deleteMarkers, err := mi.batchGetDeleteMarkers(messageKeys)
+	if err != nil {
+		// If batch lookup fails, fall back to individual checks
+		deleteMarkers = make(map[string]bool)
+		for _, messageKey := range messageKeys {
+			messageDeleted, checkErr := mi.isMessageDeleted(messageKey)
+			if checkErr != nil {
+				deleteMarkers[messageKey] = false // fail-safe
+			} else {
+				deleteMarkers[messageKey] = messageDeleted
+			}
+		}
+	}
+	return deleteMarkers
 }
 
 // batchGetDeleteMarkers performs efficient batch lookup of delete markers for multiple message keys
@@ -209,211 +191,122 @@ func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (in
 		return 0, fmt.Errorf("failed to generate message prefix: %w", err)
 	}
 
-	// Use frontend ki for consistent counting
+	// Use frontend ki for consistent counting with smaller batch size for efficiency
 	keyIter := ki.NewKeyIterator(mi.db)
-	messageKeys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{Limit: 1000000})
-	if err != nil {
-		return 0, err
-	}
+	count := 0
+	batchSize := 10000
+	offset := 0
 
-	// Batch lookup delete markers for all message keys
-	deleteMarkers, err := mi.batchGetDeleteMarkers(messageKeys)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
+	for {
+		// Process in batches to avoid loading all keys at once
+		messageKeys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
+			Limit: batchSize,
+		})
+		if err != nil {
+			return 0, err
+		}
+
+		if len(messageKeys) == 0 {
+			break // No more keys
+		}
+
+		// Batch lookup delete markers for this batch
+		deleteMarkers := mi.getDeleteMarkersWithFallback(messageKeys)
+
+		// Count non-deleted messages in this batch
 		for _, messageKey := range messageKeys {
-			messageDeleted, checkErr := mi.isMessageDeleted(messageKey)
-			if checkErr != nil {
-				// If we can't determine deletion status, count it (fail-safe)
-				deleteMarkers[messageKey] = false
-			} else {
-				deleteMarkers[messageKey] = messageDeleted
+			if !deleteMarkers[messageKey] {
+				count++
 			}
 		}
-	}
 
-	// Filter out deleted messages
-	count := 0
-	for _, messageKey := range messageKeys {
-		// Only count non-deleted messages
-		if !deleteMarkers[messageKey] {
-			count++
+		offset += len(messageKeys)
+
+		// If we got fewer keys than batch size, we're done
+		if len(messageKeys) < batchSize {
+			break
 		}
 	}
 
 	return count, nil
 }
 
-// checkHasBefore checks if there are newer non-deleted messages before the reference key
-func (mi *MessageIterator) checkHasBefore(threadKey, reference string) (bool, error) {
+// checkHasMessages checks for non-deleted messages in a direction with optional boundary
+func (mi *MessageIterator) checkHasMessages(threadKey, reference, direction string, boundary ...string) (bool, error) {
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to generate message prefix: %w", err)
 	}
 
-	// Use KI to get a small batch of keys before the reference
+	// Build pagination request
+	req := pagination.PaginationRequest{
+		Limit: 10, // Small batch to check for messages
+	}
+
+	switch direction {
+	case "before":
+		req.Before = reference
+	case "after":
+		req.After = reference
+	default:
+		return false, fmt.Errorf("invalid direction: %s", direction)
+	}
+
+	// Use cached KI instance to get keys in the specified direction
 	keyIter := ki.NewKeyIterator(mi.db)
-	keysBefore, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
-		Before: reference,
-		Limit:  10, // Small batch to check for newer messages
-	})
+	keys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, req)
 	if err != nil {
 		return false, err
 	}
 
-	// Batch lookup delete markers for keys before
-	deleteMarkers, err := mi.batchGetDeleteMarkers(keysBefore)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, key := range keysBefore {
-			messageDeleted, checkErr := mi.isMessageDeleted(key)
-			if checkErr != nil {
-				deleteMarkers[key] = false // fail-safe
+	// Get delete markers for the keys
+	deleteMarkers := mi.getDeleteMarkersWithFallback(keys)
+
+	// Check if any keys are non-deleted and respect boundary if provided
+	for _, key := range keys {
+		if !deleteMarkers[key] {
+			// If boundary is provided, check if key is within bounds
+			if len(boundary) > 0 {
+				switch direction {
+				case "before":
+					if key > boundary[0] {
+						return true, nil // Found newer non-deleted message after boundary
+					}
+				case "after":
+					if key < boundary[0] {
+						return true, nil // Found older non-deleted message before boundary
+					}
+				}
 			} else {
-				deleteMarkers[key] = messageDeleted
+				return true, nil // Found non-deleted message
 			}
 		}
 	}
 
-	// Check if any of the keys before are non-deleted
-	for _, key := range keysBefore {
-		if !deleteMarkers[key] {
-			return true, nil // Found newer non-deleted message
-		}
-	}
-
-	return false, nil // No newer non-deleted messages found
+	return false, nil // No non-deleted messages found
 }
 
-// checkHasAfter checks if there are older non-deleted messages after the reference key
-func (mi *MessageIterator) checkHasAfter(threadKey, reference string) (bool, error) {
-	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate message prefix: %w", err)
+// setAnchors sets pagination anchors based on query type and filtered keys
+func (mi *MessageIterator) setAnchors(response *pagination.PaginationResponse, filteredMessageKeys []string, req pagination.PaginationRequest) {
+	if len(filteredMessageKeys) == 0 {
+		return
 	}
 
-	// Use KI to get a small batch of keys after the reference
-	keyIter := ki.NewKeyIterator(mi.db)
-	keysAfter, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
-		After: reference,
-		Limit: 10, // Small batch to check for older messages
-	})
-	if err != nil {
-		return false, err
+	if req.Before != "" {
+		// Before query: keys are newest→oldest
+		response.AfterAnchor = filteredMessageKeys[0]
+		response.BeforeAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
+	} else if req.After != "" {
+		// After query: keys are oldest→newest
+		response.BeforeAnchor = filteredMessageKeys[0]
+		response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
+	} else if req.Anchor != "" {
+		// Anchor query: keys are oldest→newest (sorted by sorter)
+		response.BeforeAnchor = filteredMessageKeys[0]
+		response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
+	} else {
+		// Initial load: keys are newest→oldest
+		response.BeforeAnchor = filteredMessageKeys[0]
+		response.AfterAnchor = filteredMessageKeys[len(filteredMessageKeys)-1]
 	}
-
-	// Batch lookup delete markers for keys after
-	deleteMarkers, err := mi.batchGetDeleteMarkers(keysAfter)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, key := range keysAfter {
-			messageDeleted, checkErr := mi.isMessageDeleted(key)
-			if checkErr != nil {
-				deleteMarkers[key] = false // fail-safe
-			} else {
-				deleteMarkers[key] = messageDeleted
-			}
-		}
-	}
-
-	// Check if any of the keys after are non-deleted
-	for _, key := range keysAfter {
-		if !deleteMarkers[key] {
-			return true, nil // Found older non-deleted message
-		}
-	}
-
-	return false, nil // No older non-deleted messages found
-}
-
-// checkHasAfterWithBoundary checks if there are older non-deleted messages after reference key but before boundary
-func (mi *MessageIterator) checkHasAfterWithBoundary(threadKey, reference, boundary string) (bool, error) {
-	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate message prefix: %w", err)
-	}
-
-	// Use KI to get a small batch of keys after the reference
-	keyIter := ki.NewKeyIterator(mi.db)
-	keysAfter, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
-		After: reference,
-		Limit: 10, // Small batch to check for older messages
-	})
-	if err != nil {
-		return false, err
-	}
-
-	// Batch lookup delete markers for keys after
-	deleteMarkers, err := mi.batchGetDeleteMarkers(keysAfter)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, key := range keysAfter {
-			messageDeleted, checkErr := mi.isMessageDeleted(key)
-			if checkErr != nil {
-				deleteMarkers[key] = false // fail-safe
-			} else {
-				deleteMarkers[key] = messageDeleted
-			}
-		}
-	}
-
-	// Check if any of the keys after are non-deleted AND before the boundary
-	for _, key := range keysAfter {
-		if !deleteMarkers[key] {
-			// Compare keys to see if this key is before the boundary
-			if key < boundary {
-				return true, nil // Found older non-deleted message before boundary
-			}
-		}
-	}
-
-	return false, nil // No older non-deleted messages found before boundary
-}
-
-// checkHasBeforeWithBoundary checks if there are newer non-deleted messages before reference key but after boundary
-func (mi *MessageIterator) checkHasBeforeWithBoundary(threadKey, reference, boundary string) (bool, error) {
-	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate message prefix: %w", err)
-	}
-
-	// Use KI to get a small batch of keys before the reference
-	keyIter := ki.NewKeyIterator(mi.db)
-	keysBefore, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
-		Before: reference,
-		Limit:  10, // Small batch to check for newer messages
-	})
-	if err != nil {
-		return false, err
-	}
-
-	// Batch lookup delete markers for keys before
-	deleteMarkers, err := mi.batchGetDeleteMarkers(keysBefore)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, key := range keysBefore {
-			messageDeleted, checkErr := mi.isMessageDeleted(key)
-			if checkErr != nil {
-				deleteMarkers[key] = false // fail-safe
-			} else {
-				deleteMarkers[key] = messageDeleted
-			}
-		}
-	}
-
-	// Check if any of the keys before are non-deleted AND after the boundary
-	for _, key := range keysBefore {
-		if !deleteMarkers[key] {
-			// Compare keys to see if this key is after the boundary
-			if key > boundary {
-				return true, nil // Found newer non-deleted message after boundary
-			}
-		}
-	}
-
-	return false, nil // No newer non-deleted messages found after boundary
 }
