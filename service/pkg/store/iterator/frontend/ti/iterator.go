@@ -2,6 +2,7 @@ package ti
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
@@ -13,39 +14,57 @@ import (
 
 type ThreadIterator struct {
 	db *pebble.DB
+	ki *ki.KeyIterator // Cached KI instance for efficient database operations
 }
 
 func NewThreadIterator(db *pebble.DB) *ThreadIterator {
-	return &ThreadIterator{db: db}
+	return &ThreadIterator{
+		db: db,
+		ki: ki.NewKeyIterator(db), // Cache KI instance for reuse
+	}
 }
 
 func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
+	log.Printf("[TI] ExecuteThreadQuery - userID: %s, before: %s, after: %s, anchor: %s, limit: %d",
+		userID, req.Before, req.After, req.Anchor, req.Limit)
+
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate user thread prefix: %w", err)
 	}
 
 	// Transform thread keys to relationship keys for pagination
+	originalBefore := req.Before
+	originalAfter := req.After
+	originalAnchor := req.Anchor
+
 	if req.Before != "" {
 		threadTS := strings.TrimPrefix(req.Before, "t:")
 		req.Before = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
+		log.Printf("[TI] Transformed before: %s -> %s", originalBefore, req.Before)
 	}
 	if req.After != "" {
 		threadTS := strings.TrimPrefix(req.After, "t:")
 		req.After = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
+		log.Printf("[TI] Transformed after: %s -> %s", originalAfter, req.After)
 	}
 	if req.Anchor != "" {
 		threadTS := strings.TrimPrefix(req.Anchor, "t:")
 		req.Anchor = fmt.Sprintf(keys.RelUserOwnsThread, userID, threadTS)
+		log.Printf("[TI] Transformed anchor: %s -> %s", originalAnchor, req.Anchor)
 	}
 
-	// Use the frontend key iterator for robust key iteration
-	keyIter := ki.NewKeyIterator(ti.db)
-
-	// Execute key query using the proven ki logic
-	relationshipKeys, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, req)
+	// Execute key query using the cached KI instance
+	relationshipKeys, _, err := ti.ki.ExecuteKeyQuery(userThreadPrefix, req)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to execute key query: %w", err)
+	}
+
+	log.Printf("[TI] KI returned %d relationship keys", len(relationshipKeys))
+	for i, relKey := range relationshipKeys {
+		if i < 5 { // Log first 5 to avoid spam
+			log.Printf("[TI] RelKey[%d]: %s", i, relKey)
+		}
 	}
 
 	// Extract thread keys from relationship keys for batch delete marker lookup
@@ -61,24 +80,12 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		relKeyToThreadKeyMap[relKey] = parsed.ThreadKey
 	}
 
-	// Batch lookup delete markers for all thread keys
-	deleteMarkers, batchErr := ti.batchGetDeleteMarkers(threadKeys)
-	if batchErr != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, threadKey := range threadKeys {
-			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
-			if checkErr != nil {
-				// If we can't determine deletion status, include thread (fail-safe)
-				deleteMarkers[threadKey] = false
-			} else {
-				deleteMarkers[threadKey] = threadDeleted
-			}
-		}
-	}
+	// Get delete markers using the consolidated function
+	deleteMarkers := ti.getDeleteMarkersWithFallback(threadKeys)
 
 	// Filter out deleted threads BEFORE setting pagination metadata
 	filteredRelKeys := make([]string, 0, len(relationshipKeys))
+	deletedCount := 0
 	for _, relKey := range relationshipKeys {
 		threadKey := relKeyToThreadKeyMap[relKey]
 		if threadKey == "" {
@@ -88,6 +95,16 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 		// Only include non-deleted threads
 		if !deleteMarkers[threadKey] {
 			filteredRelKeys = append(filteredRelKeys, relKey)
+		} else {
+			deletedCount++
+		}
+	}
+
+	log.Printf("[TI] After filtering: %d threads kept, %d deleted", len(filteredRelKeys), deletedCount)
+	for i, relKey := range filteredRelKeys {
+		if i < 5 { // Log first 5 to avoid spam
+			threadKey := relKeyToThreadKeyMap[relKey]
+			log.Printf("[TI] FilteredRelKey[%d]: %s -> thread: %s", i, relKey, threadKey)
 		}
 	}
 
@@ -96,6 +113,8 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	if err != nil {
 		total = 0
 	}
+
+	log.Printf("[TI] Total thread count: %d", total)
 
 	// Create new response with correct counts based on filtered data
 	response := pagination.PaginationResponse{
@@ -107,23 +126,42 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	if len(filteredRelKeys) == 0 {
 		response.HasBefore = false
 		response.HasAfter = false
+		log.Printf("[TI] No filtered threads - HasBefore: false, HasAfter: false")
 	} else {
 		// For initial loads (no before/after params)
 		if req.Before == "" && req.After == "" && req.Anchor == "" {
 			response.HasBefore = false // We're starting from newest
 			response.HasAfter = len(filteredRelKeys) < total
+			log.Printf("[TI] Initial load - HasBefore: false, HasAfter: %t (count: %d < total: %d)",
+				response.HasAfter, len(filteredRelKeys), total)
 		} else if req.Before != "" {
-			// Before query: check if there are newer non-deleted threads
-			newestRelKey := filteredRelKeys[0]
-			hasNewer, _ := ti.checkHasNewerThreads(userID, newestRelKey)
-			response.HasBefore = hasNewer
-			response.HasAfter = true // There are older threads than what we're showing
+			// Before query: we're starting from reference and moving backwards
+			response.HasBefore = false // No threads newer than our starting reference
+			log.Printf("[TI] Before query - HasBefore: false (starting from reference)")
+
+			// Check if there are older threads beyond the oldest result
+			oldestRelKey := filteredRelKeys[len(filteredRelKeys)-1]
+			log.Printf("[TI] Before query - checking older threads from: %s", oldestRelKey)
+			hasOlder, _ := ti.checkHasOlderThreads(userID, oldestRelKey)
+			response.HasAfter = hasOlder
+			log.Printf("[TI] Before query - HasAfter (older): %t", hasOlder)
 		} else if req.After != "" {
 			// After query: check if there are older non-deleted threads
 			response.HasBefore = true // There are newer threads than what we're showing
 			oldestRelKey := filteredRelKeys[len(filteredRelKeys)-1]
+			log.Printf("[TI] After query - checking older threads from: %s", oldestRelKey)
 			hasOlder, _ := ti.checkHasOlderThreads(userID, oldestRelKey)
 			response.HasAfter = hasOlder
+			log.Printf("[TI] After query - HasBefore: true, HasAfter (older): %t", hasOlder)
+		} else if req.Anchor != "" {
+			// Anchor query: check both directions
+			newestRelKey := filteredRelKeys[0]
+			oldestRelKey := filteredRelKeys[len(filteredRelKeys)-1]
+			hasNewer, _ := ti.checkHasNewerThreads(userID, newestRelKey)
+			hasOlder, _ := ti.checkHasOlderThreads(userID, oldestRelKey)
+			response.HasBefore = hasNewer
+			response.HasAfter = hasOlder
+			log.Printf("[TI] Anchor query - HasBefore: %t, HasAfter: %t", hasNewer, hasOlder)
 		}
 	}
 
@@ -135,9 +173,11 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 			lastRelKey := filteredRelKeys[len(filteredRelKeys)-1]
 			if parsed, err := keys.ParseUserOwnsThread(firstRelKey); err == nil {
 				response.AfterAnchor = parsed.ThreadKey
+				log.Printf("[TI] Before query - AfterAnchor: %s", parsed.ThreadKey)
 			}
 			if parsed, err := keys.ParseUserOwnsThread(lastRelKey); err == nil {
 				response.BeforeAnchor = parsed.ThreadKey
+				log.Printf("[TI] Before query - BeforeAnchor: %s", parsed.ThreadKey)
 			}
 		} else if req.After != "" {
 			// After query: keys are oldest→newest
@@ -145,9 +185,11 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 			lastRelKey := filteredRelKeys[len(filteredRelKeys)-1]
 			if parsed, err := keys.ParseUserOwnsThread(firstRelKey); err == nil {
 				response.BeforeAnchor = parsed.ThreadKey
+				log.Printf("[TI] After query - BeforeAnchor: %s", parsed.ThreadKey)
 			}
 			if parsed, err := keys.ParseUserOwnsThread(lastRelKey); err == nil {
 				response.AfterAnchor = parsed.ThreadKey
+				log.Printf("[TI] After query - AfterAnchor: %s", parsed.ThreadKey)
 			}
 		} else {
 			// Initial load: keys are newest→oldest
@@ -155,12 +197,17 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 			lastRelKey := filteredRelKeys[len(filteredRelKeys)-1]
 			if parsed, err := keys.ParseUserOwnsThread(firstRelKey); err == nil {
 				response.BeforeAnchor = parsed.ThreadKey
+				log.Printf("[TI] Initial load - BeforeAnchor: %s", parsed.ThreadKey)
 			}
 			if parsed, err := keys.ParseUserOwnsThread(lastRelKey); err == nil {
 				response.AfterAnchor = parsed.ThreadKey
+				log.Printf("[TI] Initial load - AfterAnchor: %s", parsed.ThreadKey)
 			}
 		}
 	}
+
+	log.Printf("[TI] Final response - Count: %d, Total: %d, HasBefore: %t, HasAfter: %t, BeforeAnchor: %s, AfterAnchor: %s",
+		response.Count, response.Total, response.HasBefore, response.HasAfter, response.BeforeAnchor, response.AfterAnchor)
 
 	var sortedKeys []string
 
@@ -187,179 +234,179 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 }
 
 func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
+	log.Printf("[TI] getTotalThreadCount - starting count for userID: %s", userID)
+
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
 		return 0, err
 	}
 
-	// Use frontend ki for consistent counting
-	keyIter := ki.NewKeyIterator(ti.db)
-	relationshipKeys, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, pagination.PaginationRequest{Limit: 1000000})
-	if err != nil {
-		return 0, err
-	}
+	// Use cached KI instance for efficient counting
+	const batchSize = 1000
+	totalCount := 0
+	batchCount := 0
+	offset := ""
 
-	// Extract thread keys from relationship keys for batch delete marker lookup
-	threadKeys := make([]string, 0, len(relationshipKeys))
-	for _, relKey := range relationshipKeys {
-		parsed, err := keys.ParseUserOwnsThread(relKey)
-		if err != nil {
-			continue
+	for {
+		batchCount++
+
+		// Get batch of relationship keys
+		req := pagination.PaginationRequest{
+			Limit: batchSize,
 		}
-		threadKeys = append(threadKeys, parsed.ThreadKey)
+		if offset != "" {
+			req.After = offset
+		}
+
+		relationshipKeys, _, err := ti.ki.ExecuteKeyQuery(userThreadPrefix, req)
+		if err != nil {
+			log.Printf("[TI] getTotalThreadCount - batch %d failed: %v", batchCount, err)
+			return totalCount, err
+		}
+
+		if len(relationshipKeys) == 0 {
+			log.Printf("[TI] getTotalThreadCount - no more threads after batch %d", batchCount)
+			break // No more threads
+		}
+
+		log.Printf("[TI] getTotalThreadCount - batch %d: %d relationship keys", batchCount, len(relationshipKeys))
+
+		// Extract thread keys from relationship keys
+		threadKeys := make([]string, 0, len(relationshipKeys))
+		for _, relKey := range relationshipKeys {
+			if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
+				threadKeys = append(threadKeys, parsed.ThreadKey)
+			}
+		}
+
+		// Get delete markers for this batch
+		deleteMarkers := ti.getDeleteMarkersWithFallback(threadKeys)
+
+		// Count non-deleted threads in this batch
+		batchNonDeleted := 0
+		for _, threadKey := range threadKeys {
+			if !deleteMarkers[threadKey] {
+				totalCount++
+				batchNonDeleted++
+			}
+		}
+
+		log.Printf("[TI] getTotalThreadCount - batch %d: %d non-deleted threads, total so far: %d",
+			batchCount, batchNonDeleted, totalCount)
+
+		// If we got fewer than requested, we're done
+		if len(relationshipKeys) < batchSize {
+			break
+		}
+
+		// Set offset for next batch
+		offset = relationshipKeys[len(relationshipKeys)-1]
 	}
 
-	// Batch lookup delete markers for all thread keys
-	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
+	log.Printf("[TI] getTotalThreadCount - final count: %d", totalCount)
+	return totalCount, nil
+}
+
+// checkHasThreads checks for non-deleted threads in a direction with optional boundary
+func (ti *ThreadIterator) checkHasThreads(userID, reference, direction string, boundary ...string) bool {
+	// Validate reference key
+	_, err := keys.ParseUserOwnsThread(reference)
 	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, threadKey := range threadKeys {
-			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
-			if checkErr != nil {
-				// If we can't determine deletion status, count it (fail-safe)
-				deleteMarkers[threadKey] = false
+		log.Printf("[TI] checkHasThreads - invalid reference key: %s", reference)
+		return false
+	}
+
+	// Use cached KI instance
+	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
+	if err != nil {
+		log.Printf("[TI] checkHasThreads - failed to generate prefix: %v", err)
+		return false
+	}
+
+	// Build pagination request
+	req := pagination.PaginationRequest{
+		Limit: 10, // Small batch to check for threads
+	}
+
+	switch direction {
+	case "before":
+		req.Before = reference
+	case "after":
+		req.After = reference
+	default:
+		log.Printf("[TI] checkHasThreads - invalid direction: %s", direction)
+		return false
+	}
+
+	// Get relationship keys in the specified direction
+	relKeys, _, err := ti.ki.ExecuteKeyQuery(userThreadPrefix, req)
+	if err != nil {
+		log.Printf("[TI] checkHasThreads - KI query failed: %v", err)
+		return false
+	}
+
+	log.Printf("[TI] checkHasThreads - KI returned %d relKeys in %s direction", len(relKeys), direction)
+	for i, relKey := range relKeys {
+		if i < 3 { // Log first 3 to avoid spam
+			log.Printf("[TI] checkHasThreads - relKey[%d]: %s", i, relKey)
+		}
+	}
+
+	// Extract thread keys from relationship keys
+	threadKeys := make([]string, 0, len(relKeys))
+	for _, relKey := range relKeys {
+		if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
+			threadKeys = append(threadKeys, parsed.ThreadKey)
+		}
+	}
+
+	// Get delete markers for thread keys
+	deleteMarkers := ti.getDeleteMarkersWithFallback(threadKeys)
+
+	// Check if any threads are non-deleted and respect boundary if provided
+	for _, threadKey := range threadKeys {
+		if !deleteMarkers[threadKey] {
+			// If boundary is provided, check if key is within bounds and exclude the boundary itself
+			if len(boundary) > 0 {
+				switch direction {
+				case "before":
+					if threadKey > boundary[0] {
+						log.Printf("[TI] checkHasThreads - found newer non-deleted thread after boundary: %s > %s", threadKey, boundary[0])
+						return true // Found newer non-deleted thread after boundary
+					}
+				case "after":
+					if threadKey < boundary[0] {
+						log.Printf("[TI] checkHasThreads - found older non-deleted thread before boundary: %s < %s", threadKey, boundary[0])
+						return true // Found older non-deleted thread before boundary
+					}
+				}
 			} else {
-				deleteMarkers[threadKey] = threadDeleted
+				log.Printf("[TI] checkHasThreads - found non-deleted thread: %s", threadKey)
+				return true // Found non-deleted thread
 			}
 		}
 	}
 
-	// Filter out deleted threads
-	count := 0
-	for _, threadKey := range threadKeys {
-		// Only count non-deleted threads
-		if !deleteMarkers[threadKey] {
-			count++
-		}
-	}
-
-	return count, nil
+	log.Printf("[TI] checkHasThreads - no non-deleted threads found")
+	return false // No non-deleted threads found
 }
 
 // checkHasNewerThreads checks if there are newer non-deleted threads after the newest filtered key
 func (ti *ThreadIterator) checkHasNewerThreads(userID, newestKey string) (bool, error) {
-	// Convert thread key to relationship key for KI query
-	_, err := keys.ParseUserOwnsThread(newestKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse thread key: %w", err)
-	}
-
-	// Use KI to get relationship keys after the newest relationship key
-	keyIter := ki.NewKeyIterator(ti.db)
-
-	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate user thread prefix: %w", err)
-	}
-
-	// Get a small batch of relationship keys after newestKey to check for non-deleted threads
-	relKeysAfter, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, pagination.PaginationRequest{
-		After: newestKey,
-		Limit: 10, // Small batch to check for newer threads
-	})
-	if err != nil {
-		return false, err
-	}
-
-	// Extract thread keys from relationship keys
-	threadKeys := make([]string, 0, len(relKeysAfter))
-	for _, relKey := range relKeysAfter {
-		if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
-			threadKeys = append(threadKeys, parsed.ThreadKey)
-		}
-	}
-
-	// Batch lookup delete markers for thread keys
-	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, threadKey := range threadKeys {
-			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
-			if checkErr != nil {
-				deleteMarkers[threadKey] = false // fail-safe
-			} else {
-				deleteMarkers[threadKey] = threadDeleted
-			}
-		}
-	}
-
-	// Check if any of the threads after are non-deleted
-	for _, threadKey := range threadKeys {
-		if !deleteMarkers[threadKey] {
-			return true, nil // Found newer non-deleted thread
-		}
-	}
-
-	return false, nil // No newer non-deleted threads found
+	return ti.checkHasThreads(userID, newestKey, "before"), nil
 }
 
 // checkHasOlderThreads checks if there are older non-deleted threads before the oldest filtered key
 func (ti *ThreadIterator) checkHasOlderThreads(userID, oldestKey string) (bool, error) {
-	// Convert thread key to relationship key for KI query
-	parsed, err := keys.ParseUserOwnsThread(oldestKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse thread key: %w", err)
-	}
-
-	// Use KI to get relationship keys before the oldest relationship key
-	keyIter := ki.NewKeyIterator(ti.db)
-
-	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate user thread prefix: %w", err)
-	}
-
-	// Get a small batch of relationship keys before oldestKey to check for non-deleted threads
-	relKeysBefore, _, err := keyIter.ExecuteKeyQuery(userThreadPrefix, pagination.PaginationRequest{
-		Before: oldestKey,
-		Limit:  10, // Small batch to check for older threads
-	})
-	if err != nil {
-		return false, err
-	}
-
-	// Extract thread keys from relationship keys
-	threadKeys := make([]string, 0, len(relKeysBefore))
-	for _, relKey := range relKeysBefore {
-		if parsed, err := keys.ParseUserOwnsThread(relKey); err == nil {
-			threadKeys = append(threadKeys, parsed.ThreadKey)
-		}
-		_ = parsed // avoid unused variable warning
-	}
-
-	// Batch lookup delete markers for thread keys
-	deleteMarkers, err := ti.batchGetDeleteMarkers(threadKeys)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, threadKey := range threadKeys {
-			threadDeleted, checkErr := ti.isThreadDeleted(threadKey)
-			if checkErr != nil {
-				deleteMarkers[threadKey] = false // fail-safe
-			} else {
-				deleteMarkers[threadKey] = threadDeleted
-			}
-		}
-	}
-
-	// Check if any of the threads before are non-deleted
-	for _, threadKey := range threadKeys {
-		if !deleteMarkers[threadKey] {
-			return true, nil // Found older non-deleted thread
-		}
-	}
-
-	return false, nil // No older non-deleted threads found
+	return ti.checkHasThreads(userID, oldestKey, "after"), nil
 }
 
-// batchGetDeleteMarkers performs efficient batch lookup of delete markers for multiple thread keys
-func (ti *ThreadIterator) batchGetDeleteMarkers(threadKeys []string) (map[string]bool, error) {
+// getDeleteMarkersWithFallback performs efficient batch lookup of delete markers with fallback to individual checks
+func (ti *ThreadIterator) getDeleteMarkersWithFallback(threadKeys []string) map[string]bool {
 	deleteMarkers := make(map[string]bool)
 
 	if len(threadKeys) == 0 {
-		return deleteMarkers, nil
+		return deleteMarkers
 	}
 
 	// Generate delete marker keys for all thread keys
@@ -389,25 +436,5 @@ func (ti *ThreadIterator) batchGetDeleteMarkers(threadKeys []string) (map[string
 		}
 	}
 
-	return deleteMarkers, nil
-}
-
-// isThreadDeleted checks if a thread is marked as deleted using soft delete markers
-func (ti *ThreadIterator) isThreadDeleted(threadKey string) (bool, error) {
-	// Generate soft delete marker key
-	deleteMarkerKey := keys.GenSoftDeleteMarkerKey(threadKey)
-
-	// Check if soft delete marker exists
-	_, err := indexdb.GetKey(deleteMarkerKey)
-	if err != nil {
-		if indexdb.IsNotFound(err) {
-			// No soft delete marker found = not deleted
-			return false, nil
-		}
-		// Error checking for marker = fail-safe, consider not deleted
-		return false, nil
-	}
-
-	// Soft delete marker found = thread is deleted
-	return true, nil
+	return deleteMarkers
 }
