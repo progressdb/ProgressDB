@@ -23,46 +23,6 @@ func (mi *MessageIterator) GetMessageCount(threadKey string) (int, error) {
 	return mi.GetMessageCountExcludingDeleted(threadKey)
 }
 
-func (mi *MessageIterator) countMessagesManually(threadKey string) (int, error) {
-	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
-	if err != nil {
-		return 0, fmt.Errorf("failed to generate message prefix: %w", err)
-	}
-
-	// Use frontend ki for consistent counting
-	keyIter := ki.NewKeyIterator(mi.db)
-	keys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{Limit: 1000000})
-	if err != nil {
-		return 0, fmt.Errorf("failed to count messages: %w", err)
-	}
-
-	// Batch lookup delete markers for all message keys
-	deleteMarkers, err := mi.batchGetDeleteMarkers(keys)
-	if err != nil {
-		// If batch lookup fails, fall back to individual checks
-		deleteMarkers = make(map[string]bool)
-		for _, key := range keys {
-			messageDeleted, checkErr := mi.isMessageDeleted(key)
-			if checkErr != nil {
-				deleteMarkers[key] = false // fail-safe
-			} else {
-				deleteMarkers[key] = messageDeleted
-			}
-		}
-	}
-
-	// Filter out deleted messages
-	count := 0
-	for _, key := range keys {
-		// Only count non-deleted messages
-		if !deleteMarkers[key] {
-			count++
-		}
-	}
-
-	return count, nil
-}
-
 func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
 	if !keys.IsThreadKey(threadKey) {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("invalid thread key: %s", threadKey)
