@@ -71,7 +71,6 @@ func (km *KeyManager) ExecuteKeyQuery(userID, prefix string, req pagination.Pagi
 	return resultKeys, nil
 }
 
-// fetchAnchorWindowKeys gets a window of valid keys around the anchor (including anchor in middle)
 func (km *KeyManager) fetchAnchorWindowKeys(userID, prefix string, req pagination.PaginationRequest, isDeleted func(string) bool) ([]string, error) {
 	var anchorRelKey string
 	if req.Anchor != "" {
@@ -119,72 +118,100 @@ func (km *KeyManager) fetchAnchorWindowKeys(userID, prefix string, req paginatio
 }
 
 func (km *KeyManager) fetchBeforeKeys(prefix, reference string, limit int, isDeleted func(string) bool) ([]string, error) {
-	candidates, err := km.getKeyCandidatesBefore(prefix, reference, limit*2)
+	iter, err := km.createIterator(prefix)
 	if err != nil {
 		return nil, err
 	}
+	defer iter.Close()
+
+	valid := iter.SeekGE([]byte(reference))
+	// Skip the reference key itself
+	if valid && string(iter.Key()) == reference {
+		valid = iter.Prev()
+	}
 
 	validKeys := make([]string, 0, limit)
-	for _, key := range candidates {
+	for valid && len(validKeys) < limit {
+		key := string(iter.Key())
+
 		parsed, err := keys.ParseUserOwnsThread(key)
 		if err != nil {
+			valid = iter.Prev()
 			continue
 		}
-		if isDeleted(parsed.ThreadKey) {
-			continue
+
+		if !isDeleted(parsed.ThreadKey) {
+			validKeys = append(validKeys, key)
 		}
-		validKeys = append(validKeys, key)
-		if len(validKeys) >= limit {
-			break
-		}
+
+		valid = iter.Prev()
+	}
+
+	// Reverse to maintain correct order
+	for i, j := 0, len(validKeys)-1; i < j; i, j = i+1, j-1 {
+		validKeys[i], validKeys[j] = validKeys[j], validKeys[i]
 	}
 
 	return validKeys, nil
 }
 
 func (km *KeyManager) fetchAfterKeys(prefix, reference string, limit int, isDeleted func(string) bool) ([]string, error) {
-	candidates, err := km.getKeyCandidatesAfter(prefix, reference, limit*2)
+	iter, err := km.createIterator(prefix)
 	if err != nil {
 		return nil, err
 	}
+	defer iter.Close()
+
+	valid := iter.SeekGE([]byte(reference))
+	// Skip the reference key itself
+	if valid && string(iter.Key()) == reference {
+		valid = iter.Next()
+	}
 
 	validKeys := make([]string, 0, limit)
-	for _, key := range candidates {
+	for valid && len(validKeys) < limit {
+		key := string(iter.Key())
+
 		parsed, err := keys.ParseUserOwnsThread(key)
 		if err != nil {
+			valid = iter.Next()
 			continue
 		}
-		if isDeleted(parsed.ThreadKey) {
-			continue
+
+		if !isDeleted(parsed.ThreadKey) {
+			validKeys = append(validKeys, key)
 		}
-		validKeys = append(validKeys, key)
-		if len(validKeys) >= limit {
-			break
-		}
+
+		valid = iter.Next()
 	}
 
 	return validKeys, nil
 }
 
 func (km *KeyManager) fetchInitialLoadKeys(prefix string, limit int, isDeleted func(string) bool) ([]string, error) {
-	candidates, err := km.getKeyCandidatesInitial(prefix, limit*2)
+	iter, err := km.createIterator(prefix)
 	if err != nil {
 		return nil, err
 	}
+	defer iter.Close()
+
+	valid := iter.First()
 
 	validKeys := make([]string, 0, limit)
-	for _, key := range candidates {
+	for valid && len(validKeys) < limit {
+		key := string(iter.Key())
+
 		parsed, err := keys.ParseUserOwnsThread(key)
 		if err != nil {
+			valid = iter.Next()
 			continue
 		}
-		if isDeleted(parsed.ThreadKey) {
-			continue
+
+		if !isDeleted(parsed.ThreadKey) {
+			validKeys = append(validKeys, key)
 		}
-		validKeys = append(validKeys, key)
-		if len(validKeys) >= limit {
-			break
-		}
+
+		valid = iter.Next()
 	}
 
 	return validKeys, nil
@@ -268,63 +295,6 @@ func (km *KeyManager) getKeysAfterAnchor(prefix, anchorRelKey string, limit int,
 	return validKeys, nil
 }
 
-func (km *KeyManager) getKeyCandidatesBefore(prefix, reference string, maxCandidates int) ([]string, error) {
-	iter, err := km.createIterator(prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-
-	valid := iter.SeekGE([]byte(reference))
-	candidates := make([]string, 0, maxCandidates)
-
-	for valid && len(candidates) < maxCandidates {
-		candidates = append(candidates, string(iter.Key()))
-		valid = iter.Prev()
-	}
-
-	return candidates, nil
-}
-
-func (km *KeyManager) getKeyCandidatesAfter(prefix, reference string, maxCandidates int) ([]string, error) {
-	iter, err := km.createIterator(prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-
-	valid := iter.SeekGE([]byte(reference))
-	if valid && string(iter.Key()) == reference {
-		valid = iter.Next()
-	}
-
-	candidates := make([]string, 0, maxCandidates)
-	for valid && len(candidates) < maxCandidates {
-		candidates = append(candidates, string(iter.Key()))
-		valid = iter.Next()
-	}
-
-	return candidates, nil
-}
-
-func (km *KeyManager) getKeyCandidatesInitial(prefix string, maxCandidates int) ([]string, error) {
-	iter, err := km.createIterator(prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-
-	valid := iter.First()
-	candidates := make([]string, 0, maxCandidates)
-
-	for valid && len(candidates) < maxCandidates {
-		candidates = append(candidates, string(iter.Key()))
-		valid = iter.Next()
-	}
-
-	return candidates, nil
-}
-
 func (km *KeyManager) createIterator(prefix string) (*pebble.Iterator, error) {
 	if prefix == "" {
 		return km.db.NewIter(&pebble.IterOptions{})
@@ -337,21 +307,24 @@ func (km *KeyManager) createIterator(prefix string) (*pebble.Iterator, error) {
 	})
 }
 
-// checkHasKeysBefore checks if there are valid (non-deleted) keys before the reference
 func (km *KeyManager) checkHasKeysBefore(prefix, reference string) bool {
+	logger.Debug("[checkHasKeysBefore] called", "prefix", prefix, "reference", reference)
 	iter, err := km.createIterator(prefix)
 	if err != nil {
+		logger.Error("[checkHasKeysBefore] failed to create iterator", "prefix", prefix, "error", err)
 		return false
 	}
 	defer iter.Close()
 
 	valid := iter.SeekGE([]byte(reference))
 	if !valid {
+		logger.Debug("[checkHasKeysBefore] SeekGE unsuccessful", "reference", reference)
 		return false
 	}
 
 	// Move to just before reference
 	if string(iter.Key()) == reference {
+		logger.Debug("[checkHasKeysBefore] Skipping reference", "reference", reference)
 		valid = iter.Prev()
 	}
 
@@ -361,34 +334,40 @@ func (km *KeyManager) checkHasKeysBefore(prefix, reference string) bool {
 		return err == nil
 	}
 
-	// Check if there's at least one valid key before
+	checks := 0
 	for valid {
 		key := string(iter.Key())
 		parsed, err := keys.ParseUserOwnsThread(key)
+		logger.Debug("[checkHasKeysBefore] Iter", "key", key, "parseErr", err)
 		if err == nil && !isDeleted(parsed.ThreadKey) {
+			logger.Debug("[checkHasKeysBefore] Found key before", "key", key)
 			return true
 		}
 		valid = iter.Prev()
+		checks++
 	}
-
+	logger.Debug("[checkHasKeysBefore] No key found before", "reference", reference, "iterations", checks)
 	return false
 }
 
-// checkHasKeysAfter checks if there are valid (non-deleted) keys after the reference
 func (km *KeyManager) checkHasKeysAfter(prefix, reference string) bool {
+	logger.Debug("[checkHasKeysAfter] called", "prefix", prefix, "reference", reference)
 	iter, err := km.createIterator(prefix)
 	if err != nil {
+		logger.Error("[checkHasKeysAfter] failed to create iterator", "prefix", prefix, "error", err)
 		return false
 	}
 	defer iter.Close()
 
 	valid := iter.SeekGE([]byte(reference))
 	if !valid {
+		logger.Debug("[checkHasKeysAfter] SeekGE unsuccessful", "reference", reference)
 		return false
 	}
 
 	// Skip the reference itself
 	if string(iter.Key()) == reference {
+		logger.Debug("[checkHasKeysAfter] Skipping reference", "reference", reference)
 		valid = iter.Next()
 	}
 
@@ -398,16 +377,19 @@ func (km *KeyManager) checkHasKeysAfter(prefix, reference string) bool {
 		return err == nil
 	}
 
-	// Check if there's at least one valid key after
+	checks := 0
 	for valid {
 		key := string(iter.Key())
 		parsed, err := keys.ParseUserOwnsThread(key)
+		logger.Debug("[checkHasKeysAfter] Iter", "key", key, "parseErr", err)
 		if err == nil && !isDeleted(parsed.ThreadKey) {
+			logger.Debug("[checkHasKeysAfter] Found key after", "key", key)
 			return true
 		}
 		valid = iter.Next()
+		checks++
 	}
-
+	logger.Debug("[checkHasKeysAfter] No key found after", "reference", reference, "iterations", checks)
 	return false
 }
 
