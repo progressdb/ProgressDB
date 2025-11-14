@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
 	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/ingest/types"
@@ -17,21 +16,16 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// Global WAL reference for sequence truncation
 var globalWAL types.WAL
 
-// SetIntakeWAL sets the WAL reference for apply package
 func SetIntakeWAL(wal types.WAL) {
 	globalWAL = wal
 }
 
-// truncateWALWithSequences truncates WAL entries using processed sequences
 func truncateWALWithSequences(seqs []uint64) error {
 	if globalWAL == nil || len(seqs) == 0 {
 		return nil
 	}
-
-	// Type assert to access TruncateSequences method
 	if walWithTruncate, ok := globalWAL.(interface{ TruncateSequences([]uint64) error }); ok {
 		if err := walWithTruncate.TruncateSequences(seqs); err != nil {
 			return fmt.Errorf("wal truncate sequences failed: %w", err)
@@ -39,11 +33,6 @@ func truncateWALWithSequences(seqs []uint64) error {
 		logger.Debug("wal_truncated_batch", "seq_count", len(seqs))
 	}
 	return nil
-}
-
-type ThreadGroup struct {
-	ThreadKey string
-	Entries   []types.BatchEntry
 }
 
 type BatchProcessor struct {
@@ -58,7 +47,7 @@ func NewBatchProcessor() *BatchProcessor {
 	index := NewIndexManager(kv)
 	data := NewDataManager(kv)
 	sequencer := NewMessageSequencer(index, kv)
-	index.messageSequencer = sequencer // set the sequencer
+	index.messageSequencer = sequencer
 	return &BatchProcessor{
 		KV:        kv,
 		Index:     index,
@@ -95,7 +84,6 @@ func getOperationPriority(handler types.HandlerID) int {
 	case types.HandlerMessageDelete:
 		return 6
 	default:
-		// This should never happen.
 		state.Crash("get_operation_priority_failed", fmt.Errorf("getOperationPriority: unsupported handler type: %v", handler))
 		return 10
 	}
@@ -127,9 +115,6 @@ func extractTS(entry types.BatchEntry) int64 {
 		}
 	}
 
-	// this is not going to happen
-	// but if if by magic it occurs
-	// - crash the system (to prevent any blind ops)
 	state.Crash("index_state_init_failed", fmt.Errorf("extractTS: unsupported operation or handler"))
 	return 0
 }
@@ -156,9 +141,6 @@ func extractAuthor(entry types.BatchEntry) string {
 		}
 	}
 
-	// this is not going to happen
-	// but if if by magic it occurs
-	// - crash the system (to prevent any blind ops)
 	state.Crash("index_state_init_failed", fmt.Errorf("extractAuthor: unsupported operation or handler"))
 	return ""
 }
@@ -191,9 +173,6 @@ func ExtractTKey(qop *types.QueueOp) string {
 		}
 	}
 
-	// this is not going to happen
-	// but if if by magic it occurs
-	// - crash the system (to prevent any blind ops)
 	state.Crash("index_state_init_failed", fmt.Errorf("ExtractTKey: unsupported operation or handler"))
 	return ""
 }
@@ -216,9 +195,6 @@ func ExtractMKey(qop *types.QueueOp) string {
 		}
 	}
 
-	// this is not going to happen
-	// but if if by magic it occurs
-	// - crash the system (to prevent any blind ops)
 	state.Crash("index_state_init_failed", fmt.Errorf("ExtractMKey: unsupported operation or handler"))
 	return ""
 }
@@ -238,31 +214,27 @@ func sortOperationsByType(entries []types.BatchEntry) []types.BatchEntry {
 }
 
 func extractUniqueThreadKeys(threadGroups map[string][]types.BatchEntry) []string {
-	// unique existence
-	threadMap := make(map[string]bool)
+	seen := make(map[string]bool)
+	var result []string
 	for threadKey := range threadGroups {
-		if threadKey != "" {
-			threadMap[threadKey] = true
+		if threadKey != "" && !seen[threadKey] {
+			seen[threadKey] = true
+			result = append(result, threadKey)
 		}
 	}
-	threadKeys := make([]string, 0, len(threadMap))
-	for threadKey := range threadMap {
-		threadKeys = append(threadKeys, threadKey)
-	}
-	return threadKeys
+	return result
 }
 
 func collectProvisionalMessageKeys(entries []types.BatchEntry) []string {
-	provKeyMap := make(map[string]bool) // dedup set
+	provKeyMap := make(map[string]bool)
 	for _, entry := range entries {
-		// only *models.Message with provisional key
 		if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" {
 			if parsed, err := keys.ParseKey(msg.Key); err == nil && parsed.Type == keys.KeyTypeMessageProvisional {
 				provKeyMap[msg.Key] = true
 			}
 		}
 	}
-	provKeys := make([]string, 0, len(provKeyMap)) // result list
+	provKeys := make([]string, 0, len(provKeyMap))
 	for provKey := range provKeyMap {
 		provKeys = append(provKeys, provKey)
 	}
@@ -274,16 +246,12 @@ func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	if storedb.Client == nil {
 		return mappings, nil
 	}
-	// Group provKeys by thread for efficient bounded iteration
 	threadToProvKeys := make(map[string][]string)
 	for _, provKey := range provKeys {
-		parts := strings.Split(provKey, ":")
-		if len(parts) >= 4 && parts[0] == "t" && parts[2] == "m" {
-			thread := parts[1]
-			threadToProvKeys[thread] = append(threadToProvKeys[thread], provKey)
+		if parsed, err := keys.ParseKey(provKey); err == nil && parsed.Type == keys.KeyTypeMessageProvisional {
+			threadToProvKeys[parsed.ThreadKey] = append(threadToProvKeys[parsed.ThreadKey], provKey)
 		}
 	}
-	// Iterate per thread with bounds
 	for thread, keys := range threadToProvKeys {
 		prefix := []byte("t:" + thread + ":m:")
 		upper := nextPrefix(prefix)
@@ -306,7 +274,6 @@ func bulkLookupProvisionalKeys(provKeys []string) (map[string]string, error) {
 	return mappings, nil
 }
 
-// nextPrefix computes the next lexicographic key after a given prefix
 func nextPrefix(prefix []byte) []byte {
 	out := make([]byte, len(prefix))
 	copy(out, prefix)
@@ -316,10 +283,9 @@ func nextPrefix(prefix []byte) []byte {
 			return out[:i+1]
 		}
 	}
-	return nil // no upper bound if all 0xFF
+	return nil
 }
 
-// extractSequencesFromBatch extracts EnqSeq values from processed batch entries
 func extractSequencesFromBatch(entries []types.BatchEntry) []uint64 {
 	seqs := make([]uint64, 0, len(entries))
 	for _, entry := range entries {
@@ -330,88 +296,83 @@ func extractSequencesFromBatch(entries []types.BatchEntry) []uint64 {
 	return seqs
 }
 
-func processThreadGroup(threadGroup ThreadGroup, batchProcessor *BatchProcessor) error {
-	// ops sorted by create, update, delete
-	sortedOps := sortOperationsByType(threadGroup.Entries)
-	for _, op := range sortedOps {
-		if err := BProcOperation(op, batchProcessor); err != nil {
-			return fmt.Errorf("process operation failed for thread %s: %w", threadGroup.ThreadKey, err)
-		}
-	}
-	return nil
-}
-
-// ApplyBatchToDBParallel has been removed to eliminate race condition risks.
-// Use ApplyBatchToDB for sequential processing only.
-
 func ApplyBatchToDB(entries []types.BatchEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
 
-	// has the store and index clients
 	batchProcessor := NewBatchProcessor()
 
-	// for us to preload or preinit threads
 	threadGroups := groupOperationsByThreadKey(entries)
 
-	// get thread keys unique list
-	threadKeys := extractUniqueThreadKeys(threadGroups)
+	uniqueThreadKeys := extractUniqueThreadKeys(threadGroups)
 
-	// setup the thread states
-	if len(threadKeys) > 0 {
-		_ = batchProcessor.Index.InitializeThreadSequencesFromDB(threadKeys)
-	}
-
-	// prov - references to async keys
-	// loadup any final key mappings
-	provKeys := collectProvisionalMessageKeys(entries)
-	if len(provKeys) > 0 {
-		mappings, _ := bulkLookupProvisionalKeys(provKeys)
-		// cache
-		tracking.GlobalKeyMapper.PrepopulateBatchCache(mappings)
-	}
-
-	// process each thread & its ops
-	for _, threadEntries := range threadGroups {
-		// ops sorted by create, update, delete
-		sortedOps := sortOperationsByType(threadEntries)
-		for _, op := range sortedOps {
-			_ = BProcOperation(op, batchProcessor)
+	if len(uniqueThreadKeys) > 0 {
+		if err := batchProcessor.Index.InitializeThreadSequencesFromDB(uniqueThreadKeys); err != nil {
+			logger.Error("thread_sequence_init_failed", "err", err, "thread_count", len(uniqueThreadKeys))
 		}
 	}
+
+	provKeys := collectProvisionalMessageKeys(entries)
+	if len(provKeys) > 0 {
+		mappings, err := bulkLookupProvisionalKeys(provKeys)
+		if err != nil {
+			logger.Error("bulk_key_lookup_failed", "err", err, "key_count", len(provKeys))
+		} else {
+			tracking.GlobalKeyMapper.PrepopulateBatchCache(mappings)
+		}
+	}
+
+	// process per thread groupings
+	for _, threadEntries := range threadGroups {
+		sortedOps := sortOperationsByType(threadEntries)
+		for _, op := range sortedOps {
+			if err := BProcOperation(op, batchProcessor); err != nil {
+				logger.Error("operation_processing_failed", "err", err, "handler", op.Handler)
+			}
+		}
+	}
+
+	// commit to database
 	if err := batchProcessor.Flush(); err != nil {
 		return fmt.Errorf("batch flush failed: %w", err)
 	}
 
-	// Remove completed operations from in-flight tracking
-	removeFromInflightTracking(entries)
+	// purge trackers
+	inflightKeys := collectInflightKeys(entries)
+	removeFromInflightTracking(inflightKeys)
 
-	// Clear batch cache after processing
+	// purge current batch lookup mappings
 	tracking.GlobalKeyMapper.ClearBatchCache()
 
-	// Extract sequences from successfully processed batch and truncate WAL
+	// wal truncates if needed
 	seqs := extractSequencesFromBatch(entries)
 	if err := truncateWALWithSequences(seqs); err != nil {
 		logger.Error("wal_truncate_failed", "err", err, "seq_count", len(seqs))
 	}
 
-	storedb.RecordWrite(len(entries))
 	return nil
 }
 
-// removeFromInflightTracking removes completed operations from in-flight tracking
-func removeFromInflightTracking(entries []types.BatchEntry) {
+func collectInflightKeys(entries []types.BatchEntry) []string {
+	var inflightKeys []string
 	for _, entry := range entries {
 		switch entry.Handler {
 		case types.HandlerThreadCreate:
-			if thread, ok := entry.Payload.(*models.Thread); ok {
-				tracking.GlobalInflightTracker.Remove(thread.Key)
+			if thread, ok := entry.Payload.(*models.Thread); ok && thread.Key != "" {
+				inflightKeys = append(inflightKeys, thread.Key)
 			}
 		case types.HandlerMessageCreate:
-			if message, ok := entry.Payload.(*models.Message); ok {
-				tracking.GlobalInflightTracker.Remove(message.Key)
+			if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" {
+				inflightKeys = append(inflightKeys, msg.Key)
 			}
 		}
+	}
+	return inflightKeys
+}
+
+func removeFromInflightTracking(provisionalKeys []string) {
+	for _, key := range provisionalKeys {
+		tracking.GlobalInflightTracker.Remove(key)
 	}
 }

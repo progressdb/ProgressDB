@@ -30,17 +30,6 @@ func NewApplyWorker(input <-chan types.BatchEntry, workers, maxBatchSize int, ti
 	}
 }
 
-func NewApplyWorkerWithParallel(input <-chan types.BatchEntry, workers, maxBatchSize int, timeout time.Duration, applyWorkers int) *ApplyWorker {
-	return &ApplyWorker{
-		input:        input,
-		workers:      workers,
-		buffer:       make([]types.BatchEntry, 0, maxBatchSize),
-		maxSize:      maxBatchSize,
-		timeout:      timeout,
-		applyWorkers: applyWorkers,
-	}
-}
-
 func (aw *ApplyWorker) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	aw.stop = stop
 	for i := 0; i < aw.workers; i++ {

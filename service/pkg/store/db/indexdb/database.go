@@ -12,7 +12,6 @@ import (
 var Client *pebble.DB
 var StorePath string
 var WALDisabled bool
-var PendingWrites uint64
 
 func Open(path string, intakeWALEnabled bool) error {
 	var err error
