@@ -22,7 +22,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 
 	req := utils.ParsePaginationRequest(ctx)
 
-	if err := utils.ValidatePaginationRequest(req); err != nil {
+	if err := utils.ValidatePaginationRequest(&req, ctx); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid pagination: %v", err))
 		return
 	}
@@ -122,7 +122,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	req := utils.ParsePaginationRequest(ctx)
 
-	if err := utils.ValidatePaginationRequest(req); err != nil {
+	if err := utils.ValidatePaginationRequest(&req, ctx); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid pagination: %v", err))
 		return
 	}

@@ -7,17 +7,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// returns header value with trimming
 func GetHeader(ctx *fasthttp.RequestCtx, key string) string {
 	return strings.TrimSpace(string(ctx.Request.Header.Peek(key)))
 }
 
-// returns header value with trimming and lowercase
 func GetHeaderLower(ctx *fasthttp.RequestCtx, key string) string {
 	return strings.ToLower(GetHeader(ctx, key))
 }
 
-// returns header value as integer, with default fallback
 func GetHeaderInt(ctx *fasthttp.RequestCtx, key string, defaultValue int) int {
 	value := GetHeader(ctx, key)
 	if value == "" {
@@ -29,19 +26,14 @@ func GetHeaderInt(ctx *fasthttp.RequestCtx, key string, defaultValue int) int {
 	return defaultValue
 }
 
-// Query parameter utilities
-
-// returns query parameter value with trimming
 func GetQuery(ctx *fasthttp.RequestCtx, key string) string {
 	return strings.TrimSpace(string(ctx.QueryArgs().Peek(key)))
 }
 
-// returns query parameter value with trimming and lowercase
 func GetQueryLower(ctx *fasthttp.RequestCtx, key string) string {
 	return strings.ToLower(GetQuery(ctx, key))
 }
 
-// returns query parameter value as integer, with default fallback
 func GetQueryInt(ctx *fasthttp.RequestCtx, key string, defaultValue int) int {
 	value := GetQuery(ctx, key)
 	if value == "" {
@@ -53,9 +45,6 @@ func GetQueryInt(ctx *fasthttp.RequestCtx, key string, defaultValue int) int {
 	return defaultValue
 }
 
-// Path parameter utilities
-
-// returns path parameter value
 func GetPathParam(ctx *fasthttp.RequestCtx, param string) string {
 	if v := ctx.UserValue(param); v != nil {
 		if s, ok := v.(string); ok {
@@ -66,12 +55,10 @@ func GetPathParam(ctx *fasthttp.RequestCtx, param string) string {
 	return ""
 }
 
-// returns path parameter value with lowercase
 func GetPathParamLower(ctx *fasthttp.RequestCtx, param string) string {
 	return strings.ToLower(GetPathParam(ctx, param))
 }
 
-// returns path parameter value as integer, with default fallback
 func GetPathParamInt(ctx *fasthttp.RequestCtx, param string, defaultValue int) int {
 	value := GetPathParam(ctx, param)
 	if value == "" {

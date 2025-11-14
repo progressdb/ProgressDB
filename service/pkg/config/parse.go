@@ -328,6 +328,11 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 			envCfg.Sensor.DiskHighPct = n
 		}
 	}
+
+	// Ensure sensor has valid poll interval (fallback to default if zero or invalid)
+	if envCfg.Sensor.PollInterval.Duration() <= 0 {
+		envCfg.Sensor.PollInterval = Duration(500 * time.Millisecond) // 500ms default
+	}
 	if v := envs["SENSOR_MEM_HIGH_PCT"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 			envCfg.Sensor.MemHighPct = n

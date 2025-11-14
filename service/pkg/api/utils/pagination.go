@@ -2,33 +2,24 @@ package utils
 
 import (
 	"fmt"
-	"strconv"
 
 	"progressdb/pkg/store/pagination"
 
 	"github.com/valyala/fasthttp"
 )
 
-// ParsePaginationRequest parses new pagination parameters from HTTP request
 func ParsePaginationRequest(ctx *fasthttp.RequestCtx) pagination.PaginationRequest {
 	req := pagination.PaginationRequest{
-		Before: string(ctx.QueryArgs().Peek("before")),
-		After:  string(ctx.QueryArgs().Peek("after")),
-		Anchor: string(ctx.QueryArgs().Peek("anchor")),
-		SortBy: string(ctx.QueryArgs().Peek("sort_by")),
+		Before: GetQuery(ctx, "before"),
+		After:  GetQuery(ctx, "after"),
+		Anchor: GetQuery(ctx, "anchor"),
+		SortBy: GetQuery(ctx, "sort_by"),
 	}
 
-	// Parse limit with default
-	if limitStr := string(ctx.QueryArgs().Peek("limit")); limitStr != "" {
-		if limit, err := strconv.Atoi(limitStr); err == nil {
-			req.Limit = limit
-		}
-	}
+	// Parse limit - keep 0 if explicitly provided to catch invalid limits
+	req.Limit = GetQueryInt(ctx, "limit", 0)
 
-	// Set defaults using constants
-	if req.Limit == 0 {
-		req.Limit = pagination.DefaultLimit
-	}
+	// Set default sort_by only
 	if req.SortBy == "" {
 		req.SortBy = "created_ts" // Default to created_ts
 	}
@@ -36,8 +27,7 @@ func ParsePaginationRequest(ctx *fasthttp.RequestCtx) pagination.PaginationReque
 	return req
 }
 
-// ValidatePaginationRequest validates pagination parameters
-func ValidatePaginationRequest(req pagination.PaginationRequest) error {
+func ValidatePaginationRequest(req *pagination.PaginationRequest, ctx *fasthttp.RequestCtx) error {
 	// Only one of anchor, before, after can be set
 	refCount := 0
 	if req.Anchor != "" {
@@ -59,12 +49,26 @@ func ValidatePaginationRequest(req pagination.PaginationRequest) error {
 		return fmt.Errorf("sort_by must be 'created_ts' or 'updated_ts'")
 	}
 
+	// Check if limit was explicitly provided
+	userLimitProvided := ctx.QueryArgs().Has("limit")
+
 	// Validate limit using constants
-	if req.Limit < 1 {
+	if req.Limit < 0 {
+		return fmt.Errorf("limit cannot be negative")
+	}
+	if userLimitProvided && req.Limit == 0 {
+		return fmt.Errorf("limit must be at least 1")
+	}
+	if req.Limit > 0 && req.Limit < 1 {
 		return fmt.Errorf("limit must be at least 1")
 	}
 	if req.Limit > pagination.MaxLimit {
 		return fmt.Errorf("limit cannot exceed %d", pagination.MaxLimit)
+	}
+
+	// Apply default limit if not set (after validation)
+	if req.Limit == 0 {
+		req.Limit = pagination.DefaultLimit
 	}
 
 	return nil

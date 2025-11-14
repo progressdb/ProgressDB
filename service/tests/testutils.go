@@ -435,7 +435,7 @@ func StartTestServer(t *testing.T) *TestServer {
     rps: 1000
     burst: 1000
 logging:
-  level: error
+  level: debug
 encryption:
   enabled: true
   fields: ["body.content"]
@@ -455,13 +455,11 @@ telemetry:
   flush_interval: 2s
   buffer_size: 1MB
 sensor:
-  monitor:
-    poll_interval: 1s
-    disk_high_pct: 99
-    disk_low_pct: 95
-    mem_high_pct: 99
-    cpu_high_pct: 99
-    recovery_window: 10s`, TestBackendKey, TestFrontendKey, TestAdminKey, TestSigningKey)
+  poll_interval: 1s
+  disk_high_pct: 99
+  mem_high_pct: 99
+  cpu_high_pct: 99
+  recovery_window: 10s`, TestBackendKey, TestFrontendKey, TestAdminKey, TestSigningKey)
 
 	process := StartServerProcess(t, ServerOpts{ConfigYAML: cfg})
 

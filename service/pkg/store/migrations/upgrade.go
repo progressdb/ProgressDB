@@ -52,8 +52,9 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 	stored, err := storedb.GetKey(keys.SystemVersionKey)
 	if err != nil {
 		if storedb.IsNotFound(err) {
-			stored = defaultStoredVersion
-			logger.Info("[MIGRATIONS] migration_version_not_found_defaulting", "default", defaultStoredVersion)
+			// For fresh installs, skip to current version
+			stored = newVersion
+			logger.Info("[MIGRATIONS] migration_version_not_found_defaulting_to_current", "default", stored)
 		} else {
 			logger.Error("[MIGRATIONS] progressor_read_version_failed", "error", err)
 			return false, err
@@ -68,7 +69,22 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 	}
 	logger.Info("[MIGRATIONS] migration_version_upgrade_required", "from", stored, "to", newVersion)
 
+	// migrate
 	if stored == "0.1.2" && (newVersion == "0.5.0" || newVersion == "v0.5.0") {
+		// check if a 0.1.2 db exist
+		cfg := config.GetConfig()
+		if cfg != nil {
+			if _, err := os.Stat(cfg.Server.DBPath); os.IsNotExist(err) {
+				logger.Info("[MIGRATIONS] old database does not exist, skipping migration", "path", cfg.Server.DBPath)
+				// skip to the new version - no db files exist
+				if err := finishMigration(newVersion); err != nil {
+					logger.Error("[MIGRATIONS] failed to set current version", "error", err)
+					return true, err
+				}
+				return true, nil
+			}
+		}
+
 		if err := startMigration(stored, newVersion); err != nil {
 			return true, err
 		}

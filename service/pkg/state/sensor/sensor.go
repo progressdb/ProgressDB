@@ -70,7 +70,13 @@ func (s *Sensor) Stop() {
 
 // run loop
 func (s *Sensor) run() {
-	ticker := time.NewTicker(s.config.PollInterval)
+	pollInterval := s.config.PollInterval
+	if pollInterval <= 0 {
+		defaultInterval := 5 * time.Second
+		logger.Error("Sensor PollInterval must be positive, using default", "provided", s.config.PollInterval, "default", defaultInterval)
+		pollInterval = defaultInterval
+	}
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -116,7 +122,10 @@ func (s *Sensor) checkHardware() {
 	// check memory
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	memUsedPct := float64(m.HeapInuse) / float64(m.HeapSys) * 100
+	memUsedPct := float64(m.HeapInuse)
+	if m.HeapSys > 0 {
+		memUsedPct = (float64(m.HeapInuse) / float64(m.HeapSys)) * 100
+	}
 
 	if memUsedPct > float64(s.config.MemHighPct) {
 		if !s.memAlert {
