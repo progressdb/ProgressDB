@@ -5,17 +5,21 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/db/indexdb"
-	"progressdb/pkg/store/iterator/frontend/ki"
+	ki "progressdb/pkg/store/iterator/frontend/mi/ki"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 )
 
 type MessageIterator struct {
 	db *pebble.DB
+	ki *ki.KeyIterator
 }
 
 func NewMessageIterator(db *pebble.DB) *MessageIterator {
-	return &MessageIterator{db: db}
+	return &MessageIterator{
+		db: db,
+		ki: ki.NewKeyIterator(db),
+	}
 }
 
 func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
@@ -24,15 +28,13 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	}
 
 	// Cache KI instance to avoid multiple database connections
-	keyIter := ki.NewKeyIterator(mi.db)
-
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate message prefix: %w", err)
 	}
 
 	// Execute key query using the proven ki logic
-	messageKeys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, req)
+	messageKeys, _, err := mi.ki.ExecuteKeyQuery(messagePrefix, req)
 	if err != nil {
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to execute key query: %w", err)
 	}
@@ -192,14 +194,18 @@ func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (in
 	}
 
 	// Use frontend ki for consistent counting with smaller batch size for efficiency
-	keyIter := ki.NewKeyIterator(mi.db)
+	messagePrefix, err = keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to generate message prefix: %w", err)
+	}
+
+	// Use integrated logic for consistent counting with smaller batch size for efficiency
 	count := 0
 	batchSize := 10000
-	offset := 0
 
 	for {
 		// Process in batches to avoid loading all keys at once
-		messageKeys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
+		messageKeys, _, err := mi.ki.ExecuteKeyQuery(messagePrefix, pagination.PaginationRequest{
 			Limit: batchSize,
 		})
 		if err != nil {
@@ -219,8 +225,6 @@ func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (in
 				count++
 			}
 		}
-
-		offset += len(messageKeys)
 
 		// If we got fewer keys than batch size, we're done
 		if len(messageKeys) < batchSize {
@@ -253,8 +257,7 @@ func (mi *MessageIterator) checkHasMessages(threadKey, reference, direction stri
 	}
 
 	// Use cached KI instance to get keys in the specified direction
-	keyIter := ki.NewKeyIterator(mi.db)
-	keys, _, err := keyIter.ExecuteKeyQuery(messagePrefix, req)
+	keys, _, err := mi.ki.ExecuteKeyQuery(messagePrefix, req)
 	if err != nil {
 		return false, err
 	}

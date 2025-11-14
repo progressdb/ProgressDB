@@ -3,19 +3,19 @@ package ti
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble"
+	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/iterator/admin/ki"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
+
+	"github.com/cockroachdb/pebble"
 )
 
-// ThreadIterator handles thread-specific pagination
 type ThreadIterator struct {
 	db      *pebble.DB
 	keyIter *ki.KeyIterator
 }
 
-// NewThreadIterator creates a new thread iterator
 func NewThreadIterator(db *pebble.DB) *ThreadIterator {
 	return &ThreadIterator{
 		db:      db,
@@ -23,19 +23,33 @@ func NewThreadIterator(db *pebble.DB) *ThreadIterator {
 	}
 }
 
-// ExecuteThreadQuery executes a thread pagination query for a specific user
 func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.PaginationRequest) ([]string, pagination.PaginationResponse, error) {
+	logger.Debug("Admin ThreadIterator query started",
+		"userID", userID,
+		"limit", req.Limit,
+		"after", req.After,
+		"before", req.Before,
+		"sortBy", req.SortBy)
+
 	// Generate user thread relationship prefix
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
+		logger.Error("Admin ThreadIterator failed to generate prefix", "userID", userID, "error", err)
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to generate user thread prefix: %w", err)
 	}
 
 	// Use key iterator for pure key-based pagination on relationship keys
 	relationshipKeys, response, err := ti.keyIter.ExecuteKeyQuery(userThreadPrefix, req)
 	if err != nil {
+		logger.Error("Admin ThreadIterator key query failed", "userID", userID, "error", err)
 		return nil, pagination.PaginationResponse{}, fmt.Errorf("failed to execute key query: %w", err)
 	}
+
+	logger.Debug("Admin ThreadIterator query executed",
+		"userID", userID,
+		"relationshipKeysFound", len(relationshipKeys),
+		"hasAfter", response.HasAfter,
+		"hasBefore", response.HasBefore)
 
 	// Get total count of all threads for this user
 	total, err := ti.getTotalThreadCount(userID)
@@ -62,7 +76,6 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	return threadKeys, response, nil
 }
 
-// getTotalThreadCount counts all threads for a user
 func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
@@ -86,7 +99,6 @@ func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	return count, nil
 }
 
-// nextPrefix computes the next lexicographical key after a given prefix
 func nextPrefix(prefix []byte) []byte {
 	out := make([]byte, len(prefix))
 	copy(out, prefix)

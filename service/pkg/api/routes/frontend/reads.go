@@ -41,9 +41,7 @@ func ReadThreadsList(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	sorter := ti.NewThreadSorter()
-	threads = sorter.SortThreads(threads, req.SortBy)
-
+	// Threads are already sorted by the iterator (newest first)
 	_ = router.WriteJSON(ctx, ThreadsListResponse{Threads: threads, Pagination: &paginationResp})
 }
 
