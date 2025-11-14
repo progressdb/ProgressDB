@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"progressdb/pkg/api/utils"
+	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/indexdb"
 	message_store "progressdb/pkg/store/features/messages"
@@ -170,7 +171,17 @@ func ValidateReadThread(threadKey, author string, requireOwnership bool) (*model
 		}
 	}
 
-	stored, err := thread_store.GetThreadData(threadKey)
+	// Resolve thread key using unified mapper
+	resolvedKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(threadKey)
+	if err != nil {
+		return nil, &AuthorResolutionError{
+			Type:    "thread_not_found",
+			Message: "thread not found",
+			Code:    fasthttp.StatusNotFound,
+		}
+	}
+
+	stored, err := thread_store.GetThreadData(resolvedKey)
 	if err != nil {
 		return nil, &AuthorResolutionError{
 			Type:    "thread_not_found",
@@ -226,7 +237,17 @@ func ValidateReadMessage(messageKey, author string, requireOwnership bool) (*mod
 		}
 	}
 
-	stored, err := message_store.GetMessageData(messageKey)
+	// Resolve message key using unified mapper
+	resolvedKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(messageKey)
+	if err != nil {
+		return nil, &AuthorResolutionError{
+			Type:    "message_not_found",
+			Message: "message not found",
+			Code:    fasthttp.StatusNotFound,
+		}
+	}
+
+	stored, err := message_store.GetMessageData(resolvedKey)
 	if err != nil {
 		return nil, &AuthorResolutionError{
 			Type:    "message_not_found",

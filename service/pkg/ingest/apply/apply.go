@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/ingest/types"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state"
@@ -368,7 +369,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 	if len(provKeys) > 0 {
 		mappings, _ := bulkLookupProvisionalKeys(provKeys)
 		// cache
-		batchProcessor.Index.PrepopulateProvisionalCache(mappings)
+		tracking.GlobalKeyMapper.PrepopulateBatchCache(mappings)
 	}
 
 	// process each thread & its ops
@@ -383,6 +384,12 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		return fmt.Errorf("batch flush failed: %w", err)
 	}
 
+	// Remove completed operations from in-flight tracking
+	removeFromInflightTracking(entries)
+
+	// Clear batch cache after processing
+	tracking.GlobalKeyMapper.ClearBatchCache()
+
 	// Extract sequences from successfully processed batch and truncate WAL
 	seqs := extractSequencesFromBatch(entries)
 	if err := truncateWALWithSequences(seqs); err != nil {
@@ -391,4 +398,20 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 
 	storedb.RecordWrite(len(entries))
 	return nil
+}
+
+// removeFromInflightTracking removes completed operations from in-flight tracking
+func removeFromInflightTracking(entries []types.BatchEntry) {
+	for _, entry := range entries {
+		switch entry.Handler {
+		case types.HandlerThreadCreate:
+			if thread, ok := entry.Payload.(*models.Thread); ok {
+				tracking.GlobalInflightTracker.Remove(thread.Key)
+			}
+		case types.HandlerMessageCreate:
+			if message, ok := entry.Payload.(*models.Message); ok {
+				tracking.GlobalInflightTracker.Remove(message.Key)
+			}
+		}
+	}
 }

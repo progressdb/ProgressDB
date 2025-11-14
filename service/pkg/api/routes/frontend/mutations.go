@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"progressdb/pkg/models"
-
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/ingest/types"
+	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/timeutil"
@@ -85,6 +85,10 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		handleQueueError(ctx, err)
 		return
 	}
+
+	// Track thread creation in-flight
+	tracking.GlobalInflightTracker.Add(threadKey)
+
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	_ = router.WriteJSON(ctx, map[string]string{"key": threadKey})
 }
@@ -101,8 +105,15 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// resolve provisional keys to final keys
+	resolvedThreadKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
+		return
+	}
+
 	// validate
-	if err := router.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(resolvedThreadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
@@ -128,7 +139,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
-	update.Key = threadKey
+	update.Key = resolvedThreadKey
 	update.UpdatedTS = reqtime
 
 	// validate
@@ -152,6 +163,7 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	_ = router.WriteJSON(ctx, map[string]string{"key": resolvedThreadKey})
 }
 
 func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
@@ -164,8 +176,16 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	if !ok {
 		return
 	}
+
+	// resolve provisional keys to final keys
+	resolvedThreadKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
+		return
+	}
+
 	// validate
-	if err := router.ValidateThreadKey(threadKey); err != nil {
+	if err := router.ValidateThreadKey(resolvedThreadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
@@ -179,7 +199,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 	metadata := router.NewRequestMetadata(ctx, author)
 
 	var del models.ThreadDeletePartial
-	del.Key = threadKey
+	del.Key = resolvedThreadKey
 	del.UpdatedTS = reqtime
 
 	// sync
@@ -203,6 +223,7 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	_ = router.WriteJSON(ctx, map[string]string{"key": resolvedThreadKey})
 }
 
 // message operations
@@ -270,6 +291,10 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		handleQueueError(ctx, err)
 		return
 	}
+
+	// Track message creation in-flight
+	tracking.GlobalInflightTracker.Add(messageKey)
+
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
 	_ = router.WriteJSON(ctx, map[string]string{"key": messageKey})
 }
@@ -291,12 +316,19 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// resolve provisional keys to final keys
+	resolvedMessageKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(messageKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "message not found")
+		return
+	}
+
 	// validate
 	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-	if err := router.ValidateMessageKey(messageKey); err != nil {
+	if err := router.ValidateMessageKey(resolvedMessageKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
@@ -322,7 +354,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 	metadata := router.NewRequestMetadata(ctx, author)
 
 	// sync
-	update.Key = messageKey
+	update.Key = resolvedMessageKey
 	update.Thread = threadKey
 	update.UpdatedTS = reqtime
 
@@ -347,6 +379,7 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	_ = router.WriteJSON(ctx, map[string]string{"key": resolvedMessageKey})
 }
 
 func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
@@ -366,12 +399,19 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// resolve provisional keys to final keys
+	resolvedMessageKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(messageKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "message not found")
+		return
+	}
+
 	// validate
 	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-	if err := router.ValidateMessageKey(messageKey); err != nil {
+	if err := router.ValidateMessageKey(resolvedMessageKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
@@ -387,7 +427,7 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 
 	// sync
 	var del models.MessageDeletePartial
-	del.Key = messageKey
+	del.Key = resolvedMessageKey
 	del.Thread = threadKey
 	del.Deleted = true
 	del.UpdatedTS = reqtime
@@ -414,4 +454,5 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	ctx.SetStatusCode(fasthttp.StatusAccepted)
+	_ = router.WriteJSON(ctx, map[string]string{"key": resolvedMessageKey})
 }

@@ -38,7 +38,7 @@ ingest:
     buffer_capacity: 10_000
   apply:
      batch_count: 1_000
-     batch_timeout: 1s
+     batch_timeout: 5ms
 
 sensor:
   poll_interval: 60s

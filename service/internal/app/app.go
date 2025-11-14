@@ -8,6 +8,7 @@ import (
 
 	"progressdb/pkg/ingest"
 	"progressdb/pkg/ingest/queue"
+	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/ingest/wally"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/state/sensor"
@@ -137,6 +138,12 @@ func (a *App) Run(ctx context.Context) error {
 	if err := queue.InitGlobalIngestQueue(cfg.Server.DBPath); err != nil {
 		return fmt.Errorf("failed to init queue: %w", err)
 	}
+
+	// init in-flight tracking
+	tracking.InitGlobalInflightTracker()
+
+	// init key mapper
+	tracking.InitGlobalKeyMapper()
 
 	// initialize WAL replay system with queue
 	wally.InitWALReplay(queue.GlobalIngestQueue)
