@@ -107,7 +107,7 @@ dockers:
       - "--pull"
       - "--platform=linux/amd64"
     ids:
-      - kmsd
+      - prgkms
 
   - id: dockerhub_arm64
     image_templates:
@@ -131,7 +131,7 @@ dockers:
       - "--pull"
       - "--platform=linux/arm64"
     ids:
-      - kmsd
+      - prgkms
 
   - id: ghcr_amd64
     image_templates:
@@ -155,7 +155,7 @@ dockers:
       - "--pull"
       - "--platform=linux/amd64"
     ids:
-      - kmsd
+      - prgkms
 
   - id: ghcr_arm64
     image_templates:
@@ -179,7 +179,7 @@ dockers:
       - "--pull"
       - "--platform=linux/arm64"
     ids:
-      - kmsd
+      - prgkms
 
 docker_manifests:
   - name_template: "docker.io/progressdb/progressdb:{{ .Tag }}"
