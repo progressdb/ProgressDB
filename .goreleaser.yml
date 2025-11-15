@@ -32,6 +32,21 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{ trimprefix .Tag "service-" }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
+  - id: prgcli
+    dir: ./clients/cli
+    main: ./main.go
+    binary: prgcli
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ trimprefix .Tag "service-" }} -X main.commit={{ .Commit }} -X main.buildDate={{ .Date }}
 
   # single server build includes both embedded and external KMS implementations
 
@@ -41,6 +56,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     ids:
       - progressdb
+      - prgcli
     files:
       - LICENSE
     wrap_in_directory: true
@@ -101,7 +117,7 @@ dockers:
     image_templates:
       - "docker.io/progressdb/prgkms:{{ .Tag }}-amd64"
       - 'docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
-    dockerfile: goreleaser.Dockerfile
+    dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
       - "--pull"
@@ -125,7 +141,7 @@ dockers:
     image_templates:
       - "docker.io/progressdb/prgkms:{{ .Tag }}-arm64"
       - 'docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
-    dockerfile: goreleaser.Dockerfile
+    dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
       - "--pull"
@@ -149,7 +165,7 @@ dockers:
     image_templates:
       - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-amd64"
       - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
-    dockerfile: goreleaser.Dockerfile
+    dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
       - "--pull"
@@ -173,7 +189,7 @@ dockers:
     image_templates:
       - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-arm64"
       - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
-    dockerfile: goreleaser.Dockerfile
+    dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
       - "--pull"

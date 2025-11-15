@@ -1,4 +1,4 @@
-# ProgressDB CLI
+# ProgressDB CLI (prgcli)
 
 Command-line tool for ProgressDB database migration and benchmarking.
 
@@ -18,7 +18,7 @@ Command-line tool for ProgressDB database migration and benchmarking.
 
 ```bash
 cd clients/cli
-go build -o progressdb .
+go build -o prgcli .
 ```
 
 ## Usage
@@ -27,23 +27,23 @@ go build -o progressdb .
 
 ```bash
 # Using old service config (recommended)
-./progressdb migrate --old-config /path/to/old/config.yaml --to /new/db
+./prgcli migrate --old-config /path/to/old/config.yaml --to /new/db
 
 # Manual configuration
-./progressdb migrate --old-db-path /old/db --old-encryption-key <key> --to /new/db
+./prgcli migrate --old-db-path /old/db --old-encryption-key <key> --to /new/db
 
 # Interactive mode
-./progressdb migrate --to /new/db
+./prgcli migrate --to /new/db
 ```
 
 ### Benchmarking
 
 ```bash
 # Quick benchmark
-./progressdb benchmark --auto --duration 30s
+./prgcli benchmark --auto --duration 30s
 
 # Custom settings
-./progressdb benchmark --host http://localhost:8080 --rps 500 --duration 2m
+./prgcli benchmark --host http://localhost:8080 --rps 500 --duration 2m
 ```
 
 ## Configuration
@@ -57,7 +57,7 @@ to_database: "/path/to/new/db"
 output_format: "json"
 ```
 
-Use with: `./progressdb migrate --config config.yaml`
+Use with: `./prgcli migrate --config config.yaml`
 
 ## Migration Methods
 
