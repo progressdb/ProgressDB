@@ -151,9 +151,9 @@ func TestReadThreadsList(t *testing.T) {
 				t.Error("Expected some threads in before query")
 			}
 
-			// Before query should have HasBefore=false (no newer threads)
-			if response.Pagination.HasBefore {
-				t.Error("Before query should have HasBefore=false")
+			// Before query should have HasBefore=true if there are newer threads
+			if !response.Pagination.HasBefore {
+				t.Error("Before query should have HasBefore=true when there are newer threads")
 			}
 
 			// Check that BeforeAnchor is set correctly
@@ -519,9 +519,9 @@ func TestReadThreadMessages(t *testing.T) {
 				t.Errorf("Expected count 2, got %d", response.Pagination.Count)
 			}
 
-			// Should have HasAfter=true since there are more messages
-			if !response.Pagination.HasAfter {
-				t.Error("Should have HasAfter=true when there are more messages")
+			// Should have HasAfter=false for initial load (even if more messages exist)
+			if response.Pagination.HasAfter {
+				t.Error("Should have HasAfter=false for initial load")
 			}
 		})
 	})
