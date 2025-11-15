@@ -42,7 +42,7 @@ archives:
     ids:
       - progressdb
     files:
-      - LICENSE.md
+      - LICENSE
     wrap_in_directory: true
     format_overrides:
       - goos: windows
