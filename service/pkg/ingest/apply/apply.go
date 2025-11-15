@@ -323,6 +323,9 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		}
 	}
 
+	// collect inflight keys BEFORE processing (to get original provisional keys)
+	inflightKeys := collectInflightKeys(entries)
+
 	// process per thread groupings
 	for _, threadEntries := range threadGroups {
 		sortedOps := sortOperationsByType(threadEntries)
@@ -338,8 +341,7 @@ func ApplyBatchToDB(entries []types.BatchEntry) error {
 		return fmt.Errorf("batch flush failed: %w", err)
 	}
 
-	// purge trackers
-	inflightKeys := collectInflightKeys(entries)
+	// purge trackers using original provisional keys collected before processing
 	removeFromInflightTracking(inflightKeys)
 
 	// purge current batch lookup mappings
@@ -361,18 +363,24 @@ func collectInflightKeys(entries []types.BatchEntry) []string {
 		case types.HandlerThreadCreate:
 			if thread, ok := entry.Payload.(*models.Thread); ok && thread.Key != "" {
 				inflightKeys = append(inflightKeys, thread.Key)
+				logger.Debug("collecting_inflight_thread_key", "key", thread.Key)
 			}
 		case types.HandlerMessageCreate:
 			if msg, ok := entry.Payload.(*models.Message); ok && msg.Key != "" {
 				inflightKeys = append(inflightKeys, msg.Key)
+				logger.Debug("collecting_inflight_message_key", "key", msg.Key)
 			}
 		}
 	}
+	logger.Debug("collected_inflight_keys", "count", len(inflightKeys), "keys", inflightKeys)
 	return inflightKeys
 }
 
 func removeFromInflightTracking(provisionalKeys []string) {
+	logger.Debug("inflight_cleanup_start", "key_count", len(provisionalKeys))
 	for _, key := range provisionalKeys {
+		logger.Debug("inflight_removing_key", "key", key)
 		tracking.GlobalInflightTracker.Remove(key)
 	}
+	logger.Debug("inflight_cleanup_complete")
 }
