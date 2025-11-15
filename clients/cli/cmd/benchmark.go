@@ -24,14 +24,17 @@ import (
 )
 
 type BenchmarkConfig struct {
-	Host        string
-	BackendKey  string
-	FrontendKey string
-	UserID      string
-	RPS         int
-	Duration    time.Duration
-	PayloadSize int
-	Pattern     string
+	Host              string
+	BackendKey        string
+	FrontendKey       string
+	UserID            string
+	RPS               int
+	Duration          time.Duration
+	PayloadSize       int
+	Pattern           string
+	ThreadsCount      int
+	MessagesPerThread int
+	UsePagination     bool
 }
 
 type BenchmarkMetrics struct {
@@ -59,15 +62,18 @@ Supports different patterns like creating threads or sending messages to existin
 }
 
 var (
-	auto      bool
-	benchHost string
-	benchKey  string
-	frontKey  string
-	benchUser string
-	benchRPS  int
-	benchDur  time.Duration
-	benchSize int
-	benchPat  string
+	auto              bool
+	benchHost         string
+	benchKey          string
+	frontKey          string
+	benchUser         string
+	benchRPS          int
+	benchDur          time.Duration
+	benchSize         int
+	benchPat          string
+	threadsCount      int
+	messagesPerThread int
+	usePagination     bool
 )
 
 func init() {
@@ -81,20 +87,26 @@ func init() {
 	benchmarkCmd.Flags().IntVar(&benchRPS, "rps", 1000, "Requests per second")
 	benchmarkCmd.Flags().DurationVar(&benchDur, "duration", time.Minute, "Benchmark duration")
 	benchmarkCmd.Flags().IntVar(&benchSize, "payload-size", 30, "Payload size in KB")
-	benchmarkCmd.Flags().StringVar(&benchPat, "pattern", "thread_with_messages", "Benchmark pattern (create_threads or thread_with_messages)")
+	benchmarkCmd.Flags().StringVar(&benchPat, "pattern", "thread_with_messages", "Benchmark pattern (create_threads, thread_with_messages, read_threads, read_messages, read_mixed)")
+	benchmarkCmd.Flags().IntVar(&threadsCount, "threads-count", 100, "Number of threads to create for read benchmarks")
+	benchmarkCmd.Flags().IntVar(&messagesPerThread, "messages-per-thread", 20, "Number of messages per thread for read benchmarks")
+	benchmarkCmd.Flags().BoolVar(&usePagination, "use-pagination", true, "Use pagination in read benchmarks")
 }
 
 func runBenchmark(cmd *cobra.Command, args []string) error {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
 	cfg := BenchmarkConfig{
-		Host:        benchHost,
-		BackendKey:  benchKey,
-		FrontendKey: frontKey,
-		UserID:      benchUser,
-		RPS:         benchRPS,
-		Duration:    benchDur,
-		PayloadSize: benchSize,
+		Host:              benchHost,
+		BackendKey:        benchKey,
+		FrontendKey:       frontKey,
+		UserID:            benchUser,
+		RPS:               benchRPS,
+		Duration:          benchDur,
+		PayloadSize:       benchSize,
+		ThreadsCount:      threadsCount,
+		MessagesPerThread: messagesPerThread,
+		UsePagination:     usePagination,
 	}
 
 	if !auto {
@@ -111,15 +123,25 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Duration: %v\n", cfg.Duration)
 		fmt.Printf("  Pattern: %s\n", cfg.Pattern)
 		fmt.Printf("  Payload Size: %d KB\n", cfg.PayloadSize)
+		if cfg.Pattern == "read_threads" || cfg.Pattern == "read_messages" || cfg.Pattern == "read_mixed" {
+			fmt.Printf("  Threads Count: %d\n", cfg.ThreadsCount)
+			fmt.Printf("  Messages Per Thread: %d\n", cfg.MessagesPerThread)
+			fmt.Printf("  Use Pagination: %t\n", cfg.UsePagination)
+		}
 		fmt.Println()
 	}
 
 	signature := fetchSignature(cfg)
 	var metrics *BenchmarkMetrics
-	if cfg.Pattern == "create_threads" {
+	switch cfg.Pattern {
+	case "create_threads":
 		metrics = runCreateThreadsBenchmark(cfg, signature)
-	} else {
+	case "thread_with_messages":
 		metrics = runThreadWithMessagesBenchmark(cfg, signature)
+	case "read_threads", "read_messages", "read_mixed":
+		metrics = runReadBenchmark(cfg, signature)
+	default:
+		log.Fatalf("Unknown benchmark pattern: %s", cfg.Pattern)
 	}
 	outputBenchmarkMetrics(metrics)
 
@@ -175,6 +197,20 @@ func promptBenchmarkConfig(cfg BenchmarkConfig) BenchmarkConfig {
 		}
 	}
 
+	fmt.Printf("Pattern (create_threads, thread_with_messages, read_threads, read_messages, read_mixed) [thread_with_messages]: ")
+	cfg.Pattern = "thread_with_messages"
+	if scanner.Scan() {
+		if input := strings.TrimSpace(scanner.Text()); input != "" {
+			validPatterns := []string{"create_threads", "thread_with_messages", "read_threads", "read_messages", "read_mixed"}
+			for _, pattern := range validPatterns {
+				if input == pattern {
+					cfg.Pattern = input
+					break
+				}
+			}
+		}
+	}
+
 	fmt.Printf("Payload size (KB) [%d]: ", cfg.PayloadSize)
 	if scanner.Scan() {
 		if input := strings.TrimSpace(scanner.Text()); input != "" {
@@ -184,12 +220,32 @@ func promptBenchmarkConfig(cfg BenchmarkConfig) BenchmarkConfig {
 		}
 	}
 
-	fmt.Printf("Pattern (create_threads or thread_with_messages) [thread_with_messages]: ")
-	cfg.Pattern = "thread_with_messages"
-	if scanner.Scan() {
-		if input := strings.TrimSpace(scanner.Text()); input != "" {
-			if input == "create_threads" || input == "thread_with_messages" {
-				cfg.Pattern = input
+	// Only show read-specific options for read patterns
+	if cfg.Pattern == "read_threads" || cfg.Pattern == "read_messages" || cfg.Pattern == "read_mixed" {
+		fmt.Printf("Threads count for read benchmarks [%d]: ", cfg.ThreadsCount)
+		if scanner.Scan() {
+			if input := strings.TrimSpace(scanner.Text()); input != "" {
+				if count, err := strconv.Atoi(input); err == nil {
+					cfg.ThreadsCount = count
+				}
+			}
+		}
+
+		fmt.Printf("Messages per thread for read benchmarks [%d]: ", cfg.MessagesPerThread)
+		if scanner.Scan() {
+			if input := strings.TrimSpace(scanner.Text()); input != "" {
+				if count, err := strconv.Atoi(input); err == nil {
+					cfg.MessagesPerThread = count
+				}
+			}
+		}
+
+		fmt.Printf("Use pagination in reads [%t]: ", cfg.UsePagination)
+		if scanner.Scan() {
+			if input := strings.TrimSpace(scanner.Text()); input != "" {
+				if usePag, err := strconv.ParseBool(input); err == nil {
+					cfg.UsePagination = usePag
+				}
 			}
 		}
 	}
@@ -201,15 +257,25 @@ func promptBenchmarkPattern() string {
 	fmt.Println("Choose pattern:")
 	fmt.Println("1. create_threads")
 	fmt.Println("2. thread_with_messages")
-	fmt.Print("Enter 1 or 2: ")
+	fmt.Println("3. read_threads")
+	fmt.Println("4. read_messages")
+	fmt.Println("5. read_mixed")
+	fmt.Print("Enter 1-5: ")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	if scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
-		if input == "1" {
+		switch input {
+		case "1":
 			return "create_threads"
-		} else if input == "2" {
+		case "2":
 			return "thread_with_messages"
+		case "3":
+			return "read_threads"
+		case "4":
+			return "read_messages"
+		case "5":
+			return "read_mixed"
 		}
 	}
 	// Default
@@ -518,6 +584,221 @@ func (m *BenchmarkMetrics) record(status int, duration time.Duration, bytes int6
 	m.mu.Unlock()
 	// StatusCodes not atomic, but since it's map, need mutex for it
 	// For simplicity, skip live status codes, only final
+}
+
+func runReadBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
+	fmt.Printf("Loading test data: creating %d threads with %d messages each...\n", cfg.ThreadsCount, cfg.MessagesPerThread)
+
+	// Load test data
+	threadIDs := loadTestData(cfg, signature)
+	if len(threadIDs) == 0 {
+		log.Fatal("Failed to load test data")
+	}
+	fmt.Printf("Created %d threads with messages for benchmarking\n", len(threadIDs))
+
+	metrics := &BenchmarkMetrics{StartTime: time.Now()}
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	currentRPS := cfg.RPS
+	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
+	defer ticker.Stop()
+
+	stopPrint := make(chan struct{})
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
+
+	for {
+		select {
+		case <-ctx.Done():
+			close(stopPrint)
+			metrics.EndTime = time.Now()
+			wg.Wait()
+			return metrics
+		case <-ticker.C:
+			// Check failure rate and throttle if needed
+			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
+			failCount := atomic.LoadInt64(&metrics.FailCount)
+			if totalReqs > 10 && failCount*10 > totalReqs {
+				newRPS := currentRPS / 2
+				if newRPS > 0 && newRPS != currentRPS {
+					currentRPS = newRPS
+					ticker.Reset(time.Second / time.Duration(currentRPS))
+					fmt.Printf("\nThrottling down to %d RPS due to high failure rate\n", currentRPS)
+				}
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				switch cfg.Pattern {
+				case "read_threads":
+					performReadThreads(cfg, signature, metrics)
+				case "read_messages":
+					performReadMessages(cfg, signature, metrics, threadIDs)
+				case "read_mixed":
+					if time.Now().UnixNano()%2 == 0 {
+						performReadThreads(cfg, signature, metrics)
+					} else {
+						performReadMessages(cfg, signature, metrics, threadIDs)
+					}
+				}
+			}()
+		}
+	}
+}
+
+func loadTestData(cfg BenchmarkConfig, signature string) []string {
+	var threadIDs []string
+	var mu sync.Mutex
+
+	// Create threads with messages in parallel
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, 10) // Limit concurrent creations
+
+	for i := 0; i < cfg.ThreadsCount; i++ {
+		wg.Add(1)
+		go func(threadIndex int) {
+			defer wg.Done()
+			semaphore <- struct{}{}        // Acquire
+			defer func() { <-semaphore }() // Release
+
+			// Create thread
+			threadID := createThreadSyncReturn(cfg, signature)
+			if threadID == "" {
+				return
+			}
+
+			// Create messages for this thread
+			for j := 0; j < cfg.MessagesPerThread; j++ {
+				createMessageSync(cfg, signature, threadID)
+			}
+
+			mu.Lock()
+			threadIDs = append(threadIDs, threadID)
+			mu.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+	return threadIDs
+}
+
+func createThreadSyncReturn(cfg BenchmarkConfig, signature string) string {
+	url := cfg.Host + "/frontend/v1/threads"
+	title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano())
+	payload := fmt.Sprintf(`{"title":"%s"}`, title)
+
+	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 && resp.StatusCode != 202 {
+		return ""
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.Key == "" {
+		return ""
+	}
+	return result.Key
+}
+
+func createMessageSync(cfg BenchmarkConfig, signature string, threadID string) {
+	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+
+	content, checksum := generatePayload(1) // Small payload for data loading
+	messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano(), randomString(9))
+	payload := fmt.Sprintf(`{"id":"%s","content":"%s","checksum":"%s","body":{}}`, messageID, content, checksum)
+
+	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+func performReadThreads(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics) {
+	url := cfg.Host + "/frontend/v1/threads"
+
+	// Add pagination parameters if enabled
+	if cfg.UsePagination {
+		url += "?limit=50"
+	}
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	start := time.Now()
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		metrics.record(0, duration, 0, false)
+		return
+	}
+	defer resp.Body.Close()
+
+	success := resp.StatusCode == 200
+	metrics.record(resp.StatusCode, duration, 0, success)
+}
+
+func performReadMessages(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, threadIDs []string) {
+	// Pick a random thread
+	if len(threadIDs) == 0 {
+		metrics.record(0, 0, 0, false)
+		return
+	}
+
+	threadIndex := int(time.Now().UnixNano()) % len(threadIDs)
+	threadID := threadIDs[threadIndex]
+
+	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+
+	// Add pagination parameters if enabled
+	if cfg.UsePagination {
+		url += "?limit=20"
+	}
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	start := time.Now()
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		metrics.record(0, duration, 0, false)
+		return
+	}
+	defer resp.Body.Close()
+
+	success := resp.StatusCode == 200
+	metrics.record(resp.StatusCode, duration, 0, success)
 }
 
 func outputBenchmarkMetrics(metrics *BenchmarkMetrics) {
