@@ -217,7 +217,7 @@ func promptBenchmarkPattern() string {
 }
 
 func fetchSignature(cfg BenchmarkConfig) string {
-	url := cfg.Host + "/backend/sign"
+	url := cfg.Host + "/backend/v1/sign"
 	payload := fmt.Sprintf(`{"userId":"%s"}`, cfg.UserID)
 	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 	if err != nil {
@@ -234,7 +234,8 @@ func fetchSignature(cfg BenchmarkConfig) string {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Fatal("Signature request failed with status:", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		log.Fatal("Signature request failed with status:", resp.StatusCode, "body:", string(body))
 	}
 
 	var result struct {

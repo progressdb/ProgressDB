@@ -15,9 +15,9 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "progressdb",
-	Short: "ProgressDB CLI tool for database management",
-	Long: `ProgressDB CLI provides tools for managing ProgressDB databases,
-including migration between different versions.`,
+	Short: "ProgressDB CLI tool for database migration and benchmarking",
+	Long: `ProgressDB CLI provides tools for migrating ProgressDB databases
+between versions and running performance benchmarks.`,
 	Version: fmt.Sprintf("%s (commit: %s)", version, commit),
 }
 
@@ -31,6 +31,9 @@ func Execute() {
 }
 
 func init() {
+	// Disable completion command
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
 	// Global flags
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file path (default is $HOME/.progressdb.yaml)")

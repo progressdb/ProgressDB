@@ -9,6 +9,11 @@ Command-line tool for ProgressDB database migration and benchmarking.
 - **Interactive Configuration**: Prompt for missing values
 - **Config File Support**: Use YAML configuration files
 
+## Commands
+
+- `migrate` - Migrate database between versions
+- `benchmark` - Run performance benchmarks
+
 ## Installation
 
 ```bash

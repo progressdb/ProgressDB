@@ -29,16 +29,16 @@ ingest:
     queue_capacity: 10_000
     shutdown_poll_interval: 5ms
     wal:
-      enabled: true
+      enabled: false
     recovery:
-      enabled: true
-      temp_idx_enabled: true
+      enabled: false
+      temp_idx_enabled: false
   compute:
     worker_count: 24
     buffer_capacity: 10_000
   apply:
-     batch_count: 1_000
-     batch_timeout: 5ms
+     batch_count: 10_000
+     batch_timeout: 1s
 
 sensor:
   poll_interval: 60s
