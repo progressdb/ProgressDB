@@ -25,6 +25,7 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
@@ -56,10 +57,35 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     ids:
       - progressdb
-      - prgcli
     files:
       - LICENSE
     wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        format: zip
+
+  - id: prgcli
+    format: tar.gz
+    name_template: "prgcli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids:
+      - prgcli
+    files:
+      - LICENSE
+      - clients/cli/README.md
+    wrap_in_directory: false
+    format_overrides:
+      - goos: windows
+        format: zip
+
+  - id: prgkms
+    format: tar.gz
+    name_template: "prgkms_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids:
+      - prgkms
+    files:
+      - LICENSE
+      - kms/README.md
+    wrap_in_directory: false
     format_overrides:
       - goos: windows
         format: zip
@@ -85,7 +111,7 @@ changelog:
   use: github   # or "git"
   # Prefer GitHub username when available so changelog lines tag users (e.g. @octocat).
   # Fall back to author name or email when username mapping is not available.
-  format: "{{.Message}} (by {{- if .AuthorUsername -}}@{{.AuthorUsername}}{{- else if .AuthorName -}}{{.AuthorName}}{{- else -}}{{.AuthorEmail}}{{- end -}})"
+  format: "{{.Message}} (by @{{- if .AuthorUsername -}}{{.AuthorUsername}}{{- else if .AuthorName -}}{{.AuthorName}}{{- else -}}{{.AuthorEmail}}{{- end -}})"
   filters:
     exclude:
       - "^docs:"   # don’t show docs commits
@@ -221,3 +247,37 @@ docker_manifests:
       - "ghcr.io/progressdb/prgkms:{{ .Tag }}-amd64"
       - "ghcr.io/progressdb/prgkms:{{ .Tag }}-arm64"
 
+
+brews:
+  - name: prgcli
+    homepage: "https://github.com/ProgressDB/progressdb"
+    description: "ProgressDB CLI tool for migration and benchmarking"
+    license: MIT
+    ids:
+      - prgcli
+    install: |
+      bin.install "prgcli"
+      
+  - name: prgkms
+    homepage: "https://github.com/ProgressDB/progressdb"
+    description: "ProgressDB Key Management Service"
+    license: MIT
+    ids:
+      - prgkms
+    install: |
+      bin.install "prgkms"
+
+scoops:
+  - name: prgcli
+    homepage: "https://github.com/ProgressDB/progressdb"
+    description: "ProgressDB CLI tool"
+    license: MIT
+    ids:
+      - prgcli
+      
+  - name: prgkms
+    homepage: "https://github.com/ProgressDB/progressdb"
+    description: "ProgressDB Key Management Service"
+    license: MIT
+    ids:
+      - prgkms
