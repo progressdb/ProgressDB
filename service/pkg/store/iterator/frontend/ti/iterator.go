@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"progressdb/pkg/state/logger"
-	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 
@@ -88,7 +87,6 @@ func (ti *ThreadIterator) ExecuteThreadQuery(userID string, req pagination.Pagin
 	return finalThreadKeys, paginationResp, nil
 }
 
-// transformRequestKeys converts thread keys to relationship keys for the keys layer
 func (ti *ThreadIterator) transformRequestKeys(userID string, req pagination.PaginationRequest) pagination.PaginationRequest {
 	transformed := req
 
@@ -112,7 +110,6 @@ func (ti *ThreadIterator) transformRequestKeys(userID string, req pagination.Pag
 	return transformed
 }
 
-// threadKeyToRelKey converts a thread key to relationship key
 func (ti *ThreadIterator) threadKeyToRelKey(userID, threadKey string) string {
 	if strings.HasPrefix(threadKey, "t:") {
 		threadTS := strings.TrimPrefix(threadKey, "t:")
@@ -121,7 +118,6 @@ func (ti *ThreadIterator) threadKeyToRelKey(userID, threadKey string) string {
 	return threadKey
 }
 
-// getTotalThreadCount gets the total count of non-deleted threads for a user
 func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
@@ -155,37 +151,4 @@ func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	}
 
 	return totalCount, nil
-}
-
-// getDeleteMarkersWithFallback gets delete markers for thread keys
-func (ti *ThreadIterator) getDeleteMarkersWithFallback(threadKeys []string) map[string]bool {
-	deleteMarkers := make(map[string]bool)
-
-	if len(threadKeys) == 0 {
-		return deleteMarkers
-	}
-
-	deleteMarkerKeys := make([]string, 0, len(threadKeys))
-	keyToOriginalMap := make(map[string]string)
-
-	for _, threadKey := range threadKeys {
-		deleteMarkerKey := keys.GenSoftDeleteMarkerKey(threadKey)
-		deleteMarkerKeys = append(deleteMarkerKeys, deleteMarkerKey)
-		keyToOriginalMap[deleteMarkerKey] = threadKey
-	}
-
-	for _, deleteMarkerKey := range deleteMarkerKeys {
-		_, err := indexdb.GetKey(deleteMarkerKey)
-		if err != nil {
-			if indexdb.IsNotFound(err) {
-				deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = false
-			} else {
-				deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = false
-			}
-		} else {
-			deleteMarkers[keyToOriginalMap[deleteMarkerKey]] = true
-		}
-	}
-
-	return deleteMarkers
 }

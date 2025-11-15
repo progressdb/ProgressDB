@@ -140,9 +140,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	sorter := mi.NewMessageSorter()
-	messages = sorter.SortMessages(messages, req.SortBy)
-
+	// Messages are already sorted by the iterator (oldest first for chat display)
 	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Pagination: &paginationResp})
 }
 
