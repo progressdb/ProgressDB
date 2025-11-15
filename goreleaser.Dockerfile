@@ -6,10 +6,9 @@ RUN groupadd --gid 1000 progressdb && \
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-# The binaries `progressdb` and `prgcli` will be provided by GoReleaser in the build context root.
+# The binary `progressdb` will be provided by GoReleaser in the build context root.
 COPY progressdb /usr/local/bin/progressdb
-COPY prgcli /usr/local/bin/prgcli
-RUN chmod +x /usr/local/bin/progressdb /usr/local/bin/prgcli
+RUN chmod +x /usr/local/bin/progressdb
 
 USER progressdb
 WORKDIR /home/progressdb
