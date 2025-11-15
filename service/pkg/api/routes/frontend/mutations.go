@@ -118,6 +118,12 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// validate - del status
+	if err := router.ValidateThreadNotDeleted(resolvedThreadKey); err != nil {
+		router.HandleDeletedError(ctx, err)
+		return
+	}
+
 	// resolve
 	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
@@ -190,6 +196,12 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// check if thread is deleted
+	if err := router.ValidateThreadNotDeleted(resolvedThreadKey); err != nil {
+		router.HandleDeletedError(ctx, err)
+		return
+	}
+
 	// resolve
 	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
@@ -241,6 +253,12 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 	// validate
 	if err := router.ValidateThreadKey(threadKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
+	// validate - del status
+	if err := router.ValidateThreadNotDeleted(threadKey); err != nil {
+		router.HandleDeletedError(ctx, err)
 		return
 	}
 
@@ -333,6 +351,12 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// validate - del status
+	if err := router.ValidateThreadAndMessageNotDeleted(threadKey, resolvedMessageKey); err != nil {
+		router.HandleDeletedError(ctx, err)
+		return
+	}
+
 	// resolve
 	author, authErr := router.ValidateAuthor(ctx, "")
 	if authErr != nil {
@@ -413,6 +437,12 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 	}
 	if err := router.ValidateMessageKey(resolvedMessageKey); err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusBadRequest, err.Error())
+		return
+	}
+
+	// validate - del status
+	if err := router.ValidateThreadAndMessageNotDeleted(threadKey, resolvedMessageKey); err != nil {
+		router.HandleDeletedError(ctx, err)
 		return
 	}
 

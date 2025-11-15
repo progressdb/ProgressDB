@@ -2,9 +2,11 @@ package mi
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 )
@@ -83,19 +85,96 @@ func (mi *MessageIterator) ExecuteMessageQuery(threadKey string, req pagination.
 	return finalMessageKeys, paginationResp, nil
 }
 
-// GetMessageCountExcludingDeleted returns the count of non-deleted messages in a thread
 func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (int, error) {
+	// Get total message count from index keys
+	totalCount, err := mi.getTotalMessageCountFromIndex(threadKey)
+	if err != nil {
+		// Fallback to old method if index keys don't exist
+		return mi.countMessagesByIteration(threadKey)
+	}
+
+	// Count deleted messages only
+	deletedCount, err := mi.getDeletedMessagesCount(threadKey)
+	if err != nil {
+		return 0, err
+	}
+
+	activeCount := totalCount - deletedCount
+	if activeCount < 0 {
+		activeCount = 0 // Safety check
+	}
+
+	return activeCount, nil
+}
+
+func (mi *MessageIterator) getTotalMessageCountFromIndex(threadKey string) (int, error) {
+	// Get start sequence
+	startKey := fmt.Sprintf(keys.ThreadMessageStart, threadKey)
+	startSeqBytes, err := indexdb.GetKey(startKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get message start index: %w", err)
+	}
+
+	// Get end sequence
+	endKey := fmt.Sprintf(keys.ThreadMessageEnd, threadKey)
+	endSeqBytes, err := indexdb.GetKey(endKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get message end index: %w", err)
+	}
+
+	// Parse sequence numbers
+	startSeq, err := strconv.ParseUint(string(startSeqBytes), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse start sequence: %w", err)
+	}
+
+	endSeq, err := strconv.ParseUint(string(endSeqBytes), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse end sequence: %w", err)
+	}
+
+	// Calculate total count: (end - start) + 1
+	totalCount := int(endSeq - startSeq + 1)
+	return totalCount, nil
+}
+
+func (mi *MessageIterator) getDeletedMessagesCount(threadKey string) (int, error) {
+	// Count delete markers with prefix "del:{thread_key}:m:"
+	threadMessagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to generate thread message prefix: %w", err)
+	}
+	deletePrefix := keys.GenSoftDeletePrefix() + threadMessagePrefix
+
+	// Use StoreDB iterator to scan delete markers directly
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(deletePrefix),
+		UpperBound: nextPrefix([]byte(deletePrefix)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to create iterator for delete markers: %w", err)
+	}
+	defer iter.Close()
+
+	count := 0
+	for iter.Valid() {
+		iter.Next()
+		count++
+	}
+
+	return count, nil
+}
+
+func (mi *MessageIterator) countMessagesByIteration(threadKey string) (int, error) {
 	messagePrefix, err := keys.GenAllThreadMessagesPrefix(threadKey)
 	if err != nil {
 		return 0, fmt.Errorf("failed to generate message prefix: %w", err)
 	}
 
-	// Use integrated logic for consistent counting with smaller batch size for efficiency
 	count := 0
 	batchSize := 10000
 
 	for {
-		// Process in batches to avoid loading all keys at once
 		messageKeys, err := mi.keys.ExecuteKeyQuery(threadKey, messagePrefix, pagination.PaginationRequest{
 			Limit: batchSize,
 		})
@@ -104,12 +183,11 @@ func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (in
 		}
 
 		if len(messageKeys) == 0 {
-			break // No more keys
+			break
 		}
 
 		// Count non-deleted messages in this batch
 		for _, messageKey := range messageKeys {
-			// Check if message is deleted
 			deleteMarkerKey := keys.GenSoftDeleteMarkerKey(messageKey)
 			_, err := indexdb.GetKey(deleteMarkerKey)
 			if err != nil {
@@ -119,10 +197,8 @@ func (mi *MessageIterator) GetMessageCountExcludingDeleted(threadKey string) (in
 				}
 				// Any other error = fail-safe, don't count
 			}
-			// Soft delete marker found = message is deleted, don't count
 		}
 
-		// If we got fewer keys than batch size, we're done
 		if len(messageKeys) < batchSize {
 			break
 		}

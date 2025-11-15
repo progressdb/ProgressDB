@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"progressdb/pkg/state/logger"
+	"progressdb/pkg/store/db/indexdb"
+	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/keys"
 	"progressdb/pkg/store/pagination"
 
@@ -119,6 +121,28 @@ func (ti *ThreadIterator) threadKeyToRelKey(userID, threadKey string) string {
 }
 
 func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
+	// Get total relationship keys count (includes deleted threads)
+	totalRelKeys, err := ti.getTotalRelationshipKeysCount(userID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Count deleted threads for this user
+	deletedCount, err := ti.getDeletedThreadCount(userID)
+	if err != nil {
+		return 0, err
+	}
+
+	activeCount := totalRelKeys - deletedCount
+	if activeCount < 0 {
+		activeCount = 0 // Safety check
+	}
+
+	return activeCount, nil
+}
+
+// getTotalRelationshipKeysCount counts all user-thread relationship keys
+func (ti *ThreadIterator) getTotalRelationshipKeysCount(userID string) (int, error) {
 	userThreadPrefix, err := keys.GenUserThreadRelPrefix(userID)
 	if err != nil {
 		return 0, err
@@ -151,4 +175,43 @@ func (ti *ThreadIterator) getTotalThreadCount(userID string) (int, error) {
 	}
 
 	return totalCount, nil
+}
+
+func (ti *ThreadIterator) getDeletedThreadCount(userID string) (int, error) {
+	// Count delete markers with prefix "del:t:" for threads owned by this user
+	// We need to scan all thread delete markers and check if they belong to this user
+	deletePrefix := keys.GenSoftDeletePrefix() + keys.GenThreadMetadataPrefix()
+
+	// Use StoreDB iterator to scan thread delete markers directly
+	iter, err := storedb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(deletePrefix),
+		UpperBound: nextPrefix([]byte(deletePrefix)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to create iterator for thread delete markers: %w", err)
+	}
+	defer iter.Close()
+
+	count := 0
+	for iter.Valid() {
+		deleteMarkerKey := string(iter.Key())
+
+		// Extract thread key from delete marker (del:t:{thread_key} -> t:{thread_key})
+		threadKey := deleteMarkerKey[4:] // Remove "del:" prefix
+
+		// Check if this deleted thread belongs to user by checking relationship
+		userThreadRelKey, err := keys.GenUserThreadRelPrefix(userID)
+		if err == nil {
+			userThreadRelKey += threadKey
+			_, err = indexdb.GetKey(userThreadRelKey)
+			if err == nil {
+				// Relationship exists = user owns this thread
+				count++
+			}
+		}
+
+		iter.Next()
+	}
+
+	return count, nil
 }
