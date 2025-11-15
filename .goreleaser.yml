@@ -57,6 +57,13 @@ release:
     name: progressdb              # 👈 repo name
   draft: false
   prerelease: auto
+  # Custom tag handling to strip service- prefix
+  header: |
+    ## ProgressDB {{.Version}}
+  footer: |
+    Docker Images:
+    - docker.io/progressdb/progressdb:{{.Tag}}
+    - ghcr.io/ProgressDB/progressdb:{{.Tag}}
 
 changelog:
   use: github   # or "git"
