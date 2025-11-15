@@ -343,7 +343,7 @@ func (km *KeyManager) checkHasKeysAfter(prefix, reference string) bool {
 	return false
 }
 
-// reverseKeys reverses a slice of keys to handle database iteration direction
+// reverses a slice of keys to handle database iteration direction
 func reverseKeys(keys []string) []string {
 	for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
 		keys[i], keys[j] = keys[j], keys[i]

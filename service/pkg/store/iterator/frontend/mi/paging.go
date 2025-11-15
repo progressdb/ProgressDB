@@ -32,32 +32,29 @@ func (pm *PageManager) CalculatePagination(
 		return response
 	}
 
-	// Set pagination flags based on query type
 	switch {
 	case req.Anchor != "":
-		// Anchor query: check if there are messages before/after the current window
 
 		firstMessage := messages[0]
 		lastMessage := messages[len(messages)-1]
 
-		// Special case: if we have all messages, no navigation available
 		if len(messages) == total {
 			response.HasBefore = false
 			response.HasAfter = false
 		} else {
-			// Calculate flags FIRST - check navigation relative to window boundaries
-			response.HasAfter = pm.hasMessagesAfterAnchor(lastMessage, threadKey)
-			response.HasBefore = pm.hasMessagesBeforeAnchor(firstMessage, threadKey)
+
+			messagePrefix, _ := keys.GenAllThreadMessagesPrefix(threadKey)
+			response.HasAfter = pm.keys.checkHasKeysAfter(messagePrefix, lastMessage.Key)
+			response.HasBefore = pm.keys.checkHasKeysBefore(messagePrefix, firstMessage.Key)
 		}
 
-		// Set anchor points - for anchor queries, before_anchor is oldest, after_anchor is newest
 		if len(messages) > 0 {
-			response.BeforeAnchor = firstMessage.Key // oldest message in window (for navigating to older pages)
-			response.AfterAnchor = lastMessage.Key   // newest message in window (for navigating to newer pages)
+			response.BeforeAnchor = firstMessage.Key
+			response.AfterAnchor = lastMessage.Key
 		}
 
 	case req.Before != "":
-		// Before query: get messages older than reference point
+
 		messagePrefix, _ := keys.GenAllThreadMessagesPrefix(threadKey)
 
 		// Calculate flags relative to window boundaries (like TI)
@@ -107,35 +104,14 @@ func (pm *PageManager) CalculatePagination(
 		}
 
 	default:
-		// Initial load: oldest messages first (for chat display)
-		response.HasBefore = len(messages) < total // There are older messages
-		response.HasAfter = false                  // We're at the newest
+		response.HasBefore = len(messages) < total
+		response.HasAfter = false
 
-		// Set anchors based on navigation availability (like TI)
 		if len(messages) > 0 {
-			if response.HasBefore {
-				response.BeforeAnchor = messages[0].Key
-			} else {
-				response.BeforeAnchor = messages[len(messages)-1].Key
-			}
-
-			if response.HasAfter {
-				response.AfterAnchor = messages[len(messages)-1].Key
-			} else {
-				response.AfterAnchor = messages[0].Key
-			}
+			response.BeforeAnchor = messages[0].Key
+			response.AfterAnchor = messages[len(messages)-1].Key
 		}
 	}
 
 	return response
-}
-
-func (pm *PageManager) hasMessagesAfterAnchor(message models.Message, threadKey string) bool {
-	messagePrefix, _ := keys.GenAllThreadMessagesPrefix(threadKey)
-	return pm.keys.checkHasKeysAfter(messagePrefix, message.Key)
-}
-
-func (pm *PageManager) hasMessagesBeforeAnchor(message models.Message, threadKey string) bool {
-	messagePrefix, _ := keys.GenAllThreadMessagesPrefix(threadKey)
-	return pm.keys.checkHasKeysBefore(messagePrefix, message.Key)
 }
