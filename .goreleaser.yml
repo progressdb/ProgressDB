@@ -79,7 +79,7 @@ release:
   footer: |
     Docker Images:
     - docker.io/progressdb/progressdb:{{.Tag}}
-    - ghcr.io/ProgressDB/progressdb:{{.Tag}}
+    - ghcr.io/progressdb/progressdb:{{.Tag}}
 
 changelog:
   use: github   # or "git"
@@ -151,8 +151,8 @@ dockers:
 
   - id: ghcr_amd64
     image_templates:
-      - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-amd64"
-      - 'ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-amd64'
+      - "ghcr.io/progressdb/progressdb:{{ .Tag }}-amd64"
+      - 'ghcr.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -163,8 +163,8 @@ dockers:
 
   - id: ghcr_kmsd_amd64
     image_templates:
-      - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-amd64"
-      - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
+      - "ghcr.io/progressdb/prgkms:{{ .Tag }}-amd64"
+      - 'ghcr.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -175,8 +175,8 @@ dockers:
 
   - id: ghcr_arm64
     image_templates:
-      - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-arm64"
-      - 'ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-arm64'
+      - "ghcr.io/progressdb/progressdb:{{ .Tag }}-arm64"
+      - 'ghcr.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -187,8 +187,8 @@ dockers:
 
   - id: ghcr_kmsd_arm64
     image_templates:
-      - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-arm64"
-      - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
+      - "ghcr.io/progressdb/prgkms:{{ .Tag }}-arm64"
+      - 'ghcr.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: kms/goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -216,20 +216,20 @@ docker_manifests:
       - "docker.io/progressdb/prgkms:{{ .Version }}-amd64"
       - "docker.io/progressdb/prgkms:{{ .Version }}-arm64"
 
-  - name_template: "ghcr.io/ProgressDB/progressdb:{{ .Tag }}"
+  - name_template: "ghcr.io/progressdb/progressdb:{{ .Tag }}"
     image_templates:
-      - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-amd64"
-      - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-arm64"
-  - name_template: "ghcr.io/ProgressDB/progressdb:{{ .Version }}"
+      - "ghcr.io/progressdb/progressdb:{{ .Tag }}-amd64"
+      - "ghcr.io/progressdb/progressdb:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/progressdb/progressdb:{{ .Version }}"
     image_templates:
-      - "ghcr.io/ProgressDB/progressdb:{{ .Version }}-amd64"
-      - "ghcr.io/ProgressDB/progressdb:{{ .Version }}-arm64"
+      - "ghcr.io/progressdb/progressdb:{{ .Version }}-amd64"
+      - "ghcr.io/progressdb/progressdb:{{ .Version }}-arm64"
 
-  - name_template: "ghcr.io/ProgressDB/prgkms:{{ .Tag }}"
+  - name_template: "ghcr.io/progressdb/prgkms:{{ .Tag }}"
     image_templates:
-      - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-amd64"
-      - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-arm64"
-  - name_template: "ghcr.io/ProgressDB/prgkms:{{ .Version }}"
+      - "ghcr.io/progressdb/prgkms:{{ .Tag }}-amd64"
+      - "ghcr.io/progressdb/prgkms:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/progressdb/prgkms:{{ .Version }}"
     image_templates:
-      - "ghcr.io/ProgressDB/prgkms:{{ .Version }}-amd64"
-      - "ghcr.io/ProgressDB/prgkms:{{ .Version }}-arm64"
+      - "ghcr.io/progressdb/prgkms:{{ .Version }}-amd64"
+      - "ghcr.io/progressdb/prgkms:{{ .Version }}-arm64"
