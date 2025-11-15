@@ -539,7 +539,10 @@ func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Durat
 			minDur := atomic.LoadInt64(&metrics.MinDuration)
 			maxDur := atomic.LoadInt64(&metrics.MaxDuration)
 			rps := float64(totalReqs) / elapsed.Seconds()
-			avgResp := time.Duration(totalDur / totalReqs)
+			var avgResp time.Duration
+			if totalReqs > 0 {
+				avgResp = time.Duration(totalDur / totalReqs)
+			}
 			minResp := time.Duration(minDur)
 			maxResp := time.Duration(maxDur)
 			fmt.Printf("\rRequests: %d | RPS: %.1f | Avg: %v | Min: %v | Max: %v | Remaining: %v", totalReqs, rps, avgResp, minResp, maxResp, remaining.Round(time.Second))

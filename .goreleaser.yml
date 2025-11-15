@@ -104,7 +104,7 @@ release:
     ## ProgressDB {{ trimprefix .Tag "service-" }}
   footer: |
     Docker Images:
-    - docker.io/progressdb/progressdb:{{.Tag}}
+    - hub.docker.com/r/progressdb/progressdb:{{.Tag}}
     - ghcr.io/progressdb/progressdb:{{.Tag}}
 
 changelog:

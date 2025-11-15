@@ -26,6 +26,9 @@ func Abort(contextMsg string, err error, dbPath string, delaySeconds ...int) {
 	// Log to console immediately
 	logger.Error("CRASH_DUMP", "context", contextMsg, "error", err)
 
+	// Also print to stderr for visibility when logger isn't initialized yet
+	fmt.Fprintf(os.Stderr, "CRASH ERROR: %s - %v\n", contextMsg, err)
+
 	if dbPath == "" {
 		dbPath = config.ParseConfigFlags().DB
 	}

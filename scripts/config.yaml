@@ -1,17 +1,19 @@
 server:
   address: "0.0.0.0"
   port: 8080
-  db_path: "./database"
+  db_path: "/data/database"
   max_payload_size: "100KB"
   cors:
     allowed_origins:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
+      - "http://172.16.5.154:3000"
+  ip_whitelist:
+    - "127.0.0.1"
+    - "172.16.5.154"
   rate_limit:
     rps: 100_000
     burst: 150_000
-  ip_whitelist:
-    - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]

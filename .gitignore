@@ -113,3 +113,5 @@ ProgressDB.code-workspace
 /kms/kmsdb
 /clients/cli/config.yaml
 /migrations
+.github/workflows/fly-deploy.yml
+fly.toml

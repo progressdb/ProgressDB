@@ -13,3 +13,23 @@ service/.gopath
 coverage/
 **/dist/
 
+# Database files
+service/database/
+kms/kmsdb
+
+# Large files and directories
+*.md
+*.txt
+docs/
+migrations/
+clients/
+tests/
+*.test
+service/tests/
+service/progressdb
+
+# Build artifacts
+*.tar.gz
+*.zip
+service/*.tar.gz
+service/*.zip
