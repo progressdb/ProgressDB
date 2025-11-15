@@ -34,10 +34,10 @@ ingest:
       enabled: false
       temp_idx_enabled: false
   compute:
-    worker_count: 24
+    worker_multiplier: 4
     buffer_capacity: 10_000
   apply:
-     batch_count: 10_000
+     batch_count: 1_000
      batch_timeout: 1s
 
 sensor:

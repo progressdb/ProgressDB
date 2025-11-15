@@ -73,16 +73,25 @@ func main() {
 
 	// set to maximum cpu's available
 	numCPU := runtime.NumCPU()
-	runtime.GOMAXPROCS(numCPU)
+	// runtime.GOMAXPROCS(numCPU) // Let Go use its default scheduling behavior
 	logger.Info("system_logical_cores", "logical_cores", numCPU)
 
-	// lower worker count to 2 x cpu logical cores
+	// calculate worker count based on CPU cores and multiplier
 	cc := &eff.Config.Ingest.Compute
-	maxAllowedWorkers := numCPU * 2
-	if cc.WorkerCount > maxAllowedWorkers {
-		logger.Warn("worker_count_capped", "requested", cc.WorkerCount, "capped_to", maxAllowedWorkers)
-		cc.WorkerCount = maxAllowedWorkers
+	workerCount := numCPU * cc.WorkerMultiplier
+
+	// minimum safeguard
+	if workerCount <= 0 {
+		workerCount = 1
 	}
+
+	// set the calculated worker count for the app to use
+	cc.WorkerCount = workerCount
+
+	logger.Info("worker_count_calculated",
+		"cpu_cores", numCPU,
+		"multiplier", cc.WorkerMultiplier,
+		"total_workers", workerCount)
 
 	// initialize app
 	app, err := app.New(version, commit, buildDate)

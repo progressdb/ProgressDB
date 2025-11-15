@@ -27,9 +27,8 @@ func NewIngestor(q *queue.IngestQueue, dbPath string) *Ingestor {
 	cc := cfg.Ingest.Compute
 	ac := cfg.Ingest.Apply
 
-	if cc.WorkerCount <= 0 {
-		cc.WorkerCount = 1
-	}
+	// WorkerCount is now calculated in main.go from WorkerMultiplier x CPU cores
+	// No need for validation here as it's guaranteed to be set
 	applyWorkers := 1 // fixed to 1 for sequencing
 	if ac.BatchCount <= 0 {
 		ac.BatchCount = 10

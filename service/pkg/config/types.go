@@ -94,8 +94,9 @@ type IntakeConfig struct {
 
 // ComputeConfig controls worker concurrency for mutation processing.
 type ComputeConfig struct {
-	WorkerCount    int `yaml:"worker_count,default=48"` // Will be capped to CPU count in validation
-	BufferCapacity int `yaml:"buffer_capacity,default=1000"`
+	WorkerMultiplier int `yaml:"worker_multiplier,default=4"` // Calculate workers as multiplier x CPU cores
+	WorkerCount      int `yaml:"-"`                           // Calculated field: WorkerMultiplier x CPU cores
+	BufferCapacity   int `yaml:"buffer_capacity,default=1000"`
 }
 
 // ApplyConfig controls batching and queuing for DB applies.

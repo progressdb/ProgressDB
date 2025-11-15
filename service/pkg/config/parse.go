@@ -373,9 +373,9 @@ func ParseConfigEnvs() (*Config, EnvResult) {
 	if v := envs["INTAKE_RECOVERY_TEMP_IDX_ENABLED"]; v != "" {
 		envCfg.Ingest.Intake.Recovery.TempIdxEnabled = parseBool(v, true)
 	}
-	if v := envs["COMPUTE_WORKER_COUNT"]; v != "" {
+	if v := envs["COMPUTE_WORKER_MULTIPLIER"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			envCfg.Ingest.Compute.WorkerCount = n
+			envCfg.Ingest.Compute.WorkerMultiplier = n
 		}
 	}
 
