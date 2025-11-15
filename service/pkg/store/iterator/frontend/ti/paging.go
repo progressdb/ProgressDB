@@ -41,21 +41,21 @@ func (pm *PageManager) CalculatePagination(
 	case req.Anchor != "":
 		// Anchor query: check if there are threads before/after the current window
 
-		firstThread := threads[0]
-		lastThread := threads[len(threads)-1]
+		newestThread := threads[0]
+		oldestThread := threads[len(threads)-1]
 
-		// Calculate flags FIRST - check navigation relative to window boundaries
-		response.HasAfter = pm.hasThreadsAfterAnchor(firstThread, userID)
-		response.HasBefore = pm.hasThreadsBeforeAnchor(lastThread, userID)
+		// Calculate flags - check from appropriate boundaries
+		response.HasAfter = pm.hasThreadsAfterAnchor(oldestThread, userID)   // check from oldest boundary
+		response.HasBefore = pm.hasThreadsBeforeAnchor(newestThread, userID) // check from newest boundary
 
-		// Set anchor points - for anchor queries, before_anchor is oldest, after_anchor is newest
+		// Set anchor points - for anchor queries, before_anchor is newest, after_anchor is oldest
 		if len(threads) > 0 {
-			response.BeforeAnchor = lastThread.Key // oldest thread in window (for navigating to older pages)
-			response.AfterAnchor = firstThread.Key // newest thread in window (for navigating to newer pages)
+			response.BeforeAnchor = newestThread.Key // newest thread in window (for navigating to newer pages)
+			response.AfterAnchor = oldestThread.Key  // oldest thread in window (for navigating to older pages)
 		}
 
 	case req.Before != "":
-		// Before query: get threads older than reference point
+		// Before query: get threads newer than reference point
 		userThreadPrefix, _ := keys.GenUserThreadRelPrefix(userID)
 
 		// Convert reference to relationship key format for comparison
@@ -71,7 +71,7 @@ func (pm *PageManager) CalculatePagination(
 			newestRelKey, err := keys.GenUserThreadRelPrefix(userID)
 			if err == nil {
 				newestRelKey += strings.TrimPrefix(newestThreadKey, "t:")
-				response.HasAfter = pm.keys.checkHasKeysAfter(userThreadPrefix, newestRelKey)
+				response.HasBefore = pm.keys.checkHasKeysBefore(userThreadPrefix, newestRelKey)
 			}
 
 			// Check if there are threads older than oldest thread in current window
@@ -79,7 +79,7 @@ func (pm *PageManager) CalculatePagination(
 			oldestRelKey, err := keys.GenUserThreadRelPrefix(userID)
 			if err == nil {
 				oldestRelKey += strings.TrimPrefix(oldestThreadKey, "t:")
-				response.HasBefore = pm.keys.checkHasKeysBefore(userThreadPrefix, oldestRelKey)
+				response.HasAfter = pm.keys.checkHasKeysAfter(userThreadPrefix, oldestRelKey)
 			}
 		} else {
 			// No threads returned, use original reference for consistency
@@ -87,14 +87,14 @@ func (pm *PageManager) CalculatePagination(
 			response.HasAfter = pm.keys.checkHasKeysAfter(userThreadPrefix, originalRefRelKey)
 		}
 
-		// Set anchors for before query: before_anchor is oldest, after_anchor is newest
+		// Set anchors for before query: before_anchor is newest, after_anchor is oldest
 		if len(threads) > 0 {
-			response.BeforeAnchor = threads[len(threads)-1].Key // oldest thread (for continuing backwards)
-			response.AfterAnchor = threads[0].Key               // newest thread (for going forwards)
+			response.BeforeAnchor = threads[0].Key             // newest thread (for continuing to newer)
+			response.AfterAnchor = threads[len(threads)-1].Key // oldest thread (for continuing to older)
 		}
 
 	case req.After != "":
-		// After query: get threads newer than reference point
+		// After query: get threads older than reference point
 		userThreadPrefix, _ := keys.GenUserThreadRelPrefix(userID)
 
 		// Convert reference to relationship key format for comparison
@@ -105,20 +105,20 @@ func (pm *PageManager) CalculatePagination(
 
 		// Calculate flags relative to window boundaries
 		if len(threads) > 0 {
-			// For after queries, check if there are threads older than oldest thread in current window
-			oldestThreadKey := threads[len(threads)-1].Key
-			oldestRelKey, err := keys.GenUserThreadRelPrefix(userID)
-			if err == nil {
-				oldestRelKey += strings.TrimPrefix(oldestThreadKey, "t:")
-				response.HasBefore = pm.keys.checkHasKeysBefore(userThreadPrefix, oldestRelKey)
-			}
-
-			// Check if there are threads newer than newest thread in current window
+			// For after queries, check if there are threads newer than newest thread in current window
 			newestThreadKey := threads[0].Key
 			newestRelKey, err := keys.GenUserThreadRelPrefix(userID)
 			if err == nil {
 				newestRelKey += strings.TrimPrefix(newestThreadKey, "t:")
-				response.HasAfter = pm.keys.checkHasKeysAfter(userThreadPrefix, newestRelKey)
+				response.HasBefore = pm.keys.checkHasKeysBefore(userThreadPrefix, newestRelKey)
+			}
+
+			// Check if there are threads older than oldest thread in current window
+			oldestThreadKey := threads[len(threads)-1].Key
+			oldestRelKey, err := keys.GenUserThreadRelPrefix(userID)
+			if err == nil {
+				oldestRelKey += strings.TrimPrefix(oldestThreadKey, "t:")
+				response.HasAfter = pm.keys.checkHasKeysAfter(userThreadPrefix, oldestRelKey)
 			}
 		} else {
 			// No threads returned, use original reference for consistency
@@ -128,28 +128,19 @@ func (pm *PageManager) CalculatePagination(
 
 		// Set anchors for after query: before_anchor is newest, after_anchor is oldest
 		if len(threads) > 0 {
-			response.BeforeAnchor = threads[0].Key             // newest thread (for continuing forwards)
-			response.AfterAnchor = threads[len(threads)-1].Key // oldest thread (for going backwards)
+			response.BeforeAnchor = threads[0].Key             // newest thread (for continuing to newer)
+			response.AfterAnchor = threads[len(threads)-1].Key // oldest thread (for continuing to older)
 		}
 
 	default:
 		// Initial load: newest threads first
-		response.HasBefore = false               // We're at the newest
-		response.HasAfter = len(threads) < total // More older threads exist
+		response.HasBefore = false               // No newer threads exist
+		response.HasAfter = len(threads) < total // Older threads exist (live checker)
 
 		// Set anchors based on navigation availability
 		if len(threads) > 0 {
-			if response.HasBefore {
-				response.BeforeAnchor = threads[0].Key
-			} else {
-				response.BeforeAnchor = threads[len(threads)-1].Key
-			}
-
-			if response.HasAfter {
-				response.AfterAnchor = threads[len(threads)-1].Key
-			} else {
-				response.AfterAnchor = threads[0].Key
-			}
+			response.BeforeAnchor = threads[0].Key             // newest in page
+			response.AfterAnchor = threads[len(threads)-1].Key // oldest in page
 		}
 	}
 

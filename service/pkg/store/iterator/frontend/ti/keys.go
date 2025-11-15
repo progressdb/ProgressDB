@@ -127,6 +127,39 @@ func (km *KeyManager) fetchBeforeKeys(prefix, reference string, limit int, isDel
 	valid := iter.SeekGE([]byte(reference))
 	// Skip the reference key itself
 	if valid && string(iter.Key()) == reference {
+		valid = iter.Next()
+	}
+
+	validKeys := make([]string, 0, limit)
+	for valid && len(validKeys) < limit {
+		key := string(iter.Key())
+
+		parsed, err := keys.ParseUserOwnsThread(key)
+		if err != nil {
+			valid = iter.Next()
+			continue
+		}
+
+		if !isDeleted(parsed.ThreadKey) {
+			validKeys = append(validKeys, key)
+		}
+
+		valid = iter.Next()
+	}
+
+	return validKeys, nil
+}
+
+func (km *KeyManager) fetchAfterKeys(prefix, reference string, limit int, isDeleted func(string) bool) ([]string, error) {
+	iter, err := km.createIterator(prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	valid := iter.SeekGE([]byte(reference))
+	// Skip the reference key itself
+	if valid && string(iter.Key()) == reference {
 		valid = iter.Prev()
 	}
 
@@ -147,42 +180,9 @@ func (km *KeyManager) fetchBeforeKeys(prefix, reference string, limit int, isDel
 		valid = iter.Prev()
 	}
 
-	// Reverse to maintain correct order
+	// Reverse to maintain correct order (newest first)
 	for i, j := 0, len(validKeys)-1; i < j; i, j = i+1, j-1 {
 		validKeys[i], validKeys[j] = validKeys[j], validKeys[i]
-	}
-
-	return validKeys, nil
-}
-
-func (km *KeyManager) fetchAfterKeys(prefix, reference string, limit int, isDeleted func(string) bool) ([]string, error) {
-	iter, err := km.createIterator(prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-
-	valid := iter.SeekGE([]byte(reference))
-	// Skip the reference key itself
-	if valid && string(iter.Key()) == reference {
-		valid = iter.Next()
-	}
-
-	validKeys := make([]string, 0, limit)
-	for valid && len(validKeys) < limit {
-		key := string(iter.Key())
-
-		parsed, err := keys.ParseUserOwnsThread(key)
-		if err != nil {
-			valid = iter.Next()
-			continue
-		}
-
-		if !isDeleted(parsed.ThreadKey) {
-			validKeys = append(validKeys, key)
-		}
-
-		valid = iter.Next()
 	}
 
 	return validKeys, nil
@@ -195,7 +195,7 @@ func (km *KeyManager) fetchInitialLoadKeys(prefix string, limit int, isDeleted f
 	}
 	defer iter.Close()
 
-	valid := iter.First()
+	valid := iter.Last()
 
 	validKeys := make([]string, 0, limit)
 	for valid && len(validKeys) < limit {
@@ -203,7 +203,7 @@ func (km *KeyManager) fetchInitialLoadKeys(prefix string, limit int, isDeleted f
 
 		parsed, err := keys.ParseUserOwnsThread(key)
 		if err != nil {
-			valid = iter.Next()
+			valid = iter.Prev()
 			continue
 		}
 
@@ -211,7 +211,7 @@ func (km *KeyManager) fetchInitialLoadKeys(prefix string, limit int, isDeleted f
 			validKeys = append(validKeys, key)
 		}
 
-		valid = iter.Next()
+		valid = iter.Prev()
 	}
 
 	return validKeys, nil
@@ -322,10 +322,10 @@ func (km *KeyManager) checkHasKeysBefore(prefix, reference string) bool {
 		return false
 	}
 
-	// Move to just before reference
+	// Move to just after reference (for thread pagination, "before" means newer)
 	if string(iter.Key()) == reference {
 		logger.Debug("[checkHasKeysBefore] Skipping reference", "reference", reference)
-		valid = iter.Prev()
+		valid = iter.Next()
 	}
 
 	isDeleted := func(threadKey string) bool {
@@ -343,7 +343,7 @@ func (km *KeyManager) checkHasKeysBefore(prefix, reference string) bool {
 			logger.Debug("[checkHasKeysBefore] Found key before", "key", key)
 			return true
 		}
-		valid = iter.Prev()
+		valid = iter.Next()
 		checks++
 	}
 	logger.Debug("[checkHasKeysBefore] No key found before", "reference", reference, "iterations", checks)
@@ -365,10 +365,10 @@ func (km *KeyManager) checkHasKeysAfter(prefix, reference string) bool {
 		return false
 	}
 
-	// Skip the reference itself
+	// Move to just before reference (for thread pagination, "after" means older)
 	if string(iter.Key()) == reference {
 		logger.Debug("[checkHasKeysAfter] Skipping reference", "reference", reference)
-		valid = iter.Next()
+		valid = iter.Prev()
 	}
 
 	isDeleted := func(threadKey string) bool {
@@ -386,7 +386,7 @@ func (km *KeyManager) checkHasKeysAfter(prefix, reference string) bool {
 			logger.Debug("[checkHasKeysAfter] Found key after", "key", key)
 			return true
 		}
-		valid = iter.Next()
+		valid = iter.Prev()
 		checks++
 	}
 	logger.Debug("[checkHasKeysAfter] No key found after", "reference", reference, "iterations", checks)
