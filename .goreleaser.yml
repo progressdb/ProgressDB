@@ -57,7 +57,7 @@ release:
     name: progressdb              # 👈 repo name
   draft: false
   prerelease: auto
-  name_template: "{{ .ProjectName }} {{ trimprefix .Tag "service-" }}"
+  name_template: '{{ .ProjectName }} {{ trimprefix .Tag "service-" }}'
   header: |
     ## ProgressDB {{ trimprefix .Tag "service-" }}
   footer: |
@@ -88,7 +88,7 @@ dockers:
   - id: dockerhub_amd64
     image_templates:
       - "docker.io/progressdb/progressdb:{{ .Tag }}-amd64"
-      - "docker.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-amd64"
+      - 'docker.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -100,7 +100,7 @@ dockers:
   - id: dockerhub_kmsd_amd64
     image_templates:
       - "docker.io/progressdb/prgkms:{{ .Tag }}-amd64"
-      - "docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-amd64"
+      - 'docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -112,7 +112,7 @@ dockers:
   - id: dockerhub_arm64
     image_templates:
       - "docker.io/progressdb/progressdb:{{ .Tag }}-arm64"
-      - "docker.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-arm64"
+      - 'docker.io/progressdb/progressdb:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -124,7 +124,7 @@ dockers:
   - id: dockerhub_kmsd_arm64
     image_templates:
       - "docker.io/progressdb/prgkms:{{ .Tag }}-arm64"
-      - "docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-arm64"
+      - 'docker.io/progressdb/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -136,7 +136,7 @@ dockers:
   - id: ghcr_amd64
     image_templates:
       - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-amd64"
-      - "ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-amd64"
+      - 'ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -148,7 +148,7 @@ dockers:
   - id: ghcr_kmsd_amd64
     image_templates:
       - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-amd64"
-      - "ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-amd64"
+      - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-amd64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -160,7 +160,7 @@ dockers:
   - id: ghcr_arm64
     image_templates:
       - "ghcr.io/ProgressDB/progressdb:{{ .Tag }}-arm64"
-      - "ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-arm64"
+      - 'ghcr.io/ProgressDB/progressdb:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
@@ -172,7 +172,7 @@ dockers:
   - id: ghcr_kmsd_arm64
     image_templates:
       - "ghcr.io/ProgressDB/prgkms:{{ .Tag }}-arm64"
-      - "ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-arm64"
+      - 'ghcr.io/ProgressDB/prgkms:{{ trimprefix .Tag "service-" }}-arm64'
     dockerfile: goreleaser.Dockerfile
     use: buildx
     build_flag_templates:
