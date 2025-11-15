@@ -9,7 +9,7 @@ import (
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/timeutil"
 
-	"golang.org/x/sys/unix"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 // sensor struct
@@ -95,15 +95,12 @@ func (s *Sensor) checkHardware() {
 	defer s.mu.Unlock()
 
 	// check storage
-	var stat unix.Statfs_t
-	err := unix.Statfs("/", &stat)
+	usage, err := disk.Usage("/")
 	if err != nil {
 		logger.Error("failed to get disk stat", "error", err)
 		return
 	}
-	available := stat.Bavail * uint64(stat.Bsize)
-	total := stat.Blocks * uint64(stat.Bsize)
-	usedPct := float64(total-available) / float64(total) * 100
+	usedPct := usage.UsedPercent
 
 	if usedPct > float64(s.config.DiskHighPct) {
 		if !s.diskAlert {
