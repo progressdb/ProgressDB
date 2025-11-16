@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"net"
+	"strings"
 	"time"
 
 	router "progressdb/pkg/api/router"
@@ -128,7 +130,22 @@ func (a *App) startHTTP(_ context.Context) <-chan error {
 		// fasthttp has no direct TLS helper like ListenAndServeTLS here; for
 		// simplicity run plain TCP. TLS can be handled by a proxy in production.
 		cfg := config.GetConfig()
-		errCh <- a.srvFast.ListenAndServe(cfg.Addr())
+		addr := cfg.Addr()
+
+		// Check if user explicitly configured IPv6 address
+		// Default to IPv4 for maximum performance, opt-in to IPv6 with explicit config
+		if cfg.Server.Address == "::" || (strings.Contains(cfg.Server.Address, ":") && cfg.Server.Address != "") {
+			// User explicitly wants IPv6 - use custom listener (slight performance trade-off)
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			errCh <- a.srvFast.Serve(listener)
+		} else {
+			// Default IPv4 path - maximum performance with fasthttp.ListenAndServe
+			errCh <- a.srvFast.ListenAndServe(addr)
+		}
 	}()
 	return errCh
 }

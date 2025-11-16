@@ -70,7 +70,7 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 	logger.Info("[MIGRATIONS] migration_version_upgrade_required", "from", stored, "to", newVersion)
 
 	// migrate
-	if stored == "0.1.2" && (newVersion == "0.5.0" || newVersion == "v0.5.0") {
+	if stored == "0.1.2" && (newVersion == "0.2.0" || newVersion == "v0.2.0") {
 		// check if a 0.1.2 db exist
 		cfg := config.GetConfig()
 		if cfg != nil {
@@ -115,7 +115,7 @@ func Run(ctx context.Context, newVersion string) (bool, error) {
 }
 
 func bumpTo0_5_0(ctx context.Context) error {
-	logger.Info("[MIGRATIONS] Starting bump to 0.5.0")
+	logger.Info("[MIGRATIONS] Starting bump to 0.2.0")
 
 	if storedb.Client == nil {
 		return fmt.Errorf("store database client not initialized")

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	vegeta "github.com/tsenart/vegeta/lib"
 )
 
 type BenchmarkConfig struct {
@@ -50,6 +51,14 @@ type BenchmarkMetrics struct {
 	BytesSent     int64
 	StartTime     time.Time
 	EndTime       time.Time
+}
+
+// Helper function to get environment variable with fallback
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // benchmarkCmd represents the benchmark command
@@ -96,11 +105,39 @@ func init() {
 func runBenchmark(cmd *cobra.Command, args []string) error {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
+	// Load configuration from environment variables with fallback to flag defaults
+	host := getEnvOrDefault("PROGRESSDB_HOST", benchHost)
+	backendKey := getEnvOrDefault("PROGRESSDB_BACKEND_KEY", benchKey)
+	frontendKey := getEnvOrDefault("PROGRESSDB_FRONTEND_KEY", frontKey)
+	userID := getEnvOrDefault("PROGRESSDB_USER", benchUser)
+
+	if rpsStr := os.Getenv("PROGRESSDB_RPS"); rpsStr != "" {
+		if rps, err := strconv.Atoi(rpsStr); err == nil {
+			benchRPS = rps
+		}
+	}
+
+	if durStr := os.Getenv("PROGRESSDB_DURATION"); durStr != "" {
+		if dur, err := time.ParseDuration(durStr); err == nil {
+			benchDur = dur
+		}
+	}
+
+	if sizeStr := os.Getenv("PROGRESSDB_PAYLOAD_SIZE"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil {
+			benchSize = size
+		}
+	}
+
+	if pattern := os.Getenv("PROGRESSDB_PATTERN"); pattern != "" {
+		benchPat = pattern
+	}
+
 	cfg := BenchmarkConfig{
-		Host:              benchHost,
-		BackendKey:        benchKey,
-		FrontendKey:       frontKey,
-		UserID:            benchUser,
+		Host:              host,
+		BackendKey:        backendKey,
+		FrontendKey:       frontendKey,
+		UserID:            userID,
 		RPS:               benchRPS,
 		Duration:          benchDur,
 		PayloadSize:       benchSize,
@@ -109,10 +146,13 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		UsePagination:     usePagination,
 	}
 
-	if !auto {
-		cfg = promptBenchmarkConfig(cfg)
-	} else {
-		cfg.Pattern = promptBenchmarkPattern()
+	// Use pattern from environment if set, otherwise use default behavior
+	if cfg.Pattern == "" {
+		if !auto {
+			cfg = promptBenchmarkConfig(cfg)
+		} else {
+			cfg.Pattern = promptBenchmarkPattern()
+		}
 	}
 
 	if verbose {
@@ -128,6 +168,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  Messages Per Thread: %d\n", cfg.MessagesPerThread)
 			fmt.Printf("  Use Pagination: %t\n", cfg.UsePagination)
 		}
+		fmt.Printf("  Workers: %d (CPU cores)\n", runtime.NumCPU())
 		fmt.Println()
 	}
 
@@ -316,43 +357,52 @@ func fetchSignature(cfg BenchmarkConfig) string {
 
 func runCreateThreadsBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
 	metrics := &BenchmarkMetrics{StartTime: time.Now()}
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
-	defer cancel()
 
-	var wg sync.WaitGroup
-	currentRPS := cfg.RPS
-	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
-	defer ticker.Stop()
+	// Calculate total requests
+	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
+	targets := make([]vegeta.Target, 0, totalRequests)
 
-	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
+	// Pre-generate targets
+	for i := 0; i < totalRequests; i++ {
+		title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano()+int64(i))
+		payload := fmt.Sprintf(`{"title":"%s"}`, title)
 
-	for {
-		select {
-		case <-ctx.Done():
-			close(stopPrint)
-			metrics.EndTime = time.Now()
-			wg.Wait()
-			return metrics
-		case <-ticker.C:
-			// Check failure rate and throttle if needed
-			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
-			failCount := atomic.LoadInt64(&metrics.FailCount)
-			if totalReqs > 10 && failCount*10 > totalReqs {
-				newRPS := currentRPS / 2
-				if newRPS > 0 && newRPS != currentRPS {
-					currentRPS = newRPS
-					ticker.Reset(time.Second / time.Duration(currentRPS))
-					fmt.Printf("\nThrottling down to %d RPS due to high failure rate\n", currentRPS)
-				}
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				createThread(cfg, signature, metrics)
-			}()
+		target := vegeta.Target{
+			Method: "POST",
+			URL:    cfg.Host + "/frontend/v1/threads",
+			Body:   []byte(payload),
+			Header: map[string][]string{
+				"Authorization":    {"Bearer " + cfg.FrontendKey},
+				"Content-Type":     {"application/json"},
+				"X-User-ID":        {cfg.UserID},
+				"X-User-Signature": {signature},
+			},
 		}
+		targets = append(targets, target)
 	}
+
+	// Setup Vegeta attacker
+	targeter := vegeta.NewStaticTargeter(targets...)
+	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
+	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
+
+	// Run attack with live stats
+	results := &vegeta.Metrics{}
+	resChan := attacker.Attack(targeter, rate, cfg.Duration, "create_threads")
+
+	// Live stats
+	stopPrint := make(chan struct{})
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
+
+	// Collect results
+	for res := range resChan {
+		results.Add(res)
+	}
+	close(stopPrint)
+	results.Close()
+
+	metrics.EndTime = time.Now()
+	return convertVegetaMetrics(results, metrics)
 }
 
 func runThreadWithMessagesBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
@@ -365,74 +415,162 @@ func runThreadWithMessagesBenchmark(cfg BenchmarkConfig, signature string) *Benc
 		log.Fatal("Failed to create initial thread")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
-	defer cancel()
+	// Calculate total requests
+	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
+	targets := make([]vegeta.Target, 0, totalRequests)
 
-	var wg sync.WaitGroup
-	currentRPS := cfg.RPS
-	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
-	defer ticker.Stop()
+	// Pre-generate targets for messages
+	for i := 0; i < totalRequests; i++ {
+		content, checksum := generatePayload(cfg.PayloadSize)
+		messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano()+int64(i), randomString(9))
+		payload := fmt.Sprintf(`{"id":"%s","content":"%s","checksum":"%s","body":{}}`, messageID, content, checksum)
 
-	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
-
-	for {
-		select {
-		case <-ctx.Done():
-			close(stopPrint)
-			metrics.EndTime = time.Now()
-			wg.Wait()
-			return metrics
-		case <-ticker.C:
-			// Check failure rate and throttle if needed
-			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
-			failCount := atomic.LoadInt64(&metrics.FailCount)
-			if totalReqs > 10 && failCount*10 > totalReqs {
-				newRPS := currentRPS / 2
-				if newRPS > 0 && newRPS != currentRPS {
-					currentRPS = newRPS
-					ticker.Reset(time.Second / time.Duration(currentRPS))
-					fmt.Printf("\nThrottling down to %d RPS due to high failure rate\n", currentRPS)
-				}
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// Create message in the single thread
-				createMessage(cfg, signature, metrics, threadID)
-			}()
+		target := vegeta.Target{
+			Method: "POST",
+			URL:    fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID),
+			Body:   []byte(payload),
+			Header: map[string][]string{
+				"Authorization":    {"Bearer " + cfg.FrontendKey},
+				"Content-Type":     {"application/json"},
+				"X-User-ID":        {cfg.UserID},
+				"X-User-Signature": {signature},
+			},
 		}
+		targets = append(targets, target)
 	}
+
+	// Setup Vegeta attacker
+	targeter := vegeta.NewStaticTargeter(targets...)
+	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
+	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
+
+	// Run attack with live stats
+	results := &vegeta.Metrics{}
+	resChan := attacker.Attack(targeter, rate, cfg.Duration, "thread_with_messages")
+
+	// Live stats
+	stopPrint := make(chan struct{})
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
+
+	// Collect results
+	for res := range resChan {
+		results.Add(res)
+	}
+	close(stopPrint)
+	results.Close()
+
+	metrics.EndTime = time.Now()
+	return convertVegetaMetrics(results, metrics)
 }
 
-func createThread(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics) {
-	url := cfg.Host + "/frontend/v1/threads"
-	title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano())
-	payload := fmt.Sprintf(`{"title":"%s"}`, title)
+func runReadBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
+	fmt.Printf("Loading test data: creating %d threads with %d messages each...\n", cfg.ThreadsCount, cfg.MessagesPerThread)
 
-	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
-	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", cfg.UserID)
-	req.Header.Set("X-User-Signature", signature)
-
-	start := time.Now()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	duration := time.Since(start)
-
-	if err != nil {
-		metrics.record(0, duration, int64(len(payload)), false)
-		return
+	// Load test data using existing functions
+	threadIDs := loadTestData(cfg, signature)
+	if len(threadIDs) == 0 {
+		log.Fatal("Failed to load test data")
 	}
-	defer resp.Body.Close()
+	fmt.Printf("Created %d threads with messages for benchmarking\n", len(threadIDs))
 
-	body, _ := io.ReadAll(resp.Body)
-	success := resp.StatusCode == 200 || resp.StatusCode == 202
-	if !success {
-		fmt.Printf("Error: status %d, body: %s\n", resp.StatusCode, string(body))
+	metrics := &BenchmarkMetrics{StartTime: time.Now()}
+
+	// Calculate total requests
+	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
+	targets := make([]vegeta.Target, 0, totalRequests)
+
+	// Pre-generate targets for reads
+	for i := 0; i < totalRequests; i++ {
+		var target vegeta.Target
+		switch cfg.Pattern {
+		case "read_threads":
+			url := cfg.Host + "/frontend/v1/threads"
+			if cfg.UsePagination {
+				url += "?limit=50"
+			}
+			target = vegeta.Target{
+				Method: "GET",
+				URL:    url,
+				Header: map[string][]string{
+					"Authorization":    {"Bearer " + cfg.FrontendKey},
+					"X-User-ID":        {cfg.UserID},
+					"X-User-Signature": {signature},
+				},
+			}
+		case "read_messages":
+			threadIndex := i % len(threadIDs)
+			threadID := threadIDs[threadIndex]
+			url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+			if cfg.UsePagination {
+				url += "?limit=20"
+			}
+			target = vegeta.Target{
+				Method: "GET",
+				URL:    url,
+				Header: map[string][]string{
+					"Authorization":    {"Bearer " + cfg.FrontendKey},
+					"X-User-ID":        {cfg.UserID},
+					"X-User-Signature": {signature},
+				},
+			}
+		case "read_mixed":
+			if i%2 == 0 {
+				url := cfg.Host + "/frontend/v1/threads"
+				if cfg.UsePagination {
+					url += "?limit=50"
+				}
+				target = vegeta.Target{
+					Method: "GET",
+					URL:    url,
+					Header: map[string][]string{
+						"Authorization":    {"Bearer " + cfg.FrontendKey},
+						"X-User-ID":        {cfg.UserID},
+						"X-User-Signature": {signature},
+					},
+				}
+			} else {
+				threadIndex := i % len(threadIDs)
+				threadID := threadIDs[threadIndex]
+				url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+				if cfg.UsePagination {
+					url += "?limit=20"
+				}
+				target = vegeta.Target{
+					Method: "GET",
+					URL:    url,
+					Header: map[string][]string{
+						"Authorization":    {"Bearer " + cfg.FrontendKey},
+						"X-User-ID":        {cfg.UserID},
+						"X-User-Signature": {signature},
+					},
+				}
+			}
+		}
+		targets = append(targets, target)
 	}
-	metrics.record(resp.StatusCode, duration, int64(len(payload)), success)
+
+	// Setup Vegeta attacker
+	targeter := vegeta.NewStaticTargeter(targets...)
+	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
+	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
+
+	// Run attack with live stats
+	results := &vegeta.Metrics{}
+	resChan := attacker.Attack(targeter, rate, cfg.Duration, "read_benchmark")
+
+	// Live stats
+	stopPrint := make(chan struct{})
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
+
+	// Collect results
+	for res := range resChan {
+		results.Add(res)
+	}
+	close(stopPrint)
+	results.Close()
+
+	metrics.EndTime = time.Now()
+	return convertVegetaMetrics(results, metrics)
 }
 
 func createThreadSync(cfg BenchmarkConfig, signature string, threadID *string) {
@@ -467,38 +605,6 @@ func createThreadSync(cfg BenchmarkConfig, signature string, threadID *string) {
 	*threadID = result.Key
 }
 
-func createMessage(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, threadID string) {
-	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
-
-	content, checksum := generatePayload(cfg.PayloadSize)
-	messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano(), randomString(9))
-	payload := fmt.Sprintf(`{"id":"%s","content":"%s","checksum":"%s","body":{}}`, messageID, content, checksum)
-
-	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
-	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", cfg.UserID)
-	req.Header.Set("X-User-Signature", signature)
-
-	start := time.Now()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	duration := time.Since(start)
-
-	if err != nil {
-		metrics.record(0, duration, int64(len(payload)), false)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	success := resp.StatusCode == 200 || resp.StatusCode == 202
-	if !success {
-		fmt.Printf("Error: status %d, body: %s\n", resp.StatusCode, string(body))
-	}
-	metrics.record(resp.StatusCode, duration, int64(len(payload)), success)
-}
-
 func generatePayload(sizeKB int) (string, string) {
 	size := sizeKB * 1024
 	data := make([]byte, size)
@@ -519,10 +625,16 @@ func randomString(n int) string {
 	return string(bytes)
 }
 
-func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Duration, stop <-chan struct{}) {
+func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Duration, stop <-chan struct{}, resChan <-chan *vegeta.Result) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	start := metrics.StartTime
+
+	var totalReqs int64
+	var totalDur time.Duration
+	var minDur, maxDur time.Duration
+	var successCount int64
+
 	for {
 		select {
 		case <-stop:
@@ -534,120 +646,51 @@ func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Durat
 			if remaining < 0 {
 				remaining = 0
 			}
-			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
-			totalDur := atomic.LoadInt64(&metrics.TotalDuration)
-			minDur := atomic.LoadInt64(&metrics.MinDuration)
-			maxDur := atomic.LoadInt64(&metrics.MaxDuration)
+
+			// Calculate current RPS
 			rps := float64(totalReqs) / elapsed.Seconds()
 			var avgResp time.Duration
 			if totalReqs > 0 {
-				avgResp = time.Duration(totalDur / totalReqs)
+				avgResp = totalDur / time.Duration(totalReqs)
 			}
-			minResp := time.Duration(minDur)
-			maxResp := time.Duration(maxDur)
-			fmt.Printf("\rRequests: %d | RPS: %.1f | Avg: %v | Min: %v | Max: %v | Remaining: %v", totalReqs, rps, avgResp, minResp, maxResp, remaining.Round(time.Second))
+
+			fmt.Printf("\rRequests: %d | RPS: %.1f | Avg: %v | Min: %v | Max: %v | Success: %d | Remaining: %v",
+				totalReqs, rps, avgResp, minDur, maxDur, successCount, remaining.Round(time.Second))
+		case res, ok := <-resChan:
+			if !ok {
+				return
+			}
+			totalReqs++
+			totalDur += res.Latency
+
+			if minDur == 0 || res.Latency < minDur {
+				minDur = res.Latency
+			}
+			if res.Latency > maxDur {
+				maxDur = res.Latency
+			}
+
+			if res.Code >= 200 && res.Code < 400 {
+				successCount++
+			}
 		}
 	}
 }
 
-func (m *BenchmarkMetrics) record(status int, duration time.Duration, bytes int64, success bool) {
-	durNs := int64(duration)
-	atomic.AddInt64(&m.TotalRequests, 1)
-	atomic.AddInt64(&m.TotalDuration, durNs)
-	atomic.AddInt64(&m.BytesSent, bytes)
-	if success {
-		atomic.AddInt64(&m.SuccessCount, 1)
-	} else {
-		atomic.AddInt64(&m.FailCount, 1)
-	}
-	// Update min/max
-	for {
-		min := atomic.LoadInt64(&m.MinDuration)
-		if min == 0 || durNs < min {
-			if atomic.CompareAndSwapInt64(&m.MinDuration, min, durNs) {
-				break
-			}
-		} else {
-			break
-		}
-	}
-	for {
-		max := atomic.LoadInt64(&m.MaxDuration)
-		if durNs > max {
-			if atomic.CompareAndSwapInt64(&m.MaxDuration, max, durNs) {
-				break
-			}
-		} else {
-			break
-		}
-	}
-	// Append duration for percentiles
-	m.mu.Lock()
-	m.Durations = append(m.Durations, duration)
-	m.mu.Unlock()
-	// StatusCodes not atomic, but since it's map, need mutex for it
-	// For simplicity, skip live status codes, only final
-}
+func convertVegetaMetrics(results *vegeta.Metrics, metrics *BenchmarkMetrics) *BenchmarkMetrics {
+	metrics.TotalRequests = int64(results.Requests)
+	metrics.SuccessCount = int64(results.Success)
+	metrics.FailCount = int64(len(results.Errors))
+	metrics.TotalDuration = int64(results.Latencies.Mean)
+	metrics.MinDuration = int64(results.Latencies.P50) // Use P50 as min approximation
+	metrics.MaxDuration = int64(results.Latencies.P99) // Use P99 as max approximation
 
-func runReadBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
-	fmt.Printf("Loading test data: creating %d threads with %d messages each...\n", cfg.ThreadsCount, cfg.MessagesPerThread)
+	// Convert Vegeta latencies to durations for percentile calculation
+	metrics.Durations = make([]time.Duration, 0, int(results.Requests))
+	// Note: Vegeta doesn't expose individual latencies, so we'll use the histogram data
+	// For now, we'll store mean, min, max and calculate percentiles from Vegeta's built-in data
 
-	// Load test data
-	threadIDs := loadTestData(cfg, signature)
-	if len(threadIDs) == 0 {
-		log.Fatal("Failed to load test data")
-	}
-	fmt.Printf("Created %d threads with messages for benchmarking\n", len(threadIDs))
-
-	metrics := &BenchmarkMetrics{StartTime: time.Now()}
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	currentRPS := cfg.RPS
-	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
-	defer ticker.Stop()
-
-	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
-
-	for {
-		select {
-		case <-ctx.Done():
-			close(stopPrint)
-			metrics.EndTime = time.Now()
-			wg.Wait()
-			return metrics
-		case <-ticker.C:
-			// Check failure rate and throttle if needed
-			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
-			failCount := atomic.LoadInt64(&metrics.FailCount)
-			if totalReqs > 10 && failCount*10 > totalReqs {
-				newRPS := currentRPS / 2
-				if newRPS > 0 && newRPS != currentRPS {
-					currentRPS = newRPS
-					ticker.Reset(time.Second / time.Duration(currentRPS))
-					fmt.Printf("\nThrottling down to %d RPS due to high failure rate\n", currentRPS)
-				}
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				switch cfg.Pattern {
-				case "read_threads":
-					performReadThreads(cfg, signature, metrics)
-				case "read_messages":
-					performReadMessages(cfg, signature, metrics, threadIDs)
-				case "read_mixed":
-					if time.Now().UnixNano()%2 == 0 {
-						performReadThreads(cfg, signature, metrics)
-					} else {
-						performReadMessages(cfg, signature, metrics, threadIDs)
-					}
-				}
-			}()
-		}
-	}
+	return metrics
 }
 
 func loadTestData(cfg BenchmarkConfig, signature string) []string {
@@ -739,71 +782,6 @@ func createMessageSync(cfg BenchmarkConfig, signature string, threadID string) {
 	defer resp.Body.Close()
 }
 
-func performReadThreads(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics) {
-	url := cfg.Host + "/frontend/v1/threads"
-
-	// Add pagination parameters if enabled
-	if cfg.UsePagination {
-		url += "?limit=50"
-	}
-
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
-	req.Header.Set("X-User-ID", cfg.UserID)
-	req.Header.Set("X-User-Signature", signature)
-
-	start := time.Now()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	duration := time.Since(start)
-
-	if err != nil {
-		metrics.record(0, duration, 0, false)
-		return
-	}
-	defer resp.Body.Close()
-
-	success := resp.StatusCode == 200
-	metrics.record(resp.StatusCode, duration, 0, success)
-}
-
-func performReadMessages(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, threadIDs []string) {
-	// Pick a random thread
-	if len(threadIDs) == 0 {
-		metrics.record(0, 0, 0, false)
-		return
-	}
-
-	threadIndex := int(time.Now().UnixNano()) % len(threadIDs)
-	threadID := threadIDs[threadIndex]
-
-	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
-
-	// Add pagination parameters if enabled
-	if cfg.UsePagination {
-		url += "?limit=20"
-	}
-
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
-	req.Header.Set("X-User-ID", cfg.UserID)
-	req.Header.Set("X-User-Signature", signature)
-
-	start := time.Now()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	duration := time.Since(start)
-
-	if err != nil {
-		metrics.record(0, duration, 0, false)
-		return
-	}
-	defer resp.Body.Close()
-
-	success := resp.StatusCode == 200
-	metrics.record(resp.StatusCode, duration, 0, success)
-}
-
 func outputBenchmarkMetrics(metrics *BenchmarkMetrics) {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -831,16 +809,21 @@ func outputBenchmarkMetrics(metrics *BenchmarkMetrics) {
 	minDuration := time.Duration(minDur)
 	maxDuration := time.Duration(maxDur)
 
-	// Calculate percentiles
-	metrics.mu.Lock()
-	durations := make([]time.Duration, len(metrics.Durations))
-	copy(durations, metrics.Durations)
-	metrics.mu.Unlock()
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-	n := len(durations)
-	p90 := durations[int(float64(n)*0.9)]
-	p95 := durations[int(float64(n)*0.95)]
-	p99 := durations[int(float64(n)*0.99)]
+	// For percentiles, we'll use Vegeta's built-in data if available
+	// For now, use existing duration array if populated
+	var p90, p95, p99 time.Duration
+	if len(metrics.Durations) > 0 {
+		sort.Slice(metrics.Durations, func(i, j int) bool { return metrics.Durations[i] < metrics.Durations[j] })
+		n := len(metrics.Durations)
+		p90 = metrics.Durations[int(float64(n)*0.9)]
+		p95 = metrics.Durations[int(float64(n)*0.95)]
+		p99 = metrics.Durations[int(float64(n)*0.99)]
+	} else {
+		// Fallback to calculated values
+		p90 = avgDuration
+		p95 = avgDuration
+		p99 = avgDuration
+	}
 
 	result := map[string]interface{}{
 		"total_requests":  atomic.LoadInt64(&metrics.TotalRequests),

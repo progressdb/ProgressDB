@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Build artifacts
+prgcli
+*.tar.gz
+*.zip
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+*_test.go
+
+# Temporary files
+*.tmp
+.temp
+
+# Internal directories that won't be needed in container
+# Note: We need these for building, so don't exclude them

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/adhocore/gronx"
@@ -76,6 +77,10 @@ func (c *Config) Addr() string {
 	port := c.Server.Port
 	if port == 0 {
 		port = 8080
+	}
+	// IPv6 addresses need to be wrapped in square brackets for network addresses
+	if strings.Contains(addr, ":") {
+		return fmt.Sprintf("[%s]:%d", addr, port)
 	}
 	return fmt.Sprintf("%s:%d", addr, port)
 }

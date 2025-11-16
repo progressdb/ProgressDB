@@ -18,7 +18,7 @@ import (
 
 // set build metadata
 var (
-	version   = "0.5.0"
+	version   = "dev"
 	commit    = "none"
 	buildDate = "unknown"
 )
