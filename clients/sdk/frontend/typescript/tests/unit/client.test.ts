@@ -5,10 +5,10 @@ import ProgressDBClient from '../../src/index';
 const baseUrl = 'http://api.test';
 
 describe('Frontend ProgressDBClient', () => {
-  it('listMessages parses response', async () => {
-    server.use(rest.get(`${baseUrl}/v1/messages`, (_req, res, ctx) => res(ctx.json({ messages: [] }))));
+  it('listThreadMessages parses response', async () => {
+    server.use(rest.get(`${baseUrl}/frontend/v1/threads/thread1/messages`, (_req, res, ctx) => res(ctx.json({ messages: [] }))));
     const client = new ProgressDBClient({ baseUrl, apiKey: 'k' });
-    const res = await client.listMessages({}, undefined, undefined);
+    const res = await client.listThreadMessages('thread1', {}, undefined, undefined);
     expect(res.messages).toBeDefined();
   });
 });

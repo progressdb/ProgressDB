@@ -5,17 +5,17 @@ info:
   description: |
     Author semantics and signing flow:
       - Protected endpoints require a cryptographically-verified author identity, supplied
-        via the headers `X-User-ID` and `X-User-Signature` (HMAC-SHA256).
-      - Backend callers holding a backend API key may request an HMAC signature for a user
-        by calling `POST /backend/v1/sign`. Clients attach the returned signature to subsequent
-        requests as `X-User-Signature` with `X-User-ID`.
-      - For user-scoped operations, the server uses the verified author derived from the
-        signature middleware (`X-User-ID` + `X-User-Signature`) as the canonical author.
-      - An explicit `author` query parameter is accepted only for trusted callers (role
-        `admin` or `backend`) and is rejected for regular/front-end callers to prevent
-        impersonation.
-      - Mutation operations (POST, PUT, DELETE) are enqueued and processed asynchronously.
-      - Read operations (GET) are synchronous and return current state.
+         via the headers `X-User-ID` and `X-User-Signature` (HMAC-SHA256).
+       - Backend callers holding a backend API key may request an HMAC signature for a user
+         by calling `POST /backend/v1/sign`. Clients attach the returned signature to subsequent
+         requests as `X-User-Signature` with `X-User-ID`.
+       - For user-scoped operations, the server uses the verified author derived from the
+         signature middleware (`X-User-ID` + `X-User-Signature`) as the canonical author.
+       - An explicit `author` query parameter is accepted only for trusted callers (role
+         `admin` or `backend`) and is rejected for regular/front-end callers to prevent
+         impersonation.
+       - Mutation operations (POST, PUT, DELETE) are enqueued and processed asynchronously.
+       - Read operations (GET) are synchronous and return current state.
 servers:
   - url: /
 
@@ -28,7 +28,7 @@ paths:
         for a user id. The response contains the `signature` which clients attach
         to subsequent requests as `X-User-Signature` with `X-User-ID`.
       security:
-        - AdminApiKey: []
+        - BackendApiKey: []
       requestBody:
         required: true
         content:
@@ -886,15 +886,18 @@ components:
     PaginationResponse:
       type: object
       properties:
-        limit:
-          type: integer
-          description: Page limit
-        has_more:
-          type: boolean
-          description: True if there are more items
-        next_cursor:
+        before_anchor:
           type: string
-          description: Cursor for next page
+          description: Use this to get previous page (pass as 'after' parameter)
+        after_anchor:
+          type: string
+          description: Use this to get next page (pass as 'before' parameter)
+        has_before:
+          type: boolean
+          description: True if there are items before before_anchor (previous page exists)
+        has_after:
+          type: boolean
+          description: True if there are items after after_anchor (next page exists)
         count:
           type: integer
           description: Number of items returned in this page
@@ -902,9 +905,10 @@ components:
           type: integer
           description: Total number of items available
       example:
-        limit: 50
-        has_more: true
-        next_cursor: "next_cursor_value"
+        before_anchor: "prev_cursor_value"
+        after_anchor: "next_cursor_value"
+        has_before: true
+        has_after: true
         count: 50
         total: 125
 
@@ -965,6 +969,11 @@ components:
       in: header
       name: X-API-Key
       description: Provide an admin or backend API key in the X-API-Key header
+    BackendApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Provide a backend API key in the X-API-Key header
 
   parameters:
     XAPIKey:

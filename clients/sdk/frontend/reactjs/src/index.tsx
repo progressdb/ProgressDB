@@ -1,16 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 
-// Import the underlying ProgressDBClient and types from the TS SDK
-// Import the published JS SDK package instead of referencing local TS sources.
-// This ensures the react package depends on the compiled @progressdb/js package.
-// Use the local TypeScript SDK types so the React package and TS SDK
-// share the same type definitions during development. This ensures
-// `removeReaction` and other APIs have consistent signatures.
-// Import from local TypeScript SDK during development
-// In production, this should import from @progressdb/js
-// Import from local TypeScript SDK during development
-// In production, this should import from @progressdb/js
-import ProgressDBClient, { SDKOptions, Message, Thread, ThreadsListResponse, MessagesListResponse, ThreadResponse, MessageResponse, PaginationRequest, PaginationResponse } from '../../../typescript/src/index';
+// Import ProgressDBClient and types from local TypeScript SDK during development.
+// In production, import from the published @progressdb/js package for compatibility.
+// This approach ensures consistent type definitions across both the React and TS SDKs.
+// To switch between local and published SDKs, update the import path as needed.
+import ProgressDBClient, { SDKOptions, Message, Thread, ThreadsListResponse, MessagesListResponse, ThreadResponse, MessageResponse, PaginationRequest, PaginationResponse, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest } from '../../../typescript/src/index';
 
 // Provider + context
 export type UserSignature = { userId: string; signature: string };
@@ -196,25 +190,36 @@ export function useUserSignature() {
 // Basic hook: list messages for a thread
 /**
  * Hook: list messages for a given thread.
+ * Messages are returned in chronological order: [oldest → newest]
+ * 
+ * Pagination semantics for messages:
+ * - before: load older messages (scroll up) → append to array
+ * - after: load newer messages (scroll down) → append to array
+ * 
  * @param threadKey thread key to list messages for
- * @param query optional pagination query parameters
+ * @param query optional pagination query parameters (limit, before, after, anchor, sort_by)
  * @param deps optional dependency array to re-run fetch
  */
-export function useMessages(threadKey?: string, query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string; include_deleted?: boolean } = {}, deps: any[] = []) {
+export function useMessages(threadKey?: string, query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string } = {}, deps: any[] = []) {
   const client = useProgressClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
+  const [currentQuery, setCurrentQuery] = useState(query);
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (customQuery?: typeof query) => {
     if (!threadKey) return;
     setLoading(true);
     setError(null);
     try {
-      const res: MessagesListResponse = await client.listThreadMessages(threadKey, query);
+      const queryToUse = customQuery || currentQuery;
+      const res: MessagesListResponse = await client.listThreadMessages(threadKey, queryToUse);
       setMessages(res.messages || []);
       setPagination(res.pagination || null);
+      if (customQuery) {
+        setCurrentQuery(customQuery);
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -227,14 +232,64 @@ export function useMessages(threadKey?: string, query: { limit?: number; before?
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey, ...deps]);
 
-  const create = async (msg: Message) => {
+  const create = async (msg: MessageCreateRequest) => {
     const created: MessageResponse = await client.createThreadMessage(threadKey || '', msg);
     // naive refresh
     await fetchMessages();
     return created.message;
   };
 
-  return { messages, pagination, loading, error, refresh: fetchMessages, create };
+  // Navigation helpers for Messages (MI): [oldest → newest] chronological
+  // before = older messages, after = newer messages
+  const nextPage = async () => {
+    // Next page = older messages (scroll up)
+    if (pagination?.has_before && pagination.before_anchor) {
+      await fetchMessages({ ...currentQuery, before: pagination.before_anchor });
+    }
+  };
+
+  const prevPage = async () => {
+    // Previous page = newer messages (scroll down)
+    if (pagination?.has_after && pagination.after_anchor) {
+      await fetchMessages({ ...currentQuery, after: pagination.after_anchor });
+    }
+  };
+
+  const goToAnchor = async (anchor: string) => {
+    await fetchMessages({ ...currentQuery, anchor });
+  };
+
+  const loadMore = async () => {
+    // Load more = older messages (infinite scroll up)
+    if (pagination?.has_before && pagination.before_anchor) {
+      setLoading(true);
+      try {
+        const queryToUse = { ...currentQuery, before: pagination.before_anchor };
+        const res: MessagesListResponse = await client.listThreadMessages(threadKey, queryToUse);
+        setMessages(prev => [...(prev || []), ...(res.messages || [])]);
+        setPagination(res.pagination || null);
+        setCurrentQuery(queryToUse);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return { 
+    messages, 
+    pagination, 
+    loading, 
+    error, 
+    refresh: fetchMessages, 
+    create,
+    // Navigation helpers
+    nextPage,
+    prevPage,
+    goToAnchor,
+    loadMore
+  };
 }
 
 // Hook for a single message
@@ -268,7 +323,7 @@ export function useMessage(threadKey?: string, id?: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, threadKey]);
 
-  const update = async (msg: Message) => {
+  const update = async (msg: MessageUpdateRequest) => {
     if (!id || !threadKey) throw new Error('threadKey and id required');
     const res: MessageResponse = await client.updateThreadMessage(threadKey, id, msg);
     setMessage(res.message);
@@ -287,6 +342,12 @@ export function useMessage(threadKey?: string, id?: string) {
 // Simple thread hooks
 /**
  * Hook: list threads.
+ * Threads are returned in reverse chronological order: [newest → oldest]
+ * 
+ * Pagination semantics for threads:
+ * - before: load newer threads (scroll up) → prepend to array
+ * - after: load older threads (scroll down) → append to array
+ * 
  * @param query optional query parameters
  * @param deps optional dependency array
  */
@@ -296,14 +357,19 @@ export function useThreads(query: { title?: string; slug?: string; limit?: numbe
   const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
+  const [currentQuery, setCurrentQuery] = useState(query);
 
-  const fetchThreads = async () => {
+  const fetchThreads = async (customQuery?: typeof query) => {
     setLoading(true);
     setError(null);
     try {
-      const res: ThreadsListResponse = await client.listThreads(query);
+      const queryToUse = customQuery || currentQuery;
+      const res: ThreadsListResponse = await client.listThreads(queryToUse);
       setThreads(res.threads || []);
       setPagination(res.pagination || null);
+      if (customQuery) {
+        setCurrentQuery(customQuery);
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -316,13 +382,13 @@ export function useThreads(query: { title?: string; slug?: string; limit?: numbe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const create = async (t: { title: string; slug?: string }) => {
-    const res: ThreadResponse = await client.createThread(t);
+  const create = async (t: ThreadCreateRequest) => {
+    const res = await client.createThread(t);
     await fetchThreads();
-    return res.thread;
+    return res;
   };
 
-  const update = async (threadKey: string, patch: { title?: string; slug?: string }) => {
+  const update = async (threadKey: string, patch: ThreadUpdateRequest) => {
     const res: ThreadResponse = await client.updateThread(threadKey, patch);
     await fetchThreads();
     return res.thread;
@@ -333,12 +399,136 @@ export function useThreads(query: { title?: string; slug?: string; limit?: numbe
     await fetchThreads();
   };
 
-  return { threads, pagination, loading, error, refresh: fetchThreads, create, update, remove };
+  // Navigation helpers for Threads (TI): [newest → oldest] reverse chronological
+  // before = newer threads, after = older threads
+  const nextPage = async () => {
+    // Next page = older threads (scroll down)
+    if (pagination?.has_after && pagination.after_anchor) {
+      await fetchThreads({ ...currentQuery, after: pagination.after_anchor });
+    }
+  };
+
+  const prevPage = async () => {
+    // Previous page = newer threads (scroll up)
+    if (pagination?.has_before && pagination.before_anchor) {
+      await fetchThreads({ ...currentQuery, before: pagination.before_anchor });
+    }
+  };
+
+  const goToAnchor = async (anchor: string) => {
+    await fetchThreads({ ...currentQuery, anchor });
+  };
+
+  const loadMore = async () => {
+    // Load more = older threads (infinite scroll down)
+    if (pagination?.has_after && pagination.after_anchor) {
+      setLoading(true);
+      try {
+        const queryToUse = { ...currentQuery, after: pagination.after_anchor };
+        const res: ThreadsListResponse = await client.listThreads(queryToUse);
+        setThreads(prev => [...(prev || []), ...(res.threads || [])]);
+        setPagination(res.pagination || null);
+        setCurrentQuery(queryToUse);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return { 
+    threads, 
+    pagination, 
+    loading, 
+    error, 
+    refresh: fetchThreads, 
+    create, 
+    update, 
+    remove,
+    // Navigation helpers
+    nextPage,
+    prevPage,
+    goToAnchor,
+    loadMore
+  };
 }
 
-// Reactions are not in the OpenAPI spec - removing this hook
-// If reactions are needed, they should be added to the OpenAPI spec first
+// Health check hooks
+/**
+ * Hook: basic health check.
+ */
+export function useHealthz() {
+  const client = useProgressClient();
+  const [data, setData] = useState<{ status: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>(null);
 
-export type { Message, Thread };
+  const fetch = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.healthz();
+      setData(result);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetch();
+  }, []);
+
+  return { data, loading, error, refresh: fetch };
+}
+
+/**
+ * Hook: readiness check with version info.
+ */
+export function useReadyz() {
+  const client = useProgressClient();
+  const [data, setData] = useState<{ status: string; version?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>(null);
+
+  const fetch = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.readyz();
+      setData(result);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetch();
+  }, []);
+
+  return { data, loading, error, refresh: fetch };
+}
+
+/**
+ * Pagination Usage Examples:
+ * 
+ * // Messages (chronological): [oldest → newest]
+ * const { messages, nextPage, prevPage, loadMore } = useMessages(threadKey);
+ * // nextPage() loads older messages (scroll up)
+ * // prevPage() loads newer messages (scroll down)
+ * // loadMore() loads older messages (infinite scroll)
+ * 
+ * // Threads (reverse chronological): [newest → oldest]  
+ * const { threads, nextPage, prevPage, loadMore } = useThreads();
+ * // nextPage() loads older threads (scroll down)
+ * // prevPage() loads newer threads (scroll up)
+ * // loadMore() loads older threads (infinite scroll)
+ */
+
+export type { Message, Thread, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest };
 
 export default ProgressDBProvider;
