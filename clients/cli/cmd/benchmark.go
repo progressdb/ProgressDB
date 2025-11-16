@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -20,8 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/klauspost/cpuid/v2"
 	"github.com/spf13/cobra"
-	vegeta "github.com/tsenart/vegeta/lib"
 )
 
 type BenchmarkConfig struct {
@@ -46,7 +48,7 @@ type BenchmarkMetrics struct {
 	MinDuration   int64 // in nanoseconds
 	MaxDuration   int64 // in nanoseconds
 	Durations     []time.Duration
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	StatusCodes   map[int]int
 	BytesSent     int64
 	StartTime     time.Time
@@ -102,8 +104,174 @@ func init() {
 	benchmarkCmd.Flags().BoolVar(&usePagination, "use-pagination", true, "Use pagination in read benchmarks")
 }
 
+func printSystemInfo() {
+	fmt.Println("SYSTEM INFORMATION")
+	fmt.Println(strings.Repeat("-", 50))
+
+	// CPU Information using cpuid and runtime
+	fmt.Printf("CPU Details:\n")
+	fmt.Printf("- Model: %s\n", cpuid.CPU.BrandName)
+	fmt.Printf("- Vendor: %s\n", cpuid.CPU.VendorString)
+	fmt.Printf("- Physical Cores: %d\n", cpuid.CPU.PhysicalCores)
+	fmt.Printf("- Logical Cores: %d\n", cpuid.CPU.LogicalCores)
+	if cpuid.CPU.PhysicalCores > 0 {
+		fmt.Printf("- Threads per Core: %d\n", cpuid.CPU.LogicalCores/cpuid.CPU.PhysicalCores)
+	}
+
+	// Frequency information
+	if cpuid.CPU.Hz > 0 {
+		freqGHz := float64(cpuid.CPU.Hz) / 1e9
+		fmt.Printf("- Base Frequency: %.2f GHz\n", freqGHz)
+	}
+
+	// Cache information
+	if cpuid.CPU.Cache.L1D > 0 {
+		fmt.Printf("- L1 Data Cache: %d KB\n", cpuid.CPU.Cache.L1D/1024)
+	}
+	if cpuid.CPU.Cache.L2 > 0 {
+		fmt.Printf("- L2 Cache: %d KB\n", cpuid.CPU.Cache.L2/1024)
+	}
+	if cpuid.CPU.Cache.L3 > 0 {
+		fmt.Printf("- L3 Cache: %d MB\n", cpuid.CPU.Cache.L3/1024/1024)
+	}
+
+	// CPU features
+	features := []string{}
+	if cpuid.CPU.Supports(cpuid.AVX2) {
+		features = append(features, "AVX2")
+	}
+	if cpuid.CPU.Supports(cpuid.AVX) {
+		features = append(features, "AVX")
+	}
+	if cpuid.CPU.Supports(cpuid.SSE4) {
+		features = append(features, "SSE4")
+	}
+	if cpuid.CPU.Supports(cpuid.AESNI) {
+		features = append(features, "AES-NI")
+	}
+	if len(features) > 0 {
+		fmt.Printf("- Features: %s\n", strings.Join(features, ", "))
+	}
+	fmt.Println()
+
+	// Memory Information using system commands
+	fmt.Printf("Memory Information:\n")
+	if runtime.GOOS == "darwin" {
+		// macOS memory info
+		if output, err := exec.Command("sysctl", "hw.memsize").Output(); err == nil {
+			var memSize uint64
+			fmt.Sscanf(string(output), "hw.memsize: %d", &memSize)
+			totalGB := float64(memSize) / (1024 * 1024 * 1024)
+			fmt.Printf("- Total Memory: %.2f GB\n", totalGB)
+		}
+
+		if output, err := exec.Command("vm_stat").Output(); err == nil {
+			// Parse vm_stat for memory usage
+			lines := strings.Split(string(output), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "Pages free:") {
+					var freePages uint64
+					fmt.Sscanf(line, "Pages free: %d.", &freePages)
+					freeGB := float64(freePages*4096) / (1024 * 1024 * 1024)
+					fmt.Printf("- Free Memory: %.2f GB\n", freeGB)
+				}
+			}
+		}
+	} else if runtime.GOOS == "linux" {
+		// Linux memory info
+		if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "MemTotal:") {
+					var totalKB uint64
+					fmt.Sscanf(line, "MemTotal: %d kB", &totalKB)
+					fmt.Printf("- Total Memory: %.2f GB\n", float64(totalKB)/1024/1024)
+				} else if strings.HasPrefix(line, "MemAvailable:") {
+					var availKB uint64
+					fmt.Sscanf(line, "MemAvailable: %d kB", &availKB)
+					fmt.Printf("- Available Memory: %.2f GB\n", float64(availKB)/1024/1024)
+				}
+			}
+		}
+	}
+
+	// Go runtime memory info
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("- Go Runtime Memory: %.2f MB allocated\n", float64(m.Alloc)/1024/1024)
+	fmt.Printf("- Go Runtime Sys: %.2f MB system\n", float64(m.Sys)/1024/1024)
+	fmt.Println()
+
+	// Storage Information - simplified summary
+	fmt.Printf("Storage Summary:\n")
+	if runtime.GOOS == "darwin" {
+		if output, err := exec.Command("df", "-h", "/").Output(); err == nil {
+			lines := strings.Split(string(output), "\n")
+			if len(lines) >= 2 {
+				fields := strings.Fields(lines[1])
+				if len(fields) >= 4 {
+					fmt.Printf("- Root: %s total, %s available\n", fields[1], fields[3])
+				}
+			}
+		}
+	} else if runtime.GOOS == "linux" {
+		if output, err := exec.Command("df", "-h", "/").Output(); err == nil {
+			lines := strings.Split(string(output), "\n")
+			if len(lines) >= 2 {
+				fields := strings.Fields(lines[1])
+				if len(fields) >= 4 {
+					fmt.Printf("- Root: %s total, %s available\n", fields[1], fields[3])
+				}
+			}
+		}
+	}
+	fmt.Println()
+
+	// OS Information
+	fmt.Printf("Operating System:\n")
+	if hostname, err := os.Hostname(); err == nil {
+		fmt.Printf("- Hostname: %s\n", hostname)
+	}
+	fmt.Printf("- Platform: %s\n", runtime.GOOS)
+	fmt.Printf("- Architecture: %s\n", runtime.GOARCH)
+	fmt.Printf("- Go Version: %s\n", runtime.Version())
+	fmt.Printf("- Goroutines: %d\n", runtime.NumGoroutine())
+	fmt.Printf("- GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
+
+	// Additional OS-specific info
+	if runtime.GOOS == "darwin" {
+		if output, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {
+			fmt.Printf("- macOS Version: %s\n", strings.TrimSpace(string(output)))
+		}
+		if output, err := exec.Command("uname", "-r").Output(); err == nil {
+			fmt.Printf("- Kernel: %s\n", strings.TrimSpace(string(output)))
+		}
+	} else if runtime.GOOS == "linux" {
+		if data, err := os.ReadFile("/etc/os-release"); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "PRETTY_NAME=") {
+					name := strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+					fmt.Printf("- Distribution: %s\n", name)
+					break
+				}
+			}
+		}
+		if output, err := exec.Command("uname", "-r").Output(); err == nil {
+			fmt.Printf("- Kernel: %s\n", strings.TrimSpace(string(output)))
+		}
+	}
+	fmt.Println()
+
+	fmt.Println(strings.Repeat("-", 50))
+	fmt.Println()
+}
+
 func runBenchmark(cmd *cobra.Command, args []string) error {
 	verbose, _ := cmd.Flags().GetBool("verbose")
+
+	// Print system information for context
+	printSystemInfo()
 
 	// Load configuration from environment variables with fallback to flag defaults
 	host := getEnvOrDefault("PROGRESSDB_HOST", benchHost)
@@ -168,7 +336,6 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  Messages Per Thread: %d\n", cfg.MessagesPerThread)
 			fmt.Printf("  Use Pagination: %t\n", cfg.UsePagination)
 		}
-		fmt.Printf("  Workers: %d (CPU cores)\n", runtime.NumCPU())
 		fmt.Println()
 	}
 
@@ -357,223 +524,83 @@ func fetchSignature(cfg BenchmarkConfig) string {
 
 func runCreateThreadsBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
 	metrics := &BenchmarkMetrics{StartTime: time.Now()}
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
+	defer cancel()
 
-	// Calculate total requests
-	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
-	targets := make([]vegeta.Target, 0, totalRequests)
+	var wg sync.WaitGroup
+	currentRPS := cfg.RPS
+	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
+	defer ticker.Stop()
 
-	// Pre-generate targets
-	for i := 0; i < totalRequests; i++ {
-		title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano()+int64(i))
-		payload := fmt.Sprintf(`{"title":"%s"}`, title)
+	// Create reusable HTTP client for better performance
+	client := &http.Client{Timeout: 30 * time.Second}
 
-		target := vegeta.Target{
-			Method: "POST",
-			URL:    cfg.Host + "/frontend/v1/threads",
-			Body:   []byte(payload),
-			Header: map[string][]string{
-				"Authorization":    {"Bearer " + cfg.FrontendKey},
-				"Content-Type":     {"application/json"},
-				"X-User-ID":        {cfg.UserID},
-				"X-User-Signature": {signature},
-			},
-		}
-		targets = append(targets, target)
-	}
-
-	// Setup Vegeta attacker
-	targeter := vegeta.NewStaticTargeter(targets...)
-	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
-	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
-
-	// Run attack with live stats
-	results := &vegeta.Metrics{}
-	resChan := attacker.Attack(targeter, rate, cfg.Duration, "create_threads")
-
-	// Live stats
 	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
 
-	// Collect results
-	for res := range resChan {
-		results.Add(res)
+	for {
+		select {
+		case <-ctx.Done():
+			close(stopPrint)
+			metrics.EndTime = time.Now()
+			wg.Wait()
+			return metrics
+		case <-ticker.C:
+			// Check failure rate and throttle if needed
+			throttleIfNeeded(metrics, &currentRPS, ticker)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				createThreadWithClient(cfg, signature, metrics, client)
+			}()
+		}
 	}
-	close(stopPrint)
-	results.Close()
-
-	metrics.EndTime = time.Now()
-	return convertVegetaMetrics(results, metrics)
 }
 
 func runThreadWithMessagesBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
 	metrics := &BenchmarkMetrics{StartTime: time.Now()}
 
 	// First, create a single thread
-	var threadID string
-	createThreadSync(cfg, signature, &threadID)
+	threadID := createThreadSyncReturn(cfg, signature)
 	if threadID == "" {
 		log.Fatal("Failed to create initial thread")
 	}
 
-	// Calculate total requests
-	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
-	targets := make([]vegeta.Target, 0, totalRequests)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
+	defer cancel()
 
-	// Pre-generate targets for messages
-	for i := 0; i < totalRequests; i++ {
-		content, checksum := generatePayload(cfg.PayloadSize)
-		messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano()+int64(i), randomString(9))
-		payload := fmt.Sprintf(`{"id":"%s","content":"%s","checksum":"%s","body":{}}`, messageID, content, checksum)
+	var wg sync.WaitGroup
+	currentRPS := cfg.RPS
+	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
+	defer ticker.Stop()
 
-		target := vegeta.Target{
-			Method: "POST",
-			URL:    fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID),
-			Body:   []byte(payload),
-			Header: map[string][]string{
-				"Authorization":    {"Bearer " + cfg.FrontendKey},
-				"Content-Type":     {"application/json"},
-				"X-User-ID":        {cfg.UserID},
-				"X-User-Signature": {signature},
-			},
-		}
-		targets = append(targets, target)
-	}
+	// Create reusable HTTP client for better performance
+	client := &http.Client{Timeout: 30 * time.Second}
 
-	// Setup Vegeta attacker
-	targeter := vegeta.NewStaticTargeter(targets...)
-	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
-	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
-
-	// Run attack with live stats
-	results := &vegeta.Metrics{}
-	resChan := attacker.Attack(targeter, rate, cfg.Duration, "thread_with_messages")
-
-	// Live stats
 	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
 
-	// Collect results
-	for res := range resChan {
-		results.Add(res)
+	for {
+		select {
+		case <-ctx.Done():
+			close(stopPrint)
+			metrics.EndTime = time.Now()
+			wg.Wait()
+			return metrics
+		case <-ticker.C:
+			// Check failure rate and throttle if needed
+			throttleIfNeeded(metrics, &currentRPS, ticker)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// Create message in the single thread
+				createMessageWithClient(cfg, signature, metrics, threadID, client)
+			}()
+		}
 	}
-	close(stopPrint)
-	results.Close()
-
-	metrics.EndTime = time.Now()
-	return convertVegetaMetrics(results, metrics)
 }
 
-func runReadBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
-	fmt.Printf("Loading test data: creating %d threads with %d messages each...\n", cfg.ThreadsCount, cfg.MessagesPerThread)
-
-	// Load test data using existing functions
-	threadIDs := loadTestData(cfg, signature)
-	if len(threadIDs) == 0 {
-		log.Fatal("Failed to load test data")
-	}
-	fmt.Printf("Created %d threads with messages for benchmarking\n", len(threadIDs))
-
-	metrics := &BenchmarkMetrics{StartTime: time.Now()}
-
-	// Calculate total requests
-	totalRequests := cfg.RPS * int(cfg.Duration.Seconds())
-	targets := make([]vegeta.Target, 0, totalRequests)
-
-	// Pre-generate targets for reads
-	for i := 0; i < totalRequests; i++ {
-		var target vegeta.Target
-		switch cfg.Pattern {
-		case "read_threads":
-			url := cfg.Host + "/frontend/v1/threads"
-			if cfg.UsePagination {
-				url += "?limit=50"
-			}
-			target = vegeta.Target{
-				Method: "GET",
-				URL:    url,
-				Header: map[string][]string{
-					"Authorization":    {"Bearer " + cfg.FrontendKey},
-					"X-User-ID":        {cfg.UserID},
-					"X-User-Signature": {signature},
-				},
-			}
-		case "read_messages":
-			threadIndex := i % len(threadIDs)
-			threadID := threadIDs[threadIndex]
-			url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
-			if cfg.UsePagination {
-				url += "?limit=20"
-			}
-			target = vegeta.Target{
-				Method: "GET",
-				URL:    url,
-				Header: map[string][]string{
-					"Authorization":    {"Bearer " + cfg.FrontendKey},
-					"X-User-ID":        {cfg.UserID},
-					"X-User-Signature": {signature},
-				},
-			}
-		case "read_mixed":
-			if i%2 == 0 {
-				url := cfg.Host + "/frontend/v1/threads"
-				if cfg.UsePagination {
-					url += "?limit=50"
-				}
-				target = vegeta.Target{
-					Method: "GET",
-					URL:    url,
-					Header: map[string][]string{
-						"Authorization":    {"Bearer " + cfg.FrontendKey},
-						"X-User-ID":        {cfg.UserID},
-						"X-User-Signature": {signature},
-					},
-				}
-			} else {
-				threadIndex := i % len(threadIDs)
-				threadID := threadIDs[threadIndex]
-				url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
-				if cfg.UsePagination {
-					url += "?limit=20"
-				}
-				target = vegeta.Target{
-					Method: "GET",
-					URL:    url,
-					Header: map[string][]string{
-						"Authorization":    {"Bearer " + cfg.FrontendKey},
-						"X-User-ID":        {cfg.UserID},
-						"X-User-Signature": {signature},
-					},
-				}
-			}
-		}
-		targets = append(targets, target)
-	}
-
-	// Setup Vegeta attacker
-	targeter := vegeta.NewStaticTargeter(targets...)
-	rate := vegeta.Rate{Freq: cfg.RPS, Per: time.Second}
-	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(runtime.NumCPU())))
-
-	// Run attack with live stats
-	results := &vegeta.Metrics{}
-	resChan := attacker.Attack(targeter, rate, cfg.Duration, "read_benchmark")
-
-	// Live stats
-	stopPrint := make(chan struct{})
-	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint, resChan)
-
-	// Collect results
-	for res := range resChan {
-		results.Add(res)
-	}
-	close(stopPrint)
-	results.Close()
-
-	metrics.EndTime = time.Now()
-	return convertVegetaMetrics(results, metrics)
-}
-
-func createThreadSync(cfg BenchmarkConfig, signature string, threadID *string) {
+func createThreadWithClient(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, client *http.Client) {
 	url := cfg.Host + "/frontend/v1/threads"
 	title := fmt.Sprintf("bench-thread-%d", time.Now().UnixNano())
 	payload := fmt.Sprintf(`{"title":"%s"}`, title)
@@ -584,25 +611,53 @@ func createThreadSync(cfg BenchmarkConfig, signature string, threadID *string) {
 	req.Header.Set("X-User-ID", cfg.UserID)
 	req.Header.Set("X-User-Signature", signature)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	start := time.Now()
 	resp, err := client.Do(req)
+	duration := time.Since(start)
+
 	if err != nil {
-		log.Fatal("Failed to create thread:", err)
+		metrics.record(0, duration, int64(len(payload)), false)
+		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 && resp.StatusCode != 202 {
-		log.Fatal("Thread creation failed with status:", resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	success := resp.StatusCode == 200 || resp.StatusCode == 202
+	if !success {
+		fmt.Printf("Error: status %d, body: %s\n", resp.StatusCode, string(body))
 	}
+	metrics.record(resp.StatusCode, duration, int64(len(payload)), success)
+}
+
+func createMessageWithClient(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, threadID string, client *http.Client) {
+	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+
+	content, checksum := generatePayload(cfg.PayloadSize)
+	messageID := fmt.Sprintf("msg-%d-%s", time.Now().UnixNano(), randomString(9))
+	payload := fmt.Sprintf(`{"id":"%s","content":"%s","checksum":"%s","body":{}}`, messageID, content, checksum)
+
+	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		metrics.record(0, duration, int64(len(payload)), false)
+		return
+	}
+	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	var result struct {
-		Key string `json:"key"`
+	success := resp.StatusCode == 200 || resp.StatusCode == 202
+	if !success {
+		fmt.Printf("Error: status %d, body: %s\n", resp.StatusCode, string(body))
 	}
-	if err := json.Unmarshal(body, &result); err != nil || result.Key == "" {
-		log.Fatal("Failed to parse thread creation response")
-	}
-	*threadID = result.Key
+	metrics.record(resp.StatusCode, duration, int64(len(payload)), success)
 }
 
 func generatePayload(sizeKB int) (string, string) {
@@ -625,16 +680,23 @@ func randomString(n int) string {
 	return string(bytes)
 }
 
-func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Duration, stop <-chan struct{}, resChan <-chan *vegeta.Result) {
+func throttleIfNeeded(metrics *BenchmarkMetrics, currentRPS *int, ticker *time.Ticker) {
+	totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
+	failCount := atomic.LoadInt64(&metrics.FailCount)
+	if totalReqs > 10 && failCount*10 > totalReqs {
+		newRPS := *currentRPS / 2
+		if newRPS > 0 && newRPS != *currentRPS {
+			*currentRPS = newRPS
+			ticker.Reset(time.Second / time.Duration(newRPS))
+			fmt.Printf("\nThrottling down to %d RPS due to high failure rate\n", newRPS)
+		}
+	}
+}
+
+func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	start := metrics.StartTime
-
-	var totalReqs int64
-	var totalDur time.Duration
-	var minDur, maxDur time.Duration
-	var successCount int64
-
 	for {
 		select {
 		case <-stop:
@@ -646,51 +708,118 @@ func printLiveBenchmarkStats(metrics *BenchmarkMetrics, totalDuration time.Durat
 			if remaining < 0 {
 				remaining = 0
 			}
-
-			// Calculate current RPS
+			totalReqs := atomic.LoadInt64(&metrics.TotalRequests)
+			totalDur := atomic.LoadInt64(&metrics.TotalDuration)
+			minDur := atomic.LoadInt64(&metrics.MinDuration)
+			maxDur := atomic.LoadInt64(&metrics.MaxDuration)
 			rps := float64(totalReqs) / elapsed.Seconds()
 			var avgResp time.Duration
 			if totalReqs > 0 {
-				avgResp = totalDur / time.Duration(totalReqs)
+				avgResp = time.Duration(totalDur / totalReqs)
 			}
-
-			fmt.Printf("\rRequests: %d | RPS: %.1f | Avg: %v | Min: %v | Max: %v | Success: %d | Remaining: %v",
-				totalReqs, rps, avgResp, minDur, maxDur, successCount, remaining.Round(time.Second))
-		case res, ok := <-resChan:
-			if !ok {
-				return
-			}
-			totalReqs++
-			totalDur += res.Latency
-
-			if minDur == 0 || res.Latency < minDur {
-				minDur = res.Latency
-			}
-			if res.Latency > maxDur {
-				maxDur = res.Latency
-			}
-
-			if res.Code >= 200 && res.Code < 400 {
-				successCount++
-			}
+			minResp := time.Duration(minDur)
+			maxResp := time.Duration(maxDur)
+			fmt.Printf("\rRequests: %d | RPS: %.1f | Avg: %v | Min: %v | Max: %v | Remaining: %v", totalReqs, rps, avgResp, minResp, maxResp, remaining.Round(time.Second))
 		}
 	}
 }
 
-func convertVegetaMetrics(results *vegeta.Metrics, metrics *BenchmarkMetrics) *BenchmarkMetrics {
-	metrics.TotalRequests = int64(results.Requests)
-	metrics.SuccessCount = int64(results.Success)
-	metrics.FailCount = int64(len(results.Errors))
-	metrics.TotalDuration = int64(results.Latencies.Mean)
-	metrics.MinDuration = int64(results.Latencies.P50) // Use P50 as min approximation
-	metrics.MaxDuration = int64(results.Latencies.P99) // Use P99 as max approximation
+func (m *BenchmarkMetrics) record(status int, duration time.Duration, bytes int64, success bool) {
+	durNs := int64(duration)
+	atomic.AddInt64(&m.TotalRequests, 1)
+	atomic.AddInt64(&m.TotalDuration, durNs)
+	atomic.AddInt64(&m.BytesSent, bytes)
+	if success {
+		atomic.AddInt64(&m.SuccessCount, 1)
+	} else {
+		atomic.AddInt64(&m.FailCount, 1)
+	}
+	// Update min/max
+	for {
+		min := atomic.LoadInt64(&m.MinDuration)
+		if min == 0 || durNs < min {
+			if atomic.CompareAndSwapInt64(&m.MinDuration, min, durNs) {
+				break
+			}
+		} else {
+			break
+		}
+	}
+	for {
+		max := atomic.LoadInt64(&m.MaxDuration)
+		if durNs > max {
+			if atomic.CompareAndSwapInt64(&m.MaxDuration, max, durNs) {
+				break
+			}
+		} else {
+			break
+		}
+	}
+	// Append duration for percentiles
+	m.mu.Lock()
+	m.Durations = append(m.Durations, duration)
+	// Track status codes properly
+	if m.StatusCodes == nil {
+		m.StatusCodes = make(map[int]int)
+	}
+	m.StatusCodes[status]++
+	m.mu.Unlock()
+}
 
-	// Convert Vegeta latencies to durations for percentile calculation
-	metrics.Durations = make([]time.Duration, 0, int(results.Requests))
-	// Note: Vegeta doesn't expose individual latencies, so we'll use the histogram data
-	// For now, we'll store mean, min, max and calculate percentiles from Vegeta's built-in data
+func runReadBenchmark(cfg BenchmarkConfig, signature string) *BenchmarkMetrics {
+	fmt.Printf("Loading test data: creating %d threads with %d messages each...\n", cfg.ThreadsCount, cfg.MessagesPerThread)
 
-	return metrics
+	// Load test data
+	threadIDs := loadTestData(cfg, signature)
+	if len(threadIDs) == 0 {
+		log.Fatal("Failed to load test data")
+	}
+	fmt.Printf("Created %d threads with messages for benchmarking\n", len(threadIDs))
+
+	metrics := &BenchmarkMetrics{StartTime: time.Now()}
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	currentRPS := cfg.RPS
+	ticker := time.NewTicker(time.Second / time.Duration(currentRPS))
+	defer ticker.Stop()
+
+	// Create reusable HTTP clients for better performance
+	threadsClient := &http.Client{Timeout: 30 * time.Second}
+	messagesClient := &http.Client{Timeout: 30 * time.Second}
+
+	stopPrint := make(chan struct{})
+	go printLiveBenchmarkStats(metrics, cfg.Duration, stopPrint)
+
+	for {
+		select {
+		case <-ctx.Done():
+			close(stopPrint)
+			metrics.EndTime = time.Now()
+			wg.Wait()
+			return metrics
+		case <-ticker.C:
+			// Check failure rate and throttle if needed
+			throttleIfNeeded(metrics, &currentRPS, ticker)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				switch cfg.Pattern {
+				case "read_threads":
+					performReadThreadsWithClient(cfg, signature, metrics, threadsClient)
+				case "read_messages":
+					performReadMessagesWithClient(cfg, signature, metrics, threadIDs, messagesClient)
+				case "read_mixed":
+					if time.Now().UnixNano()%2 == 0 {
+						performReadThreadsWithClient(cfg, signature, metrics, threadsClient)
+					} else {
+						performReadMessagesWithClient(cfg, signature, metrics, threadIDs, messagesClient)
+					}
+				}
+			}()
+		}
+	}
 }
 
 func loadTestData(cfg BenchmarkConfig, signature string) []string {
@@ -782,6 +911,69 @@ func createMessageSync(cfg BenchmarkConfig, signature string, threadID string) {
 	defer resp.Body.Close()
 }
 
+func performReadThreadsWithClient(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, client *http.Client) {
+	url := cfg.Host + "/frontend/v1/threads"
+
+	// Add pagination parameters if enabled
+	if cfg.UsePagination {
+		url += "?limit=50"
+	}
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		metrics.record(0, duration, 0, false)
+		return
+	}
+	defer resp.Body.Close()
+
+	success := resp.StatusCode == 200
+	metrics.record(resp.StatusCode, duration, 0, success)
+}
+
+func performReadMessagesWithClient(cfg BenchmarkConfig, signature string, metrics *BenchmarkMetrics, threadIDs []string, client *http.Client) {
+	// Pick a random thread
+	if len(threadIDs) == 0 {
+		metrics.record(0, 0, 0, false)
+		return
+	}
+
+	threadIndex := int(time.Now().UnixNano()) % len(threadIDs)
+	threadID := threadIDs[threadIndex]
+
+	url := fmt.Sprintf("%s/frontend/v1/threads/%s/messages", cfg.Host, threadID)
+
+	// Add pagination parameters if enabled
+	if cfg.UsePagination {
+		url += "?limit=20"
+	}
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+cfg.FrontendKey)
+	req.Header.Set("X-User-ID", cfg.UserID)
+	req.Header.Set("X-User-Signature", signature)
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		metrics.record(0, duration, 0, false)
+		return
+	}
+	defer resp.Body.Close()
+
+	success := resp.StatusCode == 200
+	metrics.record(resp.StatusCode, duration, 0, success)
+}
+
 func outputBenchmarkMetrics(metrics *BenchmarkMetrics) {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -800,48 +992,99 @@ func outputBenchmarkMetrics(metrics *BenchmarkMetrics) {
 	}
 	defer file.Close()
 
-	// Calculate stats
+	// Calculate stats - ensure all atomic operations are completed
 	totalRequests := atomic.LoadInt64(&metrics.TotalRequests)
 	totalDur := atomic.LoadInt64(&metrics.TotalDuration)
 	minDur := atomic.LoadInt64(&metrics.MinDuration)
 	maxDur := atomic.LoadInt64(&metrics.MaxDuration)
-	avgDuration := time.Duration(totalDur / totalRequests)
-	minDuration := time.Duration(minDur)
-	maxDuration := time.Duration(maxDur)
+	successCount := atomic.LoadInt64(&metrics.SuccessCount)
+	failCount := atomic.LoadInt64(&metrics.FailCount)
+	bytesSent := atomic.LoadInt64(&metrics.BytesSent)
 
-	// For percentiles, we'll use Vegeta's built-in data if available
-	// For now, use existing duration array if populated
+	var avgDuration, minDuration, maxDuration time.Duration
+	if totalRequests > 0 {
+		avgDuration = time.Duration(totalDur / totalRequests)
+		minDuration = time.Duration(minDur)
+		maxDuration = time.Duration(maxDur)
+	}
+
+	// Calculate percentiles with proper locking to avoid race conditions
+	metrics.mu.RLock()
+	durations := make([]time.Duration, len(metrics.Durations))
+	copy(durations, metrics.Durations)
+	statusCodes := make(map[int]int)
+	for k, v := range metrics.StatusCodes {
+		statusCodes[k] = v
+	}
+	metrics.mu.RUnlock()
+
+	// Calculate percentiles safely
 	var p90, p95, p99 time.Duration
-	if len(metrics.Durations) > 0 {
-		sort.Slice(metrics.Durations, func(i, j int) bool { return metrics.Durations[i] < metrics.Durations[j] })
-		n := len(metrics.Durations)
-		p90 = metrics.Durations[int(float64(n)*0.9)]
-		p95 = metrics.Durations[int(float64(n)*0.95)]
-		p99 = metrics.Durations[int(float64(n)*0.99)]
-	} else {
-		// Fallback to calculated values
-		p90 = avgDuration
-		p95 = avgDuration
-		p99 = avgDuration
+	if len(durations) > 0 {
+		sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+		n := len(durations)
+		p90 = durations[int(float64(n)*0.9)]
+		p95 = durations[int(float64(n)*0.95)]
+		p99 = durations[int(float64(n)*0.99)]
+	}
+
+	// Calculate actual RPS
+	actualDuration := metrics.EndTime.Sub(metrics.StartTime).Seconds()
+	var actualRPS float64
+	if actualDuration > 0 {
+		actualRPS = float64(totalRequests) / actualDuration
 	}
 
 	result := map[string]interface{}{
-		"total_requests":  atomic.LoadInt64(&metrics.TotalRequests),
-		"success_count":   atomic.LoadInt64(&metrics.SuccessCount),
-		"fail_count":      atomic.LoadInt64(&metrics.FailCount),
+		"total_requests":  totalRequests,
+		"success_count":   successCount,
+		"fail_count":      failCount,
 		"avg_duration_ms": avgDuration.Milliseconds(),
 		"min_duration_ms": minDuration.Milliseconds(),
 		"max_duration_ms": maxDuration.Milliseconds(),
 		"p90_duration_ms": p90.Milliseconds(),
 		"p95_duration_ms": p95.Milliseconds(),
 		"p99_duration_ms": p99.Milliseconds(),
-		"status_codes":    metrics.StatusCodes,
-		"bytes_sent":      atomic.LoadInt64(&metrics.BytesSent),
+		"status_codes":    statusCodes,
+		"bytes_sent":      bytesSent,
 		"start_time":      metrics.StartTime,
 		"end_time":        metrics.EndTime,
 		"duration":        metrics.EndTime.Sub(metrics.StartTime),
+		"actual_rps":      actualRPS,
 	}
 
 	json.NewEncoder(file).Encode(result)
-	fmt.Printf("Output: %s\n", outFile)
+
+	// Print summary
+	fmt.Println()
+	fmt.Println("BENCHMARK RESULTS SUMMARY")
+	fmt.Println(strings.Repeat("-", 50))
+	fmt.Printf("- Target vs Actual RPS: %.1f → %.1f\n", actualRPS, actualRPS)
+	fmt.Printf("- Total Requests: %d (%d success, %d failed)\n", totalRequests, successCount, failCount)
+	fmt.Printf("- Latency: Avg %v | P90 %v | P95 %v | P99 %v\n", avgDuration, p90, p95, p99)
+	fmt.Printf("- Data Sent: %.2f MB\n", float64(bytesSent)/(1024*1024))
+	fmt.Printf("- Duration: %v\n", metrics.EndTime.Sub(metrics.StartTime))
+
+	// Performance rating
+	var rating string
+	var ratingSymbol string
+	successRate := float64(successCount) / float64(totalRequests) * 100
+	switch {
+	case successRate >= 99 && actualRPS > 100:
+		rating = "Excellent"
+		ratingSymbol = "[A+]"
+	case successRate >= 95 && actualRPS > 50:
+		rating = "Good"
+		ratingSymbol = "[B+]"
+	case successRate >= 90:
+		rating = "Fair"
+		ratingSymbol = "[C]"
+	default:
+		rating = "Poor"
+		ratingSymbol = "[D]"
+	}
+
+	fmt.Printf("- Performance Rating: %s %s (%.1f%% success rate)\n", ratingSymbol, rating, successRate)
+	fmt.Printf("- Detailed logs: %s\n", outFile)
+	fmt.Println(strings.Repeat("-", 50))
 }

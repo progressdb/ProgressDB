@@ -1,17 +1,17 @@
 server:
   address: "::"
   port: 8080
-  db_path: "/data/database"
+  db_path: "./database"
   max_payload_size: "100KB"
   cors:
     allowed_origins:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
       - "http://172.16.5.154:3000"
-  # ip_whitelist:
-  #   - "127.0.0.1"
-  #   - "::1"
-  #   - "172.16.5.154"
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+    - "172.16.5.154"
   rate_limit:
     rps: 100_000
     burst: 150_000
@@ -29,7 +29,7 @@ retention:
 
 ingest:
   intake:
-    queue_capacity: 10_000
+    queue_capacity: 50_000
     shutdown_poll_interval: 5ms
     wal:
       enabled: false
@@ -38,10 +38,10 @@ ingest:
       temp_idx_enabled: false
   compute:
     worker_multiplier: 4
-    buffer_capacity: 10_000
+    buffer_capacity: 20_000
   apply:
-     batch_count: 1_000
-     batch_timeout: 1s
+     batch_count: 20_000
+     batch_timeout: 100ms
 
 sensor:
   poll_interval: 60s
