@@ -21,14 +21,14 @@ const client = new ProgressDBClient({
 });
 
 // List messages in a thread
-const messages = await client.listMessages({ thread: 't1', limit: 50 });
+const messages = await client.listThreadMessages('t1', { limit: 50 });
 ```
 
 ## Authentication
 
 - Frontend API key via `X-API-Key` header
 - User operations require `X-User-ID` and `X-User-Signature` headers
-- Get signatures from your backend: `POST /v1/_sign`
+- Use the backend SDK or sign endpoint to securely generate signatures for your users
 
 ## API
 
@@ -38,39 +38,20 @@ new ProgressDBClient(options: SDKOptions)
 ```
 
 ### Messages
-- `listMessages(opts)` - List messages
-- `createMessage(opts)` - Create message
-- `listThreadMessages(threadID, opts)` - List thread messages
-- `getThreadMessage(threadID, id)` - Get message
-- `updateThreadMessage(threadID, id, opts)` - Update message
-- `deleteThreadMessage(threadID, id)` - Delete message
-- `listMessageVersions(threadID, id)` - List message versions
+- `listThreadMessages(threadKey, query)` - List messages in thread
+- `createThreadMessage(threadKey, message)` - Create message
+- `getThreadMessage(threadKey, id)` - Get message
+- `updateThreadMessage(threadKey, id, message)` - Update message
+- `deleteThreadMessage(threadKey, id)` - Delete message
 
 ### Threads
-- `createThread(opts)` - Create thread
-- `listThreads(opts)` - List threads
-- `getThread(threadID)` - Get thread
-- `updateThread(threadID, opts)` - Update thread
-- `deleteThread(threadID)` - Delete thread
-
-### Reactions
-- `listReactions(threadID, id)` - List reactions
-- `addOrUpdateReaction(threadID, id, input)` - Add/update reaction
-- `removeReaction(threadID, id, identity)` - Remove reaction
+- `createThread(thread)` - Create thread
+- `listThreads(query)` - List threads
+- `getThread(threadKey)` - Get thread
+- `updateThread(threadKey, thread)` - Update thread
+- `deleteThread(threadKey)` - Delete thread
 
 ### Health
-- `health()` - Check service health
+- `healthz()` - Basic health check
+- `readyz()` - Readiness check with version
 
-## Types
-
-Key exported types: `Message`, `Thread`, `ReactionInput`, `SDKOptions`, `ProgressDBClient`.
-
-## Development
-
-```bash
-npm run build    # Build JS and .d.ts files
-npm test         # Run tests
-npm pack         # Create tarball for local testing
-```
-
-The SDK compiles to JavaScript with TypeScript declarations and uses `fetch`. In Node.js, provide a fetch polyfill.
