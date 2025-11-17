@@ -1,11 +1,11 @@
-import type { SDKOptions } from '@progressdb/js';
+import type { SDKOptionsType } from '@progressdb/js';
 
 export type UserSignature = { userId: string; signature: string };
 export type GetUserSignature = () => Promise<UserSignature> | UserSignature;
 
 export type ProgressProviderProps = {
   children: React.ReactNode;
-  options?: SDKOptions;
+  options?: SDKOptionsType;
   /**
    * REQUIRED function used to obtain a `{ userId, signature }` pair for the current user.
    * The provider calls this function (can be async) once and attaches the returned values to

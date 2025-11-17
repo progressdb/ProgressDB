@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { MessageCreateRequest, MessageUpdateRequest, PaginationResponse, MessagesListResponse, KeyResponse, MessageListQuery } from '@progressdb/js';
+import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType } from '@progressdb/js';
 
 /**
  * Hook: list messages for a given thread.
@@ -16,23 +16,23 @@ import type { MessageCreateRequest, MessageUpdateRequest, PaginationResponse, Me
  */
 export function useMessages(
   threadKey?: string, 
-  query: MessageListQuery = {}, 
+  query: MessageListQueryType = {}, 
   deps: any[] = []
 ) {
   const client = useProgressClient();
   const [messages, setMessages] = useState<any[] | null>(null);
-  const [pagination, setPagination] = useState<PaginationResponse | null>(null);
+  const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
-  const [currentQuery, setCurrentQuery] = useState<MessageListQuery>(query);
+  const [currentQuery, setCurrentQuery] = useState<MessageListQueryType>(query);
 
-  const fetchMessages = async (customQuery?: MessageListQuery) => {
+  const fetchMessages = async (customQuery?: MessageListQueryType) => {
     if (!threadKey) return;
     setLoading(true);
     setError(null);
     try {
       const queryToUse = customQuery || currentQuery;
-      const res: MessagesListResponse = await client.listThreadMessages(threadKey, queryToUse);
+      const res: MessagesListResponseType = await client.listThreadMessages(threadKey, queryToUse);
       setMessages(res.messages || []);
       setPagination(res.pagination || null);
       if (customQuery) {
@@ -50,8 +50,8 @@ export function useMessages(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey, ...deps]);
 
-  const create = async (msg: MessageCreateRequest) => {
-    const created: KeyResponse = await client.createThreadMessage(threadKey || '', msg);
+  const create = async (msg: MessageCreateRequestType) => {
+    const created: KeyResponseType = await client.createThreadMessage(threadKey || '', msg);
     // naive refresh
     await fetchMessages();
     return created.key;

@@ -2,12 +2,12 @@ export type { UserSignature, GetUserSignature, ProgressProviderProps, ProgressCl
 
 // Re-export types from JS SDK for convenience
 export type { 
-  Message, 
-  Thread, 
-  ThreadCreateRequest, 
-  ThreadUpdateRequest, 
-  MessageCreateRequest, 
-  MessageUpdateRequest,
-  ThreadListQuery,
-  MessageListQuery
+  MessageType, 
+  ThreadType, 
+  ThreadCreateRequestType, 
+  ThreadUpdateRequestType, 
+  MessageCreateRequestType, 
+  MessageUpdateRequestType,
+  ThreadListQueryType,
+  MessageListQueryType
 } from '@progressdb/js';

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { ThreadCreateRequest, ThreadUpdateRequest, PaginationResponse, ThreadsListResponse, ThreadResponse, ThreadListQuery } from '@progressdb/js';
+import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType } from '@progressdb/js';
 
 /**
  * Hook: list threads.
@@ -14,22 +14,22 @@ import type { ThreadCreateRequest, ThreadUpdateRequest, PaginationResponse, Thre
  * @param deps optional dependency array
  */
 export function useThreads(
-  query: ThreadListQuery = {}, 
+  query: ThreadListQueryType = {}, 
   deps: any[] = []
 ) {
   const client = useProgressClient();
   const [threads, setThreads] = useState<any[] | null>(null);
-  const [pagination, setPagination] = useState<PaginationResponse | null>(null);
+  const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
-  const [currentQuery, setCurrentQuery] = useState<ThreadListQuery>(query);
+  const [currentQuery, setCurrentQuery] = useState<ThreadListQueryType>(query);
 
-  const fetchThreads = async (customQuery?: ThreadListQuery) => {
+  const fetchThreads = async (customQuery?: ThreadListQueryType) => {
     setLoading(true);
     setError(null);
     try {
       const queryToUse = customQuery || currentQuery;
-      const res: ThreadsListResponse = await client.listThreads(queryToUse);
+      const res: ThreadsListResponseType = await client.listThreads(queryToUse);
       setThreads(res.threads || []);
       setPagination(res.pagination || null);
       if (customQuery) {
@@ -47,16 +47,16 @@ export function useThreads(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const create = async (t: ThreadCreateRequest) => {
+  const create = async (t: ThreadCreateRequestType) => {
     const res = await client.createThread(t);
     await fetchThreads();
     return res;
   };
 
-  const update = async (threadKey: string, patch: ThreadUpdateRequest) => {
+  const update = async (threadKey: string, patch: ThreadUpdateRequestType) => {
     await client.updateThread(threadKey, patch);
     await fetchThreads();
-    const res: ThreadResponse = await client.getThread(threadKey);
+    const res: ThreadResponseType = await client.getThread(threadKey);
     return res.thread;
   };
 

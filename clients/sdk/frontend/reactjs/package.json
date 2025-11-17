@@ -17,7 +17,7 @@
     "react": "^16.8 || ^17 || ^18 || ^19"
   },
   "dependencies": {
-    "@progressdb/js": "^0.2.0"
+    "@progressdb/js": "^0.2.1"
   },
   "devDependencies": {
     "typescript": "^4.9.5",
