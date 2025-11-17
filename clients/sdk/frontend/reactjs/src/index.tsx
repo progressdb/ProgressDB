@@ -27,5 +27,18 @@ export type {
   MessageResponseType,
   KeyResponseType,
   SDKOptionsType,
-  ApiErrorResponseType
+  ApiErrorResponseType,
+  CreateThreadResponseType,
+  CreateMessageResponseType,
+  UpdateThreadResponseType,
+  UpdateMessageResponseType,
+  DeleteThreadResponseType,
+  DeleteMessageResponseType,
+  ApiResponseType,
+  ThreadApiResponseType,
+  MessageApiResponseType,
+  ThreadsListApiResponseType,
+  MessagesListApiResponseType,
+  HealthzResponseType,
+  ReadyzResponseType
 } from '@progressdb/js';
