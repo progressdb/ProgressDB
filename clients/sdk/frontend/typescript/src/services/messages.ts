@@ -37,36 +37,36 @@ export class MessagesService {
   }
 
   /**
-   * Retrieve a message by id within a thread.
+   * Retrieve a message by key within a thread.
    * @param threadKey thread key
-   * @param id message id
+   * @param messageKey message key
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  getThreadMessage(threadKey: string, id: string, userId?: string, userSignature?: string): Promise<MessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'GET', undefined, userId, userSignature) as Promise<MessageResponse>;
+  getThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<MessageResponse> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'GET', undefined, userId, userSignature) as Promise<MessageResponse>;
   }
 
   /**
    * Update a message within a thread.
    * @param threadKey thread key
-   * @param id message id
+   * @param messageKey message key
    * @param msg message payload
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  updateThreadMessage(threadKey: string, id: string, msg: MessageUpdateRequest, userId?: string, userSignature?: string): Promise<UpdateMessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'PUT', msg, userId, userSignature) as Promise<UpdateMessageResponse>;
+  updateThreadMessage(threadKey: string, messageKey: string, msg: MessageUpdateRequest, userId?: string, userSignature?: string): Promise<UpdateMessageResponse> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'PUT', msg, userId, userSignature) as Promise<UpdateMessageResponse>;
   }
 
   /**
    * Soft-delete a message within a thread.
    * @param threadKey thread key
-   * @param id message id
+   * @param messageKey message key
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  deleteThreadMessage(threadKey: string, id: string, userId?: string, userSignature?: string): Promise<DeleteMessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(id)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteMessageResponse>;
+  deleteThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<DeleteMessageResponse> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteMessageResponse>;
   }
 }

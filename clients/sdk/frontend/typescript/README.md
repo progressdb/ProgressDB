@@ -40,9 +40,9 @@ new ProgressDBClient(options: SDKOptions)
 ### Messages
 - `listThreadMessages(threadKey, query)` - List messages in thread
 - `createThreadMessage(threadKey, message)` - Create message
-- `getThreadMessage(threadKey, id)` - Get message
-- `updateThreadMessage(threadKey, id, message)` - Update message
-- `deleteThreadMessage(threadKey, id)` - Delete message
+- `getThreadMessage(threadKey, messageKey)` - Get message
+- `updateThreadMessage(threadKey, messageKey, message)` - Update message
+- `deleteThreadMessage(threadKey, messageKey)` - Delete message
 
 ### Threads
 - `createThread(thread)` - Create thread
