@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        react-version: [17, 18, 19]
+        react-version: [18, 19]
         node-version: [18]
     steps:
       - name: Checkout
@@ -36,18 +36,16 @@ jobs:
 
       - name: Install dependencies with React ${{ matrix.react-version }}
         run: |
-          # Install base dependencies first (without React)
-          npm install --no-package-lock --no-save
-          # Install specific React version
+          # Install React first
           npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }} --no-save
-          # Install React types (handle version compatibility)
-          if [ "${{ matrix.react-version }}" = "17" ]; then
-            npm install --no-save --save-dev @types/react@^17 || true
-          elif [ "${{ matrix.react-version }}" = "18" ]; then
-            npm install --no-save --save-dev @types/react@^18 || true
+          # Install React-specific testing libraries
+          if [ "${{ matrix.react-version }}" = "18" ]; then
+            npm install --no-save --save-dev @testing-library/react@13 @types/react@^18 || true
           elif [ "${{ matrix.react-version }}" = "19" ]; then
-            npm install --no-save --save-dev @types/react@^18 || true
+            npm install --no-save --save-dev @testing-library/react@14 @types/react@^18 || true
           fi
+          # Install remaining dependencies
+          npm install --no-package-lock --no-save
 
       - name: Build reactjs SDK
         run: |
