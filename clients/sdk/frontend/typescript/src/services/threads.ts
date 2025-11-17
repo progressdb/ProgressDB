@@ -1,4 +1,5 @@
 import { HTTPClient } from '../client/http';
+import { validatePaginationQuery } from '../utils/validation';
 import type { ThreadCreateRequestType, ThreadUpdateRequestType, ThreadResponseType, ThreadsListResponseType, CreateThreadResponseType, UpdateThreadResponseType, DeleteThreadResponseType, ThreadListQueryType } from '../types';
 
 export class ThreadsService {
@@ -25,6 +26,7 @@ export class ThreadsService {
    * @param userSignature optional signature
    */
   listThreads(query: ThreadListQueryType = {}, userId?: string, userSignature?: string): Promise<ThreadsListResponseType> {
+    validatePaginationQuery(query);
     const qs = new URLSearchParams();
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     if (query.before) qs.set('before', query.before);

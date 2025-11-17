@@ -1,4 +1,5 @@
 import { HTTPClient } from '../client/http';
+import { validatePaginationQuery } from '../utils/validation';
 import type { MessageCreateRequestType, MessageUpdateRequestType, MessageResponseType, MessagesListResponseType, CreateMessageResponseType, UpdateMessageResponseType, DeleteMessageResponseType, MessageListQueryType } from '../types';
 
 export class MessagesService {
@@ -16,6 +17,7 @@ export class MessagesService {
    * @param userSignature optional signature to attach as X-User-Signature
    */
   listThreadMessages(threadKey: string, query: MessageListQueryType = {}, userId?: string, userSignature?: string): Promise<MessagesListResponseType> {
+    validatePaginationQuery(query);
     const qs = new URLSearchParams();
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     if (query.before) qs.set('before', query.before);

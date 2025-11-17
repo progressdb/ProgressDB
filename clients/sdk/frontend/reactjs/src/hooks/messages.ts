@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
+import { validatePaginationQuery } from '../utils/validation';
 import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType, MessageType, ApiErrorResponseType } from '@progressdb/js';
 
 /**
@@ -35,6 +36,7 @@ export function useMessages(
     setError(null);
     try {
       const queryToUse = customQuery || currentQuery;
+      validatePaginationQuery(queryToUse);
       const res: MessagesListResponseType = await client.listThreadMessages(threadKey, queryToUse);
       setMessages(res.messages || []);
       setPagination(res.pagination || null);
@@ -74,15 +76,21 @@ export function useMessages(
   // before = older messages, after = newer messages
   const loadOlder = async () => {
     // Load older messages (scroll up)
-    if (pagination?.has_before && pagination.before_anchor) {
-      await fetchMessages({ ...currentQuery, before: pagination.before_anchor });
+    if (threadKey && pagination?.has_before && pagination.before_anchor) {
+      const query = { ...currentQuery, before: pagination.before_anchor as string };
+      const res = await client.listThreadMessages(threadKey, query);
+      setMessages([...res.messages, ...(messages || [])]); // PREPEND older messages
+      setPagination(res.pagination);
     }
   };
 
   const loadNewer = async () => {
     // Load newer messages (scroll down)
-    if (pagination?.has_after && pagination.after_anchor) {
-      await fetchMessages({ ...currentQuery, after: pagination.after_anchor });
+    if (threadKey && pagination?.has_after && pagination.after_anchor) {
+      const query = { ...currentQuery, after: pagination.after_anchor as string };
+      const res = await client.listThreadMessages(threadKey, query);
+      setMessages([...(messages || []), ...res.messages]); // APPEND newer messages
+      setPagination(res.pagination);
     }
   };
 

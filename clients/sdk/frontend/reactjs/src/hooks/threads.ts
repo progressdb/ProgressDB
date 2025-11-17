@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
+import { validatePaginationQuery } from '../utils/validation';
 import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType, ThreadType, ApiErrorResponseType } from '@progressdb/js';
 
 /**
@@ -32,6 +33,7 @@ export function useThreads(
     setError(null);
     try {
       const queryToUse = customQuery || currentQuery;
+      validatePaginationQuery(queryToUse);
       const res: ThreadsListResponseType = await client.listThreads(queryToUse);
       setThreads(res.threads || []);
       setPagination(res.pagination || null);
@@ -58,7 +60,7 @@ export function useThreads(
     
     // Optimistically add to threads list if we have existing data
     if (threads && pagination) {
-      // New thread should appear at the top (newest first)
+      // New thread should appear at the top (newest first) - PREPEND
       setThreads([threadRes.thread, ...threads]);
     } else {
       // Fallback to full refresh if no existing data
@@ -92,14 +94,18 @@ export function useThreads(
   const loadOlder = async () => {
     // Load older threads (scroll down)
     if (pagination?.has_after && pagination.after_anchor) {
-      await fetchThreads({ ...currentQuery, after: pagination.after_anchor });
+      const res = await client.listThreads({ ...currentQuery, after: pagination.after_anchor });
+      setThreads([...(threads || []), ...res.threads]); // APPEND older threads
+      setPagination(res.pagination);
     }
   };
 
   const loadNewer = async () => {
     // Load newer threads (scroll up)
     if (pagination?.has_before && pagination.before_anchor) {
-      await fetchThreads({ ...currentQuery, before: pagination.before_anchor });
+      const res = await client.listThreads({ ...currentQuery, before: pagination.before_anchor! });
+      setThreads([...res.threads, ...(threads || [])]); // PREPEND newer threads
+      setPagination(res.pagination);
     }
   };
 
