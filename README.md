@@ -174,10 +174,7 @@ Available
 - [x] Backend SDKs - node & python sdks published for v0.1.0
 - [x] Frontend SDKs - typescript & react sdks published for v0.1.0
 - [x] Reliability - (appWAL/buffering) are present & configurable
-
-Partial
-- [ ] Performance - performance on a simple setup is greate - but need testing for prod
-- [ ] Metrics - Metrics are present, but need cleanup for prod
+- [x] Performance - preliminary tests estimate 2vcpu nets 3k RPS. 
 
 Planned
 - [ ] Encryption - cloud-backed KMS ~ HSM integration from local only / dek rewrap feature
@@ -185,5 +182,6 @@ Planned
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery
 - [ ] Search - search API / indexed search experience
 - [ ] Scaling - vertical or horizontal scaling features
+- [ ] Metrics - Metrics are present, but need cleanup for prod
 
 [![test-db-service](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml)

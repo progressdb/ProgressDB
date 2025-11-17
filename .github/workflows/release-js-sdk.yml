@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'sdk-js-v*.*.*'
+      - 'sdk-js-v*.*.*-*'
 
 jobs:
   release-js:
