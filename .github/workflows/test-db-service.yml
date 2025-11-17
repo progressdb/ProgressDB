@@ -11,6 +11,7 @@ on:
     paths:
       - 'service/**'
       - 'kms/**'
+  workflow_dispatch:
 
 jobs:
   go-tests:
