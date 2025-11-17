@@ -1,9 +1,9 @@
 {
   "name": "@progressdb/react",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "React hooks and provider for ProgressDB frontend SDK",
-  "main": "dist/reactjs/src/index.js",
-  "types": "dist/reactjs/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": "./dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -17,7 +17,7 @@
     "react": "^16.8 || ^17 || ^18 || ^19"
   },
   "dependencies": {
-    "@progressdb/js": "^0.1.2"
+    "@progressdb/js": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "^4.9.5",
