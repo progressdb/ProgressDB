@@ -40,9 +40,9 @@ jobs:
           npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }} --no-save
           # Install React-specific testing libraries
           if [ "${{ matrix.react-version }}" = "18" ]; then
-            npm install --no-save --save-dev @testing-library/react@13 @types/react@^18 || true
+            npm install --no-save --save-dev @testing-library/react@13 || true
           elif [ "${{ matrix.react-version }}" = "19" ]; then
-            npm install --no-save --save-dev @testing-library/react@14 @types/react@^18 || true
+            npm install --no-save --save-dev @testing-library/react@14 || true
           fi
           # Install remaining dependencies
           npm install --no-package-lock --no-save
