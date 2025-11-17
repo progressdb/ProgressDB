@@ -20,14 +20,12 @@ export class ThreadsService {
 
   /**
    * List threads visible to the current user.
-   * @param query optional query parameters (title, slug, limit, before, after, anchor, sort_by)
+   * @param query optional query parameters (limit, before, after, anchor, sort_by)
    * @param userId optional user id
    * @param userSignature optional signature
    */
   listThreads(query: ThreadListQuery = {}, userId?: string, userSignature?: string): Promise<ThreadsListResponse> {
     const qs = new URLSearchParams();
-    if (query.title) qs.set('title', query.title);
-    if (query.slug) qs.set('slug', query.slug);
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     if (query.before) qs.set('before', query.before);
     if (query.after) qs.set('after', query.after);

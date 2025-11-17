@@ -1,8 +1,6 @@
 // Query parameter types for frontend operations
 
 export type ThreadListQuery = {
-  title?: string;
-  slug?: string;
   limit?: number;
   before?: string;
   after?: string;

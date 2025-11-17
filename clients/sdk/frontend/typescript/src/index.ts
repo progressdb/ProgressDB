@@ -139,7 +139,7 @@ export class ProgressDBClient {
 
   /**
    * List threads visible to the current user.
-   * @param query optional query parameters (title, slug, limit, before, after, anchor, sort_by)
+   * @param query optional query parameters (limit, before, after, anchor, sort_by)
    * @param userId optional user id
    * @param userSignature optional signature
    */

@@ -12,11 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/pebble"
 	"progressdb/pkg/config"
 	"progressdb/pkg/models"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/encryption"
+
+	"github.com/cockroachdb/pebble"
 )
 
 const (
@@ -186,7 +187,6 @@ func writeRecordsToStore(records *MigrationRecords, storeDB *pebble.DB) error {
 			Key:       thread.Key,
 			Title:     thread.Title,
 			Author:    thread.Author,
-			Slug:      thread.Slug,
 			CreatedTS: thread.CreatedTS,
 			UpdatedTS: thread.UpdatedTS,
 			Deleted:   thread.Deleted,
@@ -224,7 +224,6 @@ func writeRecordsToStore(records *MigrationRecords, storeDB *pebble.DB) error {
 			CreatedTS: message.CreatedTS,
 			UpdatedTS: message.UpdatedTS,
 			Body:      message.Body,
-			ReplyTo:   message.ReplyTo,
 			Deleted:   message.Deleted,
 		}
 

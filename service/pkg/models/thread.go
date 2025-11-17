@@ -4,7 +4,6 @@ type Thread struct {
 	Key       string   `json:"key"`
 	Title     string   `json:"title,omitempty"`
 	Author    string   `json:"author"`
-	Slug      string   `json:"slug,omitempty"`
 	CreatedTS int64    `json:"created_ts,omitempty"`
 	UpdatedTS int64    `json:"updated_ts,omitempty"`
 	Deleted   bool     `json:"deleted,omitempty"`

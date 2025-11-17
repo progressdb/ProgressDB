@@ -11,12 +11,10 @@ export type Thread = {
 
 export type ThreadCreateRequest = {
   title: string;
-  slug?: string;
 };
 
 export type ThreadUpdateRequest = {
   title?: string;
-  slug?: string;
 };
 
 export type ThreadResponse = {

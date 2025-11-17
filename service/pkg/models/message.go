@@ -10,6 +10,5 @@ type Message struct {
 	UpdatedTS int64 `json:"updated_ts,omitempty"`
 
 	Body    interface{} `json:"body,omitempty"`
-	ReplyTo string      `json:"reply_to,omitempty"`
 	Deleted bool        `json:"deleted,omitempty"`
 }

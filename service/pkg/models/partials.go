@@ -4,7 +4,6 @@ type ThreadUpdatePartial struct {
 	Key       string `json:"key"`
 	UpdatedTS int64  `json:"updated_ts"`
 	Title     string `json:"title"`
-	Slug      string `json:"slug"`
 }
 
 type MessageUpdatePartial struct {
