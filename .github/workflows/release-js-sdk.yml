@@ -31,7 +31,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/sdk-js-v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          npm version $VERSION --no-git-tag-version
+          npm version $VERSION --no-git-tag-version --force
 
       - name: Run tests/build
         run: |
