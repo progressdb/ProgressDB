@@ -1,5 +1,5 @@
 import { buildHeaders } from './auth';
-import type { SDKOptions } from '../types';
+import type { SDKOptions, ApiErrorResponse } from '../types';
 
 export class HTTPClient {
   baseUrl: string;
@@ -19,8 +19,8 @@ export class HTTPClient {
   /**
    * Build headers for a request using provided or default user credentials.
    */
-  private headers(userId?: string, userSignature?: string) {
-    return buildHeaders(this.apiKey, userId || this.defaultUserId, userSignature || this.defaultUserSignature);
+  private headers(userId?: string, userSignature?: string, hasBody: boolean = true) {
+    return buildHeaders(this.apiKey, userId || this.defaultUserId, userSignature || this.defaultUserSignature, hasBody);
   }
 
   /**
@@ -34,12 +34,24 @@ export class HTTPClient {
    */
   async request(path: string, method = 'GET', body?: any, userId?: string, userSignature?: string) {
     const url = this.baseUrl.replace(/\/$/, '') + path;
+    const hasBody = body !== undefined && method !== 'GET' && method !== 'DELETE';
     const res = await this.fetchImpl(url, {
       method,
-      headers: this.headers(userId, userSignature),
-      body: body ? JSON.stringify(body) : undefined
+      headers: this.headers(userId, userSignature, hasBody),
+      body: hasBody ? JSON.stringify(body) : undefined
     });
     if (res.status === 204) return null;
+    
+    // Handle error responses
+    if (!res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const errorData = await res.json() as ApiErrorResponse;
+        throw new Error(errorData.error?.message || errorData.error?.error || 'API request failed');
+      }
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) return res.json();
     return res.text();

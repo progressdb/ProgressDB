@@ -5,5 +5,3 @@ export type SDKOptions = {
   defaultUserSignature?: string;
   fetch?: typeof fetch;
 };
-
-export type ReactionInput = { id: string; reaction: string };

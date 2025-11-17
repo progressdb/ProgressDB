@@ -14,7 +14,7 @@ import { HTTPClient } from './client/http';
 import { HealthService } from './services/health';
 import { MessagesService } from './services/messages';
 import { ThreadsService } from './services/threads';
-import type { SDKOptions } from './types';
+import type { SDKOptions, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest, ThreadListQuery, MessageListQuery } from './types';
 
 /**
  * ProgressDBClient is the frontend (browser) SDK for ProgressDB.
@@ -77,7 +77,7 @@ export class ProgressDBClient {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  listThreadMessages(threadKey: string, query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: string } = {}, userId?: string, userSignature?: string) {
+  listThreadMessages(threadKey: string, query: MessageListQuery = {}, userId?: string, userSignature?: string) {
     return this.messagesService.listThreadMessages(threadKey, query, userId, userSignature);
   }
 
@@ -88,7 +88,7 @@ export class ProgressDBClient {
    * @param userId optional user id to send as X-User-ID
    * @param userSignature optional signature to send as X-User-Signature
    */
-  createThreadMessage(threadKey: string, msg: any, userId?: string, userSignature?: string) {
+  createThreadMessage(threadKey: string, msg: MessageCreateRequest, userId?: string, userSignature?: string) {
     return this.messagesService.createThreadMessage(threadKey, msg, userId, userSignature);
   }
 
@@ -111,7 +111,7 @@ export class ProgressDBClient {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  updateThreadMessage(threadKey: string, id: string, msg: any, userId?: string, userSignature?: string) {
+  updateThreadMessage(threadKey: string, id: string, msg: MessageUpdateRequest, userId?: string, userSignature?: string) {
     return this.messagesService.updateThreadMessage(threadKey, id, msg, userId, userSignature);
   }
 
@@ -133,39 +133,37 @@ export class ProgressDBClient {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  createThread(thread: any, userId?: string, userSignature?: string) {
+  createThread(thread: ThreadCreateRequest, userId?: string, userSignature?: string) {
     return this.threadsService.createThread(thread, userId, userSignature);
   }
 
   /**
    * List threads visible to the current user.
-   * @param query optional query parameters (title, slug, limit, before, after, anchor, sort_by, author)
+   * @param query optional query parameters (title, slug, limit, before, after, anchor, sort_by)
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  listThreads(query: any = {}, userId?: string, userSignature?: string) {
+  listThreads(query: ThreadListQuery = {}, userId?: string, userSignature?: string) {
     return this.threadsService.listThreads(query, userId, userSignature);
   }
 
   /**
    * Retrieve thread metadata by key.
    * @param threadKey thread key
-   * @param query optional query parameters (author)
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  getThread(threadKey: string, query: any = {}, userId?: string, userSignature?: string) {
+  getThread(threadKey: string, userId?: string, userSignature?: string) {
     return this.threadsService.getThread(threadKey, query, userId, userSignature);
   }
 
   /**
    * Soft-delete a thread by key.
    * @param threadKey thread key
-   * @param query optional query parameters (author)
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  deleteThread(threadKey: string, query: any = {}, userId?: string, userSignature?: string) {
+  deleteThread(threadKey: string, userId?: string, userSignature?: string) {
     return this.threadsService.deleteThread(threadKey, query, userId, userSignature);
   }
 
@@ -176,7 +174,7 @@ export class ProgressDBClient {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  updateThread(threadKey: string, thread: any, userId?: string, userSignature?: string) {
+  updateThread(threadKey: string, thread: ThreadUpdateRequest, userId?: string, userSignature?: string) {
     return this.threadsService.updateThread(threadKey, thread, userId, userSignature);
   }
 }

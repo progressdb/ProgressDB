@@ -5,10 +5,16 @@ export type { Message, MessageCreateRequest, MessageUpdateRequest, MessageRespon
 export type { Thread, ThreadCreateRequest, ThreadUpdateRequest, ThreadResponse, KMSMeta } from './thread';
 
 // Pagination types
-export type { PaginationRequest, PaginationResponse } from './pagination';
+export type { PaginationResponse } from './pagination';
+
+// Query types
+export type { ThreadListQuery, MessageListQuery } from './queries';
 
 // Response types
-export type { ThreadsListResponse, MessagesListResponse } from './responses';
+export type { ThreadsListResponse, MessagesListResponse, KeyResponse, CreateThreadResponse, CreateMessageResponse, UpdateThreadResponse, UpdateMessageResponse, DeleteThreadResponse, DeleteMessageResponse, ApiResponse, ThreadApiResponse, MessageApiResponse, ThreadsListApiResponse, MessagesListApiResponse, HealthzResponse, ReadyzResponse } from './responses';
+
+// Error types
+export type { ApiError, ValidationError, ApiErrorResponse } from './errors';
 
 // Common types
-export type { SDKOptions, ReactionInput } from './common';
+export type { SDKOptions } from './common';

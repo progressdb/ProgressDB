@@ -1,6 +1,6 @@
 export type Message = {
-  key?: string;
-  thread?: string;
+  key: string;
+  thread: string;
   author?: string;
   role?: string; // e.g. "user" | "system"; defaults to "user" when omitted
   created_ts?: number;
@@ -11,7 +11,6 @@ export type Message = {
 };
 
 export type MessageCreateRequest = {
-  id?: string;
   body: any;
   reply_to?: string;
 };

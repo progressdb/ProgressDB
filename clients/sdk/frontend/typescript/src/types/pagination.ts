@@ -1,11 +1,3 @@
-export type PaginationRequest = {
-  before?: string;   // Fetch items older than this reference ID
-  after?: string;    // Fetch items newer than this reference ID
-  anchor?: string;   // Fetch items around this anchor (takes precedence if set)
-  limit?: number;    // Max number to return
-  sort_by?: string;  // Sort by field: "created_ts" or "updated_ts"
-};
-
 export type PaginationResponse = {
   before_anchor: string; // Use this to get previous page (pass as 'after' parameter)
   after_anchor: string;  // Use this to get next page (pass as 'before' parameter)
