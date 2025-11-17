@@ -1,6 +1,6 @@
 {
   "name": "@progressdb/js",
-  "version": "0.2.0-alpha.0",
+  "version": "0.2.0-alpha",
   "description": "ProgressDB frontend TypeScript SDK (compile to JS for npm)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
