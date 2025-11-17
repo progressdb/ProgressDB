@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType } from '@progressdb/js';
+import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType, MessageType } from '@progressdb/js';
 
 /**
  * Hook: list messages for a given thread.
@@ -20,7 +20,7 @@ export function useMessages(
   deps: any[] = []
 ) {
   const client = useProgressClient();
-  const [messages, setMessages] = useState<any[] | null>(null);
+  const [messages, setMessages] = useState<MessageType[] | null>(null);
   const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
@@ -52,8 +52,18 @@ export function useMessages(
 
   const create = async (msg: MessageCreateRequestType) => {
     const created: KeyResponseType = await client.createThreadMessage(threadKey || '', msg);
-    // naive refresh
-    await fetchMessages();
+    
+    // Optimistically add to messages list if we have existing data
+    if (messages && pagination) {
+      // For messages, we need to fetch the created message since we only get the key
+      const newMsgRes = await client.getThreadMessage(threadKey || '', created.key);
+      // Messages are chronological [oldest → newest], so new message goes at end
+      setMessages([...messages, newMsgRes.message]);
+    } else {
+      // Fallback to full refresh if no existing data
+      await fetchMessages();
+    }
+    
     return created.key;
   };
 

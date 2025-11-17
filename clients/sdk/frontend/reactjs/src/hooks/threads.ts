@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType } from '@progressdb/js';
+import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType, ThreadType } from '@progressdb/js';
 
 /**
  * Hook: list threads.
@@ -18,7 +18,7 @@ export function useThreads(
   deps: any[] = []
 ) {
   const client = useProgressClient();
-  const [threads, setThreads] = useState<any[] | null>(null);
+  const [threads, setThreads] = useState<ThreadType[] | null>(null);
   const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
@@ -49,14 +49,33 @@ export function useThreads(
 
   const create = async (t: ThreadCreateRequestType) => {
     const res = await client.createThread(t);
-    await fetchThreads();
-    return res;
+    
+    // For thread creation, we need to fetch the full thread since we only get the key
+    const threadRes = await client.getThread(res.key);
+    
+    // Optimistically add to threads list if we have existing data
+    if (threads && pagination) {
+      // New thread should appear at the top (newest first)
+      setThreads([threadRes.thread, ...threads]);
+    } else {
+      // Fallback to full refresh if no existing data
+      await fetchThreads();
+    }
+    
+    return threadRes.thread;
   };
 
   const update = async (threadKey: string, patch: ThreadUpdateRequestType) => {
     await client.updateThread(threadKey, patch);
-    await fetchThreads();
     const res: ThreadResponseType = await client.getThread(threadKey);
+    
+    // Optimistically update threads list if we have existing data
+    if (threads) {
+      setThreads(threads.map(thread => 
+        thread.key === threadKey ? res.thread : thread
+      ));
+    }
+    
     return res.thread;
   };
 

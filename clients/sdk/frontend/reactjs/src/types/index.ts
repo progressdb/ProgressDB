@@ -9,5 +9,13 @@ export type {
   MessageCreateRequestType, 
   MessageUpdateRequestType,
   ThreadListQueryType,
-  MessageListQueryType
+  MessageListQueryType,
+  PaginationResponseType,
+  ThreadsListResponseType,
+  MessagesListResponseType,
+  ThreadResponseType,
+  MessageResponseType,
+  KeyResponseType,
+  SDKOptionsType,
+  ApiErrorResponseType
 } from '@progressdb/js';

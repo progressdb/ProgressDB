@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { MessageUpdateRequestType, MessageResponseType } from '@progressdb/js';
+import type { MessageUpdateRequestType, MessageResponseType, MessageType } from '@progressdb/js';
 
 /**
  * Hook: fetch/operate on a single message within a thread.
@@ -9,7 +9,7 @@ import type { MessageUpdateRequestType, MessageResponseType } from '@progressdb/
  */
 export function useMessage(threadKey?: string, key?: string) {
   const client = useProgressClient();
-  const [message, setMessage] = useState<any | null>(null);
+  const [message, setMessage] = useState<MessageType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
@@ -35,9 +35,8 @@ export function useMessage(threadKey?: string, key?: string) {
   const update = async (msg: MessageUpdateRequestType) => {
     if (!key || !threadKey) throw new Error('threadKey and key required');
     await client.updateThreadMessage(threadKey, key, msg);
-    // Refetch to get updated message
-    await fetchMessage();
     const res: MessageResponseType = await client.getThreadMessage(threadKey, key);
+    setMessage(res.message);
     return res.message;
   };
 
