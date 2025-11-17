@@ -94,7 +94,12 @@ export function useThreads(
   const loadOlder = async () => {
     // Load older threads (scroll down)
     if (pagination?.has_after && pagination.after_anchor) {
-      const res = await client.listThreads({ ...currentQuery, after: pagination.after_anchor });
+      const query = { 
+        limit: currentQuery.limit, 
+        sort_by: currentQuery.sort_by, 
+        after: pagination.after_anchor 
+      };
+      const res = await client.listThreads(query);
       setThreads([...(threads || []), ...res.threads]); // APPEND older threads
       setPagination(res.pagination);
     }
@@ -103,14 +108,24 @@ export function useThreads(
   const loadNewer = async () => {
     // Load newer threads (scroll up)
     if (pagination?.has_before && pagination.before_anchor) {
-      const res = await client.listThreads({ ...currentQuery, before: pagination.before_anchor! });
+      const query = { 
+        limit: currentQuery.limit, 
+        sort_by: currentQuery.sort_by, 
+        before: pagination.before_anchor 
+      };
+      const res = await client.listThreads(query);
       setThreads([...res.threads, ...(threads || [])]); // PREPEND newer threads
       setPagination(res.pagination);
     }
   };
 
   const goToAnchor = async (anchor: string) => {
-    await fetchThreads({ ...currentQuery, anchor });
+    const query = { 
+      limit: currentQuery.limit, 
+      sort_by: currentQuery.sort_by, 
+      anchor 
+    };
+    await fetchThreads(query);
   };
 
   const reset = async () => {

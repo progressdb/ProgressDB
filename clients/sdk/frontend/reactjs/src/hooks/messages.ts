@@ -77,7 +77,11 @@ export function useMessages(
   const loadOlder = async () => {
     // Load older messages (scroll up)
     if (threadKey && pagination?.has_before && pagination.before_anchor) {
-      const query = { ...currentQuery, before: pagination.before_anchor as string };
+      const query = { 
+        limit: currentQuery.limit, 
+        sort_by: currentQuery.sort_by, 
+        before: pagination.before_anchor 
+      };
       const res = await client.listThreadMessages(threadKey, query);
       setMessages([...res.messages, ...(messages || [])]); // PREPEND older messages
       setPagination(res.pagination);
@@ -87,7 +91,11 @@ export function useMessages(
   const loadNewer = async () => {
     // Load newer messages (scroll down)
     if (threadKey && pagination?.has_after && pagination.after_anchor) {
-      const query = { ...currentQuery, after: pagination.after_anchor as string };
+      const query = { 
+        limit: currentQuery.limit, 
+        sort_by: currentQuery.sort_by, 
+        after: pagination.after_anchor 
+      };
       const res = await client.listThreadMessages(threadKey, query);
       setMessages([...(messages || []), ...res.messages]); // APPEND newer messages
       setPagination(res.pagination);
@@ -95,7 +103,12 @@ export function useMessages(
   };
 
   const goToAnchor = async (anchor: string) => {
-    await fetchMessages({ ...currentQuery, anchor });
+    const query = { 
+      limit: currentQuery.limit, 
+      sort_by: currentQuery.sort_by, 
+      anchor 
+    };
+    await fetchMessages(query);
   };
 
   const reset = async () => {
