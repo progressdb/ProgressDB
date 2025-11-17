@@ -314,7 +314,7 @@ func ResolveAuthorFromRequestFast(ctx *fasthttp.RequestCtx, bodyAuthor string) (
 	}
 
 	// no signature; allow backend to supply author via body/header/query
-	role := utils.GetRole(ctx)
+	role := utils.GetApiRole(ctx)
 	if role == "backend" {
 		if bodyAuthor != "" {
 			if err := validateAuthor(bodyAuthor); err != nil {

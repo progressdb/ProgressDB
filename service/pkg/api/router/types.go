@@ -2,17 +2,17 @@ package router
 
 // RequestMetadata represents common metadata extracted from HTTP requests
 type RequestMetadata struct {
-	Role   string `json:"role"`
-	UserID string `json:"user_id"`
-	ReqID  string `json:"reqid"`
-	Remote string `json:"remote"`
+	ApiRole string `json:"api_role"`
+	UserID  string `json:"user_id"`
+	ReqID   string `json:"reqid"`
+	ReqIP   string `json:"req_ip"`
 }
 
 type QueueExtras struct {
-	Role   string `json:"role,omitempty"`
-	UserID string `json:"user_id"` // not omitempty, must not be empty
-	ReqID  string `json:"reqid"`   // not omitempty, must not be empty
-	Remote string `json:"remote,omitempty"`
+	ApiRole string `json:"api_role,omitempty"`
+	UserID  string `json:"user_id"` // not omitempty, must not be empty
+	ReqID   string `json:"reqid"`   // not omitempty, must not be empty
+	ReqIP   string `json:"req_ip,omitempty"`
 }
 
 type EnqueueRequest struct {

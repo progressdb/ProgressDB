@@ -23,7 +23,7 @@ func ExtractAPIKey(ctx *fasthttp.RequestCtx) string {
 }
 
 // Returns the value of the X-Role-Name header, lowercased
-func GetRole(ctx *fasthttp.RequestCtx) string {
+func GetApiRole(ctx *fasthttp.RequestCtx) string {
 	return GetHeaderLower(ctx, "X-Role-Name")
 }
 
@@ -39,17 +39,17 @@ func GetUserSignature(ctx *fasthttp.RequestCtx) string {
 
 // Checks if the role in the request is "backend"
 func IsBackendRole(ctx *fasthttp.RequestCtx) bool {
-	return GetRole(ctx) == "backend"
+	return GetApiRole(ctx) == "backend"
 }
 
 // Checks if the role in the request is "frontend"
 func IsFrontendRole(ctx *fasthttp.RequestCtx) bool {
-	return GetRole(ctx) == "frontend"
+	return GetApiRole(ctx) == "frontend"
 }
 
 // Checks if the role in the request is "admin"
 func IsAdminRole(ctx *fasthttp.RequestCtx) bool {
-	return GetRole(ctx) == "admin"
+	return GetApiRole(ctx) == "admin"
 }
 
 // Checks if the user signature exists in the request

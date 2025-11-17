@@ -68,20 +68,20 @@ func PathParam(ctx *fasthttp.RequestCtx, param string) string {
 // NewRequestMetadata extracts metadata from the request context
 func NewRequestMetadata(ctx *fasthttp.RequestCtx, author string) *RequestMetadata {
 	return &RequestMetadata{
-		Role:   utils.GetRole(ctx),
-		UserID: author,
-		ReqID:  utils.GetHeader(ctx, "X-Request-Id"),
-		Remote: ctx.RemoteAddr().String(),
+		ApiRole: utils.GetApiRole(ctx),
+		UserID:  author,
+		ReqID:   utils.GetHeader(ctx, "X-Request-Id"),
+		ReqIP:   ctx.RemoteAddr().String(),
 	}
 }
 
 // ToQueueExtras converts RequestMetadata to strongly-typed QueueExtras
 func (rm *RequestMetadata) ToQueueExtras() QueueExtras {
 	return QueueExtras{
-		Role:   rm.Role,
-		UserID: rm.UserID,
-		ReqID:  rm.ReqID,
-		Remote: rm.Remote,
+		ApiRole: rm.ApiRole,
+		UserID:  rm.UserID,
+		ReqID:   rm.ReqID,
+		ReqIP:   rm.ReqIP,
 	}
 }
 

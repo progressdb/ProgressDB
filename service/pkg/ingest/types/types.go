@@ -17,10 +17,10 @@ const (
 )
 
 type RequestMetadata struct {
-	Role   string `json:"role"`
-	UserID string `json:"user_id"`
-	ReqID  string `json:"reqid"`
-	Remote string `json:"remote"`
+	ApiRole string `json:"api_role"`
+	UserID  string `json:"user_id"`
+	ReqID   string `json:"reqid"`
+	ReqIP   string `json:"req_ip"`
 }
 
 type QueueOp struct {

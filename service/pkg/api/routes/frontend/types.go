@@ -6,10 +6,10 @@ import (
 )
 
 type QueueExtras struct {
-	Role   string `json:"role,omitempty"`
-	UserID string `json:"user_id"`
-	ReqID  string `json:"reqid"`
-	Remote string `json:"remote,omitempty"`
+	ApiRole string `json:"api_role,omitempty"`
+	UserID  string `json:"user_id"`
+	ReqID   string `json:"reqid"`
+	Remote  string `json:"remote,omitempty"`
 }
 
 type EnqueueRequest struct {

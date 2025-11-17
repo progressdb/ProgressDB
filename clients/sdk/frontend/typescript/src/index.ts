@@ -154,7 +154,7 @@ export class ProgressDBClient {
    * @param userSignature optional signature
    */
   getThread(threadKey: string, userId?: string, userSignature?: string) {
-    return this.threadsService.getThread(threadKey, query, userId, userSignature);
+    return this.threadsService.getThread(threadKey, userId, userSignature);
   }
 
   /**
@@ -164,13 +164,13 @@ export class ProgressDBClient {
    * @param userSignature optional signature
    */
   deleteThread(threadKey: string, userId?: string, userSignature?: string) {
-    return this.threadsService.deleteThread(threadKey, query, userId, userSignature);
+    return this.threadsService.deleteThread(threadKey, userId, userSignature);
   }
 
   /**
    * Update thread metadata.
    * @param threadKey thread key
-   * @param thread partial thread payload (title, slug)
+   * @param thread partial thread payload (title)
    * @param userId optional user id
    * @param userSignature optional signature
    */

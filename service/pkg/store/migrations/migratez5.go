@@ -80,7 +80,6 @@ type ThreadRecord struct {
 	Key       string `json:"key"`
 	Title     string `json:"title"`
 	Author    string `json:"author"`
-	Slug      string `json:"slug,omitempty"`
 	CreatedTS int64  `json:"created_ts"`
 	UpdatedTS int64  `json:"updated_ts"`
 	Deleted   bool   `json:"deleted,omitempty"`
@@ -90,11 +89,9 @@ type MessageRecord struct {
 	Key       string      `json:"key"`
 	Thread    string      `json:"thread"`
 	Author    string      `json:"author"`
-	Role      string      `json:"role"`
 	CreatedTS int64       `json:"created_ts"`
 	UpdatedTS int64       `json:"updated_ts"`
 	Body      interface{} `json:"body"`
-	ReplyTo   string      `json:"reply_to,omitempty"`
 	Deleted   bool        `json:"deleted,omitempty"`
 }
 
@@ -484,7 +481,6 @@ func convertToRecordsWithMappings(threadDataMap map[int64]*ThreadData, keyMappin
 			Key:       threadKey,
 			Title:     threadData.Thread.Title,
 			Author:    threadData.Thread.Author,
-			Slug:      threadData.Thread.Slug,
 			CreatedTS: threadData.Thread.CreatedTS,
 			UpdatedTS: threadData.Thread.UpdatedTS,
 			Deleted:   false,
@@ -503,11 +499,9 @@ func convertToRecordsWithMappings(threadDataMap map[int64]*ThreadData, keyMappin
 				Key:       newKey,
 				Thread:    threadKey,
 				Author:    oldMessage.Author,
-				Role:      oldMessage.Role,
 				CreatedTS: oldMessage.TS,
 				UpdatedTS: oldMessage.TS,
 				Body:      oldMessage.Body,
-				ReplyTo:   oldMessage.ReplyTo,
 				Deleted:   oldMessage.Deleted,
 			}
 			records.Messages = append(records.Messages, messageRecord)

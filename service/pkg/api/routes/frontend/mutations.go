@@ -76,10 +76,10 @@ func EnqueueCreateThread(ctx *fasthttp.RequestCtx) {
 		Payload: &th,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -159,10 +159,10 @@ func EnqueueUpdateThread(ctx *fasthttp.RequestCtx) {
 		Payload: &update,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -225,10 +225,10 @@ func EnqueueDeleteThread(ctx *fasthttp.RequestCtx) {
 		Payload: &del,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -300,10 +300,10 @@ func EnqueueCreateMessage(ctx *fasthttp.RequestCtx) {
 		Payload: &m,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -393,10 +393,10 @@ func EnqueueUpdateMessage(ctx *fasthttp.RequestCtx) {
 		Payload: &update,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
@@ -474,10 +474,10 @@ func EnqueueDeleteMessage(ctx *fasthttp.RequestCtx) {
 		Payload: &del,
 		TS:      reqtime,
 		Extras: types.RequestMetadata{
-			Role:   metadata.Role,
-			UserID: metadata.UserID,
-			ReqID:  metadata.ReqID,
-			Remote: metadata.Remote,
+			ApiRole: metadata.ApiRole,
+			UserID:  metadata.UserID,
+			ReqID:   metadata.ReqID,
+			ReqIP:   metadata.ReqIP,
 		},
 	}); err != nil {
 		handleQueueError(ctx, err)
