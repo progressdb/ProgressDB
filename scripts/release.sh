@@ -1,62 +1,33 @@
 #!/usr/bin/env bash
-if [ -z "${BASH_VERSION:-}" ]; then
-  if [ "$0" = "sh" ] && [ "$#" -ge 1 ]; then
-    shift
-    exec bash "$@"
-  else
-    exec bash "$0" "$@"
-  fi
-fi
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-usage() {
-  echo "Usage: $0 <version>" >&2
-  echo "  version    Version string (e.g., 0.2.0-alpha, v0.2.0-alpha)" >&2
-  exit 1
-}
+printf "Component (db-service, js-sdk, node-sdk, py-sdk, react-sdk): "
+read -r COMPONENT
 
-if [ $# -eq 0 ]; then
-  echo -n "Enter version (e.g., 0.2.0-alpha): "
-  read -r VERSION
-  if [ -z "$VERSION" ]; then
-    echo "Error: Version is required" >&2
-    exit 1
-  fi
-else
-  VERSION="$1"
-fi
+printf "Version: "
+read -r VERSION
 
-if [[ ! "$VERSION" =~ ^service-v ]]; then
-  if [[ "$VERSION" =~ ^v ]]; then
-    TAG_NAME="service-${VERSION}"
-  else
-    TAG_NAME="service-v${VERSION}"
-  fi
-else
-  TAG_NAME="$VERSION"
-fi
+CLEAN_VERSION="${VERSION#v}"
 
-CLEAN_VERSION="${TAG_NAME#service-v}"
+case "$COMPONENT" in
+  db-service) TAG_NAME="service-v${CLEAN_VERSION}" ;;
+  js-sdk) TAG_NAME="sdk-js-v${CLEAN_VERSION}" ;;
+  node-sdk) TAG_NAME="sdk-node-v${CLEAN_VERSION}" ;;
+  py-sdk) TAG_NAME="sdk-py-v${CLEAN_VERSION}" ;;
+  react-sdk) TAG_NAME="sdk-react-v${CLEAN_VERSION}" ;;
+  *) echo "Invalid component" >&2; exit 1 ;;
+esac
 
 echo "Creating release tag: $TAG_NAME"
 
-if ! git diff-index --quiet HEAD --; then
-  echo "Error: Working directory has uncommitted changes" >&2
-  exit 1
-fi
-
-if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-  git tag -d "$TAG_NAME"
-fi
-
-if git ls-remote --tags origin "$TAG_NAME" | grep -q "$TAG_NAME"; then
-  git push origin ":refs/tags/$TAG_NAME"
-fi
+git diff-index --quiet HEAD -- || { echo "Uncommitted changes" >&2; exit 1; }
+git rev-parse "$TAG_NAME" >/dev/null 2>&1 && git tag -d "$TAG_NAME"
+git ls-remote --tags origin "$TAG_NAME" | grep -q "$TAG_NAME" && git push origin ":refs/tags/$TAG_NAME"
 
 git tag -a "$TAG_NAME" -m "ProgressDB $CLEAN_VERSION"
 git push origin "$TAG_NAME"
 
-echo "✅ Release triggered for $TAG_NAME"
+echo "Release triggered for $TAG_NAME"
