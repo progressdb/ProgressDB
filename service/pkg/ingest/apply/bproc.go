@@ -10,7 +10,6 @@ import (
 	"progressdb/pkg/state"
 	"progressdb/pkg/state/logger"
 	"progressdb/pkg/store/keys"
-	"progressdb/pkg/store/slug"
 )
 
 func BProcOperation(entry types.BatchEntry, batchProcessor *BatchProcessor) error {
@@ -62,11 +61,6 @@ func BProcThreadCreate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 		return fmt.Errorf("invalid thread key format: %s - expected t:<threadKey>", threadKey)
 	}
 	thread.Key = threadKey
-
-	// Generate slug if not provided
-	if thread.Slug == "" {
-		thread.Slug = slug.GenerateSlug(thread.Title, threadKey)
-	}
 
 	// store
 	if err := batchProcessor.Data.SetThreadData(threadKey, thread); err != nil {
@@ -187,16 +181,6 @@ func BProcThreadUpdate(entry types.BatchEntry, batchProcessor *BatchProcessor) e
 	}
 
 	// apply updates
-	if update.Title != "" {
-		thread.Title = update.Title
-		// Generate slug if title changed and slug is empty
-		if thread.Slug == "" {
-			thread.Slug = slug.GenerateSlug(thread.Title, threadKey)
-		}
-	}
-	if update.Slug != "" {
-		thread.Slug = update.Slug
-	}
 	if update.UpdatedTS != 0 {
 		thread.UpdatedTS = update.UpdatedTS
 	}

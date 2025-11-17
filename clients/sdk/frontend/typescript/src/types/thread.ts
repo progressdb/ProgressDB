@@ -1,7 +1,6 @@
 export type Thread = {
   key: string;
   title?: string;
-  slug?: string;
   created_ts?: number;
   updated_ts?: number;
   author?: string;

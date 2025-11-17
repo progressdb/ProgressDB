@@ -220,7 +220,6 @@ func writeRecordsToStore(records *MigrationRecords, storeDB *pebble.DB) error {
 			Key:       message.Key,
 			Thread:    message.Thread,
 			Author:    message.Author,
-			Role:      message.Role,
 			CreatedTS: message.CreatedTS,
 			UpdatedTS: message.UpdatedTS,
 			Body:      message.Body,

@@ -57,7 +57,7 @@ export class ThreadsService {
   /**
    * Update thread metadata.
    * @param threadKey thread key
-   * @param thread partial thread payload (title, slug)
+   * @param thread partial thread payload (title)
    * @param userId optional user id
    * @param userSignature optional signature
    */
