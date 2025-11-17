@@ -27,6 +27,12 @@ jobs:
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
+      - name: Extract version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/sdk-js-v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          npm version $VERSION --no-git-tag-version
+
       - name: Run tests/build
         run: |
           npm run build || true
