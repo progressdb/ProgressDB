@@ -3,7 +3,7 @@ export type ThreadType = {
   title?: string;
   created_ts?: number;
   updated_ts?: number;
-  author?: string;
+  author: string;
   deleted?: boolean;
   kms?: KMSMetaType;
 };
@@ -16,9 +16,7 @@ export type ThreadUpdateRequestType = {
   title?: string;
 };
 
-export type ThreadResponseType = {
-  thread: ThreadType;
-};
+
 
 export type KMSMetaType = {
   key_id?: string;

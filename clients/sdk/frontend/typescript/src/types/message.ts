@@ -1,7 +1,7 @@
 export type MessageType = {
   key: string;
   thread: string;
-  author?: string;
+  author: string;
   created_ts?: number;
   updated_ts?: number;
   body?: any;
@@ -16,6 +16,3 @@ export type MessageUpdateRequestType = {
   body: any;
 };
 
-export type MessageResponseType = {
-  message: MessageType;
-};

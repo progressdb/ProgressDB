@@ -47,7 +47,7 @@ export class HTTPClient {
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const errorData = await res.json() as ApiErrorResponseType;
-        throw new Error(errorData.error?.message || errorData.error?.error || 'API request failed');
+        throw new Error(errorData.error || 'API request failed');
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }

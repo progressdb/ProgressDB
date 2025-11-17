@@ -23,15 +23,23 @@ export type MessageApiResponseType = ApiResponseType<MessageType>;
 export type ThreadsListApiResponseType = ApiResponseType<ThreadType[]>;
 export type MessagesListApiResponseType = ApiResponseType<MessageType[]>;
 
+export type ThreadResponseType = {
+  thread: ThreadType;
+};
+
+export type MessageResponseType = {
+  message: MessageType;
+};
+
 export type ThreadsListResponseType = {
   threads: ThreadType[];
-  pagination?: PaginationResponseType;
+  pagination: PaginationResponseType;
 };
 
 export type MessagesListResponseType = {
-  thread?: string;
+  thread: string;
   messages: MessageType[];
-  pagination?: PaginationResponseType;
+  pagination: PaginationResponseType;
 };
 
 // Health check response types
