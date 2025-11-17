@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: 'clients/sdk/frontend/typescript/package-lock.json'
       - name: Install & Test
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
