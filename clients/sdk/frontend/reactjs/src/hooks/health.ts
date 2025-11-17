@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
+import type { HealthzResponseType, ReadyzResponseType, ApiErrorResponseType } from '@progressdb/js';
 
 /**
  * Hook: basic health check.
  */
 export function useHealthz() {
   const client = useProgressClient();
-  const [data, setData] = useState<{ status: string } | null>(null);
+  const [data, setData] = useState<HealthzResponseType | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<ApiErrorResponseType | null>(null);
 
   const fetch = async () => {
     setLoading(true);
@@ -17,7 +18,7 @@ export function useHealthz() {
       const result = await client.healthz();
       setData(result);
     } catch (err) {
-      setError(err);
+      setError(err as ApiErrorResponseType);
     } finally {
       setLoading(false);
     }
@@ -35,9 +36,9 @@ export function useHealthz() {
  */
 export function useReadyz() {
   const client = useProgressClient();
-  const [data, setData] = useState<{ status: string; version?: string } | null>(null);
+  const [data, setData] = useState<ReadyzResponseType | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<ApiErrorResponseType | null>(null);
 
   const fetch = async () => {
     setLoading(true);
@@ -46,7 +47,7 @@ export function useReadyz() {
       const result = await client.readyz();
       setData(result);
     } catch (err) {
-      setError(err);
+      setError(err as ApiErrorResponseType);
     } finally {
       setLoading(false);
     }

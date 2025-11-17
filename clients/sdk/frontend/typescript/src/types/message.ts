@@ -9,10 +9,10 @@ export type MessageType = {
 };
 
 export type MessageCreateRequestType = {
-  body: any;
+  body: any; // Any JSON serializable data (object, string, number, etc.)
 };
 
 export type MessageUpdateRequestType = {
-  body: any;
+  body: any; // Any JSON serializable data (object, string, number, etc.)
 };
 

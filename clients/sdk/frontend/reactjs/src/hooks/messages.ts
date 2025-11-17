@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType, MessageType } from '@progressdb/js';
+import type { MessageCreateRequestType, MessageUpdateRequestType, PaginationResponseType, MessagesListResponseType, KeyResponseType, MessageListQueryType, MessageType, ApiErrorResponseType } from '@progressdb/js';
 
 /**
  * Hook: list messages for a given thread.
  * Messages are returned in chronological order: [oldest → newest]
  * 
  * Pagination semantics for messages:
- * - before: load older messages (scroll up) → append to array
+ * - before: load older messages (scroll up) → prepend to array
  * - after: load newer messages (scroll down) → append to array
+ * - anchor: jump to specific position in message list
+ * - limit: number of messages to return (1-100)
+ * - sort_by: sort messages by 'created_ts' or 'updated_ts'
  * 
  * @param threadKey thread key to list messages for
  * @param query optional pagination query parameters (limit, before, after, anchor, sort_by)
@@ -23,7 +26,7 @@ export function useMessages(
   const [messages, setMessages] = useState<MessageType[] | null>(null);
   const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<ApiErrorResponseType | null>(null);
   const [currentQuery, setCurrentQuery] = useState<MessageListQueryType>(query);
 
   const fetchMessages = async (customQuery?: MessageListQueryType) => {
@@ -39,7 +42,7 @@ export function useMessages(
         setCurrentQuery(customQuery);
       }
     } catch (err) {
-      setError(err);
+      setError(err as ApiErrorResponseType);
     } finally {
       setLoading(false);
     }

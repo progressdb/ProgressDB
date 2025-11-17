@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType, ThreadType } from '@progressdb/js';
+import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationResponseType, ThreadsListResponseType, ThreadResponseType, ThreadListQueryType, ThreadType, ApiErrorResponseType } from '@progressdb/js';
 
 /**
  * Hook: list threads.
@@ -9,6 +9,9 @@ import type { ThreadCreateRequestType, ThreadUpdateRequestType, PaginationRespon
  * Pagination semantics for threads:
  * - before: load newer threads (scroll up) → prepend to array
  * - after: load older threads (scroll down) → append to array
+ * - anchor: jump to specific position in thread list
+ * - limit: number of threads to return (1-100)
+ * - sort_by: sort threads by 'created_ts' or 'updated_ts'
  * 
  * @param query optional query parameters
  * @param deps optional dependency array
@@ -21,7 +24,7 @@ export function useThreads(
   const [threads, setThreads] = useState<ThreadType[] | null>(null);
   const [pagination, setPagination] = useState<PaginationResponseType | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<ApiErrorResponseType | null>(null);
   const [currentQuery, setCurrentQuery] = useState<ThreadListQueryType>(query);
 
   const fetchThreads = async (customQuery?: ThreadListQueryType) => {
@@ -36,7 +39,7 @@ export function useThreads(
         setCurrentQuery(customQuery);
       }
     } catch (err) {
-      setError(err);
+      setError(err as ApiErrorResponseType);
     } finally {
       setLoading(false);
     }
