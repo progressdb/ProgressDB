@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - 'clients/sdk/frontend/reactjs/**'
+  workflow_dispatch:
 
 jobs:
   react-compat:
@@ -31,20 +32,22 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-          cache-dependency-path: clients/sdk/frontend/reactjs/package-lock.json
+          cache-dependency-path: clients/sdk/frontend/reactjs/package.json
 
-      - name: Install reactjs package deps
+      - name: Install dependencies with React ${{ matrix.react-version }}
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-package-lock
-          fi
-
-      - name: Install React ${{ matrix.react-version }} in reactjs package
-        run: |
+          # Install base dependencies first (without React)
+          npm install --no-package-lock --no-save
+          # Install specific React version
           npm install react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }} --no-save
-          npm install --no-save --save-dev @types/react@^18 || true
+          # Install React types (handle version compatibility)
+          if [ "${{ matrix.react-version }}" = "17" ]; then
+            npm install --no-save --save-dev @types/react@^17 || true
+          elif [ "${{ matrix.react-version }}" = "18" ]; then
+            npm install --no-save --save-dev @types/react@^18 || true
+          elif [ "${{ matrix.react-version }}" = "19" ]; then
+            npm install --no-save --save-dev @types/react@^18 || true
+          fi
 
       - name: Build reactjs SDK
         run: |
