@@ -14,7 +14,7 @@ import { HTTPClient } from './client/http';
 import { HealthService } from './services/health';
 import { MessagesService } from './services/messages';
 import { ThreadsService } from './services/threads';
-import type { SDKOptions, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest, ThreadListQuery, MessageListQuery } from './types';
+import type { SDKOptionsType, ThreadCreateRequestType, ThreadUpdateRequestType, MessageCreateRequestType, MessageUpdateRequestType, ThreadListQueryType, MessageListQueryType } from './types';
 
 /**
  * ProgressDBClient is the frontend (browser) SDK for ProgressDB.
@@ -38,7 +38,7 @@ export class ProgressDBClient {
    * Create a new ProgressDBClient.
    * @param opts SDK options (baseUrl, apiKey, defaultUserId, defaultUserSignature, fetch)
    */
-  constructor(opts: SDKOptions = {}) {
+  constructor(opts: SDKOptionsType = {}) {
     this.httpClient = new HTTPClient(opts);
     this.healthService = new HealthService(this.httpClient);
     this.messagesService = new MessagesService(this.httpClient);
@@ -77,7 +77,7 @@ export class ProgressDBClient {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  listThreadMessages(threadKey: string, query: MessageListQuery = {}, userId?: string, userSignature?: string) {
+   listThreadMessages(threadKey: string, query: MessageListQueryType = {}, userId?: string, userSignature?: string) {
     return this.messagesService.listThreadMessages(threadKey, query, userId, userSignature);
   }
 
@@ -88,7 +88,7 @@ export class ProgressDBClient {
    * @param userId optional user id to send as X-User-ID
    * @param userSignature optional signature to send as X-User-Signature
    */
-  createThreadMessage(threadKey: string, msg: MessageCreateRequest, userId?: string, userSignature?: string) {
+   createThreadMessage(threadKey: string, msg: MessageCreateRequestType, userId?: string, userSignature?: string) {
     return this.messagesService.createThreadMessage(threadKey, msg, userId, userSignature);
   }
 
@@ -111,7 +111,7 @@ export class ProgressDBClient {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  updateThreadMessage(threadKey: string, id: string, msg: MessageUpdateRequest, userId?: string, userSignature?: string) {
+   updateThreadMessage(threadKey: string, id: string, msg: MessageUpdateRequestType, userId?: string, userSignature?: string) {
     return this.messagesService.updateThreadMessage(threadKey, id, msg, userId, userSignature);
   }
 
@@ -133,7 +133,7 @@ export class ProgressDBClient {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  createThread(thread: ThreadCreateRequest, userId?: string, userSignature?: string) {
+   createThread(thread: ThreadCreateRequestType, userId?: string, userSignature?: string) {
     return this.threadsService.createThread(thread, userId, userSignature);
   }
 
@@ -143,7 +143,7 @@ export class ProgressDBClient {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  listThreads(query: ThreadListQuery = {}, userId?: string, userSignature?: string) {
+   listThreads(query: ThreadListQueryType = {}, userId?: string, userSignature?: string) {
     return this.threadsService.listThreads(query, userId, userSignature);
   }
 
@@ -174,11 +174,11 @@ export class ProgressDBClient {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  updateThread(threadKey: string, thread: ThreadUpdateRequest, userId?: string, userSignature?: string) {
+   updateThread(threadKey: string, thread: ThreadUpdateRequestType, userId?: string, userSignature?: string) {
     return this.threadsService.updateThread(threadKey, thread, userId, userSignature);
   }
 }
 
 // Re-export for backward compatibility
-export { ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest } from './types';
+export { ThreadCreateRequestType, ThreadUpdateRequestType, MessageCreateRequestType, MessageUpdateRequestType } from './types';
 export default ProgressDBClient;

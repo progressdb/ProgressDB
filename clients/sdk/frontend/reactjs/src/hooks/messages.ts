@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { MessageCreateRequest, MessageUpdateRequest, PaginationResponse, MessagesListResponse, KeyResponse } from '@progressdb/js';
+import type { MessageCreateRequest, MessageUpdateRequest, PaginationResponse, MessagesListResponse, KeyResponse, MessageListQuery } from '@progressdb/js';
 
 /**
  * Hook: list messages for a given thread.
@@ -16,7 +16,7 @@ import type { MessageCreateRequest, MessageUpdateRequest, PaginationResponse, Me
  */
 export function useMessages(
   threadKey?: string, 
-  query: { limit?: number; before?: string; after?: string; anchor?: string; sort_by?: 'created_ts' | 'updated_ts' } = {}, 
+  query: MessageListQuery = {}, 
   deps: any[] = []
 ) {
   const client = useProgressClient();
@@ -24,9 +24,9 @@ export function useMessages(
   const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
-  const [currentQuery, setCurrentQuery] = useState(query);
+  const [currentQuery, setCurrentQuery] = useState<MessageListQuery>(query);
 
-  const fetchMessages = async (customQuery?: typeof query) => {
+  const fetchMessages = async (customQuery?: MessageListQuery) => {
     if (!threadKey) return;
     setLoading(true);
     setError(null);
@@ -59,15 +59,15 @@ export function useMessages(
 
   // Navigation helpers for Messages (MI): [oldest → newest] chronological
   // before = older messages, after = newer messages
-  const nextPage = async () => {
-    // Next page = older messages (scroll up)
+  const loadOlder = async () => {
+    // Load older messages (scroll up)
     if (pagination?.has_before && pagination.before_anchor) {
       await fetchMessages({ ...currentQuery, before: pagination.before_anchor });
     }
   };
 
-  const prevPage = async () => {
-    // Previous page = newer messages (scroll down)
+  const loadNewer = async () => {
+    // Load newer messages (scroll down)
     if (pagination?.has_after && pagination.after_anchor) {
       await fetchMessages({ ...currentQuery, after: pagination.after_anchor });
     }
@@ -77,22 +77,9 @@ export function useMessages(
     await fetchMessages({ ...currentQuery, anchor });
   };
 
-  const loadMore = async () => {
-    // Load more = older messages (infinite scroll up)
-    if (pagination?.has_before && pagination.before_anchor) {
-      setLoading(true);
-      try {
-      const queryToUse = { ...currentQuery, before: pagination.before_anchor };
-      const res: MessagesListResponse = await client.listThreadMessages(threadKey!, queryToUse);
-        setMessages(prev => [...(prev || []), ...(res.messages || [])]);
-        setPagination(res.pagination || null);
-        setCurrentQuery(queryToUse);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    }
+  const reset = async () => {
+    // Reset to initial query state (clear pagination)
+    await fetchMessages(query);
   };
 
   return { 
@@ -101,11 +88,11 @@ export function useMessages(
     loading, 
     error, 
     refresh: fetchMessages, 
+    reset,
     create,
     // Navigation helpers
-    nextPage,
-    prevPage,
-    goToAnchor,
-    loadMore
+    loadOlder,
+    loadNewer,
+    goToAnchor
   };
 }

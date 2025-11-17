@@ -11,4 +11,4 @@ export { useHealthz, useReadyz } from './hooks/health';
 
 // Type exports
 export type { UserSignature, GetUserSignature, ProgressProviderProps, ProgressClientContextValue } from './types/provider';
-export type { Message, Thread, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest } from '@progressdb/js';
+export type { Message, Thread, ThreadCreateRequest, ThreadUpdateRequest, MessageCreateRequest, MessageUpdateRequest, ThreadListQuery, MessageListQuery } from '@progressdb/js';

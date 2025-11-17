@@ -1,5 +1,5 @@
 import { HTTPClient } from '../client/http';
-import type { ThreadCreateRequest, ThreadUpdateRequest, ThreadResponse, ThreadsListResponse, CreateThreadResponse, UpdateThreadResponse, DeleteThreadResponse, ThreadListQuery } from '../types';
+import type { ThreadCreateRequestType, ThreadUpdateRequestType, ThreadResponseType, ThreadsListResponseType, CreateThreadResponseType, UpdateThreadResponseType, DeleteThreadResponseType, ThreadListQueryType } from '../types';
 
 export class ThreadsService {
   private httpClient: HTTPClient;
@@ -14,8 +14,8 @@ export class ThreadsService {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  createThread(thread: ThreadCreateRequest, userId?: string, userSignature?: string): Promise<CreateThreadResponse> {
-    return this.httpClient.request('/frontend/v1/threads', 'POST', thread, userId, userSignature) as Promise<CreateThreadResponse>;
+  createThread(thread: ThreadCreateRequestType, userId?: string, userSignature?: string): Promise<CreateThreadResponseType> {
+    return this.httpClient.request('/frontend/v1/threads', 'POST', thread, userId, userSignature) as Promise<CreateThreadResponseType>;
   }
 
   /**
@@ -24,14 +24,14 @@ export class ThreadsService {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  listThreads(query: ThreadListQuery = {}, userId?: string, userSignature?: string): Promise<ThreadsListResponse> {
+  listThreads(query: ThreadListQueryType = {}, userId?: string, userSignature?: string): Promise<ThreadsListResponseType> {
     const qs = new URLSearchParams();
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     if (query.before) qs.set('before', query.before);
     if (query.after) qs.set('after', query.after);
     if (query.anchor) qs.set('anchor', query.anchor);
     if (query.sort_by) qs.set('sort_by', query.sort_by);
-    return this.httpClient.request(`/frontend/v1/threads${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<ThreadsListResponse>;
+    return this.httpClient.request(`/frontend/v1/threads${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<ThreadsListResponseType>;
   }
 
   /**
@@ -40,8 +40,8 @@ export class ThreadsService {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  getThread(threadKey: string, userId?: string, userSignature?: string): Promise<ThreadResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'GET', undefined, userId, userSignature) as Promise<ThreadResponse>;
+  getThread(threadKey: string, userId?: string, userSignature?: string): Promise<ThreadResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'GET', undefined, userId, userSignature) as Promise<ThreadResponseType>;
   }
 
   /**
@@ -50,8 +50,8 @@ export class ThreadsService {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  deleteThread(threadKey: string, userId?: string, userSignature?: string): Promise<DeleteThreadResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteThreadResponse>;
+  deleteThread(threadKey: string, userId?: string, userSignature?: string): Promise<DeleteThreadResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteThreadResponseType>;
   }
 
   /**
@@ -61,7 +61,7 @@ export class ThreadsService {
    * @param userId optional user id
    * @param userSignature optional signature
    */
-  updateThread(threadKey: string, thread: ThreadUpdateRequest, userId?: string, userSignature?: string): Promise<UpdateThreadResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'PUT', thread, userId, userSignature) as Promise<UpdateThreadResponse>;
+  updateThread(threadKey: string, thread: ThreadUpdateRequestType, userId?: string, userSignature?: string): Promise<UpdateThreadResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}`, 'PUT', thread, userId, userSignature) as Promise<UpdateThreadResponseType>;
   }
 }

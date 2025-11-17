@@ -1,4 +1,4 @@
-export type Message = {
+export type MessageType = {
   key: string;
   thread: string;
   author?: string;
@@ -8,14 +8,14 @@ export type Message = {
   deleted?: boolean;
 };
 
-export type MessageCreateRequest = {
+export type MessageCreateRequestType = {
   body: any;
 };
 
-export type MessageUpdateRequest = {
+export type MessageUpdateRequestType = {
   body: any;
 };
 
-export type MessageResponse = {
-  message: Message;
+export type MessageResponseType = {
+  message: MessageType;
 };

@@ -1,6 +1,6 @@
 // Query parameter types for frontend operations
 
-export type ThreadListQuery = {
+export type ThreadListQueryType = {
   limit?: number;
   before?: string;
   after?: string;
@@ -8,7 +8,7 @@ export type ThreadListQuery = {
   sort_by?: 'created_ts' | 'updated_ts';
 };
 
-export type MessageListQuery = {
+export type MessageListQueryType = {
   limit?: number;
   before?: string;
   after?: string;

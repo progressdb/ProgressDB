@@ -1,5 +1,5 @@
 import { HTTPClient } from '../client/http';
-import type { MessageCreateRequest, MessageUpdateRequest, MessageResponse, MessagesListResponse, CreateMessageResponse, UpdateMessageResponse, DeleteMessageResponse, MessageListQuery } from '../types';
+import type { MessageCreateRequestType, MessageUpdateRequestType, MessageResponseType, MessagesListResponseType, CreateMessageResponseType, UpdateMessageResponseType, DeleteMessageResponseType, MessageListQueryType } from '../types';
 
 export class MessagesService {
   private httpClient: HTTPClient;
@@ -15,14 +15,14 @@ export class MessagesService {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  listThreadMessages(threadKey: string, query: MessageListQuery = {}, userId?: string, userSignature?: string): Promise<MessagesListResponse> {
+  listThreadMessages(threadKey: string, query: MessageListQueryType = {}, userId?: string, userSignature?: string): Promise<MessagesListResponseType> {
     const qs = new URLSearchParams();
     if (query.limit !== undefined) qs.set('limit', String(query.limit));
     if (query.before) qs.set('before', query.before);
     if (query.after) qs.set('after', query.after);
     if (query.anchor) qs.set('anchor', query.anchor);
     if (query.sort_by) qs.set('sort_by', query.sort_by);
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<MessagesListResponse>;
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`, 'GET', undefined, userId, userSignature) as Promise<MessagesListResponseType>;
   }
 
   /**
@@ -32,8 +32,8 @@ export class MessagesService {
    * @param userId optional user id to send as X-User-ID
    * @param userSignature optional signature to send as X-User-Signature
    */
-  createThreadMessage(threadKey: string, msg: MessageCreateRequest, userId?: string, userSignature?: string): Promise<CreateMessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages`, 'POST', msg, userId, userSignature) as Promise<CreateMessageResponse>;
+  createThreadMessage(threadKey: string, msg: MessageCreateRequestType, userId?: string, userSignature?: string): Promise<CreateMessageResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages`, 'POST', msg, userId, userSignature) as Promise<CreateMessageResponseType>;
   }
 
   /**
@@ -43,8 +43,8 @@ export class MessagesService {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  getThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<MessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'GET', undefined, userId, userSignature) as Promise<MessageResponse>;
+  getThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<MessageResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'GET', undefined, userId, userSignature) as Promise<MessageResponseType>;
   }
 
   /**
@@ -55,8 +55,8 @@ export class MessagesService {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  updateThreadMessage(threadKey: string, messageKey: string, msg: MessageUpdateRequest, userId?: string, userSignature?: string): Promise<UpdateMessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'PUT', msg, userId, userSignature) as Promise<UpdateMessageResponse>;
+  updateThreadMessage(threadKey: string, messageKey: string, msg: MessageUpdateRequestType, userId?: string, userSignature?: string): Promise<UpdateMessageResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'PUT', msg, userId, userSignature) as Promise<UpdateMessageResponseType>;
   }
 
   /**
@@ -66,7 +66,7 @@ export class MessagesService {
    * @param userId optional user id to attach as X-User-ID
    * @param userSignature optional signature to attach as X-User-Signature
    */
-  deleteThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<DeleteMessageResponse> {
-    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteMessageResponse>;
+  deleteThreadMessage(threadKey: string, messageKey: string, userId?: string, userSignature?: string): Promise<DeleteMessageResponseType> {
+    return this.httpClient.request(`/frontend/v1/threads/${encodeURIComponent(threadKey)}/messages/${encodeURIComponent(messageKey)}`, 'DELETE', undefined, userId, userSignature) as Promise<DeleteMessageResponseType>;
   }
 }

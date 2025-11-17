@@ -1,4 +1,4 @@
-export type PaginationResponse = {
+export type PaginationResponseType = {
   before_anchor: string; // Use this to get previous page (pass as 'after' parameter)
   after_anchor: string;  // Use this to get next page (pass as 'before' parameter)
   has_before: boolean;   // True if there are items before before_anchor (previous page exists)
@@ -6,42 +6,3 @@ export type PaginationResponse = {
   count: number;        // Number of items returned in this page
   total: number;        // Total number of items available
 };
-
-/**
- * Pagination navigation examples:
- * 
- * === THREADS (reverse chronological: [newest → oldest]) ===
- * 
- * // First page (newest threads)
- * const firstThreadsPage = await client.listThreads({ limit: 50 });
- * 
- * // Next page (older threads)
- * const olderThreads = await client.listThreads({ 
- *   after: firstThreadsPage.pagination.after_anchor 
- * });
- * 
- * // Previous page (newer threads) 
- * const newerThreads = await client.listThreads({ 
- *   before: firstThreadsPage.pagination.before_anchor 
- * });
- * 
- * === MESSAGES (chronological: [oldest → newest]) ===
- * 
- * // First page (oldest messages)
- * const firstMessagesPage = await client.listThreadMessages(threadKey, { limit: 50 });
- * 
- * // Next page (older messages)
- * const olderMessages = await client.listThreadMessages(threadKey, { 
- *   before: firstMessagesPage.pagination.after_anchor 
- * });
- * 
- * // Previous page (newer messages) 
- * const newerMessages = await client.listThreadMessages(threadKey, { 
- *   after: firstMessagesPage.pagination.before_anchor 
- * });
- * 
- * // Jump to specific position
- * const anchoredPage = await client.listThreads({ 
- *   anchor: "some_reference_id" 
- * });
- */

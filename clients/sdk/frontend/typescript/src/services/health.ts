@@ -1,5 +1,5 @@
 import { HTTPClient } from '../client/http';
-import type { HealthzResponse, ReadyzResponse } from '../types';
+import type { HealthzResponseType, ReadyzResponseType } from '../types';
 
 export class HealthService {
   private httpClient: HTTPClient;
@@ -12,7 +12,7 @@ export class HealthService {
    * Basic health check.
    * @returns parsed JSON health object from GET /healthz
    */
-  healthz(): Promise<HealthzResponse> {
+  healthz(): Promise<HealthzResponseType> {
     return this.httpClient.request('/healthz', 'GET');
   }
 
@@ -20,7 +20,7 @@ export class HealthService {
    * Readiness check with version info.
    * @returns parsed JSON readiness object from GET /readyz
    */
-  readyz(): Promise<ReadyzResponse> {
+  readyz(): Promise<ReadyzResponseType> {
     return this.httpClient.request('/readyz', 'GET');
   }
 }

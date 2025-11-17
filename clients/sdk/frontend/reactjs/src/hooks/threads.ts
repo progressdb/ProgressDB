@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProgressClient } from './client';
-import type { ThreadCreateRequest, ThreadUpdateRequest, PaginationResponse, ThreadsListResponse, ThreadResponse } from '@progressdb/js';
+import type { ThreadCreateRequest, ThreadUpdateRequest, PaginationResponse, ThreadsListResponse, ThreadResponse, ThreadListQuery } from '@progressdb/js';
 
 /**
  * Hook: list threads.
@@ -14,7 +14,7 @@ import type { ThreadCreateRequest, ThreadUpdateRequest, PaginationResponse, Thre
  * @param deps optional dependency array
  */
 export function useThreads(
-  query: { title?: string; slug?: string; limit?: number; before?: string; after?: string; anchor?: string; sort_by?: 'created_ts' | 'updated_ts'; author?: string } = {}, 
+  query: ThreadListQuery = {}, 
   deps: any[] = []
 ) {
   const client = useProgressClient();
@@ -22,9 +22,9 @@ export function useThreads(
   const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
-  const [currentQuery, setCurrentQuery] = useState(query);
+  const [currentQuery, setCurrentQuery] = useState<ThreadListQuery>(query);
 
-  const fetchThreads = async (customQuery?: typeof query) => {
+  const fetchThreads = async (customQuery?: ThreadListQuery) => {
     setLoading(true);
     setError(null);
     try {
@@ -67,15 +67,15 @@ export function useThreads(
 
   // Navigation helpers for Threads (TI): [newest → oldest] reverse chronological
   // before = newer threads, after = older threads
-  const nextPage = async () => {
-    // Next page = older threads (scroll down)
+  const loadOlder = async () => {
+    // Load older threads (scroll down)
     if (pagination?.has_after && pagination.after_anchor) {
       await fetchThreads({ ...currentQuery, after: pagination.after_anchor });
     }
   };
 
-  const prevPage = async () => {
-    // Previous page = newer threads (scroll up)
+  const loadNewer = async () => {
+    // Load newer threads (scroll up)
     if (pagination?.has_before && pagination.before_anchor) {
       await fetchThreads({ ...currentQuery, before: pagination.before_anchor });
     }
@@ -85,22 +85,9 @@ export function useThreads(
     await fetchThreads({ ...currentQuery, anchor });
   };
 
-  const loadMore = async () => {
-    // Load more = older threads (infinite scroll down)
-    if (pagination?.has_after && pagination.after_anchor) {
-      setLoading(true);
-      try {
-        const queryToUse = { ...currentQuery, after: pagination.after_anchor };
-        const res: ThreadsListResponse = await client.listThreads(queryToUse);
-        setThreads(prev => [...(prev || []), ...(res.threads || [])]);
-        setPagination(res.pagination || null);
-        setCurrentQuery(queryToUse);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    }
+  const reset = async () => {
+    // Reset to initial query state (clear pagination)
+    await fetchThreads(query);
   };
 
   return { 
@@ -109,13 +96,13 @@ export function useThreads(
     loading, 
     error, 
     refresh: fetchThreads, 
+    reset,
     create, 
     update, 
     remove,
     // Navigation helpers
-    nextPage,
-    prevPage,
-    goToAnchor,
-    loadMore
+    loadOlder,
+    loadNewer,
+    goToAnchor
   };
 }

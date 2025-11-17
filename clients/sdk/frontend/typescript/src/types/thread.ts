@@ -1,26 +1,26 @@
-export type Thread = {
+export type ThreadType = {
   key: string;
   title?: string;
   created_ts?: number;
   updated_ts?: number;
   author?: string;
   deleted?: boolean;
-  kms?: KMSMeta;
+  kms?: KMSMetaType;
 };
 
-export type ThreadCreateRequest = {
+export type ThreadCreateRequestType = {
   title: string;
 };
 
-export type ThreadUpdateRequest = {
+export type ThreadUpdateRequestType = {
   title?: string;
 };
 
-export type ThreadResponse = {
-  thread: Thread;
+export type ThreadResponseType = {
+  thread: ThreadType;
 };
 
-export type KMSMeta = {
+export type KMSMetaType = {
   key_id?: string;
   wrapped_dek?: string;
   kek_id?: string;

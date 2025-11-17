@@ -38,25 +38,3 @@ type MessagesListResponse struct {
 type MessageResponse struct {
 	Message models.Message `json:"message"`
 }
-
-type MessageCursor struct {
-	ThreadKey string `json:"thread_key"`
-	Timestamp int64  `json:"timestamp"`
-	Sequence  uint64 `json:"sequence"`
-}
-
-type ThreadCursor struct {
-	UserID    string `json:"user_id"`
-	Timestamp int64  `json:"timestamp"`
-	ThreadKey string `json:"thread_key"`
-}
-
-type ReadRequestCursorInfo struct {
-	Cursor string `json:"cursor"`
-	Limit  int    `json:"limit"`
-}
-
-type ReadResponseCursorInfo struct {
-	Cursor  string `json:"cursor"`
-	HasMore bool   `json:"has_more"`
-}

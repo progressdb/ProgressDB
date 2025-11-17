@@ -1,4 +1,4 @@
-import type { SDKOptions } from '../types';
+import type { SDKOptionsType } from '../types';
 
 /**
  * Build request headers used by frontend SDK.

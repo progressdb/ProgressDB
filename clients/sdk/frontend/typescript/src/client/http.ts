@@ -1,5 +1,5 @@
 import { buildHeaders } from './auth';
-import type { SDKOptions, ApiErrorResponse } from '../types';
+import type { SDKOptionsType, ApiErrorResponseType } from '../types';
 
 export class HTTPClient {
   baseUrl: string;
@@ -8,7 +8,7 @@ export class HTTPClient {
   defaultUserSignature?: string;
   fetchImpl: typeof fetch;
 
-  constructor(opts: SDKOptions = {}) {
+  constructor(opts: SDKOptionsType = {}) {
     this.baseUrl = opts.baseUrl || '';
     this.apiKey = opts.apiKey;
     this.defaultUserId = opts.defaultUserId;
@@ -46,7 +46,7 @@ export class HTTPClient {
     if (!res.ok) {
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
-        const errorData = await res.json() as ApiErrorResponse;
+        const errorData = await res.json() as ApiErrorResponseType;
         throw new Error(errorData.error?.message || errorData.error?.error || 'API request failed');
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
