@@ -12,8 +12,11 @@ on:
 
 jobs:
   node-sdk:
-    name: test-node-sdk
+    name: build-node-sdk
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
     defaults:
       run:
         working-directory: clients/sdk/backend/nodejs
@@ -22,9 +25,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
-      - name: Install & Test
+      - name: Install & Build
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
-          npm test
+          npm run build

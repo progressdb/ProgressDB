@@ -69,7 +69,7 @@ def test_method_existence():
     assert hasattr(client, 'sign_user'), "Missing sign_user method"
     assert callable(getattr(client, 'sign_user')), "sign_user is not callable"
     
-    print("✅ All required methods exist")
+    print("PASS: All required methods exist")
 
 
 def test_http_client_headers():
@@ -101,7 +101,7 @@ def test_http_client_headers():
     assert 'X-User-ID' not in headers_no_user
     assert headers_no_user['Content-Type'] == 'application/json'
     
-    print("✅ HTTP client headers work correctly")
+    print("PASS: HTTP client headers work correctly")
 
 
 def test_url_encoding():
@@ -120,7 +120,7 @@ def test_url_encoding():
     encoded = HTTPClient.encode_url_component("")
     assert encoded == ""
     
-    print("✅ URL encoding works correctly")
+    print("PASS: URL encoding works correctly")
 
 
 def test_type_imports():
@@ -151,9 +151,9 @@ def test_type_imports():
             ReadyzResponseType,
             ApiErrorResponseType,
         )
-        print("✅ All types import successfully")
+        print("PASS: All types import successfully")
     except ImportError as e:
-        print(f"❌ Type import failed: {e}")
+        print(f"FAIL: Type import failed: {e}")
         raise
 
 
@@ -172,14 +172,14 @@ def test_error_imports():
         assert api_error.status_code == 400
         assert api_error.message == "test error"
         
-        print("✅ Error classes import and work correctly")
+        print("PASS: Error classes import and work correctly")
     except ImportError as e:
-        print(f"❌ Error import failed: {e}")
+        print(f"FAIL: Error import failed: {e}")
         raise
 
 
 if __name__ == "__main__":
-    print("🧪 Running ProgressDB Python SDK initialization tests...\n")
+    print("Running ProgressDB Python SDK initialization tests...\n")
     
     test_client_initialization()
     test_method_existence()
@@ -188,4 +188,4 @@ if __name__ == "__main__":
     test_type_imports()
     test_error_imports()
     
-    print("\n🎉 All tests passed! SDK is properly initialized and ready to use.")
+    print("\nAll tests passed! SDK is properly initialized and ready to use.")

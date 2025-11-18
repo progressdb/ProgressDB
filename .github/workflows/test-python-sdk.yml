@@ -26,5 +26,5 @@ jobs:
       - name: Install & Test
         run: |
           python -m pip install --upgrade pip
-          if [ -f pyproject.toml ]; then pip install .[test] || pip install .; fi
-          pytest -q || true
+          pip install requests
+          python tests/test_client_init.py

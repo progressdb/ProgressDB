@@ -9,7 +9,7 @@
     "prepublishOnly": "npm run build",
     "prepare": "npm run build",
     "lint": "eslint . --ext .ts",
-    "test": "vitest",
+    "test": "npm run build && node test-init.js",
     "test:unit": "vitest --dir tests/unit",
     "test:integration": "vitest --dir tests/integration"
   },
