@@ -4,12 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "progressdb"
-version = "0.1.5"
-description = "ProgressDB backend Python SDK"
+version = "0.2.0"
+description = "ProgressDB Python SDK - Unified frontend and backend support"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [ { name = "ProgressDB" } ]
 license = { text = "MIT" }
+dependencies = [
+    "requests>=2.25.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
