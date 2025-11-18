@@ -25,15 +25,19 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/sdk-py-v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          # Update version in pyproject.toml
-          sed -i.bak 's/^version = ".*"/version = "'$VERSION'"/' pyproject.toml
+          # Update version in pyproject.toml (remove backup file)
+          sed -i 's/^version = ".*"/version = "'$VERSION'"/' pyproject.toml
           # Verify version was updated
+          echo "Updated version line:"
           grep "version = " pyproject.toml
+          # Clean up any backup files
+          rm -f pyproject.toml.bak
 
       - name: Install build deps
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install build
+          python -m pip install --upgrade pip setuptools wheel build
+          echo "Installed packages:"
+          pip list | grep -E "(setuptools|wheel|build)"
 
       - name: Run tests
         run: |
@@ -42,9 +46,13 @@ jobs:
 
       - name: Build distributions
         run: |
-          python -m build --sdist --wheel
-          # Verify dist directory exists and contains files
-          ls -la dist/
+          echo "Current directory: $(pwd)"
+          echo "pyproject.toml content:"
+          cat pyproject.toml
+          echo "Building package..."
+          python -m build --sdist --wheel --verbose
+          echo "Build completed. Checking dist directory:"
+          ls -la dist/ || echo "dist directory not found"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
