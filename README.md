@@ -11,11 +11,11 @@ ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. T
 
 ProgressDB is purpose-built for chat applications, streamlining common workflows and performance requirements:
 
-- **Message lifecycle management** — Built-in versioning, edits, and soft-deletes
-- **Optimized queries** — Fast retrieval of threaded messages and common chat patterns
-- **Integrated security** — Encryption and API-key based access controls
-- **Developer-friendly** — Lightweight service with simple APIs and SDKs for Python, Node, TypeScript, and React
-- **Developer Delight** — Send a message; the thread auto-creates.
+- **Message lifecycle management** - Built-in versioning, edits, and soft-deletes
+- **Optimized queries** - Fast retrieval of threaded messages and common chat patterns
+- **Integrated security** - Encryption and API-key based access controls
+- **Developer-friendly** - Lightweight service with simple APIs and SDKs for Python, Node, TypeScript, and React
+- **Developer Delight** - Send a message, the thread auto-creates.
 
 ProgressDB eliminates the complexity of building chat infrastructure: fewer transformation layers, direct APIs for threads and messages, and the tooling to move from prototype to production with operational confidence.
 
@@ -57,5 +57,6 @@ Planned
 
 
 
-### Explorer ?
+## Explorer
+
 ![ProgressDB Dashboard](/docs/images/dasher.png)
