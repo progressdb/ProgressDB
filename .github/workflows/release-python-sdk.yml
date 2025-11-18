@@ -26,7 +26,9 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/sdk-py-v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           # Update version in pyproject.toml
-          sed -i.bak "s/version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          sed -i.bak 's/^version = ".*"/version = "'$VERSION'"/' pyproject.toml
+          # Verify version was updated
+          grep "version = " pyproject.toml
 
       - name: Install build deps
         run: |
@@ -41,6 +43,8 @@ jobs:
       - name: Build distributions
         run: |
           python -m build --sdist --wheel
+          # Verify dist directory exists and contains files
+          ls -la dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
