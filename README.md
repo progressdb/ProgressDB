@@ -59,4 +59,4 @@ Planned
 
 ## Explorer
 
-![ProgressDB Dashboard](/docs/images/dasher3.png)
+![ProgressDB Dashboard](/docs/images/dasher4.png)
