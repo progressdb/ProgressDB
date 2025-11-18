@@ -19,9 +19,7 @@ ProgressDB is built specifically for chat threads and makes common chat workflow
 
 ProgressDB removes friction when building chat-first apps or features: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster with operational clarity.
 
-#### Why Not DIY?
-
-Building chat yourself becomes this:
+#### Without ProgressDB, storing chat data becomes:
 
 - Week 2: “Need message versions.”
 - Week 4: “Need soft deletes + GDPR.”
@@ -31,8 +29,6 @@ Building chat yourself becomes this:
 - Week 12: “Encryption model is wrong.”
 - Week 16: “Reads slow → add Redis.”
 - Week 20: “Need encryption key rotation.”
-
-ProgressDB comes with all of this from day one.
 
 ## Quickstart — Docker Image
 
