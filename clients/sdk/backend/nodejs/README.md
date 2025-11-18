@@ -20,12 +20,6 @@ const db = ProgressDB({
 await db.createThread({ title: 'General' }, 'user-123')
 ```
 
-## Authentication
-
-- Backend API key via `Authorization: Bearer` header
-- User operations require `X-User-ID` and `X-User-Signature` headers (auto-generated)
-- 5-minute signature caching for performance
-
 ## API
 
 ### Client
