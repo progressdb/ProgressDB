@@ -1,6 +1,7 @@
 # @progressdb/node
 
-Node.js TypeScript SDK for backend callers of ProgressDB. Wraps frontend SDK with automatic signature generation.
+Node.js TypeScript SDK for backend callers of ProgressDB. 
+- wraps frontend SDK for accessing frontend methods with custom author fields.
 
 ## Installation
 
