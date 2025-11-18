@@ -30,7 +30,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/sdk-node-v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          npm version $VERSION --no-git-tag-version --force
+          npm version $VERSION --no-git-tag-version --allow-same-version
 
       - name: Run tests
         run: npm test || true
