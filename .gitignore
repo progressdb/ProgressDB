@@ -115,3 +115,6 @@ ProgressDB.code-workspace
 /migrations
 .github/workflows/fly-deploy.yml
 fly.toml
+
+
+.mypy_cache

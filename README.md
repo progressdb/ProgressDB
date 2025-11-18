@@ -9,7 +9,7 @@ ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. T
 
 ## Why ProgressDB?
 
-ProgressDB is built specifically for chat threads and makes common chat workflows simple and fast:
+ProgressDB is built specifically for chat threads and makes common chat workflows & workloads simple and fast:
 
 - Start a thread by sending a message — the database will auto-create the thread for you.
 - Built-in message versioning, edits, replies, reactions, and soft-deletes.
@@ -18,6 +18,21 @@ ProgressDB is built specifically for chat threads and makes common chat workflow
 - Ship quickly: small service, simple APIs, and SDKs for Python, Node and frontend use.
 
 ProgressDB removes friction when building chat-first apps or features: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster with operational clarity.
+
+#### Why Not DIY?
+
+Building chat yourself becomes this:
+
+- Week 2: “Need message versions.”
+- Week 4: “Need soft deletes + GDPR.”
+- Week 6: “Need encryption.”
+- Week 8: “Search is slow → add Elasticsearch.”
+- Week 10: “Need real-time.”
+- Week 12: “Encryption model is wrong.”
+- Week 16: “Reads slow → add Redis.”
+- Week 20: “Need encryption key rotation.”
+
+ProgressDB comes with all of this from day one.
 
 ## Quickstart — Docker Image
 
@@ -171,8 +186,8 @@ Available
 - [x] Threads - metadata operations (create/update/list)
 - [x] Encryption & Key Management - (embedded KMS mode)
 - [x] Retention - policy-driven purge/run hooks
-- [x] Backend SDKs - node & python sdks published for v0.1.0
-- [x] Frontend SDKs - typescript & react sdks published for v0.1.0
+- [x] Backend SDKs - node & python sdks published for ^v0.2.0
+- [x] Frontend SDKs - typescript & react sdks published for ^v0.2.0
 - [x] Reliability - (appWAL/buffering) are present & configurable
 - [x] Performance - preliminary tests estimate 2vcpu nets 3k RPS. 
 
