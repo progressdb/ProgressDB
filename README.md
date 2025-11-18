@@ -9,15 +9,15 @@ ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. T
 
 ## Why ProgressDB?
 
-ProgressDB is built specifically for chat threads and makes common chat workflows & workloads simple and fast:
+ProgressDB is purpose-built for chat applications, streamlining common workflows and performance requirements:
 
-- Start a thread by sending a message — the database will auto-create the thread for you.
-- Built-in message versioning, edits, replies, reactions, and soft-deletes.
-- Optimized for fast threaded message retrievals and common chat patterns.
-- Straightforward encryption and API-key based access controls.
-- Ship quickly: small service, simple APIs, and SDKs for Python, Node and frontend use.
+- **Message lifecycle management** — Built-in versioning, edits, and soft-deletes
+- **Optimized queries** — Fast retrieval of threaded messages and common chat patterns
+- **Integrated security** — Encryption and API-key based access controls
+- **Developer-friendly** — Lightweight service with simple APIs and SDKs for Python, Node, TypeScript, and React
+- **Developer Delight** — Send a message; the thread auto-creates.
 
-ProgressDB removes friction when building chat-first apps or features: fewer transformation layers, direct APIs for threads/messages, and tooling to get you from prototype to production faster with operational clarity.
+ProgressDB eliminates the complexity of building chat infrastructure: fewer transformation layers, direct APIs for threads and messages, and the tooling to move from prototype to production with operational confidence.
 
 #### Without ProgressDB, storing chat data becomes:
 
@@ -43,10 +43,10 @@ Available
 - [x] Backend SDKs - node & python sdks published for ^v0.2.0
 - [x] Frontend SDKs - typescript & react sdks published for ^v0.2.0
 - [x] Reliability - (appWAL/buffering) are present & configurable
-- [x] Performance - preliminary tests estimate 2vcpu nets 3k RPS. 
+- [x] Performance - sustains 3k RPS on 2 local CPU cores (3.49 GHz). 
 
 Planned
-- [ ] Encryption - cloud-backed KMS ~ HSM integration from local only / dek rewrap feature
+- [ ] Encryption - cloud-backed KMS, HSM integration, DEK rewrap features
 - [ ] Backups - backups & tested restore of chat datas
 - [ ] Realtime - realtime subscriptions (WebSocket / SSE) and webhook delivery
 - [ ] Search - search API / indexed search experience
@@ -54,3 +54,8 @@ Planned
 - [ ] Metrics - Metrics are present, but need cleanup for prod
 
 [![test-db-service](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml/badge.svg)](https://github.com/progressdb/ProgressDB/actions/workflows/test-db-service.yml)
+
+
+
+### Explorer ?
+![ProgressDB Dashboard](/docs/images/dasher.png)
