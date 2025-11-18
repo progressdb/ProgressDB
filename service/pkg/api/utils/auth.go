@@ -9,17 +9,17 @@ import (
 // Extracts an API key from either the Authorization header or the X-API-Key header
 func ExtractAPIKey(ctx *fasthttp.RequestCtx) string {
 	auth := GetHeader(ctx, "Authorization")
-	var key string
 
-	if len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ") {
-		key = strings.TrimSpace(auth[7:])
+	// "Bearer <token>" with flexible whitespace
+	if auth != "" {
+		parts := strings.Fields(auth) // splits on ANY whitespace
+
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return parts[1]
+		}
 	}
 
-	if key == "" {
-		key = GetHeader(ctx, "X-API-Key")
-	}
-
-	return key
+	return GetHeader(ctx, "X-API-Key")
 }
 
 // Returns the value of the X-Role-Name header, lowercased

@@ -1,67 +1,89 @@
-import { httpRequest } from './http';
-import { ApiError } from './errors';
-import { Message, Thread } from './types';
+import ProgressDBClient from '@progressdb/js';
+import type { 
+  SDKOptionsType, 
+  ThreadCreateRequestType, 
+  ThreadUpdateRequestType, 
+  MessageCreateRequestType, 
+  MessageUpdateRequestType,
+  ThreadListQueryType,
+  MessageListQueryType,
+  CreateThreadResponseType,
+  UpdateThreadResponseType,
+  DeleteThreadResponseType,
+  CreateMessageResponseType,
+  UpdateMessageResponseType,
+  DeleteMessageResponseType,
+  ThreadResponseType,
+  MessageResponseType,
+  ThreadsListResponseType,
+  MessagesListResponseType
+} from '@progressdb/js';
 
-export type BackendClientOptions = {
-  baseUrl: string;
-  apiKey: string;
+export type BackendClientOptions = Omit<SDKOptionsType, 'defaultUserId' | 'defaultUserSignature'> & {
   timeoutMs?: number;
   maxRetries?: number;
 };
 
+interface CacheEntry {
+  signature: string;
+  expires: number;
+}
+
 /**
- * BackendClient provides server-side helpers to call ProgressDB admin
- * and backend endpoints. It includes retry/timeout behavior and
- * attaches server-side authorization headers.
+ * BackendClient provides server-side helpers to call ProgressDB endpoints.
+ * It wraps the frontend TypeScript SDK and automatically handles signature generation
+ * and caching for backend operations.
+ * 
+ * Key features:
+ * - Automatic signature generation and caching (5-minute TTL)
+ * - Uses backend API key authentication
+ * - Reuses all frontend SDK logic (pagination, validation, types)
+ * - Exposes signUser() method for external signature generation
  */
 export class BackendClient {
-  baseUrl: string;
-  apiKey: string;
-  timeoutMs?: number;
-  maxRetries?: number;
+  private frontendClient: ProgressDBClient;
+  private signatureCache = new Map<string, CacheEntry>();
+  private backendApiKey: string;
 
   /**
    * Create a new BackendClient.
-   * @param opts configuration options including `baseUrl` and `apiKey`
+   * @param opts configuration options including baseUrl and apiKey
    */
   constructor(opts: BackendClientOptions) {
-    this.baseUrl = opts.baseUrl;
-    this.apiKey = opts.apiKey;
-    this.timeoutMs = opts.timeoutMs;
-    this.maxRetries = opts.maxRetries;
+    this.backendApiKey = opts.apiKey || '';
+    
+    // Initialize frontend SDK with same API key (will be used as X-API-Key)
+    this.frontendClient = new ProgressDBClient({
+      baseUrl: opts.baseUrl,
+      apiKey: opts.apiKey,
+      fetch: opts.fetch
+    });
   }
 
   /**
-   * Build default headers for backend requests (authorization, etc.).
-   * @returns headers object
+   * Get cached signature or generate new one with 5-minute TTL.
+   * @param userId user ID to generate signature for
+   * @returns cached or fresh signature
    */
-  private headers() {
-    return {
-      Authorization: `Bearer ${this.apiKey}`,
-    } as Record<string,string>;
-  }
-
-  /**
-   * Perform an HTTP request against the ProgressDB server.
-   * @template T expected response type
-   * @param method HTTP method (GET, POST, PUT, DELETE)
-   * @param path URL path (should begin with `/`)
-   * @param body optional request body (will be JSON-stringified)
-   * @param extraHeaders optional additional headers to merge
-   * @returns parsed response body as T
-   * @throws ApiError on non-2xx responses or other network errors
-   */
-  async request<T>(method: string, path: string, body?: any, extraHeaders: Record<string,string> = {}): Promise<T> {
-    try {
-      const headers = Object.assign({}, this.headers(), extraHeaders || {});
-      return await httpRequest<T>(this.baseUrl, method, path, body, headers, {
-        timeoutMs: this.timeoutMs,
-        maxRetries: this.maxRetries,
-      });
-    } catch (err) {
-      if (err instanceof ApiError) throw err;
-      throw err;
+  private async getOrGenerateSignature(userId: string): Promise<string> {
+    const cached = this.signatureCache.get(userId);
+    const now = Date.now();
+    
+    // Return cached signature if still valid
+    if (cached && cached.expires > now) {
+      return cached.signature;
     }
+
+    // Generate new signature
+    const { signature } = await this.signUser(userId);
+    
+    // Cache for 5 minutes
+    this.signatureCache.set(userId, {
+      signature,
+      expires: now + (5 * 60 * 1000) // 5 minutes TTL
+    });
+    
+    return signature;
   }
 
   /**
@@ -71,223 +93,175 @@ export class BackendClient {
    * @returns object { userId, signature }
    */
   async signUser(userId: string): Promise<{ userId: string; signature: string }> {
-    const res = await this.request<{ userId: string; signature: string }>('POST', '/v1/_sign', { userId });
-    return res;
-  }
+    const url = `${this.frontendClient.baseUrl.replace(/\/$/, '')}/v1/_sign`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.backendApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ userId })
+    });
 
-  // admin endpoints
-  /**
-   * Admin health check.
-   * @returns health object, e.g. { status: 'ok' }
-   */
-  async adminHealth(): Promise<{ status: string; service?: string }> {
-    return await this.request('GET', '/admin/health');
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to sign user: ${response.status} ${errorText}`);
+    }
 
-  /**
-   * Admin stats endpoint.
-   * @returns counts such as { threads, messages }
-   */
-  async adminStats(): Promise<{ threads: number; messages: number }> {
-    return await this.request('GET', '/admin/stats');
-  }
-
-  // threads
-  // Accept optional query filters. For backend callers the server requires
-  // an author to be supplied (either via signature or via query/header).
-  /**
-   * List threads for a specific author.
-   *
-   * Backend callers MUST supply `author`. The author is sent as `X-User-ID`.
-   * Optional filters: `title` (substring) and `slug` (exact match).
-   * Throws immediately if `author` is missing.
-   */
-  /**
-   * List threads for a given author with optional filters.
-   * @param opts options object { author, title?, slug? }
-   */
-  async listThreads(opts: { author: string; title?: string; slug?: string }): Promise<Thread[]> {
-    if (!opts || !opts.author) throw new Error('author is required for backend listThreads calls');
-    const qs = new URLSearchParams();
-    qs.set('author', opts.author);
-    if (opts.title) qs.set('title', opts.title);
-    if (opts.slug) qs.set('slug', opts.slug);
-    const path = '/v1/threads' + `?${qs.toString()}`;
-    // prefer header transport for author (avoid leaking in logs); include as header
-    const res = await this.request<{ threads: Thread[] }>('GET', path, undefined, { 'X-User-ID': opts.author });
-    return res.threads || [];
+    return response.json();
   }
 
   /**
-   * Retrieve thread metadata by id.
-   *
-   * Backend callers MUST supply `author` which is sent as `X-User-ID`.
-   * The server will resolve and validate the author; mismatches will be rejected.
+   * Clear signature cache for a specific user or all users.
+   * @param userId optional user ID to clear, clears all if not provided
    */
-  /**
-   * Get thread metadata by id. Backend callers must provide an author (X-User-ID).
-   * @param id thread id
-   * @param author backend author id
-   */
-  async getThread(id: string, author: string): Promise<Thread> {
-    if (!author) throw new Error('author is required for backend getThread calls');
-    const path = `/v1/threads/${encodeURIComponent(id)}`;
-    return await this.request<Thread>('GET', path, undefined, { 'X-User-ID': author });
+  clearSignatureCache(userId?: string): void {
+    if (userId) {
+      this.signatureCache.delete(userId);
+    } else {
+      this.signatureCache.clear();
+    }
   }
 
   /**
-   * Soft-delete a thread by id.
-   *
-   * Backend callers MUST supply `author` (sent as `X-User-ID`).
+   * Get cache statistics for debugging/monitoring.
+   * @returns object with cache size and entry details
    */
-  /**
-   * Soft-delete a thread by id.
-   * @param id thread id
-   * @param author backend author id
-   */
-  async deleteThread(id: string, author: string): Promise<void> {
-    if (!author) throw new Error('author is required for backend deleteThread calls');
-    await this.request('DELETE', `/v1/threads/${encodeURIComponent(id)}`, undefined, { 'X-User-ID': author });
+  getCacheStats(): { size: number; entries: Array<{ userId: string; expires: number }> } {
+    const entries: Array<{ userId: string; expires: number }> = [];
+    for (const [userId, entry] of this.signatureCache.entries()) {
+      entries.push({ userId, expires: entry.expires });
+    }
+    return { size: this.signatureCache.size, entries };
   }
 
-  // low-level helpers
+  // Thread operations - automatically handle signatures
+
   /**
    * Create a new thread.
-   *
-   * Backend callers MUST supply `author` which is sent as `X-User-ID`.
-   * The server will generate the thread id/slug and assign timestamps.
+   * @param thread thread payload with required title
+   * @param userId user ID to create thread for
    */
-  /**
-   * Create a new thread. Backend callers must provide an author (X-User-ID).
-   * @param t partial thread payload
-   * @param author backend author id
-   */
-  async createThread(t: Partial<Thread>, author: string): Promise<Thread> {
-    if (!author) throw new Error('author is required for backend createThread calls');
-    return await this.request<Thread>('POST', '/v1/threads', t, { 'X-User-ID': author });
+  async createThread(thread: ThreadCreateRequestType, userId: string): Promise<CreateThreadResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.createThread(thread, userId, signature);
   }
 
   /**
-   * Update thread metadata (title, etc.).
-   *
-   * Backend callers MUST supply `author` (sent as `X-User-ID`).
+   * List threads visible to the user.
+   * @param query optional query parameters (limit, before, after, anchor, sort_by)
+   * @param userId user ID to list threads for
    */
+  async listThreads(query: ThreadListQueryType = {}, userId: string): Promise<ThreadsListResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.listThreads(query, userId, signature);
+  }
+
+  /**
+   * Retrieve thread metadata by key.
+   * @param threadKey thread key
+   * @param userId user ID to access thread for
+   */
+  async getThread(threadKey: string, userId: string): Promise<ThreadResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.getThread(threadKey, userId, signature);
+  }
+
+  /**
+   * Soft-delete a thread by key.
+   * @param threadKey thread key
+   * @param userId user ID to delete thread for
+   */
+  async deleteThread(threadKey: string, userId: string): Promise<DeleteThreadResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.deleteThread(threadKey, userId, signature);
+  }
+
   /**
    * Update thread metadata.
-   * @param id thread id
-   * @param t partial thread payload
-   * @param author backend author id
+   * @param threadKey thread key
+   * @param thread partial thread payload (title)
+   * @param userId user ID to update thread for
    */
-  async updateThread(id: string, t: Partial<Thread>, author: string): Promise<Thread> {
-    if (!author) throw new Error('author is required for backend updateThread calls');
-    return await this.request<Thread>('PUT', `/v1/threads/${encodeURIComponent(id)}`, t, { 'X-User-ID': author });
+  async updateThread(threadKey: string, thread: ThreadUpdateRequestType, userId: string): Promise<UpdateThreadResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.updateThread(threadKey, thread, userId, signature);
+  }
+
+  // Message operations - automatically handle signatures
+
+  /**
+   * List messages for a thread.
+   * @param threadKey thread key
+   * @param query optional query parameters (limit, before, after, anchor, sort_by)
+   * @param userId user ID to list messages for
+   */
+  async listThreadMessages(threadKey: string, query: MessageListQueryType = {}, userId: string): Promise<MessagesListResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.listThreadMessages(threadKey, query, userId, signature);
   }
 
   /**
-   * Create a message. Backend callers MUST supply `author` (sent as `X-User-ID`).
-   * The server will generate the message id and timestamps.
+   * Create a message within a thread.
+   * @param threadKey thread key
+   * @param msg message payload
+   * @param userId user ID to create message for
    */
-  /**
-   * Create a message (server generates id and ts).
-   * @param m message payload
-   * @param author backend author id
-   */
-  async createMessage(m: Partial<Message>, author: string): Promise<Message> {
-    if (!author) throw new Error('author is required for backend createMessage calls');
-    return await this.request<Message>('POST', '/v1/messages', m, { 'X-User-ID': author });
+  async createThreadMessage(threadKey: string, msg: MessageCreateRequestType, userId: string): Promise<CreateMessageResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.createThreadMessage(threadKey, msg, userId, signature);
   }
 
   /**
-   * List messages in a thread.
-   * Optional query: { limit }
+   * Retrieve a message by key within a thread.
+   * @param threadKey thread key
+   * @param messageKey message key
+   * @param userId user ID to access message for
    */
-  async listThreadMessages(threadID: string, opts: { limit?: number } = {}, author?: string): Promise<{ thread?: string; messages: Message[] }> {
-    const qs = new URLSearchParams();
-    if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
-    const path = `/v1/threads/${encodeURIComponent(threadID)}/messages${qs.toString() ? `?${qs.toString()}` : ''}`;
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<{ thread?: string; messages: Message[] }>('GET', path, undefined, headers);
+  async getThreadMessage(threadKey: string, messageKey: string, userId: string): Promise<MessageResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.getThreadMessage(threadKey, messageKey, userId, signature);
   }
 
   /**
-   * Get a single message by id within a thread.
-   * @param threadID thread id to scope the message
-   * @param id message id
-   * @param author optional backend author id to send as X-User-ID
+   * Update a message within a thread.
+   * @param threadKey thread key
+   * @param messageKey message key
+   * @param msg message payload
+   * @param userId user ID to update message for
    */
-  async getThreadMessage(threadID: string, id: string, author?: string): Promise<Message> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<Message>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
+  async updateThreadMessage(threadKey: string, messageKey: string, msg: MessageUpdateRequestType, userId: string): Promise<UpdateMessageResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.updateThreadMessage(threadKey, messageKey, msg, userId, signature);
   }
 
   /**
-   * Update (append new version) a message within a thread.
-   * @param threadID thread id
-   * @param id message id
-   * @param msg partial message payload
-   * @param author optional backend author id to send as X-User-ID
+   * Soft-delete a message within a thread.
+   * @param threadKey thread key
+   * @param messageKey message key
+   * @param userId user ID to delete message for
    */
-  async updateThreadMessage(threadID: string, id: string, msg: Partial<Message>, author?: string): Promise<Message> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<Message>('PUT', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, msg, headers);
+  async deleteThreadMessage(threadKey: string, messageKey: string, userId: string): Promise<DeleteMessageResponseType> {
+    const signature = await this.getOrGenerateSignature(userId);
+    return this.frontendClient.deleteThreadMessage(threadKey, messageKey, userId, signature);
+  }
+
+  // Health endpoints - no signature required
+
+  /**
+   * Basic health check.
+   * @returns parsed JSON health object from GET /healthz
+   */
+  async healthz(): Promise<{ status: string }> {
+    return this.frontendClient.healthz();
   }
 
   /**
-   * Soft-delete a message within a thread (append tombstone).
-   * @param threadID thread id
-   * @param id message id
-   * @param author optional backend author id to send as X-User-ID
+   * Readiness check with version info.
+   * @returns parsed JSON readiness object from GET /readyz
    */
-  async deleteThreadMessage(threadID: string, id: string, author?: string): Promise<void> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}`, undefined, headers);
-  }
-
-  // Message versions + reactions (thread-scoped)
-  /**
-   * List all stored versions for a message id under a thread.
-   * @param threadID thread id
-   * @param id message id
-   * @param author optional backend author id
-   */
-  async listMessageVersions(threadID: string, id: string, author?: string): Promise<{ id: string; versions: Message[] }> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<{ id: string; versions: Message[] }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/versions`, undefined, headers);
-  }
-
-  /**
-   * List reactions on a message within a thread.
-   * @param threadID thread id
-   * @param id message id
-   * @param author optional backend author id
-   */
-  async listReactions(threadID: string, id: string, author?: string): Promise<{ id: string; reactions: Array<{ id: string; reaction: string }> }> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<{ id: string; reactions: Array<{ id: string; reaction: string }> }>('GET', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, undefined, headers);
-  }
-
-  /**
-   * Add or update a reaction for a message within a thread.
-   * @param threadID thread id
-   * @param id message id
-   * @param input reaction record: { id, reaction }
-   * @param author optional backend author id
-   */
-  async addOrUpdateReaction(threadID: string, id: string, input: { id: string; reaction: string }, author?: string): Promise<Message> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    return await this.request<Message>('POST', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions`, input, headers);
-  }
-
-  /**
-   * Remove a reaction for a message within a thread.
-   * @param threadID thread id
-   * @param id message id
-   * @param identity reactor identity
-   * @param author optional backend author id
-   */
-  async removeReaction(threadID: string, id: string, identity: string, author?: string): Promise<void> {
-    const headers: Record<string,string> = author ? { 'X-User-ID': author } : {};
-    await this.request('DELETE', `/v1/threads/${encodeURIComponent(threadID)}/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(identity)}`, undefined, headers);
+  async readyz(): Promise<{ status: string; version?: string }> {
+    return this.frontendClient.readyz();
   }
 }
 

@@ -11,3 +11,4 @@ export default function ProgressDB(opts: ProgressDBOptions): BackendClient {
 }
 
 export { BackendClient };
+export type { BackendClientOptions };

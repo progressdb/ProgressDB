@@ -1,7 +1,7 @@
 {
   "name": "@progressdb/node",
   "version": "0.2.0",
-  "description": "ProgressDB backend SDK (Node.js, TypeScript) - thin wrappers for admin/backend endpoints",
+  "description": "ProgressDB backend SDK (Node.js, TypeScript) - wraps frontend SDK with automatic signature generation and caching",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -27,6 +27,9 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@progressdb/js": "^0.2.2"
   },
   "devDependencies": {
     "msw": "^1.2.1",
