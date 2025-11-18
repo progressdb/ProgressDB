@@ -95,6 +95,8 @@ func RequireSignedAuthorMiddleware(next fasthttp.RequestHandler) fasthttp.Reques
 
 		// signature verified - continue
 		logger.Info("signature_verified", logMeta...)
+
+		// set to url state
 		ctx.SetUserValue("author", userID)
 		ctx.Request.Header.Set("X-User-ID", userID)
 		next(ctx)

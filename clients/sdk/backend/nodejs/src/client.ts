@@ -52,9 +52,12 @@ export class BackendClient {
   constructor(opts: BackendClientOptions) {
     this.backendApiKey = opts.apiKey || '';
     
-    // Initialize frontend SDK with same API key (will be used as X-API-Key)
+    // Clean base URL once during initialization
+    const cleanBaseUrl = opts.baseUrl?.replace(/\/$/, '') || '';
+    
+    // Initialize frontend SDK with cleaned base URL
     this.frontendClient = new ProgressDBClient({
-      baseUrl: opts.baseUrl,
+      baseUrl: cleanBaseUrl,
       apiKey: opts.apiKey,
       fetch: opts.fetch
     });
@@ -93,7 +96,7 @@ export class BackendClient {
    * @returns object { userId, signature }
    */
   async signUser(userId: string): Promise<{ userId: string; signature: string }> {
-    const url = `${this.frontendClient.baseUrl.replace(/\/$/, '')}/v1/_sign`;
+    const url = `${this.frontendClient.baseUrl}/backend/v1/sign`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {

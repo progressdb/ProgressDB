@@ -119,7 +119,7 @@ class HTTPClient:
             return cached['signature']
         
         # Generate new signature
-        sign_url = f"{self.base_url}/v1/_sign"
+        sign_url = f"{self.base_url}/backend/v1/sign"
         headers = {'Authorization': f'Bearer {self.api_key}', 'Content-Type': 'application/json'}
         
         response = requests.post(sign_url, headers=headers, json={'userId': user_id}, timeout=self.timeout)
