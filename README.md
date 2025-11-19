@@ -1,15 +1,7 @@
 
 ![ProgressDB Logo](/docs/images/wordlogo.png)
 
-ProgressDB is a fast, purpose-built, chat-native database for AI chat threads. The project includes a database service, backend SDKs (Node, Python), and frontend SDKs (TypeScript, React). This quickstart shows how to run the service locally, install the SDKs, and perform basic operations.
-
->ProgressDB is in active development and not certified for production use.
->While extensively tested, breaking changes and incomplete features remain.
->The built-in Progressor handles automatic database migrations on model changes, though this currently applies only to the database layer—not the SDKs.
-
-## Why ProgressDB?
-
-ProgressDB is purpose-built for chat applications, streamlining common workflows and performance requirements:
+Purpose built database for chat applications, streamlining common workflows and performance requirements:
 
 - **Message lifecycle management** - Built-in versioning, edits, and soft-deletes
 - **Optimized queries** - Fast retrieval of threaded messages and common chat patterns
@@ -57,6 +49,7 @@ Planned
 
 
 
-## Explorer
+## Links
 
-![ProgressDB Dashboard](/docs/images/dasher.png)
+- [Documentation](./docs/public/v_0_2_0/)
+- [Admin Explorer](https://progressdb.dev/app/explorer)
