@@ -30,7 +30,7 @@ go run ./cmd/progressdb --db ./data --addr ":8080"
 - `--addr` - bind address  
 - `--config` - YAML config file
 
-Health check: http://localhost:8080/healthz
+Health check: `http://localhost:8080/healthz`
 
-
-Configuration page lists all the configurables available.
+Configuration: See [configuration](/configuration) for all available options.
+```

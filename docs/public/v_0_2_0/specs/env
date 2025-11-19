@@ -1,5 +1,4 @@
 # ProgressDB Environment Variables
-# Copy this file to .env and customize the values as needed.
 # Environment variables override config.yaml settings.
 
 # Server Configuration
