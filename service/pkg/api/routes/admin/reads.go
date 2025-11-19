@@ -1,17 +1,16 @@
 package admin
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/valyala/fasthttp"
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
-	"progressdb/pkg/models"
 	"progressdb/pkg/store/db/indexdb"
 	storedb "progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/iterator/admin/ki"
@@ -32,47 +31,79 @@ func Health(ctx *fasthttp.RequestCtx) {
 func Stats(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/json")
 
-	// Use admin key iterator to get all thread metadata keys
-	keyIter := ki.NewKeyIterator(storedb.Client)
-
-	// Get all thread keys with large limit
-	req := pagination.PaginationRequest{Limit: 10000}
-	threadKeys, _, err := keyIter.ExecuteKeyQuery(keys.GenThreadMetadataPrefix(), req)
+	// Count total messages from indexdb by scanning idx:t:*:ms:end keys
+	var totalMessages int64
+	msgIter, err := indexdb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte("idx:t:"),
+		UpperBound: nextPrefix([]byte("idx:t:")),
+	})
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
+	defer msgIter.Close()
 
-	// Count threads and messages
-	var threadCount int
-	var msgCount int64
-
-	for _, key := range threadKeys {
-		parsed, err := keys.ParseKey(key)
-		if err != nil {
-			continue
-		}
-		if parsed.Type == keys.KeyTypeThread {
-			threadCount++
-			// Get thread value to count messages
-			val, err := storedb.GetKey(key)
-			if err != nil {
-				continue
-			}
-			var th models.Thread
-			if err := json.Unmarshal([]byte(val), &th); err == nil {
-				indexes, err := indexdb.GetThreadMessageIndexData(th.Key)
-				if err == nil {
-					msgCount += int64(indexes.End)
-				}
+	for valid := msgIter.First(); valid; valid = msgIter.Next() {
+		keyStr := string(msgIter.Key())
+		// Only process message end indexes (idx:t:*:ms:end)
+		if len(keyStr) > 12 && keyStr[len(keyStr)-4:] == ":end" {
+			val := string(msgIter.Value())
+			if msgEnd, err := strconv.ParseInt(val, 10, 64); err == nil {
+				totalMessages += msgEnd
 			}
 		}
 	}
 
+	// Count deleted threads by scanning del:t:* keys
+	var deletedThreads int
+	delIter, err := indexdb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte("del:t:"),
+		UpperBound: nextPrefix([]byte("del:t:")),
+	})
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	defer delIter.Close()
+
+	for valid := delIter.First(); valid; valid = delIter.Next() {
+		keyStr := string(delIter.Key())
+		// Verify this is a thread delete marker (del:t:*)
+		if len(keyStr) > 5 && keyStr[:5] == "del:t:" {
+			// Extract the original thread key and validate it's a thread
+			originalKey := keyStr[4:] // Remove "del:" prefix
+			if parsed, err := keys.ParseKey(originalKey); err == nil && parsed.Type == keys.KeyTypeThread {
+				deletedThreads++
+			}
+		}
+	}
+
+	// Count total threads by scanning t:* keys in storedb
+	var totalThreads int
+	threadIter, err := storedb.Client.NewIter(&pebble.IterOptions{
+		LowerBound: []byte("t:"),
+		UpperBound: nextPrefix([]byte("t:")),
+	})
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	defer threadIter.Close()
+
+	for valid := threadIter.First(); valid; valid = threadIter.Next() {
+		keyStr := string(threadIter.Key())
+		if parsed, err := keys.ParseKey(keyStr); err == nil && parsed.Type == keys.KeyTypeThread {
+			totalThreads++
+		}
+	}
+
+	// Calculate final stats
+	activeThreads := totalThreads - deletedThreads
+
 	_ = router.WriteJSON(ctx, struct {
 		Threads  int   `json:"threads"`
 		Messages int64 `json:"messages"`
-	}{Threads: threadCount, Messages: msgCount})
+	}{Threads: activeThreads, Messages: totalMessages})
 }
 
 func ListThreads(ctx *fasthttp.RequestCtx) {

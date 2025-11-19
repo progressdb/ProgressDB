@@ -1,0 +1,66 @@
+server:
+  address: "0.0.0.0"
+  port: 8080
+  db_path: "./database"
+  max_payload_size: "100KB"
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  rate_limit:
+    rps: 100_000
+    burst: 150_000
+  ip_whitelist:
+    - "127.0.0.1"
+  api_keys:
+    backend: ["sk_example"]
+    frontend: ["pk_example"]
+    admin: ["admin_example"]
+    signing: ["sign_example"]
+
+retention:
+  enabled: true
+  cron: "0 2 28-31 * *"
+  mttl: 720h
+  tttl: 720h
+
+ingest:
+  intake:
+    queue_capacity: 10_000
+    shutdown_poll_interval: 5ms
+    wal:
+      enabled: true
+    recovery:
+      enabled: true
+      temp_idx_enabled: true
+  compute:
+    worker_count: 24
+    buffer_capacity: 10_000
+  apply:
+     batch_count: 1_000
+     batch_timeout: 1s
+
+sensor:
+  poll_interval: 60s
+  disk_high_pct: 80
+  mem_high_pct: 80
+  cpu_high_pct: 90
+  recovery_window: 5s
+
+logging:
+  level: "debug"
+
+telemetry:
+  buffer_size: 60MB
+  file_max_size: 40MB
+  flush_interval: 2ms
+  queue_capacity: 2048
+
+encryption:
+  enabled: true
+  fields: ["body"]
+  kms:
+    mode: "embedded"
+    endpoint: "127.0.0.1:6820"
+    master_key_file: ""
+    master_key_hex: "f3c9a7df8b0e52c4a14ea2d0b38ef615f739482decdb0e8c7701435a4bfd98c2"
