@@ -1,0 +1,14 @@
+{
+  "organization": {
+    "version": "1.0",
+    "sections": {
+      "ordering": ["general", "service", "clients", "others"],
+      "labels": {
+        "general": "General",
+        "service": "Service",
+        "clients": "Clients",
+        "others": "Integrations"
+      }
+    }
+  }
+}
