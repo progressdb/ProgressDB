@@ -52,4 +52,5 @@ Planned
 ## Links
 
 - [Documentation](./docs/public/v_0_2_0/)
-- [Admin Explorer](https://progressdb.dev/app/explorer)
+- [Admin Dashboard](https://progressdb.dev/app/explorer)
+- [Explorer Image](/public/dasher.png)
