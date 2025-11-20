@@ -5,40 +5,109 @@ order: 1
 visibility: public
 ---
 
-# Integrating with Vercel AI SDK
+# Vercel AI SDK Integration
 
-This tutorial outlines a simple integration between ProgressDB and the Vercel
-AI SDK for building chat-enabled experiences.
+Build chat experiences with ProgressDB + Vercel AI SDK.
 
-Steps:
+ProgressDB supports all Vercel AI SDK persistence structures.
+You simply need to decide where you want to call for the storing of your messages.
+- See [Vercel AI chat persistence docs](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-message-persistence) for options.
 
-1. Set up ProgressDB (run locally or use your hosted instance).
-2. Create a backend endpoint to `signUser(userId)` using the backend SDK.
-3. In your frontend, obtain the user signature from your backend and attach
-   `X-User-ID` and `X-User-Signature` to ProgressDB calls.
-4. Use the Vercel AI SDK to generate responses and persist conversation turns
-   to ProgressDB via the frontend SDK.
+## Setup
 
-Example flow (high-level):
+1. Run ProgressDB locally or use hosted instance
+2. Create backend endpoint to sign users with backend SDK
 
-- User sends a chat message in the UI.
-- Frontend posts the message to ProgressDB (with signed user headers).
-- Frontend calls Vercel AI SDK to generate a response.
-- Save the AI response to ProgressDB as another message.
+## Flow
 
-Minimal curl example (frontend/service interaction):
+1. User sends message to the response streaming endpoint  
+   - *Store it in ProgressDB & it will ack in sub millisecond speeds, no overhead*
+2. Generate response with Vercel AI SDK
+3. Save AI response to ProgressDB  
+   - *Store it in ProgressDB & it will ack in sub millisecond speeds, no overhead*
 
-```sh
-# Backend: sign a user ID (server-side, using backend SDK / backend key)
-curl -X POST https://api.example.com/v1/_sign \
-  -H "Authorization: Bearer sk_example" \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"alice"}'
+## Node.js Backend Example
 
-# Frontend: post a message with X-User headers
-curl -X POST https://api.example.com/v1/messages \
-  -H "X-User-ID: alice" \
-  -H "X-User-Signature: <signature-from-backend>" \
-  -H "Content-Type: application/json" \
-  -d '{"thread":"general","body":{"text":"Hello from Vercel"}}'
+```ts
+import ProgressDB from '@progressdb/node'
+
+const db = ProgressDB({ 
+  baseUrl: 'https://api.example.com', 
+  apiKey: process.env.PROGRESSDB_KEY 
+})
+
+// API route to sign users
+export async function POST(req: Request) {
+  const { userId } = await req.json()
+  const signature = await db.signUser(userId)
+  return Response.json({ userId, signature })
+}
+
+// Save messages from Vercel AI SDK
+export async function POST(req: Request) {
+  const { messages, chatId } = await req.json()
+  
+  // Save to ProgressDB thread
+  await db.createThreadMessage(chatId, {
+    body: { text: messages[messages.length - 1].content }
+  }, 'user-123')
+  
+  // Generate AI response with Vercel AI SDK...
+  // Then store the AI response with ProgressDB SDK again or frontend option below 👇
+}
 ```
+
+## React Frontend Example
+
+```tsx
+import React from 'react';
+import ProgressDBProvider, { useMessages } from '@progressdb/react';
+import { useChat } from 'ai/react';
+
+function ChatInterface({ threadId }: { threadId: string }) {
+  const { messages, loading, create } = useMessages(threadId);
+  const { sendMessage } = useChat({
+    api: '/api/chat',
+    onFinish: async (message) => {
+      // Save AI response to ProgressDB
+      await create({
+        body: { text: message.content },
+        role: 'assistant'
+      });
+    }
+  });
+
+  return (
+    <div>
+      {messages.map(m => (
+        <div key={m.id}>{m.body.text}</div>
+      ))}
+      <button onClick={() => sendMessage('Hello')}>Send</button>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ProgressDBProvider
+      options={{ baseUrl: 'https://api.example.com', apiKey: 'FRONTEND_KEY' }}
+      getUserSignature={async () => {
+        const res = await fetch('/api/sign-user', { 
+          method: 'POST', 
+          body: JSON.stringify({ userId: 'user123' }) 
+        });
+        return res.json();
+      }}
+    >
+      <ChatInterface threadId="general" />
+    </ProgressDBProvider>
+  );
+}
+```
+
+## SDKs & their methods available:
+
+- [React SDK](/clients/reactjs) - Frontend components  
+- [Python SDK](/clients/python) - Python backend
+- [TypeScript SDK](/clients/typescript) - TypeScript frontend
+- [Node.js SDK](/clients/nodejs) - Backend integration
