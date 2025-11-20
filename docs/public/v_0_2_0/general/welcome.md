@@ -36,7 +36,6 @@ Suddenly you’re faced with questions like:
 - *How* do you keep fields encrypted and still support:  
   - Edits  
   - Redactions  
-  - Digital signatures  
   - Replies and versions  
   - Fast timeline reads  
 
