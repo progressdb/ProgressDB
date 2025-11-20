@@ -107,7 +107,7 @@ export default function App() {
 
 ## SDKs & their methods available:
 
-- [React SDK](/clients/reactjs) - Frontend components  
-- [Python SDK](/clients/python) - Python backend
-- [TypeScript SDK](/clients/typescript) - TypeScript frontend
-- [Node.js SDK](/clients/nodejs) - Backend integration
+- [TypeScript SDK](/clients/typescript)
+- [React SDK](/clients/reactjs)
+- [Python SDK](/clients/python)
+- [Node.js SDK](/clients/nodejs)

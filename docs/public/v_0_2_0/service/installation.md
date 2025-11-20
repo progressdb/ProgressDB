@@ -7,6 +7,10 @@ visibility: public
 
 # Installation
 
+ProgressDB can run on the most minimal of hardware - the build file comes to ~50mb.
+- Your usage expectations determine the hardware requirements, read [Benchmarks](/benchmarks) to estimate what you need.
+- At outmost simplicity a 512mb ram, 1gb of disc space, 1vcpu should be enough for a 100RPS situation.
+
 ## Docker (recommended)
 ```sh
 docker run -d --name progressdb -p 8080:8080 -v $PWD/data:/data \
