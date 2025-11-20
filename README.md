@@ -3,8 +3,8 @@
 
 Purpose built database for chat applications, streamlining common workflows and performance requirements:
 
-- **Message lifecycle management** - Built-in versioning, edits, and soft-deletes
-- **Optimized queries** - Fast retrieval of threaded messages and common chat patterns
+- **Threaded messages lifecycle** - Built-in versioning, edits, and soft-deletes
+- **Optimised mutations & reads** - Fast retrieval of threaded messages and common chat patterns
 - **Integrated security** - Encryption and API-key based access controls
 - **Developer-friendly** - Lightweight service with simple APIs and SDKs for Python, Node, TypeScript, and React
 - **Developer Delight** - Send a message, the thread auto-creates.
