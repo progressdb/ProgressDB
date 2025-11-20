@@ -7,9 +7,9 @@ visibility: public
 
 # Installation
 
-ProgressDB can run on the most minimal of hardware - the build file comes to ~50mb.
-- Your usage expectations determine the hardware requirements, read [Benchmarks](/benchmarks) to estimate what you need.
-- At outmost simplicity a 512mb ram, 1gb of disc space, 1vcpu should be enough for a 100RPS situation.
+ProgressDB is lightweight and efficient, with a build size of just ~50MB.  
+- Hardware requirements depend on your workload—see our [Benchmarks](/docs/benchmarks) to estimate what you’ll need.
+- For basic use (e.g., handling 100 requests per second), a setup with 512MB RAM, 1GB disk space, and a single vCPU is often sufficient.
 
 ## Docker (recommended)
 ```sh
@@ -23,11 +23,11 @@ tar -xzf progressdb_<version>_linux_amd64.tar.gz
 ./progressdb --db ./data
 ```
 
-## Build from source
-```sh
-cd server
-go run ./cmd/progressdb --db ./data --addr ":8080"
-```
+## Links
+
+- [Docker Images & Packages on GitHub](https://github.com/orgs/progressdb/packages?repo_name=ProgressDB)
+- [Source Code on GitHub](https://github.com/progressdb/ProgressDB)
+- [Releases & Binaries](https://github.com/progressdb/ProgressDB/releases)
 
 ## Common flags
 - `--db` - storage path
@@ -36,5 +36,4 @@ go run ./cmd/progressdb --db ./data --addr ":8080"
 
 Health check: `http://localhost:8080/healthz`
 
-Configuration: See [configuration](/configuration) for all available options.
-```
+Configuration: See [configuration](/docs/configuration) for all available options.
