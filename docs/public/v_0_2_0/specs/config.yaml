@@ -7,11 +7,12 @@ server:
     allowed_origins:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
   rate_limit:
     rps: 100_000
     burst: 150_000
-  ip_whitelist:
-    - "127.0.0.1"
   api_keys:
     backend: ["sk_example"]
     frontend: ["pk_example"]
@@ -20,32 +21,32 @@ server:
 
 retention:
   enabled: true
-  cron: "0 2 28-31 * *"
+  cron: "0 2 * * *"
   mttl: 720h
   tttl: 720h
 
 ingest:
   intake:
-    queue_capacity: 10_000
+    queue_capacity: 100_000
     shutdown_poll_interval: 5ms
     wal:
-      enabled: true
+      enabled: false
     recovery:
-      enabled: true
-      temp_idx_enabled: true
+      enabled: false
+      temp_index_enabled: false
   compute:
-    worker_count: 24
-    buffer_capacity: 10_000
+    worker_multiplier: 4
+    buffer_capacity: 50_000
   apply:
-     batch_count: 1_000
-     batch_timeout: 1s
+     batch_count: 10_000
+     batch_timeout: 100ms
 
 sensor:
-  poll_interval: 60s
-  disk_high_pct: 80
-  mem_high_pct: 80
+  poll_interval: "1s"
+  disk_high_pct: 85
+  mem_high_pct: 85
   cpu_high_pct: 90
-  recovery_window: 5s
+  recovery_window: "5s"
 
 logging:
   level: "debug"
@@ -62,5 +63,6 @@ encryption:
   kms:
     mode: "embedded"
     endpoint: "127.0.0.1:6820"
+    db_path: "./kms"
     master_key_file: ""
     master_key_hex: "0000000000000000000000000000000000000000000000000000000000000000"

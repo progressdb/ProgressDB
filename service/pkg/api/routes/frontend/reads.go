@@ -7,6 +7,7 @@ import (
 
 	"progressdb/pkg/api/router"
 	"progressdb/pkg/api/utils"
+	"progressdb/pkg/ingest/tracking"
 	"progressdb/pkg/store/db/indexdb"
 	"progressdb/pkg/store/db/storedb"
 	"progressdb/pkg/store/encryption"
@@ -56,25 +57,32 @@ func ReadThreadItem(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// resolve provisional keys to final keys
+	resolvedThreadKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
+		return
+	}
+
 	// check access via ownership or participation
-	hasOwnership, err := indexdb.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := indexdb.DoesUserOwnThread(author, resolvedThreadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread ownership: %v", err))
 		return
 	}
 
-	hasParticipation, err := indexdb.DoesThreadHaveUser(threadKey, author)
+	hasParticipation, err := indexdb.DoesThreadHaveUser(resolvedThreadKey, author)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread participation: %v", err))
 		return
 	}
 
 	if !hasOwnership && !hasParticipation {
-		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied: not thread owner or participant")
 		return
 	}
 
-	thread, validationErr := router.ValidateReadThread(threadKey, author, true)
+	thread, validationErr := router.ValidateReadThread(resolvedThreadKey, author, true)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
 		return
@@ -94,25 +102,32 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// resolve provisional keys to final keys
+	resolvedThreadKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(threadKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "thread not found")
+		return
+	}
+
 	// check access via ownership or participation
-	hasOwnership, err := indexdb.DoesUserOwnThread(author, threadKey)
+	hasOwnership, err := indexdb.DoesUserOwnThread(author, resolvedThreadKey)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread ownership: %v", err))
 		return
 	}
 
-	hasParticipation, err := indexdb.DoesThreadHaveUser(threadKey, author)
+	hasParticipation, err := indexdb.DoesThreadHaveUser(resolvedThreadKey, author)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to check thread participation: %v", err))
 		return
 	}
 
 	if !hasOwnership && !hasParticipation {
-		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied: not thread owner or participant")
 		return
 	}
 
-	_, validationErr := router.ValidateReadThread(threadKey, author, false)
+	_, validationErr := router.ValidateReadThread(resolvedThreadKey, author, false)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
 		return
@@ -127,7 +142,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 
 	// Use message iterator which filters out deleted messages
 	messageIter := mi.NewMessageIterator(storedb.Client)
-	messageKeys, paginationResp, err := messageIter.ExecuteMessageQuery(threadKey, req)
+	messageKeys, paginationResp, err := messageIter.ExecuteMessageQuery(resolvedThreadKey, req)
 	if err != nil {
 		router.WriteJSONError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("failed to read messages: %v", err))
 		return
@@ -141,7 +156,7 @@ func ReadThreadMessages(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Messages are already sorted by the iterator (oldest first for chat display)
-	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: threadKey, Messages: messages, Pagination: &paginationResp})
+	_ = router.WriteJSON(ctx, MessagesListResponse{Thread: resolvedThreadKey, Messages: messages, Pagination: &paginationResp})
 }
 
 func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
@@ -152,6 +167,13 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 
 	messageKey, valid := router.ValidatePathParam(ctx, "id")
 	if !valid {
+		return
+	}
+
+	// resolve provisional keys to final keys
+	resolvedMessageKey, err := tracking.GlobalKeyMapper.ResolveKeyOrWait(messageKey)
+	if err != nil {
+		router.WriteJSONError(ctx, fasthttp.StatusNotFound, "message not found")
 		return
 	}
 
@@ -171,7 +193,7 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	if !hasOwnership && !hasParticipation {
-		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied")
+		router.WriteJSONError(ctx, fasthttp.StatusForbidden, "access denied: not thread owner or participant")
 		return
 	}
 
@@ -182,7 +204,7 @@ func ReadThreadMessage(ctx *fasthttp.RequestCtx) {
 	}
 
 	// For individual message access, allow thread participants to read any message in the thread
-	message, validationErr := router.ValidateReadMessage(messageKey, author, false)
+	message, validationErr := router.ValidateReadMessage(resolvedMessageKey, author, false)
 	if validationErr != nil {
 		router.WriteValidationError(ctx, validationErr)
 		return
